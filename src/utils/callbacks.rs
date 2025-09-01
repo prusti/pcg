@@ -14,8 +14,8 @@ use crate::{
         r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
     },
     borrow_pcg::region_projection::{PcgRegion, RegionIdx},
-    owned_pcg::PcgAnalysis,
     pcg::{self, BodyWithBorrowckFacts},
+    results::PcgAnalysisResults,
     run_pcg,
     rustc_interface::{
         borrowck::{
@@ -311,7 +311,7 @@ pub(crate) unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
     }
 }
 
-type PcgCallback<'tcx> = dyn for<'mir, 'arena> Fn(PcgAnalysis<'mir, 'tcx>) + 'static;
+type PcgCallback<'tcx> = dyn for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + 'static;
 
 pub(crate) fn run_pcg_on_fn<'tcx>(
     def_id: LocalDefId,
