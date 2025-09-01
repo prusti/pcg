@@ -60,8 +60,18 @@ impl<'tcx> UnblockGraph<'tcx> {
         state: &BorrowsState<'tcx>,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) -> Self {
+        Self::for_nodes(vec![node], state, repacker)
+    }
+
+    pub fn for_nodes(
+        nodes: impl IntoIterator<Item = impl Into<BlockedNode<'tcx>>>,
+        state: &BorrowsState<'tcx>,
+        repacker: CompilerCtxt<'_, 'tcx>,
+    ) -> Self {
         let mut ug = Self::new();
-        ug.unblock_node(node.into(), state, repacker);
+        for node in nodes {
+            ug.unblock_node(node.into(), state, repacker);
+        }
         ug
     }
 
