@@ -28,6 +28,7 @@ pub mod owned_pcg;
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
 pub mod pcg;
+pub mod results;
 pub mod rustc_interface;
 pub mod utils;
 pub mod visualization;
@@ -57,7 +58,7 @@ use visualization::mir_graph::generate_json_from_mir;
 use utils::json::ToJsonWithCompilerCtxt;
 
 /// The result of the PCG analysis.
-pub type PcgOutput<'a, 'tcx> = owned_pcg::PcgAnalysis<'a, 'tcx>;
+pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
 /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
 /// If `_.2` is `None`, the capability is removed.
@@ -288,14 +289,7 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
 
 /// The main entrypoint for running the PCG.
 ///
-/// # Arguments
-///
-/// - `body`: The body of the MIR function to analyze.
-/// - `tcx`: The type context of the MIR function.
-/// - `bc`: The borrow-checker that the PCG should use.
-/// - `arena`: The arena to use for allocation. You can use [`std::alloc::Global`] if you don't
-///   care to use a custom allocator.
-/// - `visualization_output_path`: The path to output debug visualization to.
+/// `visualization_output_path` is the path to output debug visualization to.
 pub fn run_pcg<'a, 'tcx>(
     pcg_ctxt: &'a PcgCtxt<'_, 'tcx>,
     visualization_output_path: Option<&str>,
@@ -332,11 +326,11 @@ pub fn run_pcg<'a, 'tcx>(
             }
         }
     }
-    let mut fpcs_analysis = owned_pcg::PcgAnalysis::new(analysis.into_results_cursor(body));
+    let mut analysis_results = results::PcgAnalysisResults::new(analysis.into_results_cursor(body));
 
     if validity_checks_enabled() {
         for (block, _data) in body.basic_blocks.iter_enumerated() {
-            let pcs_block_option = if let Ok(opt) = fpcs_analysis.get_all_for_bb(block) {
+            let pcs_block_option = if let Ok(opt) = analysis_results.get_all_for_bb(block) {
                 opt
             } else {
                 continue;
@@ -372,7 +366,7 @@ pub fn run_pcg<'a, 'tcx>(
 
         // Iterate over each statement in the MIR
         for (block, _data) in body.basic_blocks.iter_enumerated() {
-            let pcs_block_option = if let Ok(opt) = fpcs_analysis.get_all_for_bb(block) {
+            let pcs_block_option = if let Ok(opt) = analysis_results.get_all_for_bb(block) {
                 opt
             } else {
                 continue;
@@ -408,7 +402,7 @@ pub fn run_pcg<'a, 'tcx>(
         }
     }
 
-    fpcs_analysis
+    analysis_results
 }
 
 macro_rules! pcg_validity_expect_some {
@@ -566,7 +560,7 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
-use crate::owned_pcg::PcgLocation;
+use crate::results::PcgLocation;
 use crate::utils::HasCompilerCtxt;
 
 pub(crate) fn validity_checks_enabled() -> bool {

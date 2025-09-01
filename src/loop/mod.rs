@@ -174,7 +174,7 @@ impl JoinSemiLattice for LoopPlaceUsageDomain<'_> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub(crate) enum PlaceUsageType {
+pub enum PlaceUsageType {
     Read,
     Mutate,
 }
@@ -220,8 +220,8 @@ impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for PlaceUsage<'tcx> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub(crate) struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
+#[derive(Clone, Debug, Deref, PartialEq, Eq, Default)]
+pub struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
 
 impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for PlaceUsages<'tcx> {
     fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {

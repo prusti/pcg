@@ -13,6 +13,7 @@ use crate::{
         region_projection::MaybeRemoteRegionProjectionBase,
     },
     error::PcgError,
+    r#loop::PlaceUsages,
     pcg::{EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, successor_blocks},
     rustc_interface::{
         data_structures::fx::FxHashSet,
@@ -34,15 +35,14 @@ use crate::utils::eval_stmt_data::EvalStmtData;
 use crate::{owned_pcg::RepackOp, utils::CompilerCtxt};
 
 type Cursor<'mir, 'tcx, E> = ResultsCursor<'mir, 'tcx, E>;
-
 /// The result of the PCG analysis.
-pub struct PcgAnalysis<'a, 'tcx: 'a> {
+pub struct PcgAnalysisResults<'a, 'tcx: 'a> {
     pub cursor: Cursor<'a, 'tcx, AnalysisEngine<PcgEngine<'a, 'tcx>>>,
     curr_stmt: Option<Location>,
     end_stmt: Option<Location>,
 }
 
-impl<'a, 'tcx> PcgAnalysis<'a, 'tcx> {
+impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
     pub(crate) fn new(cursor: Cursor<'a, 'tcx, AnalysisEngine<PcgEngine<'a, 'tcx>>>) -> Self {
         Self {
             cursor,
@@ -59,6 +59,13 @@ impl<'a, 'tcx> PcgAnalysis<'a, 'tcx> {
             statement_index: 0,
         });
         self.end_stmt = Some(end_stmt);
+    }
+
+    pub fn loop_place_usages(&self, loop_head: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
+        self.analysis()
+            .body_analysis
+            .loop_analysis
+            .get_used_places(loop_head)
     }
 
     fn body(&self) -> &'a Body<'tcx> {

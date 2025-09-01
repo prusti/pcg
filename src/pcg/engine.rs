@@ -125,7 +125,7 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
     pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
     debug_graphs: Option<PCGEngineDebugData<'a>>,
-    body_analysis: &'a BodyAnalysis<'a, 'tcx>,
+    pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: BitSet<Block>,
     pub(crate) analyzed_blocks: BitSet<Block>,
     pub(crate) first_error: ErrorState,
