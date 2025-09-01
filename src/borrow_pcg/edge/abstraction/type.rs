@@ -15,12 +15,12 @@ impl<'tcx> AbstractionType<'tcx> {
         }
     }
 
-    pub fn inputs(&self) -> Vec<AbstractionInputTarget<'tcx>> {
-        self.edge().inputs()
+    pub fn input(&self) -> AbstractionInputTarget<'tcx> {
+        self.edge().input()
     }
 
-    pub fn outputs(&self) -> Vec<AbstractionOutputTarget<'tcx>> {
-        self.edge().outputs()
+    pub fn output(&self) -> AbstractionOutputTarget<'tcx> {
+        self.edge().output()
     }
 
     pub fn edge(
@@ -30,29 +30,13 @@ impl<'tcx> AbstractionType<'tcx> {
         match self {
             AbstractionType::FunctionCall(c) => AbstractionBlockEdge {
                 _phantom: PhantomData,
-                inputs: c
-                    .edge()
-                    .inputs
-                    .iter()
-                    .map(|i| i.to_abstraction_input())
-                    .collect(),
-                outputs: c.edge().outputs.iter().copied().map(|o| o.into()).collect(),
+                input: c.edge().input().to_abstraction_input(),
+                output: c.edge().output().into(),
             },
             AbstractionType::Loop(c) => AbstractionBlockEdge {
                 _phantom: PhantomData,
-                inputs: c
-                    .edge
-                    .inputs
-                    .iter()
-                    .map(|i| i.to_abstraction_input())
-                    .collect(),
-                outputs: c
-                    .edge
-                    .outputs
-                    .iter()
-                    .copied()
-                    .map(|o| (*o).into())
-                    .collect(),
+                input: c.edge.input().to_abstraction_input(),
+                output: c.edge.output().to_abstraction_output(),
             },
         }
     }

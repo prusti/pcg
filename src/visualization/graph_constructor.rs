@@ -6,7 +6,7 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgRef, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PCGNodeLike, PcgNode, PcgRef, SymbolicCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
@@ -168,54 +168,21 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         &mut self,
         abstraction: &AbstractionType<'tcx>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
-        edge_idx: usize,
     ) {
-        let mut input_nodes = vec![];
-        let mut output_nodes = vec![];
-
-        for input in abstraction.inputs() {
-            let input = self.insert_pcg_node(*input, capabilities);
-            input_nodes.push(input);
-        }
-
-        for output in abstraction.outputs() {
-            let output = self.insert_pcg_node((*output).into(), capabilities);
-            output_nodes.push(output);
-        }
-
+        let input = self.insert_pcg_node(abstraction.input().to_pcg_node(self.ctxt), capabilities);
+        let output =
+            self.insert_pcg_node(abstraction.output().to_pcg_node(self.ctxt), capabilities);
         let label = match abstraction {
             AbstractionType::FunctionCall(fc) => fc.to_short_string(self.ctxt),
             AbstractionType::Loop(loop_abstraction) => {
                 format!("loop at {:?}", loop_abstraction.location())
             }
         };
-
-        let use_label = input_nodes.len() > 1 || output_nodes.len() > 1;
-
-        let hyperedge_id = format!("<{edge_idx}>");
-
-        let first_edge_label = if use_label {
-            format!("{label} {hyperedge_id}")
-        } else {
-            label
-        };
-
-        let mut first = true;
-
-        for input in &input_nodes {
-            for output in &output_nodes {
-                self.edges.insert(GraphEdge::Abstract {
-                    blocked: *input,
-                    blocking: *output,
-                    label: if first {
-                        first_edge_label.clone()
-                    } else {
-                        hyperedge_id.clone()
-                    },
-                });
-                first = false
-            }
-        }
+        self.edges.insert(GraphEdge::Abstract {
+            blocked: input,
+            blocking: output,
+            label,
+        });
     }
 
     pub(super) fn insert_remote_node(&mut self, remote_place: RemotePlace) -> NodeId {
@@ -304,8 +271,8 @@ where
     pub(crate) fn construct_graph(mut self) -> Graph {
         let edges: Vec<MaterializedEdge<'tcx, 'graph>> =
             self.borrows_graph.materialized_edges(self.ctxt);
-        for (edge_idx, edge) in edges.into_iter().enumerate() {
-            self.draw_materialized_edge(edge, edge_idx);
+        for edge in edges {
+            self.draw_materialized_edge(edge);
         }
         self.constructor.into_graph()
     }
@@ -446,14 +413,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
                 }
             }
         }
-        for (edge_idx, edge) in self
-            .borrows_domain
-            .graph
-            .materialized_edges(self.ctxt)
-            .into_iter()
-            .enumerate()
-        {
-            self.draw_materialized_edge(edge, edge_idx);
+        for edge in self.borrows_domain.graph.materialized_edges(self.ctxt) {
+            self.draw_materialized_edge(edge);
         }
 
         self.constructor.into_graph()

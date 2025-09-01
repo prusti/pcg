@@ -42,16 +42,13 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
 
     fn constructor(&mut self) -> &mut GraphConstructor<'a, 'tcx>;
     fn ctxt(&self) -> CompilerCtxt<'a, 'tcx>;
-    fn draw_materialized_edge<'graph>(
-        &mut self,
-        edge: MaterializedEdge<'tcx, 'graph>,
-        edge_idx: usize,
-    ) where
+    fn draw_materialized_edge<'graph>(&mut self, edge: MaterializedEdge<'tcx, 'graph>)
+    where
         'a: 'graph,
     {
         match edge {
             MaterializedEdge::Real(edge) => {
-                self.draw_borrow_pcg_edge(edge, &self.capability_getter(), edge_idx)
+                self.draw_borrow_pcg_edge(edge, &self.capability_getter())
             }
             MaterializedEdge::Synthetic(edge) => self.draw_synthetic_edge(edge),
         }
@@ -72,7 +69,6 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
         &mut self,
         edge: impl BorrowPcgEdgeLike<'tcx>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
-        edge_idx: usize,
     ) {
         let path_conditions = edge.conditions().to_short_string(self.ctxt());
         match edge.kind() {
@@ -126,7 +122,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
             }
             BorrowPcgEdgeKind::Abstraction(abstraction) => {
                 self.constructor()
-                    .insert_abstraction(abstraction, capabilities, edge_idx);
+                    .insert_abstraction(abstraction, capabilities);
             }
             BorrowPcgEdgeKind::BorrowFlow(member) => {
                 let input_node = self.insert_pcg_node(member.long().into());

@@ -79,6 +79,12 @@ impl<'tcx> From<MaybeRemotePlace<'tcx>> for LoopAbstractionInput<'tcx> {
     }
 }
 
+impl<'tcx> LoopAbstractionOutput<'tcx> {
+    pub(crate) fn to_abstraction_output(self) -> AbstractionOutputTarget<'tcx> {
+        AbstractionOutputTarget(self.0)
+    }
+}
+
 impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionInput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
