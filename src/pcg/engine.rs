@@ -243,8 +243,6 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
                     self.reachable_blocks.insert(block.index());
                 }
             }
-
-            tracing::info!("Analyzing {:?}", location);
         }
 
         let pcg_data = state.data_mut();

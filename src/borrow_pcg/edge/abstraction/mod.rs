@@ -30,7 +30,6 @@ use crate::pcg::PcgNode;
 use crate::utils::CompilerCtxt;
 use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::utils::validity::HasValidityCheck;
-use itertools::Itertools;
 
 /// Either a function call or a loop abstraction
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
@@ -49,8 +48,8 @@ edgedata_enum!(
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     _phantom: PhantomData<&'tcx ()>,
-    inputs: Vec<Input>,
-    pub(crate) outputs: Vec<Output>,
+    input: Input,
+    pub(crate) output: Output,
 }
 
 impl<
@@ -65,12 +64,8 @@ impl<
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        let mut changed = false;
-        for input in &mut self.inputs {
-            changed |=
-                input.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
-        }
-        changed
+        self.input
+            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
     }
 
     fn label_blocked_by_places(
@@ -79,12 +74,8 @@ impl<
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        let mut changed = false;
-        for output in &mut self.outputs {
-            changed |=
-                output.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
-        }
-        changed
+        self.output
+            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
     }
 }
 
@@ -106,66 +97,31 @@ impl<
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
-        let mut i = 0;
-        while i < self.inputs.len() {
-            let input = &mut self.inputs[i];
-            changed |= input.label_lifetime_projection(projection, label, ctxt);
-            let input = self.inputs[i];
-            if self
-                .outputs
-                .iter()
-                .any(|o| o.to_pcg_node(ctxt) == input.to_pcg_node(ctxt))
-            {
-                self.inputs
-                    .retain(|i| i.to_pcg_node(ctxt) != input.to_pcg_node(ctxt));
-                self.assert_validity(ctxt);
-                return LabelLifetimeProjectionResult::Changed;
-            }
-            i += 1;
-        }
-        let mut j = 0;
-        while j < self.outputs.len() {
-            let output = &mut self.outputs[j];
-            changed |= output.label_lifetime_projection(projection, label, ctxt);
-            let output = self.outputs[j];
-            if self
-                .inputs
-                .iter()
-                .any(|i| i.to_pcg_node(ctxt) == output.to_pcg_node(ctxt))
-            {
-                self.outputs
-                    .retain(|o| o.to_pcg_node(ctxt) != output.to_pcg_node(ctxt));
-                self.assert_validity(ctxt);
-                return LabelLifetimeProjectionResult::Changed;
-            }
-            j += 1;
-        }
+        changed |= self
+            .input
+            .label_lifetime_projection(projection, label, ctxt);
+        self.assert_validity(ctxt);
+        changed |= self
+            .output
+            .label_lifetime_projection(projection, label, ctxt);
         self.assert_validity(ctxt);
         changed
     }
 }
 
-trait AbstractionInputLike<'tcx>: Sized + Clone {
-    fn inputs_block<C: Copy>(
-        inputs: &[Self],
-        node: BlockedNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> bool;
+trait AbstractionInputLike<'tcx>: Sized + Clone + Copy {
+    fn blocks<C: Copy>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool;
 
     fn to_abstraction_input(self) -> AbstractionInputTarget<'tcx>;
 }
 
 impl<'tcx> AbstractionInputLike<'tcx> for LoopAbstractionInput<'tcx> {
-    fn inputs_block<C: Copy>(
-        inputs: &[Self],
-        node: BlockedNode<'tcx>,
-        _ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> bool {
+    fn blocks<C: Copy>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
         match node {
-            PcgNode::Place(p) => inputs.contains(&p.into()),
+            PcgNode::Place(p) => *self == p.into(),
             PcgNode::LifetimeProjection(region_projection) => match region_projection.base {
                 MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
-                    inputs.contains(&(region_projection.with_base(maybe_remote_place).into()))
+                    *self == (region_projection.with_base(maybe_remote_place).into())
                 }
                 MaybeRemoteRegionProjectionBase::Const(_) => false,
             },
@@ -184,16 +140,12 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>> for LoopAbstra
 }
 
 impl<'tcx> AbstractionInputLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn inputs_block<C: Copy>(
-        inputs: &[Self],
-        node: BlockedNode<'tcx>,
-        _ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> bool {
+    fn blocks<C: Copy>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
         match node {
             PcgNode::Place(_) => false,
             PcgNode::LifetimeProjection(region_projection) => match region_projection.base {
                 MaybeRemoteRegionProjectionBase::Place(MaybeRemotePlace::Local(rp)) => {
-                    inputs.contains(&region_projection.with_base(rp).into())
+                    *self == region_projection.with_base(rp).into()
                 }
                 _ => false,
             },
@@ -209,17 +161,19 @@ impl<'tcx, Input: AbstractionInputLike<'tcx>, Output: Copy + PCGNodeLike<'tcx>> 
     for AbstractionBlockEdge<'tcx, Input, Output>
 {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        Input::inputs_block(&self.inputs, node, ctxt)
+        self.input.blocks(node, ctxt)
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
-        _ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        Box::new(self.inputs().into_iter().map(|i| *i.to_abstraction_input()))
+        Box::new(std::iter::once(
+            self.input.to_abstraction_input().to_pcg_node(ctxt),
+        ))
     }
 
     fn blocked_by_nodes<'slf, 'mir, BC: Copy + 'slf>(
@@ -230,11 +184,12 @@ impl<'tcx, Input: AbstractionInputLike<'tcx>, Output: Copy + PCGNodeLike<'tcx>> 
         'tcx: 'mir,
         'mir: 'slf,
     {
-        Box::new(
-            self.outputs()
-                .into_iter()
-                .map(move |o| o.to_pcg_node(ctxt).try_to_local_node(ctxt).unwrap()),
-        )
+        Box::new(std::iter::once(
+            self.output
+                .to_pcg_node(ctxt)
+                .try_to_local_node(ctxt)
+                .unwrap(),
+        ))
     }
 }
 
@@ -251,15 +206,9 @@ impl<
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         format!(
-            "[{}] -> [{}]",
-            self.inputs
-                .iter()
-                .map(|i| i.to_short_string(ctxt))
-                .join(", "),
-            self.outputs
-                .iter()
-                .map(|o| o.to_short_string(ctxt))
-                .join(", ")
+            "{} -> {}",
+            self.input.to_short_string(ctxt),
+            self.output.to_short_string(ctxt),
         )
     }
 }
@@ -276,21 +225,13 @@ impl<
 > HasValidityCheck<'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
-        for input in self.inputs.iter() {
-            input.check_validity(ctxt)?;
-        }
-        for output in self.outputs.iter() {
-            output.check_validity(ctxt)?;
-        }
-        for input in self.inputs.iter() {
-            for output in self.outputs.iter() {
-                if input.to_pcg_node(ctxt) == output.to_pcg_node(ctxt) {
-                    return Err(format!(
-                        "Input {:?} and output {:?} are the same node",
-                        input, output,
-                    ));
-                }
-            }
+        self.input.check_validity(ctxt)?;
+        self.output.check_validity(ctxt)?;
+        if self.input.to_pcg_node(ctxt) == self.output.to_pcg_node(ctxt) {
+            return Err(format!(
+                "Input {:?} and output {:?} are the same node",
+                self.input, self.output,
+            ));
         }
         Ok(())
     }
@@ -304,16 +245,14 @@ impl<
 > AbstractionBlockEdge<'tcx, Input, Output>
 {
     pub(crate) fn new(
-        inputs: Vec<Input>,
-        outputs: Vec<Output>,
+        input: Input,
+        output: Output,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Self {
-        assert!(!inputs.is_empty());
-        assert!(!outputs.is_empty());
         let result = Self {
             _phantom: PhantomData,
-            inputs,
-            outputs,
+            input,
+            output,
         };
         result.assert_validity(ctxt.bc_ctxt());
         result
@@ -321,11 +260,11 @@ impl<
 }
 
 impl<Input: Clone, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
-    pub fn outputs(&self) -> Vec<Output> {
-        self.outputs.clone()
+    pub fn output(&self) -> Output {
+        self.output
     }
 
-    pub fn inputs(&self) -> Vec<Input> {
-        self.inputs.clone()
+    pub fn input(&self) -> Input {
+        self.input.clone()
     }
 }

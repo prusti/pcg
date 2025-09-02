@@ -44,7 +44,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     AbstractionType::FunctionCall(FunctionCallAbstraction::new(
                         location,
                         function_data,
-                        AbstractionBlockEdge::new(vec![input], output, ctxt),
+                        AbstractionBlockEdge::new(input, output, ctxt),
                     ))
                     .into(),
                     path_conditions.clone(),
@@ -126,9 +126,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 .map(|rp| (*rp).into())
                 .collect();
             outputs.extend(result_projections);
-            if !outputs.is_empty() {
+            for output in outputs {
                 self.record_and_apply_action(
-                    mk_create_edge_action(pre_rp.into(), outputs, "Function call").into(),
+                    mk_create_edge_action(pre_rp.into(), output, "Function call").into(),
                 )?;
             }
         }

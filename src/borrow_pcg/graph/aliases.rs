@@ -166,9 +166,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     }
                 }
                 BorrowPcgEdgeKind::Abstraction(abstraction_type) => {
-                    for input in abstraction_type.inputs() {
-                        extend(input.to_pcg_node(repacker), seen, &mut result, false);
-                    }
+                    extend(
+                        abstraction_type.input().to_pcg_node(repacker),
+                        seen,
+                        &mut result,
+                        false,
+                    );
                 }
                 BorrowPcgEdgeKind::BorrowFlow(outlives) => match &outlives.kind {
                     BorrowFlowEdgeKind::Move => {

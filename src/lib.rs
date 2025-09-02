@@ -289,7 +289,10 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
 
 /// The main entrypoint for running the PCG.
 ///
-/// `visualization_output_path` is the path to output debug visualization to.
+/// # Arguments
+///
+/// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
+/// * `visualization_output_path` - If provided, the analysis will output debug visualization files to this path.
 pub fn run_pcg<'a, 'tcx>(
     pcg_ctxt: &'a PcgCtxt<'_, 'tcx>,
     visualization_output_path: Option<&str>,
