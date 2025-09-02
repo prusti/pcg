@@ -34,12 +34,6 @@ impl PcgDotGraphsForBlock {
         filename: String,
     ) {
         pcg_validity_assert!(location.block == self.block);
-        tracing::info!(
-            "Inserting for action at block {:?}, statement index {}, action_idx {}",
-            self.block,
-            location.statement_index,
-            action_idx
-        );
         self.graphs[location.statement_index].insert_for_action(phase, action_idx, filename);
     }
 
