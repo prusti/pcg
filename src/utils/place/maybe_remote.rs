@@ -5,7 +5,7 @@ use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
 use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
 use crate::borrow_pcg::region_projection::{
-    MaybeRemoteRegionProjectionBase, PcgRegion, RegionIdx, RegionProjectionBaseLike,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
 };
 use crate::pcg::{PCGNodeLike, PcgNode};
 use crate::rustc_interface::index::IndexVec;
@@ -64,12 +64,12 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'tcx> TryFrom<MaybeRemoteRegionProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
+impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
     type Error = ();
-    fn try_from(value: MaybeRemoteRegionProjectionBase<'tcx>) -> Result<Self, Self::Error> {
+    fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
         match value {
-            MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => Ok(maybe_remote_place),
-            MaybeRemoteRegionProjectionBase::Const(_) => Err(()),
+            PcgLifetimeProjectionBase::Place(maybe_remote_place) => Ok(maybe_remote_place),
+            PcgLifetimeProjectionBase::Const(_) => Err(()),
         }
     }
 }
@@ -83,19 +83,24 @@ impl<'tcx> PCGNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> HasTy<'tcx> for MaybeRemotePlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
         match self {
-            MaybeRemotePlace::Local(p) => p.to_maybe_remote_region_projection_base(),
-            MaybeRemotePlace::Remote(rp) => (*rp).into(),
+            MaybeRemotePlace::Local(p) => p.ty(ctxt).ty,
+            MaybeRemotePlace::Remote(rp) => rp.rust_ty(ctxt),
         }
     }
+}
 
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        self.related_local_place().regions(repacker)
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+        match self {
+            MaybeRemotePlace::Local(p) => p.to_pcg_lifetime_projection_base(),
+            MaybeRemotePlace::Remote(rp) => (*rp).into(),
+        }
     }
 }
 
@@ -200,16 +205,5 @@ impl RemotePlace {
 
     pub fn assigned_local(self) -> mir::Local {
         self.local
-    }
-
-    pub(crate) fn ty<'tcx, C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Option<ty::Ty<'tcx>> {
-        let place: Place<'_> = self.local.into();
-        match place.ty(repacker).ty.kind() {
-            ty::TyKind::Ref(_, ty, _) => Some(*ty),
-            _ => None,
-        }
     }
 }

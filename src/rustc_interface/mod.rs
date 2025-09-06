@@ -13,6 +13,7 @@ pub extern crate rustc_mir_dataflow as mir_dataflow;
 pub extern crate rustc_session as session;
 pub extern crate rustc_span as span;
 pub extern crate rustc_target as target;
+pub extern crate rustc_trait_selection as trait_selection;
 
 pub mod borrowck;
 pub mod dataflow;

@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{LifetimeProjection, MaybeRemoteRegionProjectionBase},
+        region_projection::{HasTy, LifetimeProjection, PcgLifetimeProjectionBase},
         state::BorrowStateRef,
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
@@ -99,10 +99,10 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
         let id = self.region_projection_nodes.node_id(&projection);
         let base_ty = match projection.place() {
-            MaybeRemoteRegionProjectionBase::Place(p) => {
+            PcgLifetimeProjectionBase::Place(p) => {
                 format!("{:?}", p.related_local_place().ty(self.ctxt).ty)
             }
-            MaybeRemoteRegionProjectionBase::Const(c) => {
+            PcgLifetimeProjectionBase::Const(c) => {
                 format!("{:?}", c.ty())
             }
         };
@@ -197,7 +197,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 label: format!("Target of input {:?}", remote_place.assigned_local()),
                 location: None,
                 capability: None,
-                ty: format!("{:?}", remote_place.ty(self.ctxt)),
+                ty: format!("{:?}", remote_place.rust_ty(self.ctxt)),
             },
         };
         self.insert_node(node);

@@ -2,16 +2,14 @@ use crate::borrow_pcg::borrow_pcg_edge::LocalNode;
 use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
 use crate::borrow_pcg::region_projection::{
-    LifetimeProjection, MaybeRemoteRegionProjectionBase, PcgRegion, RegionIdx,
-    RegionProjectionBaseLike,
+    HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion,
 };
 use crate::borrow_pcg::visitor::extract_regions;
 use crate::error::PcgError;
 use crate::pcg::{LocalNodeLike, MaybeHasLocation, PCGNodeLike, PcgNode};
 use crate::rustc_interface::PlaceTy;
-use crate::rustc_interface::index::IndexVec;
-use crate::rustc_interface::middle::mir;
 use crate::rustc_interface::middle::mir::PlaceElem;
+use crate::rustc_interface::middle::{mir, ty};
 use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::utils::maybe_remote::MaybeRemotePlace;
@@ -29,6 +27,15 @@ pub type MaybeOldPlace<'tcx> = MaybeLabelledPlace<'tcx>;
 pub enum MaybeLabelledPlace<'tcx> {
     Current(Place<'tcx>),
     Labelled(LabelledPlace<'tcx>),
+}
+
+impl<'tcx> HasTy<'tcx> for MaybeLabelledPlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
+        self.place().ty(ctxt).ty
+    }
 }
 
 impl<'tcx> MaybeLabelledPlace<'tcx> {
@@ -58,23 +65,11 @@ impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeLabelledPlace<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         match self {
-            MaybeLabelledPlace::Current(place) => place.to_maybe_remote_region_projection_base(),
-            MaybeLabelledPlace::Labelled(snapshot) => {
-                snapshot.to_maybe_remote_region_projection_base()
-            }
-        }
-    }
-
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.regions(repacker),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.place.regions(repacker),
+            MaybeLabelledPlace::Current(place) => place.to_pcg_lifetime_projection_base(),
+            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_lifetime_projection_base(),
         }
     }
 }
@@ -88,15 +83,13 @@ impl<'tcx> PCGNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> TryFrom<MaybeRemoteRegionProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx> {
+impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx> {
     type Error = String;
 
-    fn try_from(value: MaybeRemoteRegionProjectionBase<'tcx>) -> Result<Self, Self::Error> {
+    fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
         match value {
-            MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
-                maybe_remote_place.try_into()
-            }
-            MaybeRemoteRegionProjectionBase::Const(_) => {
+            PcgLifetimeProjectionBase::Place(maybe_remote_place) => maybe_remote_place.try_into(),
+            PcgLifetimeProjectionBase::Const(_) => {
                 Err("Const cannot be converted to a maybe old place".to_string())
             }
         }
@@ -313,15 +306,15 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
     pub(crate) fn lifetime_projections<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
     {
-        let place = self.with_inherent_region(repacker);
-        extract_regions(place.ty(repacker).ty, repacker)
+        let place = self.with_inherent_region(ctxt);
+        extract_regions(place.ty(ctxt).ty)
             .iter()
-            .map(|region| LifetimeProjection::new(*region, place, None, repacker).unwrap())
+            .map(|region| LifetimeProjection::new(*region, place, None, ctxt.ctxt()).unwrap())
             .collect()
     }
 

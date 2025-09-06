@@ -183,14 +183,17 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind,
     ) -> Result<(), PcgError> {
         for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
-            if self.outlives(source_proj.region(self.ctxt), target_proj.region(self.ctxt)) {
+            if self.outlives(
+                source_proj.region(self.ctxt.ctxt()),
+                target_proj.region(self.ctxt.ctxt()),
+            ) {
                 self.record_and_apply_action(
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
                                 source_proj.into(),
                                 target_proj.into(),
-                                kind(target_proj.region(self.ctxt)),
+                                kind(target_proj.region(self.ctxt.ctxt())),
                                 self.ctxt,
                             )
                             .into(),
@@ -264,6 +267,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 func,
                 args,
                 destination,
+                fn_span,
                 ..
             } = &terminator.kind
         {
@@ -278,6 +282,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
             let destination: utils::Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,
+                *fn_span,
                 &args.iter().map(|arg| &arg.node).collect::<Vec<_>>(),
                 destination,
                 location,

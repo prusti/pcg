@@ -3,7 +3,7 @@ use serde_json::json;
 use super::display::DisplayWithCompilerCtxt;
 use super::{CompilerCtxt, Place, validity::HasValidityCheck};
 use crate::borrow_pcg::region_projection::{
-    MaybeRemoteRegionProjectionBase, PcgRegion, RegionIdx, RegionProjectionBaseLike,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
 };
 use crate::pcg::{EvalStmtPhase, PCGNodeLike, PcgNode};
 use crate::utils::HasCompilerCtxt;
@@ -12,8 +12,8 @@ use crate::{
     borrow_pcg::borrow_pcg_edge::LocalNode,
     pcg::LocalNodeLike,
     rustc_interface::{
-        index::IndexVec,
         middle::mir::{self, BasicBlock, Location},
+        middle::ty,
     },
 };
 
@@ -129,6 +129,15 @@ pub struct LabelledPlace<'tcx> {
     pub(crate) at: SnapshotLocation,
 }
 
+impl<'tcx> HasTy<'tcx> for LabelledPlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
+        self.place.ty(ctxt).ty
+    }
+}
+
 impl std::fmt::Display for SnapshotLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -143,16 +152,9 @@ impl std::fmt::Display for SnapshotLocation {
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        self.place.regions(repacker)
-    }
-
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
-        MaybeRemoteRegionProjectionBase::Place((*self).into())
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+        PcgLifetimeProjectionBase::Place((*self).into())
     }
 }
 

@@ -3,7 +3,7 @@ use crate::action::BorrowPcgAction;
 use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
 use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
 use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::region_projection::{LifetimeProjection, MaybeRemoteRegionProjectionBase};
+use crate::borrow_pcg::region_projection::{LifetimeProjection, PcgLifetimeProjectionBase};
 use crate::pcg::CapabilityKind;
 use crate::pcg::EvalStmtPhase;
 use crate::pcg::obtain::{ActionApplier, HasSnapshotLocation, PlaceExpander};
@@ -106,16 +106,16 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                                 BorrowFlowEdge::new(
                                     LifetimeProjection::new(
                                         (*const_region).into(),
-                                        MaybeRemoteRegionProjectionBase::Const(c.const_),
+                                        PcgLifetimeProjectionBase::Const(c.const_),
                                         None,
-                                        self.ctxt,
+                                        self.ctxt.ctxt(),
                                     )
                                     .unwrap(),
                                     LifetimeProjection::new(
                                         (*target_region).into(),
                                         target,
                                         None,
-                                        self.ctxt,
+                                        self.ctxt.ctxt(),
                                     )
                                     .unwrap()
                                     .into(),
@@ -228,10 +228,10 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     self.ctxt,
                 )
             };
-            let source_region = source_proj.region(self.ctxt);
+            let source_region = source_proj.region(self.ctxt.ctxt());
             let mut nested_ref_mut_targets = vec![];
             for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
-                let target_region = target_proj.region(self.ctxt);
+                let target_region = target_proj.region(self.ctxt.ctxt());
                 if self
                     .ctxt
                     .bc()

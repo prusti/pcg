@@ -304,7 +304,7 @@ impl<'tcx> BorrowsState<'tcx> {
                 ctxt,
             );
         }
-        for region in extract_regions(local_decl.ty, ctxt.ctxt) {
+        for region in extract_regions(local_decl.ty) {
             let region_projection =
                 LifetimeProjection::new(region, arg_place.into(), None, ctxt.ctxt).unwrap();
             assert!(

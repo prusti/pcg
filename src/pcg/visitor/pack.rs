@@ -53,12 +53,15 @@ impl<'tcx> EdgesToRemove<'tcx> {
                         .value
                         .insert(Conditioned::new(*deref, edge.conditions().clone()));
                 } else {
-                    self.deref_edges.insert(deref.deref_place, WithReason {
-                        value: vec![Conditioned::new(*deref, edge.conditions().clone())]
-                            .into_iter()
-                            .collect(),
-                        reason,
-                    });
+                    self.deref_edges.insert(
+                        deref.deref_place,
+                        WithReason {
+                            value: vec![Conditioned::new(*deref, edge.conditions().clone())]
+                                .into_iter()
+                                .collect(),
+                            reason,
+                        },
+                    );
                 }
             }
             _ => self.other_edges.push(WithReason {

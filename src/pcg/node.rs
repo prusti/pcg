@@ -16,7 +16,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         region_projection::{
-            LifetimeProjection, MaybeRemoteRegionProjectionBase, RegionProjectionBaseLike,
+            LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
         },
     },
     rustc_interface::middle::mir,
@@ -27,7 +27,7 @@ use crate::{
 pub type PCGNode<'tcx> = PcgNode<'tcx>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub enum PcgNode<'tcx, T = MaybeRemotePlace<'tcx>, U = MaybeRemoteRegionProjectionBase<'tcx>> {
+pub enum PcgNode<'tcx, T = MaybeRemotePlace<'tcx>, U = PcgLifetimeProjectionBase<'tcx>> {
     Place(T),
     LifetimeProjection(LifetimeProjection<'tcx, U>),
 }
@@ -56,7 +56,7 @@ impl<'tcx> PcgNode<'tcx> {
         match self {
             PcgNode::Place(p) => Some(p),
             PcgNode::LifetimeProjection(rp) => match rp.base() {
-                MaybeRemoteRegionProjectionBase::Place(p) => Some(p),
+                PcgLifetimeProjectionBase::Place(p) => Some(p),
                 _ => None,
             },
         }
@@ -97,7 +97,7 @@ impl<'tcx> From<LoopAbstractionInput<'tcx>> for PcgNode<'tcx> {
 
 impl<'tcx, T, U: Copy> LabelLifetimeProjection<'tcx> for PcgNode<'tcx, T, U>
 where
-    MaybeRemoteRegionProjectionBase<'tcx>: From<U>,
+    PcgLifetimeProjectionBase<'tcx>: From<U>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -137,7 +137,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for PcgNode<
     }
 }
 
-impl<'tcx, T: PCGNodeLike<'tcx>, U: RegionProjectionBaseLike<'tcx>> PCGNodeLike<'tcx>
+impl<'tcx, T: PCGNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PCGNodeLike<'tcx>
     for PcgNode<'tcx, T, U>
 {
     fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
@@ -148,7 +148,7 @@ impl<'tcx, T: PCGNodeLike<'tcx>, U: RegionProjectionBaseLike<'tcx>> PCGNodeLike<
     }
 }
 
-impl<'tcx, T: PCGNodeLike<'tcx>, U: RegionProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
+impl<'tcx, T: PCGNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
     for PcgNode<'tcx, T, U>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
@@ -163,7 +163,7 @@ impl<
     'tcx,
     'a,
     T: PCGNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    U: RegionProjectionBaseLike<'tcx>
+    U: PcgLifetimeProjectionBaseLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PcgNode<'tcx, T, U>
 {
@@ -182,7 +182,7 @@ impl<
     'tcx,
     BC: Copy,
     T: PCGNodeLike<'tcx> + ToJsonWithCompilerCtxt<'tcx, BC>,
-    U: RegionProjectionBaseLike<'tcx> + ToJsonWithCompilerCtxt<'tcx, BC>,
+    U: PcgLifetimeProjectionBaseLike<'tcx> + ToJsonWithCompilerCtxt<'tcx, BC>,
 > ToJsonWithCompilerCtxt<'tcx, BC> for PcgNode<'tcx, T, U>
 {
     fn to_json(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
@@ -194,7 +194,7 @@ pub trait MaybeHasLocation {
     fn location(&self) -> Option<SnapshotLocation>;
 }
 
-impl<'tcx, T: MaybeHasLocation, U: RegionProjectionBaseLike<'tcx> + MaybeHasLocation>
+impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHasLocation>
     MaybeHasLocation for PcgNode<'tcx, T, U>
 {
     fn location(&self) -> Option<SnapshotLocation> {
@@ -222,15 +222,13 @@ pub trait PCGNodeLike<'tcx>:
                 MaybeRemotePlace::Remote(_) => None,
             },
             PcgNode::LifetimeProjection(rp) => match rp.base() {
-                MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
-                    match maybe_remote_place {
-                        MaybeRemotePlace::Local(maybe_old_place) => {
-                            Some(rp.with_base(maybe_old_place).to_local_node(ctxt.ctxt()))
-                        }
-                        MaybeRemotePlace::Remote(_) => None,
+                PcgLifetimeProjectionBase::Place(maybe_remote_place) => match maybe_remote_place {
+                    MaybeRemotePlace::Local(maybe_old_place) => {
+                        Some(rp.with_base(maybe_old_place).to_local_node(ctxt.ctxt()))
                     }
-                }
-                MaybeRemoteRegionProjectionBase::Const(_) => None,
+                    MaybeRemotePlace::Remote(_) => None,
+                },
+                PcgLifetimeProjectionBase::Const(_) => None,
             },
         }
     }

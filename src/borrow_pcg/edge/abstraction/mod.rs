@@ -16,7 +16,7 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
         },
-        region_projection::{LifetimeProjectionLabel, MaybeRemoteRegionProjectionBase},
+        region_projection::{LifetimeProjectionLabel, PcgLifetimeProjectionBase},
     },
     pcg::PCGNodeLike,
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
@@ -120,10 +120,10 @@ impl<'tcx> AbstractionInputLike<'tcx> for LoopAbstractionInput<'tcx> {
         match node {
             PcgNode::Place(p) => *self == p.into(),
             PcgNode::LifetimeProjection(region_projection) => match region_projection.base {
-                MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
+                PcgLifetimeProjectionBase::Place(maybe_remote_place) => {
                     *self == (region_projection.with_base(maybe_remote_place).into())
                 }
-                MaybeRemoteRegionProjectionBase::Const(_) => false,
+                PcgLifetimeProjectionBase::Const(_) => false,
             },
         }
     }
@@ -144,7 +144,7 @@ impl<'tcx> AbstractionInputLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
         match node {
             PcgNode::Place(_) => false,
             PcgNode::LifetimeProjection(region_projection) => match region_projection.base {
-                MaybeRemoteRegionProjectionBase::Place(MaybeRemotePlace::Local(rp)) => {
+                PcgLifetimeProjectionBase::Place(MaybeRemotePlace::Local(rp)) => {
                     *self == region_projection.with_base(rp).into()
                 }
                 _ => false,

@@ -350,7 +350,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                         .flat_map(|ep| {
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
-                                .filter(|erp| erp.region(ctxt) == rp.region(ctxt))
+                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
                                 .map(|erp| erp.into())
                                 .collect::<Vec<_>>()
                         })
@@ -680,7 +680,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError> {
         for base_rp in base.lifetime_projections(ctxt) {
             if let Some(place_expansion) =
-                expansion.place_expansion_for_region(base_rp.region(ctxt), ctxt)
+                expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
                 tracing::debug!("Expand {}", base_rp.to_short_string(ctxt.bc_ctxt()));
                 let mut expansion = BorrowPcgExpansion::new(base_rp.into(), place_expansion, ctxt)?;

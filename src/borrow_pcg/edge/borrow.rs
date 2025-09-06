@@ -468,7 +468,7 @@ impl<'tcx> LocalBorrow<'tcx> {
                 (*region).into(),
                 self.assigned_ref,
                 self.assigned_lifetime_projection_label,
-                repacker,
+                repacker.ctxt(),
             )
             .unwrap(),
             other => unreachable!("{:?}", other),

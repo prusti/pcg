@@ -6,9 +6,7 @@ use derive_more::{Display, From, TryFrom};
 use serde_json::json;
 
 use super::has_pcs_elem::LabelLifetimeProjection;
-use super::{
-    abstraction::node::AbstractionGraphNode, borrow_pcg_edge::LocalNode, visitor::extract_regions,
-};
+use super::{borrow_pcg_edge::LocalNode, visitor::extract_regions};
 use crate::borrow_checker::BorrowCheckerInterface;
 use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
@@ -21,7 +19,10 @@ use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::utils::place::maybe_old::MaybeLabelledPlace;
 use crate::utils::place::maybe_remote::MaybeRemotePlace;
 use crate::utils::remote::RemotePlace;
-use crate::utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SnapshotLocation};
+use crate::utils::{
+    CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SETTINGS, SnapshotLocation,
+    VALIDITY_CHECKS_WARN_ONLY,
+};
 use crate::{
     pcg::{LocalNodeLike, PCGNodeLike, PcgNode},
     rustc_interface::{
@@ -45,6 +46,12 @@ pub enum PcgRegion {
     ReStatic,
     ReBound(DebruijnIndex, ty::BoundRegion),
     ReLateParam(ty::LateParamRegion),
+    PcgInternalError(PcgRegionInternalError),
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
+pub enum PcgRegionInternalError {
+    RegionIndexOutOfBounds(RegionIdx),
 }
 
 impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>> for RegionVid {
@@ -82,6 +89,9 @@ impl PcgRegion {
                 format!("ReBound({debruijn_index:?}, {region:?})")
             }
             PcgRegion::ReLateParam(_) => todo!(),
+            PcgRegion::PcgInternalError(pcg_region_internal_error) => {
+                format!("{pcg_region_internal_error:?}")
+            }
         }
     }
 
@@ -140,16 +150,28 @@ impl Idx for RegionIdx {
 /// The most general base of a lifetime projection. Either a [`MaybeRemotePlace`]
 /// or a constant.
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Display, From, TryFrom)]
-pub enum MaybeRemoteRegionProjectionBase<'tcx> {
+pub enum PcgLifetimeProjectionBase<'tcx> {
     Place(MaybeRemotePlace<'tcx>),
     Const(Const<'tcx>),
 }
 
-impl<'tcx> MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> HasTy<'tcx> for PcgLifetimeProjectionBase<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
+        match self {
+            PcgLifetimeProjectionBase::Place(p) => p.rust_ty(ctxt),
+            PcgLifetimeProjectionBase::Const(c) => c.ty(),
+        }
+    }
+}
+
+impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
     pub(crate) fn maybe_remote_current_place(&self) -> Option<MaybeRemoteCurrentPlace<'tcx>> {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.maybe_remote_current_place(),
-            MaybeRemoteRegionProjectionBase::Const(_) => None,
+            PcgLifetimeProjectionBase::Place(p) => p.maybe_remote_current_place(),
+            PcgLifetimeProjectionBase::Const(_) => None,
         }
     }
     pub(crate) fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
@@ -157,8 +179,8 @@ impl<'tcx> MaybeRemoteRegionProjectionBase<'tcx> {
         'tcx: 'a,
     {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.is_mutable(ctxt),
-            MaybeRemoteRegionProjectionBase::Const(_) => false,
+            PcgLifetimeProjectionBase::Place(p) => p.is_mutable(ctxt),
+            PcgLifetimeProjectionBase::Const(_) => false,
         }
     }
     pub(crate) fn base_ty<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
@@ -166,90 +188,82 @@ impl<'tcx> MaybeRemoteRegionProjectionBase<'tcx> {
         'tcx: 'a,
     {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
+            PcgLifetimeProjectionBase::Place(maybe_remote_place) => {
                 let local_place: Place<'tcx> =
                     maybe_remote_place.related_local_place().local.into();
                 local_place.ty(ctxt).ty
             }
-            MaybeRemoteRegionProjectionBase::Const(c) => c.ty(),
+            PcgLifetimeProjectionBase::Const(c) => c.ty(),
         }
     }
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.as_local_place_mut(),
-            MaybeRemoteRegionProjectionBase::Const(_) => None,
+            PcgLifetimeProjectionBase::Place(p) => p.as_local_place_mut(),
+            PcgLifetimeProjectionBase::Const(_) => None,
         }
     }
 
     pub(crate) fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.as_local_place(),
-            MaybeRemoteRegionProjectionBase::Const(_) => None,
+            PcgLifetimeProjectionBase::Place(p) => p.as_local_place(),
+            PcgLifetimeProjectionBase::Const(_) => None,
         }
     }
     pub(crate) fn as_current_place(&self) -> Option<Place<'tcx>> {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.as_current_place(),
-            MaybeRemoteRegionProjectionBase::Const(_) => None,
+            PcgLifetimeProjectionBase::Place(p) => p.as_current_place(),
+            PcgLifetimeProjectionBase::Const(_) => None,
         }
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> HasValidityCheck<'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.check_validity(ctxt),
-            MaybeRemoteRegionProjectionBase::Const(_) => todo!(),
+            PcgLifetimeProjectionBase::Place(p) => p.check_validity(ctxt),
+            PcgLifetimeProjectionBase::Const(_) => todo!(),
         }
     }
 }
 
 impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for MaybeRemoteRegionProjectionBase<'tcx>
+    for PcgLifetimeProjectionBase<'tcx>
 {
     fn to_json(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> serde_json::Value {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.to_json(ctxt),
-            MaybeRemoteRegionProjectionBase::Const(_) => todo!(),
+            PcgLifetimeProjectionBase::Place(p) => p.to_json(ctxt),
+            PcgLifetimeProjectionBase::Const(_) => todo!(),
         }
     }
 }
 
 impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for MaybeRemoteRegionProjectionBase<'tcx>
+    for PcgLifetimeProjectionBase<'tcx>
 {
     fn to_short_string(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.to_short_string(ctxt),
-            MaybeRemoteRegionProjectionBase::Const(c) => format!("{c}"),
+            PcgLifetimeProjectionBase::Place(p) => p.to_short_string(ctxt),
+            PcgLifetimeProjectionBase::Const(c) => format!("{c}"),
         }
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for MaybeRemoteRegionProjectionBase<'tcx> {
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         *self
     }
-
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        match self {
-            MaybeRemoteRegionProjectionBase::Place(p) => p.regions(repacker),
-            MaybeRemoteRegionProjectionBase::Const(c) => extract_regions(c.ty(), repacker),
-        }
-    }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx>> PCGNodeLike<'tcx> for LifetimeProjection<'tcx, T> {
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PCGNodeLike<'tcx>
+    for LifetimeProjection<'tcx, T>
+{
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.with_base(self.base.to_maybe_remote_region_projection_base())
+        self.with_base(self.base.to_pcg_lifetime_projection_base())
             .into()
     }
 }
@@ -282,12 +296,11 @@ impl std::fmt::Display for LifetimeProjectionLabel {
 }
 
 #[deprecated(note = "Use LifetimeProjection instead")]
-pub type RegionProjection<'tcx, P = MaybeRemoteRegionProjectionBase<'tcx>> =
-    LifetimeProjection<'tcx, P>;
+pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeProjection<'tcx, P>;
 
 /// A lifetime projection b↓r, where `b` is a base and `r` is a region.
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LifetimeProjection<'tcx, P = MaybeRemoteRegionProjectionBase<'tcx>> {
+pub struct LifetimeProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> {
     pub(crate) base: P,
     pub(crate) region_idx: RegionIdx,
     label: Option<LifetimeProjectionLabel>,
@@ -342,7 +355,7 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
 
 impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
 where
-    MaybeRemoteRegionProjectionBase<'tcx>: From<P>,
+    PcgLifetimeProjectionBase<'tcx>: From<P>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -395,11 +408,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'_, 'tcx> {
                 }
             }
             TyKind::RawPtr(ty, mutbl) | TyKind::Ref(_, ty, mutbl) => {
-                if mutbl.is_mut()
-                    && extract_regions(*ty, self.ctxt)
-                        .iter()
-                        .any(|r| self.target == *r)
-                {
+                if mutbl.is_mut() && extract_regions(*ty).iter().any(|r| self.target == *r) {
                     self.found = true;
                 }
                 // Otherwise, this is an immutable reference, don't check under
@@ -412,25 +421,31 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'_, 'tcx> {
     }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
-    pub(crate) fn is_invariant_in_type<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx> CompilerCtxt<'a, 'tcx> {
+    pub(crate) fn region_is_invariant_in_type(self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
         let mut visitor = TyVarianceVisitor {
-            ctxt: ctxt.bc_ctxt(),
-            target: self.region(ctxt),
+            ctxt: self,
+            target: region,
             found: false,
         };
-        self.base
-            .to_maybe_remote_region_projection_base()
-            .base_ty(ctxt)
-            .visit_with(&mut visitor);
+        ty.visit_with(&mut visitor);
         visitor.found
     }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
+    pub(crate) fn is_invariant_in_type<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> bool
+    where
+        'tcx: 'a,
+    {
+        ctxt.bc_ctxt().region_is_invariant_in_type(
+            self.region(ctxt.ctxt()),
+            self.base.to_pcg_lifetime_projection_base().base_ty(ctxt),
+        )
+    }
+}
+
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
     #[must_use]
     pub(crate) fn with_placeholder_label<'a>(
         self,
@@ -474,13 +489,13 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>> for LifetimeProjection<'tcx, MaybeR
     type Error = ();
     fn try_from(rp: LifetimeProjection<'tcx>) -> Result<Self, Self::Error> {
         match rp.base {
-            MaybeRemoteRegionProjectionBase::Place(p) => Ok(LifetimeProjection {
+            PcgLifetimeProjectionBase::Place(p) => Ok(LifetimeProjection {
                 base: p,
                 region_idx: rp.region_idx,
                 label: rp.label,
                 phantom: PhantomData,
             }),
-            MaybeRemoteRegionProjectionBase::Const(_) => Err(()),
+            PcgLifetimeProjectionBase::Const(_) => Err(()),
         }
     }
 }
@@ -491,20 +506,20 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
     type Error = String;
     fn try_from(rp: LifetimeProjection<'tcx>) -> Result<Self, Self::Error> {
         match rp.base {
-            MaybeRemoteRegionProjectionBase::Place(p) => Ok(LifetimeProjection {
+            PcgLifetimeProjectionBase::Place(p) => Ok(LifetimeProjection {
                 base: p.try_into()?,
                 region_idx: rp.region_idx,
                 label: rp.label,
                 phantom: PhantomData,
             }),
-            MaybeRemoteRegionProjectionBase::Const(_) => {
+            PcgLifetimeProjectionBase::Const(_) => {
                 Err("Const cannot be converted to a region projection".to_string())
             }
         }
     }
 }
 
-impl<'tcx, P: RegionProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, P> {
+impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, P> {
     pub fn base(&self) -> P {
         self.base
     }
@@ -522,32 +537,44 @@ impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'
     }
 }
 
-/// Something that can be converted to a [`MaybeRemoteRegionProjectionBase`].
-pub trait RegionProjectionBaseLike<'tcx>:
-    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
-{
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion>;
+pub trait HasTy<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a;
 
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx>;
+    fn regions<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> IndexVec<RegionIdx, PcgRegion>
+    where
+        'tcx: 'a,
+    {
+        extract_regions(self.rust_ty(ctxt))
+    }
 
-    fn region_projections<C: Copy>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>> {
+    fn lifetime_projections<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
+    where
+        Self: Sized + Copy + std::fmt::Debug,
+        'tcx: 'a,
+    {
         self.regions(ctxt)
             .into_iter()
-            .map(|region| LifetimeProjection::new(region, *self, None, ctxt).unwrap())
+            .map(|region| LifetimeProjection::new(region, self, None, ctxt).unwrap())
             .collect()
     }
+}
+
+/// Something that can be converted to a [`PcgLifetimeProjectionBase`].
+pub trait PcgLifetimeProjectionBaseLike<'tcx>:
+    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq + HasTy<'tcx>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx>;
 }
 
 impl<
     'tcx,
     'a,
-    T: RegionProjectionBaseLike<'tcx>
+    T: PcgLifetimeProjectionBaseLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for LifetimeProjection<'tcx, T>
@@ -573,7 +600,7 @@ impl<
 impl<
     'tcx,
     'a,
-    T: RegionProjectionBaseLike<'tcx>
+    T: PcgLifetimeProjectionBaseLike<'tcx>
         + ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for LifetimeProjection<'tcx, T>
@@ -608,21 +635,6 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>>
     }
 }
 
-impl<'tcx> TryFrom<AbstractionGraphNode<'tcx>>
-    for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>
-{
-    type Error = String;
-    fn try_from(node: AbstractionGraphNode<'tcx>) -> Result<Self, Self::Error> {
-        match *node {
-            PcgNode::LifetimeProjection(rp) => rp.try_into(),
-            PcgNode::Place(p) => Err(format!(
-                "Place {:?} cannot be converted to a region projection",
-                p
-            )),
-        }
-    }
-}
-
 impl<'tcx> TryFrom<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>>
     for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>
 {
@@ -637,9 +649,9 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>>
     }
 }
 
-impl<'tcx> From<MaybeLabelledPlace<'tcx>> for MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> From<MaybeLabelledPlace<'tcx>> for PcgLifetimeProjectionBase<'tcx> {
     fn from(place: MaybeLabelledPlace<'tcx>) -> Self {
-        MaybeRemoteRegionProjectionBase::Place(place.into())
+        PcgLifetimeProjectionBase::Place(place.into())
     }
 }
 
@@ -667,7 +679,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>>
     }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn place(&self) -> Place<'tcx> {
@@ -724,16 +736,17 @@ impl<'tcx, T: RegionProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
     }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
         if self.region_idx.index() >= num_regions.len() {
             Err(format!(
-                "Region index {} is out of bounds for place {:?}",
+                "Region index {} is out of bounds for place {:?}:{:?}",
                 self.region_idx.index(),
-                self.base
+                self.base,
+                self.base.rust_ty(ctxt)
             ))
         } else {
             Ok(())
@@ -741,18 +754,30 @@ impl<'tcx, T: RegionProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
     }
 }
 
-impl<'tcx, T: RegionProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
-    pub(crate) fn new<'a>(
+impl<'tcx, T> LifetimeProjection<'tcx, T> {
+    pub(crate) fn from_index(base: T, region_idx: RegionIdx) -> Self {
+        Self {
+            base,
+            region_idx,
+            label: None,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
+    pub(crate) fn new<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         region: PcgRegion,
         base: T,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<Self, PcgInternalError>
     where
         'tcx: 'a,
+        T: HasTy<'tcx>,
     {
         let region_idx = base
-            .regions(ctxt.ctxt())
+            .regions(ctxt)
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)
             .map(|(idx, _)| idx);
@@ -773,14 +798,23 @@ impl<'tcx, T: RegionProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
         };
         Ok(result)
     }
+}
 
+impl<'tcx, T> LifetimeProjection<'tcx, T> {
     pub(crate) fn region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PcgRegion
     where
         'tcx: 'a,
+        T: HasTy<'tcx>,
     {
-        let regions = self.base.regions(ctxt.ctxt());
+        let regions = self.base.regions(ctxt);
         if self.region_idx.index() >= regions.len() {
-            unreachable!()
+            if *VALIDITY_CHECKS_WARN_ONLY {
+                return PcgRegion::PcgInternalError(
+                    PcgRegionInternalError::RegionIndexOutOfBounds(self.region_idx),
+                );
+            } else {
+                unreachable!()
+            }
         } else {
             regions[self.region_idx]
         }
@@ -798,7 +832,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         &mut self.base
     }
 
-    pub(crate) fn rebase<U: RegionProjectionBaseLike<'tcx> + From<T>>(
+    pub(crate) fn rebase<U: PcgLifetimeProjectionBaseLike<'tcx> + From<T>>(
         self,
     ) -> LifetimeProjection<'tcx, U>
     where
@@ -807,7 +841,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         self.with_base(self.base.into())
     }
 
-    pub(crate) fn with_base<U: RegionProjectionBaseLike<'tcx>>(
+    pub(crate) fn with_base<U: PcgLifetimeProjectionBaseLike<'tcx>>(
         self,
         base: U,
     ) -> LifetimeProjection<'tcx, U> {
@@ -835,7 +869,7 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
 pub(crate) type LocalLifetimeProjection<'tcx> = LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>;
 
 impl<'tcx> LocalLifetimeProjection<'tcx> {
-    pub fn to_region_projection(&self) -> LifetimeProjection<'tcx> {
+    pub fn to_lifetime_projection(&self) -> LifetimeProjection<'tcx> {
         self.with_base(self.base.into())
     }
 }
@@ -862,13 +896,11 @@ impl<'tcx> LifetimeProjection<'tcx> {
         &self,
     ) -> Option<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> {
         match self.base {
-            MaybeRemoteRegionProjectionBase::Place(maybe_remote_place) => {
-                match maybe_remote_place {
-                    MaybeRemotePlace::Local(local) => Some(self.with_base(local)),
-                    _ => None,
-                }
-            }
-            MaybeRemoteRegionProjectionBase::Const(_) => None,
+            PcgLifetimeProjectionBase::Place(maybe_remote_place) => match maybe_remote_place {
+                MaybeRemotePlace::Local(local) => Some(self.with_base(local)),
+                _ => None,
+            },
+            PcgLifetimeProjectionBase::Const(_) => None,
         }
     }
 
@@ -880,8 +912,8 @@ impl<'tcx> LifetimeProjection<'tcx> {
     }
 }
 
-impl From<RemotePlace> for MaybeRemoteRegionProjectionBase<'_> {
+impl From<RemotePlace> for PcgLifetimeProjectionBase<'_> {
     fn from(remote_place: RemotePlace) -> Self {
-        MaybeRemoteRegionProjectionBase::Place(remote_place.into())
+        PcgLifetimeProjectionBase::Place(remote_place.into())
     }
 }
