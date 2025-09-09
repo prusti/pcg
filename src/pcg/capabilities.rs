@@ -266,7 +266,7 @@ pub(crate) struct CapabilityVars<'tcx>(Vec<PlaceAtLocation<'tcx>>);
 
 impl<'tcx> CapabilityVars<'tcx> {
     fn contains(&self, pl: PlaceAtLocation<'tcx>) -> bool {
-        self.0.iter().any(|p| *p == pl)
+        self.0.contains(&pl)
     }
 
     fn insert(&mut self, pl: PlaceAtLocation<'tcx>) -> CapabilityVar {

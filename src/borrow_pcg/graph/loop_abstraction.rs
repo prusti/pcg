@@ -11,16 +11,13 @@ use crate::{
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         path_condition::ValidityConditions,
-        region_projection::{
-            LifetimeProjection, LifetimeProjectionLabel, RegionIdx, RegionProjectionBaseLike,
-        },
+        region_projection::{HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
-    pcg::CapabilityKind,
     pcg::{
-        LocalNodeLike, PCGNodeLike, PcgMutRef, PcgNode,
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceExpander, PlaceObtainer,
@@ -110,7 +107,7 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
                 .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
                 .collect(),
             MaybeRemoteCurrentPlace::Remote(place) => place
-                .region_projections(ctxt)
+                .lifetime_projections(ctxt)
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
                 .collect(),

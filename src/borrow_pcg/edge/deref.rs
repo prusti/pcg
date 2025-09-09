@@ -9,7 +9,7 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{LocalNodeLike, PCGNodeLike},
+    pcg::{LocalNodeLike, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, Place, SnapshotLocation, display::DisplayWithCompilerCtxt,
@@ -117,12 +117,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         ];
         let mut changed = false;
         for blocked_place in blocked_places {
-            if let MaybeLabelledPlace::Current(place) = blocked_place {
-                if predicate.applies_to(*place, LabelNodeContext::Other, ctxt) {
-                    *blocked_place =
-                        MaybeLabelledPlace::new(*place, Some(labeller.place_label(*place, ctxt)));
-                    changed = true;
-                }
+            if let MaybeLabelledPlace::Current(place) = blocked_place
+                && predicate.applies_to(*place, LabelNodeContext::Other, ctxt)
+            {
+                *blocked_place =
+                    MaybeLabelledPlace::new(*place, Some(labeller.place_label(*place, ctxt)));
+                changed = true;
             }
         }
         changed
@@ -134,12 +134,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        if let MaybeLabelledPlace::Current(place) = self.deref_place {
-            if predicate.applies_to(place, LabelNodeContext::TargetOfExpansion, ctxt) {
-                self.deref_place =
-                    MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
-                return true;
-            }
+        if let MaybeLabelledPlace::Current(place) = self.deref_place
+            && predicate.applies_to(place, LabelNodeContext::TargetOfExpansion, ctxt)
+        {
+            self.deref_place =
+                MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
+            return true;
         }
         false
     }

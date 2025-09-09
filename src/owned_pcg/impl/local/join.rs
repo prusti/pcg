@@ -106,7 +106,7 @@ impl<'pcg, 'a, 'tcx> JoinOwnedData<'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>> 
             );
             self.owned
                 .insert_expansion(other_expansion.place, other_expansion.expansion.clone());
-            return Ok(JoinDifferentExpansionsResult::ExpandedForNoCapability);
+            Ok(JoinDifferentExpansionsResult::ExpandedForNoCapability)
         } else {
             let mut self_obtainer = JoinObtainer {
                 ctxt,
@@ -149,9 +149,9 @@ impl<'pcg, 'a, 'tcx> JoinOwnedData<'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>> 
                 ctxt.ctxt,
             )?;
 
-            return Ok(JoinDifferentExpansionsResult::Collapsed(
+            Ok(JoinDifferentExpansionsResult::Collapsed(
                 self_obtainer.actions,
-            ));
+            ))
         }
     }
 

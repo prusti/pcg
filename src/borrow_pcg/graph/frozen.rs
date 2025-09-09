@@ -8,7 +8,7 @@ use crate::{
         borrow_pcg_edge::{BorrowPcgEdgeRef, LocalNode},
         edge_data::EdgeData,
     },
-    pcg::{PCGNodeLike, PcgNode},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::data_structures::fx::{FxHashMap, FxHashSet},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt,

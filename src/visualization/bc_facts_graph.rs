@@ -121,10 +121,10 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
     }
 }
 
-fn get_all_regions<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<RegionVid> {
+fn get_all_regions<'tcx>(body: &Body<'tcx>, _tcx: ty::TyCtxt<'tcx>) -> Vec<RegionVid> {
     body.local_decls
         .iter()
-        .flat_map(|l| extract_regions(l.ty, CompilerCtxt::new(body, tcx, ())))
+        .flat_map(|l| extract_regions(l.ty))
         .flat_map(|r| r.vid())
         .unique()
         .collect()

@@ -1,6 +1,10 @@
+use crate::borrow_pcg::abstraction::FunctionShapeDataSource;
+use crate::borrow_pcg::region_projection::PcgRegion;
+use crate::rustc_interface::infer::infer::TyCtxtInferExt;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        abstraction::FunctionShape,
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
@@ -14,20 +18,145 @@ use crate::{
     pcg::PcgNode,
     rustc_interface::{
         hir::def_id::DefId,
-        middle::{mir::Location, ty::GenericArgsRef},
+        middle::{
+            mir::Location,
+            ty::{self, GenericArgsRef, TypeVisitableExt},
+        },
+        span::Span,
+        trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
+#[rustversion::since(2025-05-24)]
+use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub struct FunctionData<'tcx> {
-    def_id: DefId,
-    substs: GenericArgsRef<'tcx>,
+    pub(crate) def_id: DefId,
+    pub(crate) substs: GenericArgsRef<'tcx>,
+}
+
+pub(crate) struct FunctionDataShapeDataSource<'tcx> {
+    input_tys: Vec<ty::Ty<'tcx>>,
+    output_ty: ty::Ty<'tcx>,
+    outlives: OutlivesEnvironment<'tcx>,
+}
+
+#[allow(unused)]
+#[derive(Debug)]
+pub enum MakeFunctionShapeError {
+    ContainsAliasType,
+    UnsupportedRustVersion,
+}
+
+impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+    #[rustversion::before(2025-05-24)]
+    pub(crate) fn new(
+        _data: FunctionData<'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError> {
+        Err(MakeFunctionShapeError::UnsupportedRustVersion)
+    }
+
+    #[rustversion::since(2025-05-24)]
+    pub(crate) fn new(
+        data: FunctionData<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError> {
+        tracing::debug!("Base Sig: {:#?}", data.fn_sig(ctxt));
+        let sig = data.instantiated_fn_sig(ctxt);
+        tracing::debug!("Instantiated Sig: {:#?}", sig);
+        let sig = ctxt.tcx().liberate_late_bound_regions(data.def_id, sig);
+        tracing::debug!("Liberated Sig: {:#?}", sig);
+        let typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id());
+        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(typing_env);
+        if sig.has_aliases() {
+            return Err(MakeFunctionShapeError::ContainsAliasType);
+        }
+        tracing::debug!("Normalized sig: {:#?}", sig);
+        let outlives = OutlivesEnvironment::new(&infcx, ctxt.def_id(), param_env, vec![]);
+        Ok(Self {
+            input_tys: sig.inputs().to_vec(),
+            output_ty: sig.output(),
+            outlives,
+        })
+    }
 }
 
 impl<'tcx> FunctionData<'tcx> {
-    pub(crate) fn new(def_id: DefId, substs: GenericArgsRef<'tcx>) -> Self {
-        Self { def_id, substs }
+    pub(crate) fn fn_sig(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> ty::EarlyBinder<'tcx, ty::Binder<'tcx, ty::FnSig<'tcx>>> {
+        ctxt.tcx().fn_sig(self.def_id)
+    }
+
+    pub(crate) fn instantiated_fn_sig(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
+        ctxt.tcx()
+            .fn_sig(self.def_id)
+            .instantiate(ctxt.tcx(), self.substs)
+    }
+}
+
+impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
+    fn input_tys(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+        self.input_tys.clone()
+    }
+    fn output_ty(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
+        self.output_ty
+    }
+
+    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        if sup.is_static() || sup == sub {
+            return true;
+        }
+        tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
+        match (sup, sub) {
+            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
+                ctxt.bc.outlives_everywhere(sup, sub)
+            }
+            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,
+            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => true,
+            _ => self.outlives.free_region_map().sub_free_regions(
+                ctxt.tcx(),
+                sup.rust_region(ctxt),
+                sub.rust_region(ctxt),
+            ),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub struct FunctionCallData<'tcx> {
+    pub(crate) function_data: FunctionData<'tcx>,
+    pub(crate) operand_tys: Vec<ty::Ty<'tcx>>,
+    pub(crate) span: Span,
+}
+
+impl<'tcx> FunctionCallData<'tcx> {
+    pub(crate) fn new(
+        def_id: DefId,
+        substs: GenericArgsRef<'tcx>,
+        operand_tys: Vec<ty::Ty<'tcx>>,
+        span: Span,
+    ) -> Self {
+        Self {
+            function_data: FunctionData { def_id, substs },
+            operand_tys,
+            span,
+        }
+    }
+
+    pub(crate) fn shape(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<FunctionShape<'tcx>, MakeFunctionShapeError> {
+        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt)?;
+        Ok(FunctionShape::new(&data, ctxt))
     }
 }
 

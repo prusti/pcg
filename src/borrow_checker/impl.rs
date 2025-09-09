@@ -207,10 +207,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                 }
                 false
             }),
-            PcgRegion::ReErased => todo!(),
-            PcgRegion::ReStatic => todo!(),
-            PcgRegion::ReBound(_, _) => todo!(),
-            PcgRegion::ReLateParam(_) => todo!(),
+            _ => todo!(),
         })
     }
 

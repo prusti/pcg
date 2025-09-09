@@ -10,7 +10,7 @@ use crate::{
         },
         region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{PCGNodeLike, PcgNode},
+    pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
     utils::{
         CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,

@@ -108,7 +108,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
             }
             for r in place_regions.iter() {
-                let current_rp = LifetimeProjection::new(*r, current, None, self.ctxt)?;
+                let current_rp = LifetimeProjection::new(*r, current, None, self.ctxt.ctxt())?;
                 if current.is_ref(self.ctxt)
                     && !current
                         .project_deref(self.ctxt)

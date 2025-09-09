@@ -1,18 +1,27 @@
 use crate::borrow_pcg::region_projection::{
-    MaybeRemoteRegionProjectionBase, PcgRegion, RegionIdx, RegionProjectionBaseLike,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
 };
-use crate::borrow_pcg::visitor::extract_regions;
-use crate::pcg::{PCGNodeLike, PcgNode};
-use crate::rustc_interface::index::IndexVec;
+use crate::pcg::{PcgNode, PcgNodeLike};
 use crate::rustc_interface::middle::mir;
+use crate::rustc_interface::middle::ty;
 use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::utils::validity::HasValidityCheck;
-use crate::utils::{CompilerCtxt, Place};
+use crate::utils::{self, CompilerCtxt, HasCompilerCtxt};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
 pub struct RemotePlace {
     pub(crate) local: mir::Local,
+}
+
+impl<'tcx> HasTy<'tcx> for RemotePlace {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
+        let place: utils::Place<'tcx> = self.local.into();
+        place.rust_ty(ctxt)
+    }
 }
 
 impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RemotePlace {
@@ -27,23 +36,15 @@ impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RemotePlace {
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for RemotePlace {
+impl<'tcx> PcgNodeLike<'tcx> for RemotePlace {
     fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for RemotePlace {
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
-        MaybeRemoteRegionProjectionBase::Place((*self).into())
-    }
-
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        let place: Place<'_> = self.local.into();
-        extract_regions(place.ty(repacker).ty, repacker)
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+        PlaceOrConst::Place((*self).into())
     }
 }
 

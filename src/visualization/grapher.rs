@@ -5,7 +5,7 @@ use crate::{
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
-    pcg::{MaybeHasLocation, PCGNodeLike, PcgNode, SymbolicCapability},
+    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, HasPlace, Place, display::DisplayWithCompilerCtxt,
@@ -100,7 +100,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                 let borrowed_place = self.insert_maybe_remote_place(borrow.blocked_place());
                 let assigned_region_projection = borrow
                     .assigned_lifetime_projection(self.ctxt())
-                    .to_region_projection();
+                    .to_lifetime_projection();
                 let assigned_rp_node = self
                     .constructor()
                     .insert_region_projection_node(assigned_region_projection);

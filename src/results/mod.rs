@@ -10,7 +10,7 @@ use crate::{
     action::{BorrowPcgAction, OwnedPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::MaybeRemoteRegionProjectionBase,
+        region_projection::PlaceOrConst,
     },
     error::PcgError,
     r#loop::PlaceUsages,
@@ -353,7 +353,7 @@ impl<'tcx> PcgLocation<'tcx> {
             .flat_map(|p| match p {
                 PcgNode::Place(p) => p.as_current_place(),
                 PcgNode::LifetimeProjection(p) => match p.base() {
-                    MaybeRemoteRegionProjectionBase::Place(p) => {
+                    PlaceOrConst::Place(p) => {
                         let assoc_place = p.related_local_place();
                         if assoc_place.is_ref(ctxt) {
                             Some(assoc_place.project_deref(ctxt))

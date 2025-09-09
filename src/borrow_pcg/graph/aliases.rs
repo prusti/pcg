@@ -4,7 +4,7 @@ use crate::{
         edge::{kind::BorrowPcgEdgeKind, outlives::BorrowFlowEdgeKind},
         edge_data::EdgeData,
     },
-    pcg::{LocalNodeLike, PCGNodeLike, PcgNode},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::data_structures::fx::FxHashSet,
     utils::{CompilerCtxt, HasPlace, data_structures::HashSet},
 };
@@ -167,7 +167,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 }
                 BorrowPcgEdgeKind::Abstraction(abstraction_type) => {
                     extend(
-                        abstraction_type.input().to_pcg_node(repacker),
+                        abstraction_type.input(repacker).to_pcg_node(repacker),
                         seen,
                         &mut result,
                         false,
@@ -203,9 +203,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 #[cfg(test)]
 #[test]
 fn test_aliases() {
-    use std::alloc::Allocator;
-
-    use crate::owned_pcg::PcgLocation;
+    use crate::results::PcgLocation;
     use crate::rustc_interface::middle::mir::{self, START_BLOCK};
     use crate::rustc_interface::span::Symbol;
 

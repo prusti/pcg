@@ -1,9 +1,6 @@
-use crate::{
-    rustc_interface::{
-        index::IndexVec,
-        middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
-    },
-    utils::HasCompilerCtxt,
+use crate::rustc_interface::{
+    index::IndexVec,
+    middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
 };
 
 use super::region_projection::{PcgRegion, RegionIdx};
@@ -15,6 +12,10 @@ struct LifetimeExtractor<'tcx> {
 impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         match ty.kind() {
+            ty::TyKind::Dynamic(_, region, _) => {
+                // TODO: predicates?
+                self.visit_region(*region);
+            }
             //  TODO: Justify why function pointers are ignored
             ty::TyKind::FnPtr(_, _) => {}
             ty::TyKind::Closure(_, args) => {
@@ -51,10 +52,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 /// `['c, 'd]` respectively. This enables substitution of regions to handle
 /// moves in the PCG e.g for the statement `let x: T<'a, 'b> = move c: T<'c,
 /// 'd>`.
-pub(crate) fn extract_regions<'tcx>(
-    ty: ty::Ty<'tcx>,
-    _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-) -> IndexVec<RegionIdx, PcgRegion> {
+pub(crate) fn extract_regions<'tcx>(ty: ty::Ty<'tcx>) -> IndexVec<RegionIdx, PcgRegion> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
     IndexVec::from_iter(visitor.lifetimes.iter().map(|r| (*r).into()))

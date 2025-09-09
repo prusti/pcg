@@ -14,7 +14,10 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    borrow_pcg::{
+        borrow_pcg_expansion::PlaceExpansion,
+        region_projection::{HasTy, PcgLifetimeProjectionBase},
+    },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     rustc_interface::{
@@ -36,12 +39,11 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         region_projection::{
-            LifetimeProjection, MaybeRemoteRegionProjectionBase, PcgRegion, RegionIdx,
-            RegionProjectionBaseLike,
+            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
         },
         visitor::extract_regions,
     },
-    pcg::{LocalNodeLike, PCGNodeLike, PcgNode},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
 };
 
 pub mod corrected;
@@ -55,6 +57,15 @@ pub struct Place<'tcx>(
     #[deref_mut]
     PlaceRef<'tcx>,
 );
+
+impl<'tcx> HasTy<'tcx> for Place<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
+        self.0.ty(ctxt.body(), ctxt.tcx()).ty
+    }
+}
 
 impl<'tcx> From<Place<'tcx>> for PlaceRef<'tcx> {
     fn from(place: Place<'tcx>) -> Self {
@@ -99,28 +110,15 @@ impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for Place<'tcx> {
+impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
     fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }
 
-impl<'tcx> RegionProjectionBaseLike<'tcx> for Place<'tcx> {
-    fn to_maybe_remote_region_projection_base(&self) -> MaybeRemoteRegionProjectionBase<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         (*self).into()
-    }
-
-    fn regions<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(self.ty(repacker).ty, repacker)
-    }
-}
-
-impl<'tcx> From<Place<'tcx>> for MaybeRemoteRegionProjectionBase<'tcx> {
-    fn from(place: Place<'tcx>) -> Self {
-        MaybeRemoteRegionProjectionBase::Place(place.into())
     }
 }
 
@@ -253,7 +251,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        self.ty(ctxt).ty.is_unsafe_ptr()
+        self.rust_ty(ctxt).is_unsafe_ptr()
     }
 
     pub(crate) fn compare_projections(
@@ -338,7 +336,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.ty_region(ctxt)
-            .map(|region| LifetimeProjection::new(region, self, None, ctxt).unwrap())
+            .map(|region| LifetimeProjection::new(region, self, None, ctxt.ctxt()).unwrap())
     }
 
     pub fn projection(&self) -> &'tcx [PlaceElem<'tcx>] {
@@ -376,7 +374,7 @@ impl<'tcx> Place<'tcx> {
                 return false;
             }
             seen.insert(ty);
-            if extract_regions(ty, ctxt).is_empty() {
+            if extract_regions(ty).is_empty() {
                 return false;
             }
             #[rustversion::before(2025-04-01)]
@@ -430,14 +428,14 @@ impl<'tcx> Place<'tcx> {
                 .iter()
                 .any(|ty| ty_has_lifetimes_under_unsafe_ptr(*ty, seen, ctxt))
         }
-        ty_has_lifetimes_under_unsafe_ptr(self.ty(ctxt).ty, &mut HashSet::default(), ctxt)
+        ty_has_lifetimes_under_unsafe_ptr(self.rust_ty(ctxt), &mut HashSet::default(), ctxt)
     }
 
     pub(crate) fn ty_region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<PcgRegion>
     where
         'tcx: 'a,
     {
-        match self.ty(ctxt).ty.kind() {
+        match self.rust_ty(ctxt).kind() {
             TyKind::Ref(region, _, _) => Some((*region).into()),
             _ => None,
         }
@@ -494,7 +492,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        extract_regions(self.ty(ctxt).ty, ctxt)
+        extract_regions(self.rust_ty(ctxt))
     }
 
     pub(crate) fn lifetime_projections<'a>(
@@ -505,9 +503,9 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty, ctxt)
+        extract_regions(place.ty(ctxt).ty)
             .iter()
-            .map(|region| LifetimeProjection::new(*region, place, None, ctxt).unwrap())
+            .map(|region| LifetimeProjection::new(*region, place, None, ctxt.ctxt()).unwrap())
             .collect()
     }
 
@@ -516,7 +514,7 @@ impl<'tcx> Place<'tcx> {
         region: PcgRegion,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) -> Option<RegionIdx> {
-        extract_regions(self.ty(repacker).ty, repacker)
+        extract_regions(self.rust_ty(repacker))
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)
             .map(|(idx, _)| idx)
@@ -571,9 +569,9 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         assert!(
-            self.ty(repacker).ty.is_ref() || self.ty(repacker).ty.is_box(),
+            self.rust_ty(repacker).is_ref() || self.rust_ty(repacker).is_box(),
             "Expected ref or box, got {:?}",
-            self.ty(repacker).ty
+            self.rust_ty(repacker)
         );
         Place::new(
             self.0.local,

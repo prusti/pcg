@@ -26,7 +26,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{ExpandedPlace, LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, PCGNodeLike, PcgMutRef, PcgRefLike,
+        CapabilityKind, PcgMutRef, PcgNodeLike, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{
             BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
@@ -216,10 +216,10 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             leaf_places.to_short_string(ctxt.bc_ctxt())
         );
         for place in leaf_places {
-            if let Some(parent_place) = parent_place {
-                if !parent_place.is_prefix_of(place) {
-                    continue;
-                }
+            if let Some(parent_place) = parent_place
+                && !parent_place.is_prefix_of(place)
+            {
+                continue;
             }
             let action = PcgAction::restore_capability(
                 place,
@@ -350,7 +350,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                         .flat_map(|ep| {
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
-                                .filter(|erp| erp.region(ctxt) == rp.region(ctxt))
+                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
                                 .map(|erp| erp.into())
                                 .collect::<Vec<_>>()
                         })
@@ -680,7 +680,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError> {
         for base_rp in base.lifetime_projections(ctxt) {
             if let Some(place_expansion) =
-                expansion.place_expansion_for_region(base_rp.region(ctxt), ctxt)
+                expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
                 tracing::debug!("Expand {}", base_rp.to_short_string(ctxt.bc_ctxt()));
                 let mut expansion = BorrowPcgExpansion::new(base_rp.into(), place_expansion, ctxt)?;
@@ -822,22 +822,23 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             .borrows_graph()
             .edges_blocking(old_source.into(), ctxt)
             .filter_map(|edge| {
-                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind {
-                    if bf_edge.kind == BorrowFlowEdgeKind::Future && bf_edge.short() != new_source {
-                        return Some((
-                            edge.to_owned_edge(),
-                            BorrowPcgEdge::new(
-                                BorrowFlowEdge::new(
-                                    new_source.into(),
-                                    bf_edge.short(),
-                                    BorrowFlowEdgeKind::Future,
-                                    ctxt,
-                                )
-                                .into(),
-                                edge.conditions.clone(),
-                            ),
-                        ));
-                    }
+                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind
+                    && bf_edge.kind == BorrowFlowEdgeKind::Future
+                    && bf_edge.short() != new_source
+                {
+                    return Some((
+                        edge.to_owned_edge(),
+                        BorrowPcgEdge::new(
+                            BorrowFlowEdge::new(
+                                new_source.into(),
+                                bf_edge.short(),
+                                BorrowFlowEdgeKind::Future,
+                                ctxt,
+                            )
+                            .into(),
+                            edge.conditions.clone(),
+                        ),
+                    ));
                 }
                 None
             })

@@ -2,7 +2,9 @@ use crate::action::{BorrowPcgAction, PcgAction};
 use crate::borrow_pcg::action::LabelPlaceReason;
 use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
 use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
-use crate::borrow_pcg::region_projection::{LifetimeProjection, PcgRegion};
+use crate::borrow_pcg::region_projection::{
+    LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+};
 use crate::owned_pcg::{OwnedPcg, RepackExpand};
 use crate::pcg::CapabilityKind;
 use crate::pcg::ctxt::AnalysisCtxt;
@@ -178,19 +180,22 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
 
     fn connect_outliving_projections(
         &mut self,
-        source_proj: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
         target: Place<'tcx>,
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind,
     ) -> Result<(), PcgError> {
         for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
-            if self.outlives(source_proj.region(self.ctxt), target_proj.region(self.ctxt)) {
+            if self.outlives(
+                source_proj.region(self.ctxt.ctxt()),
+                target_proj.region(self.ctxt.ctxt()),
+            ) {
                 self.record_and_apply_action(
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
-                                source_proj.into(),
+                                source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
-                                kind(target_proj.region(self.ctxt)),
+                                kind(target_proj.region(self.ctxt.ctxt())),
                                 self.ctxt,
                             )
                             .into(),
@@ -264,6 +269,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 func,
                 args,
                 destination,
+                fn_span,
                 ..
             } = &terminator.kind
         {
@@ -278,6 +284,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
             let destination: utils::Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,
+                *fn_span,
                 &args.iter().map(|arg| &arg.node).collect::<Vec<_>>(),
                 destination,
                 location,

@@ -106,7 +106,7 @@ fn format_raw_ptr<'tcx>(
     let kind = match kind {
         RawPtrKind::Mut => "mut",
         RawPtrKind::Const => "const",
-        RawPtrKind::FakeForPtrMetadata => todo!(),
+        RawPtrKind::FakeForPtrMetadata => "fake",
     };
     format!("*{} {}", kind, format_place(place, ctxt))
 }

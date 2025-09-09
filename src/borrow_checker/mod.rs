@@ -170,13 +170,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for
     }
 
     fn outlives(&self, sup: PcgRegion, sub: PcgRegion, _location: Location) -> bool {
-        match (sup, sub) {
-            (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
-                self.region_infer_ctxt().eval_outlives(sup, sub)
-            }
-            (PcgRegion::ReStatic, _) => true,
-            _ => false,
-        }
+        self.outlives_everywhere(sup, sub)
     }
 
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
@@ -193,6 +187,16 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for
 
     fn rust_borrow_checker(&self) -> Option<&dyn RustBorrowCheckerInterface<'tcx>> {
         Some(self)
+    }
+
+    fn outlives_everywhere(&self, sup: PcgRegion, sub: PcgRegion) -> bool {
+        match (sup, sub) {
+            (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
+                self.region_infer_ctxt().eval_outlives(sup, sub)
+            }
+            (PcgRegion::ReStatic, _) => true,
+            _ => false,
+        }
     }
 }
 
@@ -220,6 +224,11 @@ pub trait BorrowCheckerInterface<'tcx> {
 
     /// Returns true iff `sup` is required to outlive `sub` at `location`.
     fn outlives(&self, sup: PcgRegion, sub: PcgRegion, location: Location) -> bool;
+
+    /// Returns true iff `sup` is required to outlive `sub` everywhere. This can be
+    /// useful e.g. for determining outlives relations of arguments to a function based
+    /// on its signature
+    fn outlives_everywhere(&self, sup: PcgRegion, sub: PcgRegion) -> bool;
 
     fn borrows_blocking(
         &self,

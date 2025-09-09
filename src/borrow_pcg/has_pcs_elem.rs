@@ -4,7 +4,7 @@ use super::region_projection::{LifetimeProjection, LifetimeProjectionLabel};
 use crate::borrow_checker::BorrowCheckerInterface;
 use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::region_projection::RegionIdx;
-use crate::pcg::{MaybeHasLocation, PCGNodeLike};
+use crate::pcg::{MaybeHasLocation, PcgNodeLike};
 use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::utils::place::maybe_old::MaybeLabelledPlace;
 use crate::utils::{CompilerCtxt, FilterMutResult, HasPlace, Place, SnapshotLocation};

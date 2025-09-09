@@ -16,6 +16,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
+        hir::def_id::LocalDefId,
         index::Idx,
         middle::{
             mir::{
@@ -111,7 +112,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
             .filter(|e| {
                 e.lifetime_projections(ctxt)
                     .into_iter()
-                    .any(|child_rp| region == child_rp.region(ctxt))
+                    .any(|child_rp| region == child_rp.region(ctxt.ctxt()))
             })
             .copied()
             .collect::<Vec<_>>()
@@ -308,6 +309,10 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
             }
         }
         None
+    }
+
+    pub(crate) fn def_id(&self) -> LocalDefId {
+        self.mir.source.def_id().expect_local()
     }
 }
 
