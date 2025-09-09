@@ -26,10 +26,11 @@ fn test2() {
     for x in &mut v {
         s = x;
     }
-// PCG: bb7[0] post_operands: Loop(bb6): n -> s↓'?20 under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v -> iter↓'?25 under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v↓'?17 loop bb6 -> iter↓'?25 under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v↓'?17 loop bb6 -> iter↓'?26 under conditions bb2 -> bb3
+// PCG: bb7[0] post_operands: Loop(bb7): n -> s↓'?20 under conditions bb2 -> bb4
+// PCG: bb7[0] post_operands: Loop(bb7): v -> iter↓'?25 under conditions bb2 -> bb4
+// PCG: bb7[0] post_operands: Loop(bb7): v↓'?17 loop bb7 -> iter↓'?25 under conditions bb2 -> bb4
+// PCG: bb7[0] post_operands: Loop(bb7): v↓'?17 loop bb7 -> iter↓'?26 under conditions bb2 -> bb4
+
     *s = 4;
     assert!(*s == 4);
 }

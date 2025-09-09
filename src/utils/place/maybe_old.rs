@@ -3,10 +3,11 @@ use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
 use crate::borrow_pcg::region_projection::{
     HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion,
+    PlaceOrConst,
 };
 use crate::borrow_pcg::visitor::extract_regions;
 use crate::error::PcgError;
-use crate::pcg::{LocalNodeLike, MaybeHasLocation, PCGNodeLike, PcgNode};
+use crate::pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike};
 use crate::rustc_interface::PlaceTy;
 use crate::rustc_interface::middle::mir::PlaceElem;
 use crate::rustc_interface::middle::{mir, ty};
@@ -65,16 +66,7 @@ impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.to_pcg_lifetime_projection_base(),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_lifetime_projection_base(),
-        }
-    }
-}
-
-impl<'tcx> PCGNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
+impl<'tcx> PcgNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
     fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_pcg_node(repacker),
@@ -88,8 +80,8 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
 
     fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
         match value {
-            PcgLifetimeProjectionBase::Place(maybe_remote_place) => maybe_remote_place.try_into(),
-            PcgLifetimeProjectionBase::Const(_) => {
+            PlaceOrConst::Place(maybe_remote_place) => maybe_remote_place.try_into(),
+            PlaceOrConst::Const(_) => {
                 Err("Const cannot be converted to a maybe old place".to_string())
             }
         }

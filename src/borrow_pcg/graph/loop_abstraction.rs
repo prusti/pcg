@@ -17,7 +17,7 @@ use crate::{
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
     pcg::{
-        CapabilityKind, LocalNodeLike, PCGNodeLike, PcgMutRef, PcgNode,
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceExpander, PlaceObtainer,

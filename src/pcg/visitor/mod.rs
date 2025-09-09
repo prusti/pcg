@@ -2,7 +2,9 @@ use crate::action::{BorrowPcgAction, PcgAction};
 use crate::borrow_pcg::action::LabelPlaceReason;
 use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
 use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
-use crate::borrow_pcg::region_projection::{LifetimeProjection, PcgRegion};
+use crate::borrow_pcg::region_projection::{
+    LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+};
 use crate::owned_pcg::{OwnedPcg, RepackExpand};
 use crate::pcg::CapabilityKind;
 use crate::pcg::ctxt::AnalysisCtxt;
@@ -178,7 +180,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
 
     fn connect_outliving_projections(
         &mut self,
-        source_proj: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
         target: Place<'tcx>,
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind,
     ) -> Result<(), PcgError> {
@@ -191,7 +193,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
-                                source_proj.into(),
+                                source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
                                 kind(target_proj.region(self.ctxt.ctxt())),
                                 self.ctxt,

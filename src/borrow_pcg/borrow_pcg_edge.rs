@@ -11,7 +11,10 @@ use super::{
     path_condition::ValidityConditions,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionType;
+use crate::borrow_pcg::{
+    edge::abstraction::AbstractionType,
+    region_projection::{LocalLifetimeProjectionBase, PlaceOrConst},
+};
 use crate::error::PcgError;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
@@ -186,60 +189,8 @@ impl<'tcx> LocalNode<'tcx> {
 /// referring to a (potentially labelled) place, i.e. any node with an associated
 /// place.
 /// This excludes nodes that refer to remote places or constants.
-pub type LocalNode<'tcx> = PcgNode<'tcx, MaybeLabelledPlace<'tcx>, MaybeLabelledPlace<'tcx>>;
-
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LocalNode<'tcx> {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        match self {
-            LocalNode::Place(p) => {
-                p.label_place_with_context(predicate, labeller, label_context, ctxt)
-            }
-            LocalNode::LifetimeProjection(rp) => {
-                rp.base
-                    .label_place_with_context(predicate, labeller, label_context, ctxt)
-            }
-        }
-    }
-}
-
-impl<'tcx> From<LocalLifetimeProjection<'tcx>> for LocalNode<'tcx> {
-    fn from(rp: LocalLifetimeProjection<'tcx>) -> Self {
-        LocalNode::LifetimeProjection(rp)
-    }
-}
-
-impl<'tcx> TryFrom<LocalNode<'tcx>> for MaybeLabelledPlace<'tcx> {
-    type Error = ();
-    fn try_from(node: LocalNode<'tcx>) -> Result<Self, Self::Error> {
-        match node {
-            LocalNode::Place(maybe_old_place) => Ok(maybe_old_place),
-            LocalNode::LifetimeProjection(_) => Err(()),
-        }
-    }
-}
-
-impl<'tcx> From<Place<'tcx>> for LocalNode<'tcx> {
-    fn from(place: Place<'tcx>) -> Self {
-        LocalNode::Place(place.into())
-    }
-}
-
-impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
-    fn from(rp: LifetimeProjection<'tcx, Place<'tcx>>) -> Self {
-        LocalNode::LifetimeProjection(rp.into())
-    }
-}
-
-/// A node that could potentially block other nodes in the PCG, i.e. any node
-/// other than a [`crate::utils::place::remote::RemotePlace`] (which are roots
-/// by definition)
-pub type BlockingNode<'tcx> = LocalNode<'tcx>;
+pub type LocalNode<'tcx> =
+    PcgNode<'tcx, MaybeLabelledPlace<'tcx>, LocalLifetimeProjectionBase<'tcx>>;
 
 impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
     fn is_place(&self) -> bool {
@@ -294,6 +245,39 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
         })
     }
 }
+
+impl<'tcx> From<LocalLifetimeProjection<'tcx>> for LocalNode<'tcx> {
+    fn from(rp: LocalLifetimeProjection<'tcx>) -> Self {
+        LocalNode::LifetimeProjection(rp)
+    }
+}
+
+impl<'tcx> TryFrom<LocalNode<'tcx>> for MaybeLabelledPlace<'tcx> {
+    type Error = ();
+    fn try_from(node: LocalNode<'tcx>) -> Result<Self, Self::Error> {
+        match node {
+            LocalNode::Place(maybe_old_place) => Ok(maybe_old_place),
+            LocalNode::LifetimeProjection(_) => Err(()),
+        }
+    }
+}
+
+impl<'tcx> From<Place<'tcx>> for LocalNode<'tcx> {
+    fn from(place: Place<'tcx>) -> Self {
+        LocalNode::Place(place.into())
+    }
+}
+
+impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
+    fn from(rp: LifetimeProjection<'tcx, Place<'tcx>>) -> Self {
+        rp.with_base(MaybeLabelledPlace::Current(rp.base)).into()
+    }
+}
+
+/// A node that could potentially block other nodes in the PCG, i.e. any node
+/// other than a [`crate::utils::place::remote::RemotePlace`] (which are roots
+/// by definition)
+pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
 impl<'tcx> HasValidityCheck<'tcx> for MaybeRemotePlace<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {

@@ -34,7 +34,7 @@ use crate::{
     utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
 use crate::{
-    pcg::{PCGNodeLike, PcgNode},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::{mir::PlaceElem, ty},
     utils::{
         CompilerCtxt, HasPlace, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
@@ -252,14 +252,14 @@ impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'
     }
 }
 
-impl<'tcx, P: PCGNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'tcx, P> {
+impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'tcx, P> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
             return Err(format!("expansion contains base: {:?}", self));
         }
         for p in &self.expansion {
-            if let Some(node) = p.try_to_local_node(ctxt) {
-                if node.is_place() && node.place().is_owned(ctxt) {
+            if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt) {
+                if node.is_owned(ctxt) {
                     return Err(format!(
                         "Expansion of {:?} contains owned place {}",
                         self,
@@ -355,7 +355,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, P: PCGNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
+impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
     BorrowPcgExpansion<'tcx, P>
 {
     pub fn base(&self) -> P {

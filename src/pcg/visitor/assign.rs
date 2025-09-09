@@ -3,7 +3,7 @@ use crate::action::BorrowPcgAction;
 use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
 use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
 use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::region_projection::{LifetimeProjection, PcgLifetimeProjectionBase};
+use crate::borrow_pcg::region_projection::{LifetimeProjection, PlaceOrConst};
 use crate::pcg::CapabilityKind;
 use crate::pcg::EvalStmtPhase;
 use crate::pcg::obtain::{ActionApplier, HasSnapshotLocation, PlaceExpander};
@@ -17,8 +17,8 @@ use crate::utils::{self, AnalysisLocation, DataflowCtxt, SnapshotLocation};
 use super::{PcgError, PcgUnsupportedError};
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
-    // The label that should be used when referencing (after PostOperands), the
-    // value at the place before the move.
+    /// The label that should be used when referencing (after PostOperands), the
+    /// value at the place before the move.
     pub(crate) fn pre_operand_move_label(&self) -> SnapshotLocation {
         SnapshotLocation::Before(AnalysisLocation::new(
             self.location(),
@@ -26,22 +26,21 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         ))
     }
 
-    // Returns the maybe-labelled place to use to reference the value of an
-    // operand after the PostOperands phase. If the operand was copied, the
-    // place is returned as-is. If the operand was moved, the place is returned
-    // with the label of the value before the move.
-    // Returns `None` if the operand is a constant.
-    pub(crate) fn maybe_labelled_operand_place(
+    /// The maybe-labelled place to use to reference the value of an operand after
+    /// the PostOperands phase. If the operand was copied, the place is returned
+    /// as-is. If the operand was moved, the place is returned with the label of
+    /// the value before the move.
+    pub(crate) fn maybe_labelled_operand(
         &self,
         operand: &Operand<'tcx>,
-    ) -> Option<MaybeLabelledPlace<'tcx>> {
+    ) -> PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>> {
         match operand {
-            Operand::Copy(place) => Some((*place).into()),
-            Operand::Move(place) => Some(MaybeLabelledPlace::new(
+            Operand::Copy(place) => PlaceOrConst::Place((*place).into()),
+            Operand::Move(place) => PlaceOrConst::Place(MaybeLabelledPlace::new(
                 (*place).into(),
                 Some(self.pre_operand_move_label()),
             )),
-            Operand::Constant(_) => None,
+            Operand::Constant(const_) => PlaceOrConst::Const(const_.const_),
         }
     }
 
@@ -85,7 +84,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         .iter()
                         .enumerate()
                     {
-                        let maybe_labelled = self.maybe_labelled_operand_place(field).unwrap();
+                        let maybe_labelled = self.maybe_labelled_operand(field);
                         let source_proj = source_proj.with_base(maybe_labelled);
                         self.connect_outliving_projections(source_proj, target, |_| {
                             BorrowFlowEdgeKind::Aggregate {
@@ -106,7 +105,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                                 BorrowFlowEdge::new(
                                     LifetimeProjection::new(
                                         (*const_region).into(),
-                                        PcgLifetimeProjectionBase::Const(c.const_),
+                                        PlaceOrConst::Const(c.const_),
                                         None,
                                         self.ctxt.ctxt(),
                                     )

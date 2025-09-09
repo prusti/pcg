@@ -14,7 +14,10 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::HasTy},
+    borrow_pcg::{
+        borrow_pcg_expansion::PlaceExpansion,
+        region_projection::{HasTy, PcgLifetimeProjectionBase},
+    },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     rustc_interface::{
@@ -36,12 +39,11 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
-            PcgRegion, RegionIdx,
+            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
         },
         visitor::extract_regions,
     },
-    pcg::{LocalNodeLike, PCGNodeLike, PcgNode},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
 };
 
 pub mod corrected;
@@ -108,7 +110,7 @@ impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for Place<'tcx> {
+impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
     fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
@@ -117,12 +119,6 @@ impl<'tcx> PCGNodeLike<'tcx> for Place<'tcx> {
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         (*self).into()
-    }
-}
-
-impl<'tcx> From<Place<'tcx>> for PcgLifetimeProjectionBase<'tcx> {
-    fn from(place: Place<'tcx>) -> Self {
-        PcgLifetimeProjectionBase::Place(place.into())
     }
 }
 

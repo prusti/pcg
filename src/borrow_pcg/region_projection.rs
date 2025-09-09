@@ -24,7 +24,7 @@ use crate::utils::{
     VALIDITY_CHECKS_WARN_ONLY,
 };
 use crate::{
-    pcg::{LocalNodeLike, PCGNodeLike, PcgNode},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::{
@@ -44,6 +44,7 @@ pub enum PcgRegion {
     RegionVid(RegionVid),
     ReErased,
     ReStatic,
+    RePlaceholder(ty::PlaceholderRegion),
     ReBound(DebruijnIndex, ty::BoundRegion),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
@@ -74,6 +75,9 @@ impl std::fmt::Display for PcgRegion {
 }
 
 impl PcgRegion {
+    pub fn is_static(self) -> bool {
+        matches!(self, PcgRegion::ReStatic)
+    }
     pub fn to_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
         match self {
             PcgRegion::RegionVid(vid) => {
@@ -92,6 +96,7 @@ impl PcgRegion {
             PcgRegion::PcgInternalError(pcg_region_internal_error) => {
                 format!("{pcg_region_internal_error:?}")
             }
+            PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
         }
     }
 
@@ -99,6 +104,27 @@ impl PcgRegion {
         match self {
             PcgRegion::RegionVid(vid) => Some(*vid),
             _ => None,
+        }
+    }
+
+    pub(crate) fn rust_region<'a, 'tcx: 'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> ty::Region<'tcx> {
+        match self {
+            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
+            PcgRegion::ReErased => todo!(),
+            PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
+            PcgRegion::RePlaceholder(placeholder) => todo!(),
+            PcgRegion::ReBound(debruijn_index, bound_region) => {
+                ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
+            }
+            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
+                ctxt.tcx(),
+                late_param_region.scope,
+                late_param_region.kind,
+            ),
+            PcgRegion::PcgInternalError(pcg_region_internal_error) => todo!(),
         }
     }
 }
@@ -123,7 +149,7 @@ impl<'tcx> From<ty::Region<'tcx>> for PcgRegion {
             }
             ty::RegionKind::ReLateParam(late_param) => PcgRegion::ReLateParam(late_param),
             ty::RegionKind::ReStatic => PcgRegion::ReStatic,
-            ty::RegionKind::RePlaceholder(_) => todo!(),
+            ty::RegionKind::RePlaceholder(r) => PcgRegion::RePlaceholder(r),
             ty::RegionKind::ReError(_) => todo!(),
         }
     }
@@ -147,31 +173,98 @@ impl Idx for RegionIdx {
     }
 }
 
+pub type PcgLifetimeProjectionBase<'tcx> = PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>>;
+
 /// The most general base of a lifetime projection. Either a [`MaybeRemotePlace`]
 /// or a constant.
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Display, From, TryFrom)]
-pub enum PcgLifetimeProjectionBase<'tcx> {
-    Place(MaybeRemotePlace<'tcx>),
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Display)]
+pub enum PlaceOrConst<'tcx, T> {
+    Place(T),
     Const(Const<'tcx>),
 }
 
-impl<'tcx> HasTy<'tcx> for PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx, T: HasTy<'tcx>> HasTy<'tcx> for PlaceOrConst<'tcx, T> {
     fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
     where
         'tcx: 'a,
     {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.rust_ty(ctxt),
-            PcgLifetimeProjectionBase::Const(c) => c.ty(),
+            PlaceOrConst::Place(p) => p.rust_ty(ctxt),
+            PlaceOrConst::Const(c) => c.ty(),
         }
+    }
+}
+
+impl<'tcx, 'a, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PlaceOrConst<'tcx, T>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        match self {
+            PlaceOrConst::Place(p) => p.to_short_string(ctxt),
+            PlaceOrConst::Const(c) => format!("Const({c:?})"),
+        }
+    }
+}
+
+impl<'tcx> From<Place<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>> {
+    fn from(place: Place<'tcx>) -> Self {
+        PlaceOrConst::Place(place.into())
+    }
+}
+
+impl<'tcx, T> PlaceOrConst<'tcx, T> {
+    pub(crate) fn place(self) -> Option<T> {
+        match self {
+            PlaceOrConst::Place(p) => Some(p),
+            PlaceOrConst::Const(_) => None,
+        }
+    }
+
+    pub(crate) fn expect_place(self) -> T {
+        match self {
+            PlaceOrConst::Place(p) => p,
+            PlaceOrConst::Const(_) => todo!(),
+        }
+    }
+
+    pub(crate) fn map_place<U>(self, f: impl FnOnce(T) -> U) -> PlaceOrConst<'tcx, U> {
+        match self {
+            PlaceOrConst::Place(p) => PlaceOrConst::Place(f(p)),
+            PlaceOrConst::Const(c) => PlaceOrConst::Const(c),
+        }
+    }
+
+    pub(crate) fn mut_place<U>(&mut self, f: impl FnOnce(&mut T) -> U) -> Option<U> {
+        match self {
+            PlaceOrConst::Place(p) => Some(f(p)),
+            PlaceOrConst::Const(_) => None,
+        }
+    }
+}
+
+impl<'tcx, U, T: LabelPlaceWithContext<'tcx, U>> LabelPlaceWithContext<'tcx, U>
+    for PlaceOrConst<'tcx, T>
+{
+    fn label_place_with_context(
+        &mut self,
+        predicate: &LabelPlacePredicate<'tcx>,
+        labeller: &impl PlaceLabeller<'tcx>,
+        label_context: U,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.mut_place(|p| p.label_place_with_context(predicate, labeller, label_context, ctxt))
+            .unwrap_or(false)
     }
 }
 
 impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
     pub(crate) fn maybe_remote_current_place(&self) -> Option<MaybeRemoteCurrentPlace<'tcx>> {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.maybe_remote_current_place(),
-            PcgLifetimeProjectionBase::Const(_) => None,
+            PlaceOrConst::Place(p) => p.maybe_remote_current_place(),
+            PlaceOrConst::Const(_) => None,
         }
     }
     pub(crate) fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
@@ -179,8 +272,8 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
         'tcx: 'a,
     {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.is_mutable(ctxt),
-            PcgLifetimeProjectionBase::Const(_) => false,
+            PlaceOrConst::Place(p) => p.is_mutable(ctxt),
+            PlaceOrConst::Const(_) => false,
         }
     }
     pub(crate) fn base_ty<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
@@ -188,39 +281,39 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
         'tcx: 'a,
     {
         match self {
-            PcgLifetimeProjectionBase::Place(maybe_remote_place) => {
+            PlaceOrConst::Place(maybe_remote_place) => {
                 let local_place: Place<'tcx> =
                     maybe_remote_place.related_local_place().local.into();
                 local_place.ty(ctxt).ty
             }
-            PcgLifetimeProjectionBase::Const(c) => c.ty(),
+            PlaceOrConst::Const(c) => c.ty(),
         }
     }
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.as_local_place_mut(),
-            PcgLifetimeProjectionBase::Const(_) => None,
+            PlaceOrConst::Place(p) => p.as_local_place_mut(),
+            PlaceOrConst::Const(_) => None,
         }
     }
 
     pub(crate) fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.as_local_place(),
-            PcgLifetimeProjectionBase::Const(_) => None,
+            PlaceOrConst::Place(p) => p.as_local_place(),
+            PlaceOrConst::Const(_) => None,
         }
     }
     pub(crate) fn as_current_place(&self) -> Option<Place<'tcx>> {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.as_current_place(),
-            PcgLifetimeProjectionBase::Const(_) => None,
+            PlaceOrConst::Place(p) => p.as_current_place(),
+            PlaceOrConst::Const(_) => None,
         }
     }
 }
 impl<'tcx> HasValidityCheck<'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.check_validity(ctxt),
-            PcgLifetimeProjectionBase::Const(_) => todo!(),
+            PlaceOrConst::Place(p) => p.check_validity(ctxt),
+            PlaceOrConst::Const(_) => todo!(),
         }
     }
 }
@@ -233,22 +326,8 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> serde_json::Value {
         match self {
-            PcgLifetimeProjectionBase::Place(p) => p.to_json(ctxt),
-            PcgLifetimeProjectionBase::Const(_) => todo!(),
-        }
-    }
-}
-
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for PcgLifetimeProjectionBase<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        match self {
-            PcgLifetimeProjectionBase::Place(p) => p.to_short_string(ctxt),
-            PcgLifetimeProjectionBase::Const(c) => format!("{c}"),
+            PlaceOrConst::Place(p) => p.to_json(ctxt),
+            PlaceOrConst::Const(_) => todo!(),
         }
     }
 }
@@ -259,7 +338,7 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tc
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PCGNodeLike<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
@@ -303,8 +382,12 @@ pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeP
 pub struct LifetimeProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> {
     pub(crate) base: P,
     pub(crate) region_idx: RegionIdx,
-    label: Option<LifetimeProjectionLabel>,
+    pub(crate) label: Option<LifetimeProjectionLabel>,
     phantom: PhantomData<&'tcx ()>,
+}
+
+pub(crate) trait PcgLifetimeProjectionLike<'tcx> {
+    fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx>;
 }
 
 impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LifetimeProjection<'tcx> {
@@ -355,7 +438,7 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
 
 impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
 where
-    PcgLifetimeProjectionBase<'tcx>: From<P>,
+    P: PcgLifetimeProjectionBaseLike<'tcx>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -363,7 +446,10 @@ where
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        if predicate.matches(self.rebase(), ctxt) {
+        if predicate.matches(
+            self.with_base(self.base.to_pcg_lifetime_projection_base()),
+            ctxt,
+        ) {
             self.label = label;
             LabelLifetimeProjectionResult::Changed
         } else {
@@ -477,7 +563,7 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
 impl<'tcx> From<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>> for LifetimeProjection<'tcx> {
     fn from(rp: LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>) -> Self {
         LifetimeProjection {
-            base: rp.base.into(),
+            base: PlaceOrConst::Place(rp.base),
             region_idx: rp.region_idx,
             label: rp.label,
             phantom: PhantomData,
@@ -489,13 +575,13 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>> for LifetimeProjection<'tcx, MaybeR
     type Error = ();
     fn try_from(rp: LifetimeProjection<'tcx>) -> Result<Self, Self::Error> {
         match rp.base {
-            PcgLifetimeProjectionBase::Place(p) => Ok(LifetimeProjection {
+            PlaceOrConst::Place(p) => Ok(LifetimeProjection {
                 base: p,
                 region_idx: rp.region_idx,
                 label: rp.label,
                 phantom: PhantomData,
             }),
-            PcgLifetimeProjectionBase::Const(_) => Err(()),
+            PlaceOrConst::Const(_) => Err(()),
         }
     }
 }
@@ -506,13 +592,13 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
     type Error = String;
     fn try_from(rp: LifetimeProjection<'tcx>) -> Result<Self, Self::Error> {
         match rp.base {
-            PcgLifetimeProjectionBase::Place(p) => Ok(LifetimeProjection {
+            PlaceOrConst::Place(p) => Ok(LifetimeProjection {
                 base: p.try_into()?,
                 region_idx: rp.region_idx,
                 label: rp.label,
                 phantom: PhantomData,
             }),
-            PcgLifetimeProjectionBase::Const(_) => {
+            PlaceOrConst::Const(_) => {
                 Err("Const cannot be converted to a region projection".to_string())
             }
         }
@@ -569,6 +655,18 @@ pub trait PcgLifetimeProjectionBaseLike<'tcx>:
     Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq + HasTy<'tcx>
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx>;
+}
+
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LocalLifetimeProjectionBase<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+        PlaceOrConst::Place((*self).into())
+    }
+}
+
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+        self.map_place(Into::into)
+    }
 }
 
 impl<
@@ -651,7 +749,7 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>>
 
 impl<'tcx> From<MaybeLabelledPlace<'tcx>> for PcgLifetimeProjectionBase<'tcx> {
     fn from(place: MaybeLabelledPlace<'tcx>) -> Self {
-        PcgLifetimeProjectionBase::Place(place.into())
+        PlaceOrConst::Place(place.into())
     }
 }
 
@@ -841,10 +939,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         self.with_base(self.base.into())
     }
 
-    pub(crate) fn with_base<U: PcgLifetimeProjectionBaseLike<'tcx>>(
-        self,
-        base: U,
-    ) -> LifetimeProjection<'tcx, U> {
+    pub(crate) fn with_base<U>(self, base: U) -> LifetimeProjection<'tcx, U> {
         LifetimeProjection {
             base,
             region_idx: self.region_idx,
@@ -866,7 +961,10 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     }
 }
 
-pub(crate) type LocalLifetimeProjection<'tcx> = LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>;
+pub(crate) type LocalLifetimeProjectionBase<'tcx> = MaybeLabelledPlace<'tcx>;
+
+pub(crate) type LocalLifetimeProjection<'tcx> =
+    LifetimeProjection<'tcx, LocalLifetimeProjectionBase<'tcx>>;
 
 impl<'tcx> LocalLifetimeProjection<'tcx> {
     pub fn to_lifetime_projection(&self) -> LifetimeProjection<'tcx> {
@@ -896,11 +994,11 @@ impl<'tcx> LifetimeProjection<'tcx> {
         &self,
     ) -> Option<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> {
         match self.base {
-            PcgLifetimeProjectionBase::Place(maybe_remote_place) => match maybe_remote_place {
+            PlaceOrConst::Place(maybe_remote_place) => match maybe_remote_place {
                 MaybeRemotePlace::Local(local) => Some(self.with_base(local)),
                 _ => None,
             },
-            PcgLifetimeProjectionBase::Const(_) => None,
+            PlaceOrConst::Const(_) => None,
         }
     }
 
@@ -914,6 +1012,6 @@ impl<'tcx> LifetimeProjection<'tcx> {
 
 impl From<RemotePlace> for PcgLifetimeProjectionBase<'_> {
     fn from(remote_place: RemotePlace) -> Self {
-        PcgLifetimeProjectionBase::Place(remote_place.into())
+        PlaceOrConst::Place(remote_place.into())
     }
 }

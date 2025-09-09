@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io};
 
-use crate::owned_pcg::PcgAnalysis;
+use crate::results::PcgAnalysisResults;
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::driver::run_compiler;
 use crate::rustc_interface::driver::{self, Compilation};
@@ -17,14 +17,8 @@ use super::callbacks::{in_cargo_crate, run_pcg_on_fn, take_stored_body};
 #[allow(unused)]
 pub struct TestCallbacks {
     input: String,
-    callback: Option<
-        Box<
-            dyn for<'mir, 'tcx, 'arena> Fn(PcgAnalysis<'mir, 'tcx, &'arena bumpalo::Bump>)
-                + Send
-                + Sync
-                + 'static,
-        >,
-    >,
+    callback:
+        Option<Box<dyn for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static>>,
 }
 
 pub struct StringLoader(pub String);
@@ -48,10 +42,7 @@ impl FileLoader for StringLoader {
 #[rustversion::since(2025-05-24)]
 unsafe fn run_pcg_on_first_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
-    callback: impl for<'mir, 'arena> Fn(PcgAnalysis<'mir, 'tcx, &'arena bumpalo::Bump>)
-    + Send
-    + Sync
-    + 'static,
+    callback: impl for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     let def_id = tcx
         .hir_body_owners()
@@ -89,10 +80,7 @@ impl driver::Callbacks for TestCallbacks {
 #[rustversion::since(2025-05-24)]
 pub(crate) fn run_pcg_on_str(
     input: &str,
-    callback: impl for<'mir, 'tcx, 'arena> Fn(PcgAnalysis<'mir, 'tcx, &'arena bumpalo::Bump>)
-    + Send
-    + Sync
-    + 'static,
+    callback: impl for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     run_compiler(
         &vec![

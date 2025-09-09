@@ -1,12 +1,12 @@
 use crate::{
     borrow_pcg::{
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{HasTy, LifetimeProjection, PcgLifetimeProjectionBase},
+        region_projection::{HasTy, LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PCGNodeLike, PcgNode, PcgRef, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
@@ -99,10 +99,10 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
         let id = self.region_projection_nodes.node_id(&projection);
         let base_ty = match projection.place() {
-            PcgLifetimeProjectionBase::Place(p) => {
+            PlaceOrConst::Place(p) => {
                 format!("{:?}", p.related_local_place().ty(self.ctxt).ty)
             }
-            PcgLifetimeProjectionBase::Const(c) => {
+            PlaceOrConst::Const(c) => {
                 format!("{:?}", c.ty())
             }
         };
@@ -169,9 +169,14 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         abstraction: &AbstractionType<'tcx>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
     ) {
-        let input = self.insert_pcg_node(abstraction.input().to_pcg_node(self.ctxt), capabilities);
-        let output =
-            self.insert_pcg_node(abstraction.output().to_pcg_node(self.ctxt), capabilities);
+        let input = self.insert_pcg_node(
+            abstraction.input(self.ctxt).to_pcg_node(self.ctxt),
+            capabilities,
+        );
+        let output = self.insert_pcg_node(
+            abstraction.output(self.ctxt).to_pcg_node(self.ctxt),
+            capabilities,
+        );
         let label = match abstraction {
             AbstractionType::FunctionCall(fc) => fc.to_short_string(self.ctxt),
             AbstractionType::Loop(loop_abstraction) => {

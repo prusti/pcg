@@ -9,7 +9,7 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{LocalNodeLike, PCGNodeLike},
+    pcg::{LocalNodeLike, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, Place, SnapshotLocation, display::DisplayWithCompilerCtxt,

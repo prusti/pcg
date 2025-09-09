@@ -12,6 +12,10 @@ struct LifetimeExtractor<'tcx> {
 impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         match ty.kind() {
+            ty::TyKind::Dynamic(predicates, region, _) => {
+                // TODO: predicates?
+                self.visit_region(*region);
+            }
             //  TODO: Justify why function pointers are ignored
             ty::TyKind::FnPtr(_, _) => {}
             ty::TyKind::Closure(_, args) => {

@@ -1,8 +1,9 @@
 use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst,
+    RegionIdx,
 };
 use crate::borrow_pcg::visitor::extract_regions;
-use crate::pcg::{PCGNodeLike, PcgNode};
+use crate::pcg::{PcgNode, PcgNodeLike};
 use crate::rustc_interface::middle::mir;
 use crate::rustc_interface::middle::ty;
 use crate::utils::display::DisplayWithCompilerCtxt;
@@ -37,7 +38,7 @@ impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RemotePlace {
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for RemotePlace {
+impl<'tcx> PcgNodeLike<'tcx> for RemotePlace {
     fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
@@ -45,7 +46,7 @@ impl<'tcx> PCGNodeLike<'tcx> for RemotePlace {
 
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        PcgLifetimeProjectionBase::Place((*self).into())
+        PlaceOrConst::Place((*self).into())
     }
 }
 

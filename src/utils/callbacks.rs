@@ -281,6 +281,7 @@ pub(crate) unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
         if !should_check_body(&body.body) {
             continue;
         }
+        tracing::info!("Def Id: {:?}", def_id);
 
         tracing::info!(
             "{}Running PCG on function: {} with {} basic blocks",

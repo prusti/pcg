@@ -3,9 +3,9 @@ use serde_json::json;
 use super::display::DisplayWithCompilerCtxt;
 use super::{CompilerCtxt, Place, validity::HasValidityCheck};
 use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
 };
-use crate::pcg::{EvalStmtPhase, PCGNodeLike, PcgNode};
+use crate::pcg::{EvalStmtPhase, PcgNode, PcgNodeLike};
 use crate::utils::HasCompilerCtxt;
 use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::{
@@ -154,11 +154,11 @@ impl std::fmt::Display for SnapshotLocation {
 
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        PcgLifetimeProjectionBase::Place((*self).into())
+        PlaceOrConst::Place((*self).into())
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for LabelledPlace<'tcx> {
+impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
     fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.to_local_node(repacker).into()
     }

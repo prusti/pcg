@@ -13,7 +13,7 @@ use crate::{
     },
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
-    pcg::{PCGNodeLike, PcgNode},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
         data_structures::fx::{FxHashMap, FxHashSet},
         middle::mir::{self},

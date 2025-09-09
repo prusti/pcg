@@ -16,7 +16,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
-        hir::def_id::DefId,
+        hir::def_id::LocalDefId,
         index::Idx,
         middle::{
             mir::{
@@ -311,8 +311,8 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         None
     }
 
-    pub(crate) fn def_id(&self) -> DefId {
-        self.mir.source.def_id()
+    pub(crate) fn def_id(&self) -> LocalDefId {
+        self.mir.source.def_id().expect_local()
     }
 }
 

@@ -5,9 +5,10 @@ use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
 use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
 use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst,
+    RegionIdx,
 };
-use crate::pcg::{PCGNodeLike, PcgNode};
+use crate::pcg::{PcgNode, PcgNodeLike};
 use crate::rustc_interface::index::IndexVec;
 use crate::rustc_interface::middle::{mir, ty};
 use crate::utils::display::DisplayWithCompilerCtxt;
@@ -68,13 +69,13 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
     type Error = ();
     fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
         match value {
-            PcgLifetimeProjectionBase::Place(maybe_remote_place) => Ok(maybe_remote_place),
-            PcgLifetimeProjectionBase::Const(_) => Err(()),
+            PlaceOrConst::Place(maybe_remote_place) => Ok(maybe_remote_place),
+            PlaceOrConst::Const(_) => Err(()),
         }
     }
 }
 
-impl<'tcx> PCGNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
+impl<'tcx> PcgNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
     fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_node(repacker),

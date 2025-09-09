@@ -1,3 +1,5 @@
+use crate::borrow_pcg::abstraction::FunctionShapeDataSource;
+use crate::borrow_pcg::region_projection::PcgRegion;
 use crate::rustc_interface::infer::infer::TyCtxtInferExt;
 use crate::rustc_interface::infer::traits::ObligationCause;
 use crate::rustc_interface::trait_selection::traits::query::normalize::QueryNormalizeExt;
@@ -24,8 +26,12 @@ use crate::{
         },
         span::Span,
         trait_selection::{
-            infer,
-            traits::{NormalizeExt, ObligationCtxt},
+            infer::{self, InferCtxt, outlives::env::OutlivesEnvironment},
+            regions::OutlivesEnvironmentBuildExt,
+            traits::{
+                FulfillmentContext, FulfillmentError, NormalizeExt, ObligationCtxt, TraitEngine,
+                TraitEngineExt,
+            },
         },
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
@@ -35,6 +41,96 @@ use crate::{
 pub struct FunctionData<'tcx> {
     pub(crate) def_id: DefId,
     pub(crate) substs: GenericArgsRef<'tcx>,
+}
+
+pub(crate) struct FunctionDataShapeDataSource<'tcx> {
+    input_tys: Vec<ty::Ty<'tcx>>,
+    output_ty: ty::Ty<'tcx>,
+    outlives: OutlivesEnvironment<'tcx>,
+}
+
+#[derive(Debug)]
+pub enum MakeFunctionShapeError {
+    ContainsAliasType,
+}
+
+impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+    pub(crate) fn new(
+        data: FunctionData<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError> {
+        tracing::info!("Base Sig: {:#?}", data.fn_sig(ctxt));
+        let sig = data.instantiated_fn_sig(ctxt);
+        tracing::info!("Instantiated Sig: {:#?}", sig);
+        let sig = ctxt.tcx().liberate_late_bound_regions(data.def_id, sig);
+        tracing::info!("Liberated Sig: {:#?}", sig);
+        let typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id());
+        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(typing_env);
+        if sig.has_aliases() {
+            return Err(MakeFunctionShapeError::ContainsAliasType);
+        }
+        // // let obligation_ctxt = ObligationCtxt::new(&infcx);
+        // // let sig = obligation_ctxt
+        // //     .deeply_normalize(&ObligationCause::dummy(), param_env, sig)
+        // //     .unwrap();
+        // let sig = infcx
+        //     .at(&ObligationCause::dummy(), param_env)
+        //     .normalize(sig)
+        //     .value;
+        tracing::info!("Normalized sig: {:#?}", sig);
+        let outlives = OutlivesEnvironment::new(&infcx, ctxt.def_id(), param_env, vec![]);
+        Ok(Self {
+            input_tys: sig.inputs().to_vec(),
+            output_ty: sig.output(),
+            outlives,
+        })
+    }
+}
+
+impl<'tcx> FunctionData<'tcx> {
+    pub(crate) fn fn_sig(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> ty::EarlyBinder<'tcx, ty::Binder<'tcx, ty::FnSig<'tcx>>> {
+        ctxt.tcx().fn_sig(self.def_id)
+    }
+
+    pub(crate) fn instantiated_fn_sig(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
+        ctxt.tcx()
+            .fn_sig(self.def_id)
+            .instantiate(ctxt.tcx(), self.substs)
+    }
+}
+
+impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
+    fn input_tys(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+        self.input_tys.clone()
+    }
+    fn output_ty(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
+        self.output_ty
+    }
+
+    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        if sup.is_static() || sup == sub {
+            return true;
+        }
+        tracing::info!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
+        match (sup, sub) {
+            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_)) => {
+                ctxt.bc.outlives_everywhere(sup, sub)
+            }
+            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,
+            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => true,
+            _ => self.outlives.free_region_map().sub_free_regions(
+                ctxt.tcx(),
+                sup.rust_region(ctxt),
+                sub.rust_region(ctxt),
+            ),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
@@ -65,51 +161,66 @@ impl<'tcx> FunctionCallData<'tcx> {
         self.function_data.substs
     }
 
-    pub(crate) fn instantiated_sig(
+    // pub(crate) fn instantiated_sig(
+    //     &self,
+    //     ctxt: CompilerCtxt<'_, 'tcx>,
+    // ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
+    //     let fn_sig = ctxt.tcx().fn_sig(self.def_id());
+    //     fn_sig.instantiate(ctxt.tcx(), self.substs())
+    // }
+
+    // fn normalize(
+    //     &self,
+    //     infcx: &InferCtxt<'tcx>,
+    //     param_env: ty::ParamEnv<'tcx>,
+    //     fn_sig: ty::FnSig<'tcx>,
+    // ) -> ty::FnSig<'tcx> {
+    //     tracing::info!("Normalize {:?}", fn_sig);
+    //     let cause = ObligationCause::dummy();
+    //     let octxt = ObligationCtxt::new(&infcx);
+    //     let infcx = infcx.at(&cause, param_env);
+    //     for (op_ty, sig_ty) in self.operand_tys.iter().zip(fn_sig.inputs().iter()) {
+    //         tracing::info!("Require {:?} <: {:?}", op_ty, sig_ty);
+    //         let obligations = infcx
+    //             .sub(infer::DefineOpaqueTypes::No, *op_ty, *sig_ty)
+    //             .unwrap()
+    //             .obligations;
+    //         octxt.register_obligations(obligations);
+    //     }
+    //     tracing::info!("Deeply normalize {:?}", fn_sig);
+    //     octxt.deeply_normalize(&cause, param_env, fn_sig).unwrap()
+    // }
+
+    // pub(crate) fn fully_normalized_sig(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::FnSig<'tcx> {
+    //     let fn_sig = self.instantiated_sig(ctxt);
+    //     tracing::info!("Instantiated sig: {:?}", fn_sig);
+    //     let cause = ObligationCause::dummy();
+    //     let (infcx, param_env) = ctxt
+    //         .tcx()
+    //         .infer_ctxt()
+    //         .build_with_typing_env(ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id()));
+    //     let fn_sig = infcx
+    //         .at(&cause, param_env)
+    //         .query_normalize(fn_sig)
+    //         .unwrap()
+    //         .value;
+    //     tracing::info!("Normalized sig: {:?}", fn_sig);
+    //     // let fv_sig = infcx.instantiate_binder_with_fresh_vars(
+    //     //     self.span,
+    //     //     infer::BoundRegionConversionTime::FnCall,
+    //     //     fn_sig,
+    //     // );
+    //     // self.normalize(infcx, param_env, fv_sig)
+
+    //     infcx.enter_forall(fn_sig, |fv_sig| self.normalize(&infcx, param_env, fv_sig))
+    // }
+
+    pub(crate) fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
-        let fn_sig = ctxt.tcx().fn_sig(self.def_id());
-        fn_sig.instantiate(ctxt.tcx(), self.substs())
-    }
-
-    pub(crate) fn fully_normalized_sig(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::FnSig<'tcx> {
-        let fn_sig = self.instantiated_sig(ctxt);
-        let cause = ObligationCause::dummy();
-        let (infcx, param_env) = ctxt
-            .tcx()
-            .infer_ctxt()
-            .build_with_typing_env(ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id()));
-        let fn_sig = infcx
-            .at(&cause, param_env)
-            .query_normalize(fn_sig)
-            .unwrap()
-            .value;
-        let fv_sig = infcx.instantiate_binder_with_fresh_vars(
-            self.span,
-            infer::BoundRegionConversionTime::FnCall,
-            fn_sig,
-        );
-        let octxt = ObligationCtxt::new(&infcx);
-        let infcx = infcx.at(&cause, param_env);
-        for (op_ty, sig_ty) in self.operand_tys.iter().zip(fv_sig.inputs().iter()) {
-            if !sig_ty.has_bound_regions() {
-                continue;
-            }
-            tracing::info!("Require {:?} <: {:?}", op_ty, sig_ty);
-            let obligations = infcx
-                .sub(infer::DefineOpaqueTypes::No, *op_ty, *sig_ty)
-                .unwrap()
-                .obligations;
-            octxt.register_obligations(obligations);
-        }
-        tracing::info!("Deeply normalize {:?}", fv_sig);
-        octxt.deeply_normalize(&cause, param_env, fv_sig).unwrap()
-    }
-
-    pub(crate) fn shape(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> FunctionShape<'tcx> {
-        let sig = self.fully_normalized_sig(ctxt);
-        FunctionShape::new(&sig, ctxt)
+    ) -> Result<FunctionShape<'tcx>, MakeFunctionShapeError> {
+        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt)?;
+        Ok(FunctionShape::new(&data, ctxt))
     }
 }
 

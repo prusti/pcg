@@ -8,7 +8,7 @@ use crate::borrow_pcg::edge::abstraction::function::{
 };
 use crate::borrow_pcg::edge::abstraction::{AbstractionBlockEdge, AbstractionType};
 use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::region_projection::LifetimeProjection;
+use crate::borrow_pcg::region_projection::{HasTy, LifetimeProjection};
 use crate::pcg::obtain::{HasSnapshotLocation, PlaceExpander};
 use crate::pcg_validity_assert;
 use crate::rustc_interface::infer::infer::TyCtxtInferExt;
@@ -47,10 +47,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         input: LifetimeProjection<'tcx, ArgIdx>,
     ) -> FunctionCallAbstractionInput<'tcx> {
         let operand = call.inputs[*input.base];
-        let place = self.maybe_labelled_operand_place(&operand).unwrap();
-        LifetimeProjection::from_index(place, input.region_idx)
-            .with_label(Some(self.prev_snapshot_location().into()), self.ctxt)
-            .into()
+        let operand = self.maybe_labelled_operand(&operand);
+        FunctionCallAbstractionInput(
+            LifetimeProjection::from_index(operand, input.region_idx)
+                .with_label(Some(self.prev_snapshot_location().into()), self.ctxt),
+        )
     }
 
     fn node_for_output(
@@ -61,7 +62,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         match output.base {
             ArgIdxOrResult::Argument(arg_idx) => {
                 let operand = call.inputs[*arg_idx];
-                let place = self.maybe_labelled_operand_place(&operand).unwrap();
+                let place = self.maybe_labelled_operand(&operand).expect_place();
                 LifetimeProjection::from_index(place, output.region_idx)
                     .with_label(
                         Some(SnapshotLocation::After(self.location().block).into()),
@@ -135,7 +136,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // time
         let arg_region_projections = args
             .iter()
-            .filter_map(|arg| self.maybe_labelled_operand_place(arg))
+            .map(|arg| self.maybe_labelled_operand(arg))
             .flat_map(|input_place| input_place.lifetime_projections(self.ctxt))
             .collect::<Vec<_>>();
 
@@ -160,38 +161,46 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             .collect::<Vec<_>>();
 
         for (rp, post_rp) in arg_region_projections.iter().zip(post_rps.iter()) {
-            self.place_obtainer()
-                .redirect_source_of_future_edges(*rp, *post_rp, ctxt)?;
+            if let (Some(rp), Some(post_rp)) = (
+                rp.try_to_local_lifetime_projection(),
+                post_rp.try_to_local_lifetime_projection(),
+            ) {
+                self.place_obtainer()
+                    .redirect_source_of_future_edges(rp, post_rp, ctxt)?;
+            }
         }
 
         for (rp, pre_rp) in arg_region_projections.iter().zip(pre_rps.iter()) {
-            self.record_and_apply_action(
-                BorrowPcgAction::label_lifetime_projection(
-                    LabelLifetimeProjectionPredicate::Equals(*rp),
-                    pre_rp.label(),
-                    format!(
-                        "Function call:Label Pre version of {}",
-                        rp.to_short_string(self.ctxt.bc_ctxt()),
-                    ),
-                )
-                .into(),
-            )?;
+            if let Some(rp) = rp.try_to_local_lifetime_projection() {
+                self.record_and_apply_action(
+                    BorrowPcgAction::label_lifetime_projection(
+                        LabelLifetimeProjectionPredicate::Equals(rp),
+                        pre_rp.label(),
+                        format!(
+                            "Function call:Label Pre version of {}",
+                            rp.to_short_string(self.ctxt.bc_ctxt()),
+                        ),
+                    )
+                    .into(),
+                )?;
+            }
         }
         let call_shape = FunctionShape::new(&call, self.ctxt.bc_ctxt());
         let function_data = function_call_data.as_ref().map(|f| f.function_data);
         let shape = if let Some(function_call_data) = function_call_data.as_ref() {
             let sig_shape = function_call_data.shape(self.ctxt.bc_ctxt());
             // pcg_validity_assert!(
-            //     sig_shape == call_shape,
-            //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\nFully Resolved:{:#?}\nCall shape {}",
+            //     sig_shape.is_specialization_of(&call_shape),
+            //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\n does not specialize Call shape {}.\nDiff: {}",
             //     sig_shape.to_short_string(self.ctxt.bc_ctxt()),
             //     function_call_data.def_id(),
             //     ctxt.tcx().fn_sig(function_call_data.def_id()),
-            //     function_call_data.instantiated_sig(self.ctxt.bc_ctxt()),
-            //     function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
-            //     call_shape.to_short_string(self.ctxt.bc_ctxt())
+            //     function_call_data.function_data.fn_sig(self.ctxt.bc_ctxt()),
+            //     // function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
+            //     call_shape.to_short_string(self.ctxt.bc_ctxt()),
+            //     sig_shape.diff(&call_shape).to_short_string(self.ctxt.bc_ctxt())
             // );
-            sig_shape
+            sig_shape.unwrap_or(call_shape)
         } else {
             call_shape
         };

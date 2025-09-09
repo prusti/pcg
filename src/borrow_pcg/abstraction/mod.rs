@@ -1,4 +1,5 @@
 use derive_more::{Deref, From};
+use itertools::Itertools;
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
@@ -65,19 +66,6 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'_, 'tcx> {
     }
 }
 
-impl<'tcx> FunctionShapeDataSource<'tcx> for ty::FnSig<'tcx> {
-    fn input_tys(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
-        self.inputs().to_vec()
-    }
-    fn output_ty(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
-        self.output()
-    }
-
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        ctxt.bc.outlives_everywhere(sup, sub)
-    }
-}
-
 #[derive(Copy, PartialEq, Eq, Clone, Debug, Hash)]
 struct ProjectionData<'tcx, T> {
     base: T,
@@ -98,6 +86,16 @@ impl<'tcx, T: Copy> ProjectionData<'tcx, T> {
                 region_idx: region_idx.into(),
             })
             .collect()
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for ProjectionData<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({}|{:?}) ({:?}) in type {:?}",
+            self.base, self.region_idx, self.region, self.ty
+        )
     }
 }
 
@@ -125,15 +123,15 @@ pub struct FunctionShape<'tcx>(
 
 impl<'tcx> std::fmt::Display for ArgIdx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ArgIdx({})", self.0)
+        write!(f, "a{}", self.0)
     }
 }
 
 impl<'tcx> std::fmt::Display for ArgIdxOrResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArgIdxOrResult::Argument(arg) => write!(f, "ArgIdx({})", arg.0),
-            ArgIdxOrResult::Result => write!(f, "Result"),
+            ArgIdxOrResult::Argument(arg) => write!(f, "{arg}"),
+            ArgIdxOrResult::Result => write!(f, "result"),
         }
     }
 }
@@ -144,13 +142,23 @@ impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
     fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0
             .iter()
-            .map(|(input, output)| format!("{} -> {}", input, output,))
+            .map(|(input, output)| format!("{} -> {}", input, output))
+            .sorted()
             .collect::<Vec<_>>()
-            .join(", ")
+            .join("\n, ")
     }
 }
 
 impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
+    pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
+        self.0.is_subset(&other.0)
+    }
+
+    pub(crate) fn diff(&self, other: &Self) -> Self {
+        let diff = self.0.difference(&other.0).copied().collect::<HashSet<_>>();
+        Self(diff)
+    }
+
     pub(crate) fn new<ShapeData: FunctionShapeDataSource<'tcx>>(
         shape_data: &ShapeData,
         ctxt: CompilerCtxt<'a, 'tcx>,
@@ -165,24 +173,24 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
             .collect::<Vec<ProjectionData<'tcx, ArgIdx>>>();
         let result_projections = ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, output_ty);
         for input in arg_projections.iter().copied() {
-            tracing::info!("Input: {:?} {:?}", input.base, input.ty);
             for output in arg_projections.iter().copied() {
                 if ctxt
                     .bc_ctxt()
                     .region_is_invariant_in_type(output.region, output.ty)
-                    && shape_data.outlives(output.region, input.region, ctxt)
+                    && shape_data.outlives(input.region, output.region, ctxt)
                 {
+                    tracing::info!("{} outlives {}", input, output);
                     shape.insert((input.into(), output.into()));
                 }
             }
             for rp in result_projections.iter().copied() {
                 if shape_data.outlives(input.region, rp.region, ctxt) {
+                    tracing::info!("{} outlives {}", input, rp);
                     shape.insert((input.into(), rp.into()));
                 }
             }
         }
         let result = FunctionShape(shape);
-        tracing::info!("Function shape: {}", result.to_short_string(ctxt));
         result
     }
 }
