@@ -23,12 +23,13 @@ use crate::{
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
         span::Span,
-        trait_selection::{
-            infer::outlives::env::OutlivesEnvironment, regions::OutlivesEnvironmentBuildExt,
-        },
+        trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
+
+#[rustversion::since(2025-05-24)]
+use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub struct FunctionData<'tcx> {
@@ -42,35 +43,38 @@ pub(crate) struct FunctionDataShapeDataSource<'tcx> {
     outlives: OutlivesEnvironment<'tcx>,
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub enum MakeFunctionShapeError {
     ContainsAliasType,
+    UnsupportedRustVersion,
 }
 
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+    #[rustversion::before(2025-05-24)]
+    pub(crate) fn new(
+        _data: FunctionData<'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError> {
+        Err(MakeFunctionShapeError::UnsupportedRustVersion)
+    }
+
+    #[rustversion::since(2025-05-24)]
     pub(crate) fn new(
         data: FunctionData<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        tracing::info!("Base Sig: {:#?}", data.fn_sig(ctxt));
+        tracing::debug!("Base Sig: {:#?}", data.fn_sig(ctxt));
         let sig = data.instantiated_fn_sig(ctxt);
-        tracing::info!("Instantiated Sig: {:#?}", sig);
+        tracing::debug!("Instantiated Sig: {:#?}", sig);
         let sig = ctxt.tcx().liberate_late_bound_regions(data.def_id, sig);
-        tracing::info!("Liberated Sig: {:#?}", sig);
+        tracing::debug!("Liberated Sig: {:#?}", sig);
         let typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id());
         let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(typing_env);
         if sig.has_aliases() {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
-        // // let obligation_ctxt = ObligationCtxt::new(&infcx);
-        // // let sig = obligation_ctxt
-        // //     .deeply_normalize(&ObligationCause::dummy(), param_env, sig)
-        // //     .unwrap();
-        // let sig = infcx
-        //     .at(&ObligationCause::dummy(), param_env)
-        //     .normalize(sig)
-        //     .value;
-        tracing::info!("Normalized sig: {:#?}", sig);
+        tracing::debug!("Normalized sig: {:#?}", sig);
         let outlives = OutlivesEnvironment::new(&infcx, ctxt.def_id(), param_env, vec![]);
         Ok(Self {
             input_tys: sig.inputs().to_vec(),
@@ -112,7 +116,7 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
         }
         tracing::info!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
         match (sup, sub) {
-            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_)) => {
+            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 ctxt.bc.outlives_everywhere(sup, sub)
             }
             (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,

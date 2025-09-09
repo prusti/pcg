@@ -29,7 +29,7 @@ pub struct FunctionCallAbstractionInput<'tcx>(
 );
 
 impl<'tcx> LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>> {
-    pub(crate) fn try_to_local_lifetime_projection(self) -> Option<LocalLifetimeProjection<'tcx>> {
+    pub fn try_to_local_lifetime_projection(self) -> Option<LocalLifetimeProjection<'tcx>> {
         match self.base {
             PlaceOrConst::Place(maybe_labelled_place) => Some(self.with_base(maybe_labelled_place)),
             PlaceOrConst::Const(_) => None,

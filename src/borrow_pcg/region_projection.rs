@@ -107,6 +107,29 @@ impl PcgRegion {
         }
     }
 
+    #[rustversion::before(2025-05-24)]
+    pub(crate) fn rust_region<'a, 'tcx: 'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> ty::Region<'tcx> {
+        match self {
+            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
+            PcgRegion::ReErased => todo!(),
+            PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
+            PcgRegion::RePlaceholder(_) => todo!(),
+            PcgRegion::ReBound(debruijn_index, bound_region) => {
+                ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
+            }
+            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
+                ctxt.tcx(),
+                late_param_region.scope,
+                late_param_region.bound_region,
+            ),
+            PcgRegion::PcgInternalError(_) => todo!(),
+        }
+    }
+
+    #[rustversion::since(2025-05-24)]
     pub(crate) fn rust_region<'a, 'tcx: 'a>(
         self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -963,6 +986,10 @@ impl<'tcx> LocalLifetimeProjection<'tcx> {
     pub fn to_lifetime_projection(&self) -> LifetimeProjection<'tcx> {
         self.with_base(self.base.into())
     }
+
+    pub fn local(&self) -> Local {
+        self.base.local()
+    }
 }
 
 impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LocalLifetimeProjection<'tcx> {
@@ -979,10 +1006,6 @@ impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LocalLifetimeProjec
 }
 
 impl<'tcx> LifetimeProjection<'tcx> {
-    pub fn local(&self) -> Option<Local> {
-        self.base.as_local_place().map(|p| p.local())
-    }
-
     fn as_local_region_projection(
         &self,
     ) -> Option<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> {
