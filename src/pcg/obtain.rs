@@ -265,7 +265,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             .collect::<Vec<_>>();
 
         for mut rp in derefs_to_disconnect.iter().copied() {
-            tracing::info!(
+            tracing::debug!(
                 "Disconnecting deref projection {}",
                 rp.to_short_string(ctxt.bc_ctxt())
             );
@@ -297,9 +297,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .into(),
             )?;
         }
-        // TODO: THis could be a hack
+        // TODO: This could be a hack
         if !derefs_to_disconnect.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 "Labeling deref projections for place {}",
                 place.to_short_string(ctxt.ctxt())
             );

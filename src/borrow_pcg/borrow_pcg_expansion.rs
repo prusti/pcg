@@ -73,6 +73,9 @@ impl<'tcx> HasValidityCheck<'tcx> for PlaceExpansion<'tcx> {
 }
 
 impl<'tcx> PlaceExpansion<'tcx> {
+    pub(crate) fn is_enum_expansion(&self) -> bool {
+        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(_, _)))
+    }
     pub(crate) fn block_type<'a>(
         &self,
         base_place: Place<'tcx>,

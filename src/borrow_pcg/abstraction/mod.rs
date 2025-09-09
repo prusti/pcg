@@ -181,13 +181,13 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
                     .region_is_invariant_in_type(output.region, output.ty)
                     && shape_data.outlives(input.region, output.region, ctxt)
                 {
-                    tracing::info!("{} outlives {}", input, output);
+                    tracing::debug!("{} outlives {}", input, output);
                     shape.insert((input.into(), output.into()));
                 }
             }
             for rp in result_projections.iter().copied() {
                 if shape_data.outlives(input.region, rp.region, ctxt) {
-                    tracing::info!("{} outlives {}", input, rp);
+                    tracing::debug!("{} outlives {}", input, rp);
                     shape.insert((input.into(), rp.into()));
                 }
             }

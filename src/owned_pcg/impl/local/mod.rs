@@ -82,6 +82,9 @@ pub(crate) struct ExpandedPlace<'tcx> {
 }
 
 impl<'tcx> ExpandedPlace<'tcx> {
+    pub(crate) fn is_enum_expansion(&self) -> bool {
+        self.expansion.is_enum_expansion()
+    }
     pub(crate) fn guide(&self) -> Option<RepackGuide> {
         self.expansion.guide()
     }
