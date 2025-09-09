@@ -114,7 +114,7 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
         if sup.is_static() || sup == sub {
             return true;
         }
-        tracing::info!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
+        tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 ctxt.bc.outlives_everywhere(sup, sub)

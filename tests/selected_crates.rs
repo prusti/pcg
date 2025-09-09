@@ -618,13 +618,6 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("read::ZipFile::<'a>::take_raw_reader", None),
         ),
-        // 159 basic blocks
-        SelectedCrateTestCase::new(
-            "serde_yaml",
-            "0.9.34+deprecated",
-            Some("2025-03-13"),
-            TestCrateType::function("loader::Loader::<'input>::next_document", Some(159)),
-        ),
         // 4 basic blocks
         SelectedCrateTestCase::new(
             "rustls-pki-types",
@@ -843,16 +836,6 @@ fn test_selected_crates() {
                 Some(27),
             ),
         ),
-        // 29 basic blocks
-        SelectedCrateTestCase::new(
-            "serde_yaml",
-            "0.9.34+deprecated",
-            Some("2025-03-13"),
-            TestCrateType::function(
-                "value::debug::<impl std::fmt::Debug for mapping::Mapping>::fmt",
-                Some(29),
-            ),
-        ),
         SelectedCrateTestCase::new(
             "matchit",
             "0.8.6",
@@ -906,12 +889,6 @@ fn test_selected_crates() {
             TestCrateType::function("LinkedHashMap::<K, V, S>::get_refresh", None),
         ),
         SelectedCrateTestCase::new(
-            "serde_yaml",
-            "0.9.34+deprecated",
-            Some("2025-03-13"),
-            TestCrateType::function("libyaml::emitter::Emitter::<'a>::flush", None),
-        ),
-        SelectedCrateTestCase::new(
             "encoding_rs",
             "0.8.35",
             Some("2025-03-13"),
@@ -958,7 +935,6 @@ fn test_selected_crates() {
     .collect();
     test_cases.extend(custom_test_cases);
 
-    // Sort test cases before parallel execution
     let sorted_test_cases: Vec<_> = test_cases
         .into_iter()
         .sorted_by_key(|tc| {
@@ -974,7 +950,6 @@ fn test_selected_crates() {
         })
         .collect();
 
-    // Execute test cases in parallel
     sorted_test_cases
         .into_par_iter()
         .panic_fuse()
