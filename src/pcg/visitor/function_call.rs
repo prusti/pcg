@@ -10,12 +10,8 @@ use crate::borrow_pcg::edge::abstraction::{AbstractionBlockEdge, AbstractionType
 use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
 use crate::borrow_pcg::region_projection::{HasTy, LifetimeProjection};
 use crate::pcg::obtain::{HasSnapshotLocation, PlaceExpander};
-use crate::pcg_validity_assert;
-use crate::rustc_interface::infer::infer::TyCtxtInferExt;
-use crate::rustc_interface::infer::traits::ObligationCause;
 use crate::rustc_interface::middle::mir::{Location, Operand};
 use crate::rustc_interface::span::Span;
-use crate::rustc_interface::trait_selection::traits::query::normalize::QueryNormalizeExt;
 use crate::utils::display::DisplayWithCompilerCtxt;
 
 use super::PcgError;
@@ -47,7 +43,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         input: LifetimeProjection<'tcx, ArgIdx>,
     ) -> FunctionCallAbstractionInput<'tcx> {
         let operand = call.inputs[*input.base];
-        let operand = self.maybe_labelled_operand(&operand);
+        let operand = self.maybe_labelled_operand(operand);
         FunctionCallAbstractionInput(
             LifetimeProjection::from_index(operand, input.region_idx)
                 .with_label(Some(self.prev_snapshot_location().into()), self.ctxt),
@@ -62,7 +58,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         match output.base {
             ArgIdxOrResult::Argument(arg_idx) => {
                 let operand = call.inputs[*arg_idx];
-                let place = self.maybe_labelled_operand(&operand).expect_place();
+                let place = self.maybe_labelled_operand(operand).expect_place();
                 LifetimeProjection::from_index(place, output.region_idx)
                     .with_label(
                         Some(SnapshotLocation::After(self.location().block).into()),
@@ -86,18 +82,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             self.record_and_apply_action(
                 BorrowPcgAction::add_edge(
                     BorrowPcgEdge::new(
-                        AbstractionType::FunctionCall(
-                            FunctionCallAbstraction::new(
-                                call.location,
-                                function_data,
-                                AbstractionBlockEdge::new(
-                                    self.node_for_input(call, input),
-                                    self.node_for_output(call, output),
-                                    self.ctxt,
-                                ),
-                            )
-                            .into(),
-                        )
+                        AbstractionType::FunctionCall(FunctionCallAbstraction::new(
+                            call.location,
+                            function_data,
+                            AbstractionBlockEdge::new(
+                                self.node_for_input(call, input),
+                                self.node_for_output(call, output),
+                                self.ctxt,
+                            ),
+                        ))
                         .into(),
                         self.pcg.borrow.validity_conditions.clone(),
                     ),

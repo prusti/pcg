@@ -28,6 +28,7 @@ struct EdgesToRemove<'tcx> {
     other_edges: Vec<WithReason<BorrowPcgEdge<'tcx>>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum RemovalAction<'tcx> {
     RemoveDerefEdgesTo(
         MaybeLabelledPlace<'tcx>,
@@ -183,10 +184,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 PcgNode::Place(p) => p,
                 PcgNode::LifetimeProjection(rp) => rp.place(),
             };
-            if let Some(ancestor_place) = ancestor_place {
-                if !place.is_current() || !ancestor_place.place().is_prefix_of(place.place()) {
-                    return false;
-                }
+            if let Some(ancestor_place) = ancestor_place
+                && (!place.is_current() || !ancestor_place.place().is_prefix_of(place.place()))
+            {
+                return false;
             }
             true
         };

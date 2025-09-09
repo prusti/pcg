@@ -133,7 +133,7 @@ impl<'tcx> AbstractionInputLike<'tcx> for LoopAbstractionInput<'tcx> {
 
     fn to_abstraction_input<C: Copy>(
         self,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
+        _ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> AbstractionInputTarget<'tcx> {
         AbstractionInputTarget(self.0)
     }

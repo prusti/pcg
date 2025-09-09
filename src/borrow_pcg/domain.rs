@@ -48,7 +48,7 @@ impl<'tcx> LabelLifetimeProjection<'tcx>
     ) -> LabelLifetimeProjectionResult {
         match self {
             PcgNode::LifetimeProjection(rp) => rp.label_lifetime_projection(predicate, label, ctxt),
-            PcgNode::Place(p) => LabelLifetimeProjectionResult::Unchanged,
+            PcgNode::Place(_) => LabelLifetimeProjectionResult::Unchanged,
         }
     }
 }

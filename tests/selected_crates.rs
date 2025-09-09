@@ -1,4 +1,3 @@
-#![feature(let_chains)]
 #![allow(dead_code)]
 use itertools::Itertools;
 use rayon::prelude::*;

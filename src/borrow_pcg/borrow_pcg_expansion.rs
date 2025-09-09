@@ -258,14 +258,14 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'
             return Err(format!("expansion contains base: {:?}", self));
         }
         for p in &self.expansion {
-            if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt) {
-                if node.is_owned(ctxt) {
-                    return Err(format!(
-                        "Expansion of {:?} contains owned place {}",
-                        self,
-                        node.place().to_short_string(ctxt)
-                    ));
-                }
+            if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt)
+                && node.is_owned(ctxt)
+            {
+                return Err(format!(
+                    "Expansion of {:?} contains owned place {}",
+                    self,
+                    node.place().to_short_string(ctxt)
+                ));
             }
         }
         Ok(())

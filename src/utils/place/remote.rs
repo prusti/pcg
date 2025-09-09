@@ -1,15 +1,13 @@
 use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst,
-    RegionIdx,
+    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
 };
-use crate::borrow_pcg::visitor::extract_regions;
 use crate::pcg::{PcgNode, PcgNodeLike};
 use crate::rustc_interface::middle::mir;
 use crate::rustc_interface::middle::ty;
 use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::utils::validity::HasValidityCheck;
-use crate::utils::{self, CompilerCtxt, HasCompilerCtxt, Place};
+use crate::utils::{self, CompilerCtxt, HasCompilerCtxt};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
 pub struct RemotePlace {

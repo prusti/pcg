@@ -2,7 +2,7 @@
 use std::hash::Hash;
 use std::{fmt, marker::PhantomData};
 
-use derive_more::{Display, From, TryFrom};
+use derive_more::{Display, From};
 use serde_json::json;
 
 use super::has_pcs_elem::LabelLifetimeProjection;
@@ -20,7 +20,7 @@ use crate::utils::place::maybe_old::MaybeLabelledPlace;
 use crate::utils::place::maybe_remote::MaybeRemotePlace;
 use crate::utils::remote::RemotePlace;
 use crate::utils::{
-    CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SETTINGS, SnapshotLocation,
+    CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SnapshotLocation,
     VALIDITY_CHECKS_WARN_ONLY,
 };
 use crate::{
@@ -115,7 +115,7 @@ impl PcgRegion {
             PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
             PcgRegion::ReErased => todo!(),
             PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
-            PcgRegion::RePlaceholder(placeholder) => todo!(),
+            PcgRegion::RePlaceholder(_) => todo!(),
             PcgRegion::ReBound(debruijn_index, bound_region) => {
                 ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
             }
@@ -124,7 +124,7 @@ impl PcgRegion {
                 late_param_region.scope,
                 late_param_region.kind,
             ),
-            PcgRegion::PcgInternalError(pcg_region_internal_error) => todo!(),
+            PcgRegion::PcgInternalError(_) => todo!(),
         }
     }
 }
@@ -216,13 +216,6 @@ impl<'tcx> From<Place<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>> {
 }
 
 impl<'tcx, T> PlaceOrConst<'tcx, T> {
-    pub(crate) fn place(self) -> Option<T> {
-        match self {
-            PlaceOrConst::Place(p) => Some(p),
-            PlaceOrConst::Const(_) => None,
-        }
-    }
-
     pub(crate) fn expect_place(self) -> T {
         match self {
             PlaceOrConst::Place(p) => p,
@@ -907,9 +900,9 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         let regions = self.base.regions(ctxt);
         if self.region_idx.index() >= regions.len() {
             if *VALIDITY_CHECKS_WARN_ONLY {
-                return PcgRegion::PcgInternalError(
-                    PcgRegionInternalError::RegionIndexOutOfBounds(self.region_idx),
-                );
+                PcgRegion::PcgInternalError(PcgRegionInternalError::RegionIndexOutOfBounds(
+                    self.region_idx,
+                ))
             } else {
                 unreachable!()
             }

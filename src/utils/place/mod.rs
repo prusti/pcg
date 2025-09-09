@@ -39,7 +39,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
+            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
         },
         visitor::extract_regions,
     },

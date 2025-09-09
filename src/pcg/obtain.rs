@@ -216,10 +216,10 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             leaf_places.to_short_string(ctxt.bc_ctxt())
         );
         for place in leaf_places {
-            if let Some(parent_place) = parent_place {
-                if !parent_place.is_prefix_of(place) {
-                    continue;
-                }
+            if let Some(parent_place) = parent_place
+                && !parent_place.is_prefix_of(place)
+            {
+                continue;
             }
             let action = PcgAction::restore_capability(
                 place,
@@ -822,22 +822,23 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             .borrows_graph()
             .edges_blocking(old_source.into(), ctxt)
             .filter_map(|edge| {
-                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind {
-                    if bf_edge.kind == BorrowFlowEdgeKind::Future && bf_edge.short() != new_source {
-                        return Some((
-                            edge.to_owned_edge(),
-                            BorrowPcgEdge::new(
-                                BorrowFlowEdge::new(
-                                    new_source.into(),
-                                    bf_edge.short(),
-                                    BorrowFlowEdgeKind::Future,
-                                    ctxt,
-                                )
-                                .into(),
-                                edge.conditions.clone(),
-                            ),
-                        ));
-                    }
+                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind
+                    && bf_edge.kind == BorrowFlowEdgeKind::Future
+                    && bf_edge.short() != new_source
+                {
+                    return Some((
+                        edge.to_owned_edge(),
+                        BorrowPcgEdge::new(
+                            BorrowFlowEdge::new(
+                                new_source.into(),
+                                bf_edge.short(),
+                                BorrowFlowEdgeKind::Future,
+                                ctxt,
+                            )
+                            .into(),
+                            edge.conditions.clone(),
+                        ),
+                    ));
                 }
                 None
             })

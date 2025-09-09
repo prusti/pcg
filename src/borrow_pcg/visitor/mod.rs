@@ -12,7 +12,7 @@ struct LifetimeExtractor<'tcx> {
 impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         match ty.kind() {
-            ty::TyKind::Dynamic(predicates, region, _) => {
+            ty::TyKind::Dynamic(_, region, _) => {
                 // TODO: predicates?
                 self.visit_region(*region);
             }

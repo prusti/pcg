@@ -121,13 +121,13 @@ pub struct FunctionShape<'tcx>(
     )>,
 );
 
-impl<'tcx> std::fmt::Display for ArgIdx {
+impl std::fmt::Display for ArgIdx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "a{}", self.0)
     }
 }
 
-impl<'tcx> std::fmt::Display for ArgIdxOrResult {
+impl std::fmt::Display for ArgIdxOrResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ArgIdxOrResult::Argument(arg) => write!(f, "{arg}"),
@@ -150,10 +150,12 @@ impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
 }
 
 impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
+    #[allow(unused)]
     pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
         self.0.is_subset(&other.0)
     }
 
+    #[allow(unused)]
     pub(crate) fn diff(&self, other: &Self) -> Self {
         let diff = self.0.difference(&other.0).copied().collect::<HashSet<_>>();
         Self(diff)
@@ -190,7 +192,7 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
                 }
             }
         }
-        let result = FunctionShape(shape);
-        result
+
+        FunctionShape(shape)
     }
 }

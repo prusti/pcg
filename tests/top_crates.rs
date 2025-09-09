@@ -1,5 +1,4 @@
 #![feature(rustc_private)]
-#![feature(let_chains)]
 use chrono::Local;
 use derive_more::Deref;
 use pcg::utils::TEST_CRATES_START_FROM;

@@ -4,7 +4,7 @@ use crate::borrow_pcg::edge_data::LabelPlacePredicate;
 use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
 use crate::borrow_pcg::has_pcs_elem::{
     LabelLifetimeProjection, LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult,
-    LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+    LabelPlaceWithContext, PlaceLabeller,
 };
 use crate::borrow_pcg::region_projection::{LifetimeProjectionLabel, PcgLifetimeProjectionBase};
 use crate::utils::json::ToJsonWithCompilerCtxt;
