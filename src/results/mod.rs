@@ -141,8 +141,7 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
                     .clone();
 
                 let owned_bridge = from_post_main
-                    .owned
-                    .bridge(&to.entry_state.owned, &from_post_main.capabilities, ctxt)
+                    .bridge(&to.entry_state, location.block, succ, ctxt)
                     .unwrap();
 
                 let mut borrow_actions = BorrowPcgActions::new();

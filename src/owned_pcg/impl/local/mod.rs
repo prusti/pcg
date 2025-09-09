@@ -106,7 +106,7 @@ impl<'tcx> ExpandedPlace<'tcx> {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct LocalExpansions<'tcx> {
-    local: Local,
+    pub(crate) local: Local,
     pub(crate) expansions: HashSet<ExpandedPlace<'tcx>>,
 }
 

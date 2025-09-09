@@ -7,13 +7,13 @@
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgError,
-    owned_pcg::{ExpandedPlace, RepackCollapse, RepackExpand, join::data::JoinOwnedData},
-    pcg::{
-        CapabilityKind, CapabilityLike, ctxt::AnalysisCtxt,
-        place_capabilities::PlaceCapabilitiesInterface,
-    },
+    owned_pcg::{ExpandedPlace, RepackCollapse, RepackExpand, RepackOp, join::data::JoinOwnedData},
+    pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
-    utils::{HasCompilerCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasCompilerCtxt, Place, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
+    },
 };
 use itertools::Itertools;
 
@@ -26,10 +26,10 @@ impl<'pcg, 'tcx> JoinOwnedData<'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
-        ctxt: AnalysisCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError> {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         match (&mut self.owned, &mut other.owned) {
-            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(false),
+            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
             (OwnedPcgLocal::Allocated(to_places), OwnedPcgLocal::Allocated(from_places)) => {
                 let self_allocated = JoinOwnedData {
                     owned: to_places,
@@ -44,15 +44,37 @@ impl<'pcg, 'tcx> JoinOwnedData<'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
                     capabilities: other.capabilities,
                     block: other.block,
                 };
-                self_allocated.join(other_allocated, ctxt)?;
-                Ok(true)
+                self_allocated.join(other_allocated, ctxt)
             }
-            (OwnedPcgLocal::Allocated(..), OwnedPcgLocal::Unallocated) => {
+            (OwnedPcgLocal::Allocated(expansions), OwnedPcgLocal::Unallocated) => {
+                let mut repacks = vec![];
+                for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
+                    if k.expect_concrete() > CapabilityKind::Write {
+                        repacks.push(RepackOp::Weaken(
+                            place,
+                            k.expect_concrete(),
+                            CapabilityKind::Write,
+                        ));
+                        *k = CapabilityKind::Write.into();
+                    }
+                }
+                repacks.extend(expansions.collapse(
+                    expansions.local.into(),
+                    None,
+                    self.capabilities,
+                    ctxt,
+                )?);
+                repacks.push(RepackOp::StorageDead(expansions.local));
                 *self.owned = OwnedPcgLocal::Unallocated;
-                Ok(true)
+                Ok(repacks)
             }
-            // Can jump to a `is_cleanup` block with some paths being alloc and other not
-            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Allocated(..)) => Ok(false),
+            // A bit of an unusual case, should happen only when we
+            // "allocated" a local to allow it to immediately be
+            // StorageDead-ed. In this case we should ignore the SD.
+            // assert_eq!(cps[&cps.get_local().into()], CapabilityKind::Write);
+            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Allocated(expansions)) => {
+                Ok(vec![RepackOp::IgnoreStorageDead(expansions.local)])
+            }
         }
     }
 }
@@ -61,17 +83,16 @@ impl<'pcg, 'tcx> JoinOwnedData<'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
-        ctxt: AnalysisCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError> {
-        let mut changed = false;
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
             let local: mir::Local = local.into();
             let mut owned_local_data = self.map_owned(|owned| owned.get_mut(local).unwrap());
             let other_owned_local_data = other.map_owned(|owned| owned.get(local).unwrap());
-            let local_changed = owned_local_data.join(other_owned_local_data, ctxt)?;
-            changed = changed || local_changed;
+            actions.extend(owned_local_data.join(other_owned_local_data, ctxt)?);
         }
-        Ok(changed)
+        Ok(actions)
     }
 }
 

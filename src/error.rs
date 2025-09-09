@@ -31,6 +31,7 @@ pub enum PCGErrorKind {
 }
 
 impl PcgError {
+    #[allow(dead_code)]
     pub(crate) fn internal(msg: String) -> Self {
         Self {
             kind: PCGErrorKind::Internal(PcgInternalError::new(msg)),
