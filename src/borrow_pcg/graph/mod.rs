@@ -1,10 +1,10 @@
 //! Defines the Borrow PCG Graph
 pub(crate) mod aliases;
+pub mod coupling;
 pub(crate) mod frozen;
 pub(crate) mod join;
 pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
-pub mod coupling;
 mod mutate;
 
 use crate::{
