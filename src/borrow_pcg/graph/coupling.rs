@@ -190,6 +190,9 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    /// Returns the set of successful coupling results based on the abstraction
+    /// edges in the graph.  If you are also interested in the unsuccessful
+    /// couplings, use [`BorrowsGraph::coupling_results`].
     pub fn coupled_edges(&self) -> HashSet<PcgCoupledEdge<'tcx>> {
         self.coupling_results()
             .into_iter()
