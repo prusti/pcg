@@ -1,19 +1,21 @@
-use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 
-use crate::borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface};
-use crate::borrow_pcg::visitor::extract_regions;
-use crate::rustc_interface::middle::mir::{Body, Location};
-use crate::rustc_interface::middle::ty::{self, RegionVid};
-use crate::utils::CompilerCtxt;
-use crate::utils::callbacks::RustBorrowCheckerImpl;
-use crate::utils::display::DisplayWithCompilerCtxt;
 use crate::{
-    borrow_checker::r#impl::PoloniusBorrowChecker,
-    rustc_interface::borrowck::{PoloniusRegionVid, RegionInferenceContext},
+    borrow_checker::{
+        BorrowCheckerInterface, RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker,
+    },
+    borrow_pcg::visitor::extract_regions,
+    rustc_interface::{
+        borrowck::{PoloniusRegionVid, RegionInferenceContext},
+        middle::{
+            mir::{Body, Location},
+            ty::{self, RegionVid},
+        },
+    },
+    utils::{CompilerCtxt, callbacks::RustBorrowCheckerImpl, display::DisplayWithCompilerCtxt},
 };
 
 use super::{

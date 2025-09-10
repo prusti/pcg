@@ -1,7 +1,9 @@
-use crate::error::PcgError;
-use crate::rustc_interface::middle::mir::{
-    self,
-    visit::{self},
+use crate::{
+    error::PcgError,
+    rustc_interface::middle::mir::{
+        self,
+        visit::{self},
+    },
 };
 
 use super::Place;

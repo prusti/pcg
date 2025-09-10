@@ -1,28 +1,47 @@
 use super::AbstractionBlockEdge;
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge};
-use crate::borrow_pcg::domain::LoopAbstractionOutput;
-use crate::borrow_pcg::edge::abstraction::{AbstractionType, LoopAbstractionInput};
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::borrow_pcg::edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate};
-use crate::borrow_pcg::has_pcs_elem::{
-    LabelLifetimeProjection, LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult,
-    PlaceLabeller,
+use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
+        borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge},
+        domain::LoopAbstractionOutput,
+        edge::{
+            abstraction::{
+                AbstractionEdge, LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata,
+            },
+            kind::BorrowPcgEdgeKind,
+        },
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        has_pcs_elem::{
+            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
+            LabelLifetimeProjectionResult, PlaceLabeller,
+        },
+        path_condition::ValidityConditions,
+        region_projection::LifetimeProjectionLabel,
+    },
+    pcg::PcgNode,
+    rustc_interface::middle::mir::{self, BasicBlock, Location},
+    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
-use crate::borrow_pcg::path_condition::ValidityConditions;
-use crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
-use crate::pcg::PcgNode;
-use crate::rustc_interface::middle::mir::{BasicBlock, Location};
-use crate::utils::CompilerCtxt;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::validity::HasValidityCheck;
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct LoopAbstraction<'tcx> {
-    pub(crate) edge:
-        AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
-    pub(crate) block: BasicBlock,
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::HyperEdge;
+
+pub(crate) type LoopAbstractionEdge<'tcx> =
+    AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
+
+impl<'tcx> LoopAbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
+    pub(crate) fn to_hyper_edge(
+        &self,
+    ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {
+        HyperEdge::new(vec![self.input], vec![self.output])
+    }
 }
+
+pub type LoopAbstractionEdgeMetadata<'tcx> = mir::BasicBlock;
+
+pub type LoopAbstraction<'tcx> =
+    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata<'tcx>, LoopAbstractionEdge<'tcx>>;
 
 impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstraction<'tcx> {
     fn label_lifetime_projection(
@@ -94,7 +113,7 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
     ) -> String {
         format!(
             "Loop({:?}): {}",
-            self.block,
+            self.metadata,
             self.edge.to_short_string(ctxt)
         )
     }
@@ -103,7 +122,7 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 impl<'tcx> ToBorrowsEdge<'tcx> for LoopAbstraction<'tcx> {
     fn to_borrow_pcg_edge(self, path_conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge::new(
-            BorrowPcgEdgeKind::Abstraction(AbstractionType::Loop(self)),
+            BorrowPcgEdgeKind::Abstraction(AbstractionEdge::Loop(self)),
             path_conditions,
         )
     }
@@ -114,12 +133,15 @@ impl<'tcx> LoopAbstraction<'tcx> {
         edge: AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
         block: BasicBlock,
     ) -> Self {
-        Self { edge, block }
+        Self {
+            edge,
+            metadata: block,
+        }
     }
 
     pub(crate) fn location(&self) -> Location {
         Location {
-            block: self.block,
+            block: self.metadata,
             statement_index: 0,
         }
     }

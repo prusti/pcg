@@ -100,7 +100,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: zgrannan/symbolic-execution
-        ref: zgrannan/next5
+        ref: main
         path: symbolic-execution
 
     - name: Checkout prusti repository

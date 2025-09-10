@@ -1,12 +1,13 @@
 use derive_more::{Deref, DerefMut};
 
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::action::BorrowPcgAction;
-use crate::borrow_pcg::unblock_graph::BorrowPcgUnblockAction;
-use crate::rustc_interface::data_structures::fx::FxHashSet;
-use crate::utils::CompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::{Weaken, pcg_validity_assert};
+use crate::{
+    Weaken,
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
+    pcg_validity_assert,
+    rustc_interface::data_structures::fx::FxHashSet,
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+};
 
 use super::BorrowPcgActionKind;
 

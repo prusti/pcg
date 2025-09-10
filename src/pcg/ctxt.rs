@@ -1,19 +1,21 @@
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::pcg::place_capabilities::{
-    PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    pcg::{
+        BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
+        CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
+        PcgBlockDebugVisualizationGraphs, PcgRef, SymbolicCapability, SymbolicCapabilityCtxt,
+        place_capabilities::{
+            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+        },
+    },
+    rustc_interface::middle::{mir, ty},
+    utils::{
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
+        SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap, logging::LogPredicate,
+    },
 };
-use crate::pcg::{
-    BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
-    CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
-    PcgBlockDebugVisualizationGraphs, PcgRef, SymbolicCapability, SymbolicCapabilityCtxt,
-};
-use crate::rustc_interface::middle::{mir, ty};
-use crate::utils::data_structures::HashMap;
-use crate::utils::logging::LogPredicate;
-use crate::utils::{
-    CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
-    SnapshotLocation, StmtGraphs, ToGraph,
-};
+
+#[cfg(feature = "visualization")]
 use crate::visualization::write_pcg_dot_graph_to_file;
 
 impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
@@ -55,6 +57,7 @@ fn dot_filename_for(output_dir: &str, relative_filename: &str) -> String {
 pub use private::*;
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
+    #[cfg(feature = "visualization")]
     pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
         self,
         location: mir::Location,

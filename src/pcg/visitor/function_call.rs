@@ -1,22 +1,30 @@
 use super::PcgVisitor;
-use crate::action::BorrowPcgAction;
-use crate::borrow_pcg::abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape};
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
-use crate::borrow_pcg::domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput};
-use crate::borrow_pcg::edge::abstraction::function::{
-    FunctionCallAbstraction, FunctionCallData, FunctionData,
+use crate::{
+    action::BorrowPcgAction,
+    borrow_pcg::{
+        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
+        borrow_pcg_edge::BorrowPcgEdge,
+        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
+        edge::abstraction::{
+            AbstractionBlockEdge, AbstractionEdge,
+            function::{FunctionCallAbstraction, FunctionCallData, FunctionData},
+        },
+        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        region_projection::{HasTy, LifetimeProjection},
+    },
+    pcg::obtain::{HasSnapshotLocation, PlaceExpander},
+    rustc_interface::{
+        middle::mir::{Location, Operand},
+        span::Span,
+    },
+    utils::display::DisplayWithCompilerCtxt,
 };
-use crate::borrow_pcg::edge::abstraction::{AbstractionBlockEdge, AbstractionType};
-use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::region_projection::{HasTy, LifetimeProjection};
-use crate::pcg::obtain::{HasSnapshotLocation, PlaceExpander};
-use crate::rustc_interface::middle::mir::{Location, Operand};
-use crate::rustc_interface::span::Span;
-use crate::utils::display::DisplayWithCompilerCtxt;
 
 use super::PcgError;
-use crate::rustc_interface::middle::ty::{self};
-use crate::utils::{self, DataflowCtxt, HasCompilerCtxt, SnapshotLocation};
+use crate::{
+    rustc_interface::middle::ty::{self},
+    utils::{self, DataflowCtxt, HasCompilerCtxt, SnapshotLocation},
+};
 
 fn get_function_call_data<'a, 'tcx: 'a>(
     func: &Operand<'tcx>,
@@ -82,7 +90,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             self.record_and_apply_action(
                 BorrowPcgAction::add_edge(
                     BorrowPcgEdge::new(
-                        AbstractionType::FunctionCall(FunctionCallAbstraction::new(
+                        AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
                             call.location,
                             function_data,
                             AbstractionBlockEdge::new(

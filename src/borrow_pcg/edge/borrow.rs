@@ -21,14 +21,19 @@ use crate::{
     utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, remote::RemotePlace},
 };
 
-use crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, LocalNode};
-use crate::borrow_pcg::edge_data::EdgeData;
-use crate::borrow_pcg::region_projection::LifetimeProjection;
-use crate::utils::CompilerCtxt;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::validity::HasValidityCheck;
+use crate::{
+    borrow_pcg::{
+        borrow_pcg_edge::{BlockedNode, LocalNode},
+        edge_data::EdgeData,
+        region_projection::LifetimeProjection,
+    },
+    utils::{
+        CompilerCtxt,
+        display::DisplayWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        validity::HasValidityCheck,
+    },
+};
 
 /// A borrow that is explicit in the MIR (e.g. `let x = &mut y;`)
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]

@@ -1,28 +1,33 @@
-use crate::action::{BorrowPcgAction, PcgAction};
-use crate::borrow_pcg::action::LabelPlaceReason;
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
-use crate::borrow_pcg::borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion};
-use crate::borrow_pcg::edge::deref::DerefEdge;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::borrow_pcg::edge_data::EdgeData;
-use crate::borrow_pcg::graph::Conditioned;
-use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::state::{BorrowStateMutRef, BorrowsStateLike};
-use crate::owned_pcg::RepackOp;
-use crate::pcg::CapabilityKind;
-use crate::pcg::obtain::{
-    ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceExpander, PlaceObtainer,
-    RenderDebugGraph,
+use crate::{
+    action::{BorrowPcgAction, PcgAction},
+    borrow_pcg::{
+        action::LabelPlaceReason,
+        borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
+        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
+        edge_data::EdgeData,
+        graph::Conditioned,
+        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        state::{BorrowStateMutRef, BorrowsStateLike},
+    },
+    owned_pcg::RepackOp,
+    pcg::{
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        obtain::{
+            ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceExpander,
+            PlaceObtainer, RenderDebugGraph,
+        },
+        place_capabilities::{
+            BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+            SymbolicPlaceCapabilities,
+        },
+    },
+    rustc_interface::middle::mir,
+    utils::{
+        CompilerCtxt, DataflowCtxt, HasPlace, ToGraph, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+    },
 };
-use crate::pcg::place_capabilities::{
-    BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-};
-use crate::pcg::{EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike};
-use crate::rustc_interface::middle::mir;
-use crate::utils::data_structures::HashSet;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::maybe_old::MaybeLabelledPlace;
-use crate::utils::{CompilerCtxt, DataflowCtxt, HasPlace, ToGraph};
 use std::cmp::Ordering;
 
 use crate::utils::{Place, SnapshotLocation};
@@ -515,6 +520,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 borrow: self.pcg.borrow.as_ref(),
                 capabilities: self.pcg.capabilities,
             };
+            #[cfg(feature = "visualization")]
             if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
                 analysis_ctxt.generate_pcg_debug_visualization_graph(
                     location,
@@ -678,6 +684,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
 
         self.expand_to(place, obtain_type, self.ctxt)?;
+
+        #[cfg(feature = "visualization")]
         self.render_debug_graph(None, "after step 5");
 
         // pcg_validity_assert!(

@@ -13,12 +13,13 @@ use super::{
     DataflowStmtPhase, ErrorState, EvalStmtPhase, PcgBlockDebugVisualizationGraphs,
     domain::PcgDomain, visitor::PcgVisitor,
 };
-use crate::error::PcgError;
 use crate::{
     BodyAndBorrows,
+    error::PcgError,
     pcg::{
-        DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData, SymbolicCapabilityCtxt,
-        ctxt::AnalysisCtxt, triple::TripleWalker,
+        BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
+        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
+        triple::TripleWalker,
     },
     pcg_validity_assert,
     rustc_interface::{
@@ -34,11 +35,9 @@ use crate::{
         },
         mir_dataflow::{Forward, move_paths::MoveData},
     },
-    utils::{AnalysisLocation, DataflowCtxt, visitor::FallableVisitor},
-};
-use crate::{
-    pcg::{BodyAnalysis, dot_graphs::PcgDotGraphsForBlock},
-    utils::{CompilerCtxt, arena::PcgArenaRef},
+    utils::{
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, arena::PcgArenaRef, visitor::FallableVisitor,
+    },
 };
 
 #[derive(Clone)]
@@ -275,9 +274,12 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             let state = state.expect_transfer();
             self.analyzed_blocks.insert(location.block.index());
 
-            state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
-            for phase in EvalStmtPhase::phases() {
-                state.generate_dot_graph(phase.into(), location, state.ctxt);
+            #[cfg(feature = "visualization")]
+            {
+                state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
+                for phase in EvalStmtPhase::phases() {
+                    state.generate_dot_graph(phase.into(), location, state.ctxt);
+                }
             }
         }
         Ok(())

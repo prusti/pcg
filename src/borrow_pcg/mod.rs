@@ -14,5 +14,4 @@ pub mod state;
 pub mod unblock_graph;
 pub(crate) mod visitor;
 
-pub use domain::AbstractionInputTarget;
-pub use domain::AbstractionOutputTarget;
+pub use domain::{AbstractionInputTarget, AbstractionOutputTarget};

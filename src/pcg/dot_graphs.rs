@@ -1,7 +1,9 @@
-use crate::pcg::{DataflowStmtPhase, EvalStmtPhase};
-use crate::pcg_validity_assert;
-use crate::rustc_interface::middle::mir::{self, BasicBlock};
-use crate::utils::{CompilerCtxt, StmtGraphs};
+use crate::{
+    pcg::{DataflowStmtPhase, EvalStmtPhase},
+    pcg_validity_assert,
+    rustc_interface::middle::mir::{self, BasicBlock},
+    utils::{CompilerCtxt, StmtGraphs},
+};
 
 #[derive(Clone, Debug)]
 pub(crate) struct PcgDotGraphsForBlock {

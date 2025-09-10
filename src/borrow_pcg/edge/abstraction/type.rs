@@ -1,20 +1,20 @@
 use std::marker::PhantomData;
 
-use crate::pcg::PcgNode;
-use crate::rustc_interface::middle::mir::Location;
 use crate::{
     borrow_pcg::{
         domain::{AbstractionInputTarget, AbstractionOutputTarget, FunctionCallAbstractionOutput},
-        edge::abstraction::{AbstractionBlockEdge, AbstractionInputLike, AbstractionType},
+        edge::abstraction::{AbstractionBlockEdge, AbstractionEdge, AbstractionInputLike},
     },
+    pcg::PcgNode,
+    rustc_interface::middle::mir::Location,
     utils::CompilerCtxt,
 };
 
-impl<'tcx> AbstractionType<'tcx> {
+impl<'tcx> AbstractionEdge<'tcx> {
     pub fn location(&self) -> Location {
         match self {
-            AbstractionType::FunctionCall(c) => c.location(),
-            AbstractionType::Loop(c) => c.location(),
+            AbstractionEdge::FunctionCall(c) => c.location(),
+            AbstractionEdge::Loop(c) => c.location(),
         }
     }
 
@@ -35,12 +35,12 @@ impl<'tcx> AbstractionType<'tcx> {
     ) -> AbstractionBlockEdge<'tcx, AbstractionInputTarget<'tcx>, AbstractionOutputTarget<'tcx>>
     {
         match self {
-            AbstractionType::FunctionCall(c) => AbstractionBlockEdge {
+            AbstractionEdge::FunctionCall(c) => AbstractionBlockEdge {
                 _phantom: PhantomData,
                 input: c.edge().input().to_abstraction_input(ctxt),
                 output: c.edge().output().into(),
             },
-            AbstractionType::Loop(c) => AbstractionBlockEdge {
+            AbstractionEdge::Loop(c) => AbstractionBlockEdge {
                 _phantom: PhantomData,
                 input: c.edge.input().to_abstraction_input(ctxt),
                 output: c.edge.output().to_abstraction_output(),

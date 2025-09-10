@@ -30,9 +30,11 @@ use crate::{
     },
 };
 
-use crate::borrow_pcg::action::actions::BorrowPcgActions;
-use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::{owned_pcg::RepackOp, utils::CompilerCtxt};
+use crate::{
+    borrow_pcg::action::actions::BorrowPcgActions,
+    owned_pcg::RepackOp,
+    utils::{CompilerCtxt, eval_stmt_data::EvalStmtData},
+};
 
 type Cursor<'mir, 'tcx, E> = ResultsCursor<'mir, 'tcx, E>;
 /// The result of the PCG analysis.
@@ -141,8 +143,7 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
                     .clone();
 
                 let owned_bridge = from_post_main
-                    .owned
-                    .bridge(&to.entry_state.owned, &from_post_main.capabilities, ctxt)
+                    .bridge(&to.entry_state, location.block, succ, ctxt)
                     .unwrap();
 
                 let mut borrow_actions = BorrowPcgActions::new();

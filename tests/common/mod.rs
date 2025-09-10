@@ -1,7 +1,9 @@
 use serde_derive::Deserialize;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 #[allow(dead_code)]
 pub fn get(url: &str) -> reqwest::Result<reqwest::blocking::Response> {

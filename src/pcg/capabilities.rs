@@ -565,8 +565,7 @@ mod tests {
 
     #[test]
     fn test_capability_kind_dag_reachability() {
-        use petgraph::algo::has_path_connecting;
-        use petgraph::graph::DiGraph;
+        use petgraph::{algo::has_path_connecting, graph::DiGraph};
 
         // Create directed graph
         let mut graph = DiGraph::new();

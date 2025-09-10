@@ -3,15 +3,12 @@ use std::collections::HashSet;
 
 use derive_more::From;
 
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::error::PcgInternalError;
+use crate::{borrow_checker::BorrowCheckerInterface, error::PcgInternalError};
 
-use super::borrow_pcg_edge::BorrowPcgEdgeLike;
-use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge};
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike};
 use crate::{
     borrow_pcg::{edge_data::EdgeData, state::BorrowsState},
-    utils::CompilerCtxt,
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
 
 type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;

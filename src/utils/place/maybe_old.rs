@@ -1,21 +1,24 @@
-use crate::borrow_pcg::borrow_pcg_edge::LocalNode;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
-use crate::borrow_pcg::region_projection::{
-    HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
-};
-use crate::borrow_pcg::visitor::extract_regions;
-use crate::error::PcgError;
-use crate::pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike};
-use crate::rustc_interface::PlaceTy;
-use crate::rustc_interface::middle::mir::PlaceElem;
-use crate::rustc_interface::middle::{mir, ty};
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::maybe_remote::MaybeRemotePlace;
-use crate::utils::validity::HasValidityCheck;
-use crate::utils::{
-    CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, SnapshotLocation,
+use crate::{
+    borrow_pcg::{
+        borrow_pcg_edge::LocalNode,
+        edge_data::LabelPlacePredicate,
+        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
+        region_projection::{
+            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
+        },
+        visitor::extract_regions,
+    },
+    error::PcgError,
+    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
+    rustc_interface::{
+        PlaceTy,
+        middle::{mir, mir::PlaceElem, ty},
+    },
+    utils::{
+        CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, SnapshotLocation,
+        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt,
+        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
+    },
 };
 use derive_more::{From, TryInto};
 use serde_json::json;

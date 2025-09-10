@@ -1,6 +1,7 @@
-use crate::rustc_interface::middle::mir;
-use crate::utils::HasBorrowCheckerCtxt;
-use crate::{pcg_validity_assert, pcg_validity_expect_ok};
+use crate::{
+    pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir,
+    utils::HasBorrowCheckerCtxt,
+};
 
 use super::CompilerCtxt;
 

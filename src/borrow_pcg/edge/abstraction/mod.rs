@@ -10,7 +10,10 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
-        edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
+        edge::abstraction::{
+            function::{AbstractionBlockEdgeWithMetadata, FunctionCallAbstraction},
+            r#loop::LoopAbstraction,
+        },
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
@@ -22,27 +25,64 @@ use crate::{
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
 };
 
-use crate::borrow_pcg::borrow_pcg_edge::LocalNode;
-use crate::borrow_pcg::domain::LoopAbstractionInput;
-use crate::borrow_pcg::edge_data::EdgeData;
-use crate::borrow_pcg::region_projection::LifetimeProjection;
-use crate::pcg::PcgNode;
-use crate::utils::CompilerCtxt;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::validity::HasValidityCheck;
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::PcgCoupledEdge;
 
-/// Either a function call or a loop abstraction
+use crate::{
+    borrow_pcg::{
+        borrow_pcg_edge::LocalNode, domain::LoopAbstractionInput, edge_data::EdgeData,
+        region_projection::LifetimeProjection,
+    },
+    pcg::PcgNode,
+    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+};
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub enum AbstractionType<'tcx> {
-    FunctionCall(FunctionCallAbstraction<'tcx>),
-    Loop(LoopAbstraction<'tcx>),
+pub enum FunctionCallOrLoop<FunctionCallData, LoopData> {
+    FunctionCall(FunctionCallData),
+    Loop(LoopData),
 }
 
+impl<FunctionCallData, LoopData> FunctionCallOrLoop<FunctionCallData, LoopData> {
+    pub(crate) fn bimap<R>(
+        self,
+        f: impl FnOnce(FunctionCallData) -> R,
+        g: impl FnOnce(LoopData) -> R,
+    ) -> R {
+        match self {
+            FunctionCallOrLoop::FunctionCall(data) => f(data),
+            FunctionCallOrLoop::Loop(data) => g(data),
+        }
+    }
+}
+
+pub type AbstractionEdge<'tcx> =
+    FunctionCallOrLoop<FunctionCallAbstraction<'tcx>, LoopAbstraction<'tcx>>;
+
 edgedata_enum!(
-    AbstractionType<'tcx>,
+    AbstractionEdge<'tcx>,
     FunctionCall(FunctionCallAbstraction<'tcx>),
     Loop(LoopAbstraction<'tcx>),
 );
+
+impl<'tcx> AbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
+    /// Creates a singleton coupling hyperedge from this edge.
+    ///
+    /// This is presumably NOT what you want, as there is no coupling logic
+    /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
+    /// However, Prusti is currently using this function for loops.
+    pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
+        match self {
+            AbstractionEdge::FunctionCall(function_call) => {
+                PcgCoupledEdge::FunctionCall(function_call.edge.to_hyper_edge())
+            }
+            AbstractionEdge::Loop(loop_abstraction) => {
+                PcgCoupledEdge::Loop(loop_abstraction.edge.to_hyper_edge())
+            }
+        }
+    }
+}
 
 /// A hyperedge for a function or loop abstraction
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -50,6 +90,18 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     _phantom: PhantomData<&'tcx ()>,
     input: Input,
     pub(crate) output: Output,
+}
+
+impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
+    pub(crate) fn with_metadata<Metadata>(
+        self,
+        metadata: Metadata,
+    ) -> AbstractionBlockEdgeWithMetadata<Metadata, Self> {
+        AbstractionBlockEdgeWithMetadata {
+            metadata,
+            edge: self,
+        }
+    }
 }
 
 impl<

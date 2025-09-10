@@ -4,10 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::pcg_validity_assert;
-use crate::rustc_interface::middle::mir::{
-    self, BorrowKind, Local, Location, MutBorrowKind, Operand, RETURN_PLACE, Rvalue, Statement,
-    StatementKind, Terminator, TerminatorKind,
+use crate::{
+    pcg_validity_assert,
+    rustc_interface::middle::mir::{
+        self, BorrowKind, Local, Location, MutBorrowKind, Operand, RETURN_PLACE, Rvalue, Statement,
+        StatementKind, Terminator, TerminatorKind,
+    },
 };
 
 #[rustversion::before(2025-03-02)]
@@ -16,11 +18,10 @@ use crate::rustc_interface::middle::mir::Mutability;
 #[rustversion::since(2025-03-02)]
 use crate::rustc_interface::middle::mir::RawPtrKind;
 
-use crate::utils::visitor::FallableVisitor;
 use crate::{
     error::{PcgError, PcgUnsupportedError},
     pcg::CapabilityKind,
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, visitor::FallableVisitor},
 };
 
 #[derive(Debug, Clone, Copy)]

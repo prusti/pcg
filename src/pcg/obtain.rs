@@ -53,6 +53,7 @@ pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>>
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> RenderDebugGraph
     for PlaceObtainer<'_, 'a, 'tcx, Ctxt>
 {
+    #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
         self.pcg.as_ref().render_debug_graph(
             self.location(),
@@ -265,7 +266,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             .collect::<Vec<_>>();
 
         for mut rp in derefs_to_disconnect.iter().copied() {
-            tracing::info!(
+            tracing::debug!(
                 "Disconnecting deref projection {}",
                 rp.to_short_string(ctxt.bc_ctxt())
             );
@@ -297,9 +298,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .into(),
             )?;
         }
-        // TODO: THis could be a hack
+        // TODO: This could be a hack
         if !derefs_to_disconnect.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 "Labeling deref projections for place {}",
                 place.to_short_string(ctxt.ctxt())
             );
@@ -425,7 +426,11 @@ pub(crate) trait HasSnapshotLocation {
 }
 
 pub(crate) trait RenderDebugGraph {
+    #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str);
+
+    #[cfg(not(feature = "visualization"))]
+    fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {}
 }
 
 pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:

@@ -121,10 +121,10 @@ impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext>
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
-pub(crate) struct LoopAbstractionInput<'tcx>(pub(crate) PcgNode<'tcx>);
+pub struct LoopAbstractionInput<'tcx>(pub(crate) PcgNode<'tcx>);
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
-pub(crate) struct LoopAbstractionOutput<'tcx>(pub(crate) LocalNode<'tcx>);
+pub struct LoopAbstractionOutput<'tcx>(pub(crate) LocalNode<'tcx>);
 
 impl<'tcx> From<MaybeRemotePlace<'tcx>> for LoopAbstractionInput<'tcx> {
     fn from(value: MaybeRemotePlace<'tcx>) -> Self {

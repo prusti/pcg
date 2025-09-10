@@ -2,9 +2,7 @@ use derive_more::From;
 
 use crate::pcg::EvalStmtPhase;
 
-use super::arena::PcgArenaRef;
-use super::eval_stmt_data::EvalStmtData;
-use super::validity::HasValidityCheck;
+use super::{arena::PcgArenaRef, eval_stmt_data::EvalStmtData, validity::HasValidityCheck};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct DomainData<T> {

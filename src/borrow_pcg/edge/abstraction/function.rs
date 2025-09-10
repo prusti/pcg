@@ -1,10 +1,7 @@
-use crate::borrow_pcg::abstraction::FunctionShapeDataSource;
-use crate::borrow_pcg::region_projection::PcgRegion;
-use crate::rustc_interface::infer::infer::TyCtxtInferExt;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        abstraction::FunctionShape,
+        abstraction::{FunctionShape, FunctionShapeDataSource},
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
@@ -13,11 +10,12 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
         },
-        region_projection::LifetimeProjectionLabel,
+        region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     pcg::PcgNode,
     rustc_interface::{
         hir::def_id::DefId,
+        infer::infer::TyCtxtInferExt,
         middle::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
@@ -27,6 +25,9 @@ use crate::{
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
+
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::HyperEdge;
 
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
@@ -160,17 +161,37 @@ impl<'tcx> FunctionCallData<'tcx> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct FunctionCallAbstraction<'tcx> {
-    location: Location,
-    /// This may be `None` if the call is to a function pointer
-    function_data: Option<FunctionData<'tcx>>,
-    edge: AbstractionBlockEdge<
-        'tcx,
-        FunctionCallAbstractionInput<'tcx>,
-        FunctionCallAbstractionOutput<'tcx>,
-    >,
+pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
+    'tcx,
+    FunctionCallAbstractionInput<'tcx>,
+    FunctionCallAbstractionOutput<'tcx>,
+>;
+
+impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
+    pub fn to_hyper_edge(
+        &self,
+    ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {
+        HyperEdge::new(vec![self.input], vec![self.output])
+    }
 }
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
+    pub(crate) metadata: Metadata,
+    pub(crate) edge: Edge,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
+pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
+    location: Location,
+    pub(crate) function_data: Option<FunctionData<'tcx>>,
+}
+
+pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
+    FunctionCallAbstractionEdgeMetadata<'tcx>,
+    FunctionCallAbstractionEdge<'tcx>,
+>;
 
 impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstraction<'tcx> {
     fn label_lifetime_projection(
@@ -245,12 +266,12 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
     ) -> String {
         format!(
             "call{} at {:?}: {}",
-            if let Some(function_data) = &self.function_data {
+            if let Some(function_data) = &self.metadata.function_data {
                 format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
             } else {
                 "".to_string()
             },
-            self.location,
+            self.metadata.location,
             self.edge.to_short_string(ctxt)
         )
     }
@@ -258,14 +279,14 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 
 impl<'tcx> FunctionCallAbstraction<'tcx> {
     pub fn def_id(&self) -> Option<DefId> {
-        self.function_data.as_ref().map(|f| f.def_id)
+        self.metadata.function_data.as_ref().map(|f| f.def_id)
     }
     pub fn substs(&self) -> Option<GenericArgsRef<'tcx>> {
-        self.function_data.as_ref().map(|f| f.substs)
+        self.metadata.function_data.as_ref().map(|f| f.substs)
     }
 
     pub fn location(&self) -> Location {
-        self.location
+        self.metadata.location
     }
 
     pub fn edge(
@@ -288,8 +309,10 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
         >,
     ) -> Self {
         Self {
-            location,
-            function_data,
+            metadata: FunctionCallAbstractionEdgeMetadata {
+                location,
+                function_data,
+            },
             edge,
         }
     }

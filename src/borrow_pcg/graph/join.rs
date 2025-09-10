@@ -1,29 +1,34 @@
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdgeLike;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::borrow_pcg::graph::loop_abstraction::ConstructAbstractionGraphResult;
-use crate::borrow_pcg::has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate};
-use crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
-use crate::error::{PcgError, PcgUnsupportedError};
-use crate::r#loop::PlaceUsages;
-use crate::owned_pcg::OwnedPcg;
-use crate::pcg::ctxt::AnalysisCtxt;
-use crate::pcg::place_capabilities::{
-    PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-};
-use crate::pcg::{BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability};
-use crate::pcg_validity_assert;
-use crate::utils::data_structures::HashSet;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::logging::LogPredicate;
-use crate::utils::{CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation, logging};
-use crate::visualization::dot_graph::DotGraph;
-use crate::visualization::generate_borrows_dot_graph;
 use crate::{
-    borrow_pcg::path_condition::ValidityConditions,
+    borrow_pcg::{
+        borrow_pcg_edge::BorrowPcgEdgeLike,
+        edge::kind::BorrowPcgEdgeKind,
+        graph::loop_abstraction::ConstructAbstractionGraphResult,
+        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
+        path_condition::ValidityConditions,
+        region_projection::LifetimeProjectionLabel,
+    },
+    error::{PcgError, PcgUnsupportedError},
+    r#loop::PlaceUsages,
+    owned_pcg::OwnedPcg,
+    pcg::{
+        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
+        ctxt::AnalysisCtxt,
+        place_capabilities::{
+            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+        },
+    },
+    pcg_validity_assert,
     rustc_interface::middle::{mir, mir::BasicBlock},
-    utils::validity::HasValidityCheck,
+    utils::{
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, logging, logging::LogPredicate,
+        validity::HasValidityCheck,
+    },
     validity_checks_enabled,
 };
+
+#[cfg(feature = "visualization")]
+use crate::visualization::{dot_graph::DotGraph, generate_borrows_dot_graph};
 
 use super::{BorrowsGraph, borrows_imgcat_debug};
 
@@ -58,6 +63,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     ) where
         'tcx: 'a,
     {
+        #[cfg(feature = "visualization")]
         if borrows_imgcat_debug(block, debug_imgcat)
             && let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, capabilities, self)
         {
@@ -112,6 +118,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         if let Some(used_places) = args.body_analysis.get_places_used_in_loop(self_block) {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
+            #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
                 && let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, args.capabilities, self)
             {
@@ -153,23 +160,31 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 [ctxt],
                 "Graph became invalid after join. self: {self_block:?}, other: {other_block:?}"
             );
-            if let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, args.capabilities, self) {
-                DotGraph::render_with_imgcat(&dot_graph, "Invalid self graph").unwrap_or_else(
-                    |e| {
-                        eprintln!("Error rendering self graph: {e}");
-                    },
-                );
-            }
-            if let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, args.capabilities, &old_self) {
-                DotGraph::render_with_imgcat(&dot_graph, "Old self graph").unwrap_or_else(|e| {
-                    eprintln!("Error rendering old self graph: {e}");
-                });
-            }
-            if let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, args.capabilities, other_graph)
+            #[cfg(feature = "visualization")]
             {
-                DotGraph::render_with_imgcat(&dot_graph, "Other graph").unwrap_or_else(|e| {
-                    eprintln!("Error rendering other graph: {e}");
-                });
+                if let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, args.capabilities, self) {
+                    DotGraph::render_with_imgcat(&dot_graph, "Invalid self graph").unwrap_or_else(
+                        |e| {
+                            eprintln!("Error rendering self graph: {e}");
+                        },
+                    );
+                }
+                if let Ok(dot_graph) =
+                    generate_borrows_dot_graph(ctxt, args.capabilities, &old_self)
+                {
+                    DotGraph::render_with_imgcat(&dot_graph, "Old self graph").unwrap_or_else(
+                        |e| {
+                            eprintln!("Error rendering old self graph: {e}");
+                        },
+                    );
+                }
+                if let Ok(dot_graph) =
+                    generate_borrows_dot_graph(ctxt, args.capabilities, other_graph)
+                {
+                    DotGraph::render_with_imgcat(&dot_graph, "Other graph").unwrap_or_else(|e| {
+                        eprintln!("Error rendering other graph: {e}");
+                    });
+                }
             }
         }
         Ok(())

@@ -1,5 +1,7 @@
-use crate::rustc_interface::middle::mir;
-use crate::utils::{HasCompilerCtxt, Place};
+use crate::{
+    rustc_interface::middle::mir,
+    utils::{HasCompilerCtxt, Place},
+};
 use derive_more::{Deref, DerefMut};
 
 impl<'tcx> CorrectedPlace<'tcx> {

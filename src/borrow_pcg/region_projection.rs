@@ -1,29 +1,23 @@
 //! Data structures for lifetime projections.
-use std::hash::Hash;
-use std::{fmt, marker::PhantomData};
+use std::{fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
 use serde_json::json;
 
-use super::has_pcs_elem::LabelLifetimeProjection;
-use super::{borrow_pcg_edge::LocalNode, visitor::extract_regions};
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
-use crate::borrow_pcg::has_pcs_elem::{
-    LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
-    LabelPlaceWithContext, PlaceLabeller,
-};
-use crate::error::{PcgError, PcgInternalError};
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::remote::RemotePlace;
-use crate::utils::{
-    CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SnapshotLocation,
-    VALIDITY_CHECKS_WARN_ONLY,
+use super::{
+    borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
+        edge_data::LabelPlacePredicate,
+        graph::loop_abstraction::MaybeRemoteCurrentPlace,
+        has_pcs_elem::{
+            LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
+            LabelPlaceWithContext, PlaceLabeller,
+        },
+    },
+    error::{PcgError, PcgInternalError},
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::{
         index::{Idx, IndexVec},
@@ -35,7 +29,15 @@ use crate::{
             },
         },
     },
-    utils::{HasPlace, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+        VALIDITY_CHECKS_WARN_ONLY,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        remote::RemotePlace,
+        validity::HasValidityCheck,
+    },
 };
 
 /// A region occuring in region projections
@@ -107,33 +109,28 @@ impl PcgRegion {
         }
     }
 
-    #[rustversion::before(2025-05-24)]
     pub(crate) fn rust_region<'a, 'tcx: 'a>(
         self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> ty::Region<'tcx> {
-        match self {
-            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
-            PcgRegion::ReErased => todo!(),
-            PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
-            PcgRegion::RePlaceholder(_) => todo!(),
-            PcgRegion::ReBound(debruijn_index, bound_region) => {
-                ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
-            }
-            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
+        #[rustversion::before(2025-03-01)]
+        fn new_late_param<'a, 'tcx: 'a>(
+            late_param_region: ty::LateParamRegion,
+            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ) -> ty::Region<'tcx> {
+            ty::Region::new_late_param(
                 ctxt.tcx(),
                 late_param_region.scope,
                 late_param_region.bound_region,
-            ),
-            PcgRegion::PcgInternalError(_) => todo!(),
+            )
         }
-    }
-
-    #[rustversion::since(2025-05-24)]
-    pub(crate) fn rust_region<'a, 'tcx: 'a>(
-        self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> ty::Region<'tcx> {
+        #[rustversion::since(2025-03-01)]
+        fn new_late_param<'a, 'tcx: 'a>(
+            late_param_region: ty::LateParamRegion,
+            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ) -> ty::Region<'tcx> {
+            ty::Region::new_late_param(ctxt.tcx(), late_param_region.scope, late_param_region.kind)
+        }
         match self {
             PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
             PcgRegion::ReErased => todo!(),
@@ -142,11 +139,7 @@ impl PcgRegion {
             PcgRegion::ReBound(debruijn_index, bound_region) => {
                 ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
             }
-            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
-                ctxt.tcx(),
-                late_param_region.scope,
-                late_param_region.kind,
-            ),
+            PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
             PcgRegion::PcgInternalError(_) => todo!(),
         }
     }

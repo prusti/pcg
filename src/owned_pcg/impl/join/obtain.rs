@@ -4,7 +4,6 @@ use crate::{
     error::PcgError,
     owned_pcg::{LocalExpansions, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        ctxt::AnalysisCtxt,
         obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
         place_capabilities::SymbolicPlaceCapabilities,
     },
@@ -13,7 +12,7 @@ use crate::{
 };
 
 pub(crate) struct JoinObtainer<'pcg: 'exp, 'exp, 'slf, 'a, 'tcx> {
-    pub(crate) ctxt: AnalysisCtxt<'a, 'tcx>,
+    pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
     pub(crate) data: &'slf mut JoinOwnedData<'pcg, 'tcx, &'exp mut LocalExpansions<'tcx>>,
     pub(crate) actions: Vec<RepackOp<'tcx>>,
 }

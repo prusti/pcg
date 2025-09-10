@@ -1,5 +1,7 @@
 //! Defines the Borrow PCG Graph
 pub(crate) mod aliases;
+#[cfg(feature = "coupling")]
+pub mod coupling;
 pub(crate) mod frozen;
 pub(crate) mod join;
 pub(crate) mod loop_abstraction;
@@ -36,11 +38,10 @@ use super::{
     edge_data::EdgeData,
     path_condition::ValidityConditions,
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionType;
-use crate::borrow_pcg::edge::borrow::BorrowEdge;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::utils::CompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use crate::{
+    borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug, Default)]
@@ -266,7 +267,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
-    ) -> impl Iterator<Item = &'slf AbstractionType<'tcx>> + 'slf {
+    ) -> impl Iterator<Item = &'slf AbstractionEdge<'tcx>> + 'slf {
         self.edges().filter_map(|edge| match edge.kind {
             BorrowPcgEdgeKind::Abstraction(abstraction) => Some(abstraction),
             _ => None,
@@ -275,7 +276,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn abstraction_edges<'slf>(
         &'slf self,
-    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionType<'tcx>>> + 'slf {
+    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionEdge<'tcx>>> + 'slf {
         self.edges().filter_map(|edge| match edge.kind {
             BorrowPcgEdgeKind::Abstraction(abstraction) => Some(Conditioned {
                 conditions: edge.conditions().clone(),

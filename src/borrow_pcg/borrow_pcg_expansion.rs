@@ -11,8 +11,6 @@ use super::{
     has_pcs_elem::LabelLifetimeProjection,
     region_projection::LifetimeProjectionLabel,
 };
-use crate::error::PcgUnsupportedError;
-use crate::utils::place::corrected::CorrectedPlace;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
@@ -22,25 +20,27 @@ use crate::{
             LabelPlaceWithContext, PlaceLabeller,
         },
     },
-    error::PcgError,
+    error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, MaybeHasLocation, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
     pcg_validity_assert,
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
-};
-use crate::{
-    pcg::{PcgNode, PcgNodeLike},
-    rustc_interface::middle::{mir::PlaceElem, ty},
+    rustc_interface::{
+        FieldIdx,
+        middle::{mir::PlaceElem, ty},
+    },
     utils::{
-        CompilerCtxt, HasPlace, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
+        validity::HasValidityCheck,
     },
 };
-use crate::{rustc_interface::FieldIdx, utils::place::maybe_old::MaybeLabelledPlace};
 
 /// The projections resulting from an expansion of a place.
 ///
@@ -73,6 +73,9 @@ impl<'tcx> HasValidityCheck<'tcx> for PlaceExpansion<'tcx> {
 }
 
 impl<'tcx> PlaceExpansion<'tcx> {
+    pub(crate) fn is_enum_expansion(&self) -> bool {
+        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(_, _)))
+    }
     pub(crate) fn block_type<'a>(
         &self,
         base_place: Place<'tcx>,
@@ -375,12 +378,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         'tcx: 'a,
         P: Ord + HasPlace<'tcx>,
     {
-        let place_ty = base.place().ty(ctxt);
-        #[rustversion::before(2025-04-01)]
-        let is_raw_ptr = place_ty.ty.is_unsafe_ptr();
-        #[rustversion::since(2025-04-01)]
-        let is_raw_ptr = place_ty.ty.is_raw_ptr();
-        if is_raw_ptr {
+        if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
         }
         pcg_validity_assert!(

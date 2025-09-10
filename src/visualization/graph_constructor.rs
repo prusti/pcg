@@ -18,10 +18,12 @@ use super::{
     grapher::{CapabilityGetter, Grapher},
     node::IdLookup,
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionType;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::place::remote::RemotePlace;
+use crate::{
+    borrow_pcg::edge::abstraction::AbstractionEdge,
+    utils::place::{
+        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace, remote::RemotePlace,
+    },
+};
 use std::collections::{BTreeSet, HashSet};
 
 pub(super) struct GraphConstructor<'mir, 'tcx> {
@@ -166,7 +168,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
 
     pub(super) fn insert_abstraction(
         &mut self,
-        abstraction: &AbstractionType<'tcx>,
+        abstraction: &AbstractionEdge<'tcx>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
     ) {
         let input = self.insert_pcg_node(
@@ -178,8 +180,8 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             capabilities,
         );
         let label = match abstraction {
-            AbstractionType::FunctionCall(fc) => fc.to_short_string(self.ctxt),
-            AbstractionType::Loop(loop_abstraction) => {
+            AbstractionEdge::FunctionCall(fc) => fc.to_short_string(self.ctxt),
+            AbstractionEdge::Loop(loop_abstraction) => {
                 format!("loop at {:?}", loop_abstraction.location())
             }
         };

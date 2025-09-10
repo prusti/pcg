@@ -7,7 +7,7 @@ use crate::{
     },
     borrows_imgcat_debug,
     error::PcgError,
-    owned_pcg::{OwnedPcg, join::data::JoinOwnedData},
+    owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
@@ -22,8 +22,10 @@ use crate::{
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
-    visualization::{dot_graph::DotGraph, generate_pcg_dot_graph},
 };
+
+#[cfg(feature = "visualization")]
+use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pcg<'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
@@ -46,6 +48,7 @@ pub(crate) struct PcgRef<'pcg, 'tcx> {
 }
 
 impl<'tcx> PcgRef<'_, 'tcx> {
+    #[cfg(feature = "visualization")]
     pub(crate) fn render_debug_graph<'slf, 'a>(
         &'slf self,
         location: mir::Location,
@@ -299,6 +302,37 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
         self.owned.ensures(t, &mut self.capabilities, ctxt);
     }
 
+    pub(crate) fn join_owned_data(
+        &mut self,
+        block: mir::BasicBlock,
+    ) -> JoinOwnedData<'_, 'tcx, &mut OwnedPcg<'tcx>> {
+        JoinOwnedData {
+            owned: &mut self.owned,
+            borrows: &mut self.borrow,
+            capabilities: &mut self.capabilities,
+            block,
+        }
+    }
+
+    pub(crate) fn bridge(
+        &self,
+        other: &Self,
+        self_block: mir::BasicBlock,
+        other_block: mir::BasicBlock,
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError> {
+        let mut slf = self.clone();
+        let mut other = other.clone();
+        let mut slf_owned_data = slf.join_owned_data(self_block);
+        let other_owned_data = JoinOwnedData {
+            owned: &other.owned,
+            borrows: &mut other.borrow,
+            capabilities: &mut other.capabilities,
+            block: other_block,
+        };
+        slf_owned_data.join(other_owned_data, ctxt)
+    }
+
     #[tracing::instrument(skip(self, other, ctxt))]
     pub(crate) fn join(
         &mut self,
@@ -306,22 +340,17 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> std::result::Result<(), PcgError> {
+    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut other_capabilities = other.capabilities.clone();
         let mut other_borrows = other.borrow.clone();
-        let mut self_owned_data = JoinOwnedData {
-            owned: &mut self.owned,
-            borrows: &mut self.borrow,
-            capabilities: &mut self.capabilities,
-            block: self_block,
-        };
+        let mut self_owned_data = self.join_owned_data(self_block);
         let other_owned_data = JoinOwnedData {
             owned: &other.owned,
             borrows: &mut other_borrows,
             capabilities: &mut other_capabilities,
             block: other_block,
         };
-        self_owned_data.join(other_owned_data, ctxt)?;
+        let repack_ops = self_owned_data.join(other_owned_data, ctxt.ctxt)?;
         // For edges in the other graph that actually belong to it,
         // add the path condition that leads them to this block
         let mut other = other.clone();
@@ -337,7 +366,7 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
             owned: &mut self.owned,
         };
         self.borrow.join(&other.borrow, borrow_args, ctxt)?;
-        Ok(())
+        Ok(repack_ops)
     }
 
     pub(crate) fn debug_lines(&self, repacker: CompilerCtxt<'a, 'tcx>) -> Vec<String> {

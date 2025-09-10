@@ -1,25 +1,32 @@
 extern crate polonius_engine;
 use polonius_engine::Output;
 
-use crate::BodyAndBorrows;
-use crate::borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface};
-use crate::borrow_pcg::region_projection::PcgRegion;
-use crate::pcg::PcgNode;
-use crate::rustc_interface::borrowck::{
-    BorrowData, BorrowIndex, BorrowSet, Borrows, LocationTable, PoloniusInput, PoloniusOutput,
-    RegionInferenceContext, RichLocation,
-};
-use crate::rustc_interface::dataflow::compute_fixpoint;
-use crate::rustc_interface::middle::mir::{self, Location, RETURN_PLACE};
-use crate::rustc_interface::middle::ty;
-use crate::rustc_interface::mir_dataflow::ResultsCursor;
-use crate::utils::CompilerCtxt;
-use crate::utils::liveness::PlaceLiveness;
 #[cfg(feature = "visualization")]
 use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
-use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
+use crate::{
+    BodyAndBorrows,
+    borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
+    borrow_pcg::region_projection::PcgRegion,
+    pcg::PcgNode,
+    rustc_interface::{
+        borrowck::{
+            BorrowData, BorrowIndex, BorrowSet, Borrows, LocationTable, PoloniusInput,
+            PoloniusOutput, RegionInferenceContext, RichLocation,
+        },
+        dataflow::compute_fixpoint,
+        middle::{
+            mir::{self, Location, RETURN_PLACE},
+            ty,
+        },
+        mir_dataflow::ResultsCursor,
+    },
+    utils::{CompilerCtxt, liveness::PlaceLiveness},
+};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    rc::Rc,
+};
 
 #[derive(Clone)]
 pub(crate) struct RustBorrowCheckerData<'mir, 'tcx: 'mir> {
