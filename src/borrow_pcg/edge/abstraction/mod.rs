@@ -67,6 +67,11 @@ edgedata_enum!(
 
 impl<'tcx> AbstractionEdge<'tcx> {
     #[cfg(feature = "coupling")]
+    /// Creates a singleton coupling hyperedge from this edge.
+    ///
+    /// This is presumably NOT what you want, as there is no coupling logic
+    /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
+    /// However, Prusti is currently using this function for loops.
     pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {
