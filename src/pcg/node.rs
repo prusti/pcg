@@ -53,6 +53,17 @@ impl<'tcx, Ctxt, T: LabelPlaceWithContext<'tcx, Ctxt>, U: LabelPlaceWithContext<
 }
 
 impl<'tcx> PcgNode<'tcx> {
+    pub fn expect_lifetime_projection(self) -> LifetimeProjection<'tcx> {
+        match self {
+            PcgNode::LifetimeProjection(rp) => rp,
+            _ => panic!("Expected lifetime projection, got {:?}", self),
+        }
+    }
+
+    pub fn is_remote_place(self) -> bool {
+        matches!(self, PcgNode::Place(MaybeRemotePlace::Remote(_)))
+    }
+
     pub fn related_place(self) -> Option<MaybeRemotePlace<'tcx>> {
         match self {
             PcgNode::Place(p) => Some(p),

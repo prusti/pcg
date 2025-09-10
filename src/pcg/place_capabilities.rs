@@ -19,8 +19,7 @@ use crate::{
 };
 
 mod private {
-    use crate::pcg::SymbolicCapability;
-    use crate::rustc_interface::middle::mir;
+    use crate::{pcg::SymbolicCapability, rustc_interface::middle::mir};
 
     use crate::utils::{HasCompilerCtxt, Place};
 
@@ -509,10 +508,12 @@ impl<'tcx> PlaceCapabilities<'tcx> {
             self.remove(blocked_place, ctxt).is_some()
         }
     }
+}
 
+impl<'tcx> PlaceCapabilities<'tcx, SymbolicCapability> {
     pub fn is_exclusive(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.get(place, ctxt)
-            .map(|c| c == CapabilityKind::Exclusive)
+            .map(|c| c.expect_concrete() == CapabilityKind::Exclusive)
             .unwrap_or(false)
     }
 }

@@ -1,6 +1,6 @@
 //! Describes the kind of Borrow PCG edges
 use crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion;
-use crate::borrow_pcg::edge::abstraction::AbstractionType;
+use crate::borrow_pcg::edge::abstraction::AbstractionEdge;
 use crate::borrow_pcg::edge::borrow::BorrowEdge;
 use crate::borrow_pcg::edge::deref::DerefEdge;
 use crate::utils::CompilerCtxt;
@@ -13,7 +13,7 @@ pub enum BorrowPcgEdgeKind<'tcx> {
     Borrow(BorrowEdge<'tcx>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
     Deref(DerefEdge<'tcx>),
-    Abstraction(AbstractionType<'tcx>),
+    Abstraction(AbstractionEdge<'tcx>),
     BorrowFlow(BorrowFlowEdge<'tcx>),
 }
 

@@ -6,7 +6,7 @@ use crate::borrow_pcg::domain::{FunctionCallAbstractionInput, FunctionCallAbstra
 use crate::borrow_pcg::edge::abstraction::function::{
     FunctionCallAbstraction, FunctionCallData, FunctionData,
 };
-use crate::borrow_pcg::edge::abstraction::{AbstractionBlockEdge, AbstractionType};
+use crate::borrow_pcg::edge::abstraction::{AbstractionBlockEdge, AbstractionEdge};
 use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
 use crate::borrow_pcg::region_projection::{HasTy, LifetimeProjection};
 use crate::pcg::obtain::{HasSnapshotLocation, PlaceExpander};
@@ -82,7 +82,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             self.record_and_apply_action(
                 BorrowPcgAction::add_edge(
                     BorrowPcgEdge::new(
-                        AbstractionType::FunctionCall(FunctionCallAbstraction::new(
+                        AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
                             call.location,
                             function_data,
                             AbstractionBlockEdge::new(

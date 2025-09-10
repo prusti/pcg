@@ -12,7 +12,7 @@ use super::{
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
 };
 use crate::borrow_pcg::{
-    edge::abstraction::AbstractionType, region_projection::LocalLifetimeProjectionBase,
+    edge::abstraction::AbstractionEdge, region_projection::LocalLifetimeProjectionBase,
 };
 use crate::error::PcgError;
 use crate::utils::place::maybe_remote::MaybeRemotePlace;
@@ -432,7 +432,7 @@ edgedata_enum!(
     BorrowPcgEdgeKind<'tcx>,
     Borrow(BorrowEdge<'tcx>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
-    Abstraction(AbstractionType<'tcx>),
+    Abstraction(AbstractionEdge<'tcx>),
     BorrowFlow(BorrowFlowEdge<'tcx>),
     Deref(DerefEdge<'tcx>),
 );
@@ -461,7 +461,7 @@ impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx, LocalNode<'tcx>> {
     }
 }
 
-impl<'tcx> ToBorrowsEdge<'tcx> for AbstractionType<'tcx> {
+impl<'tcx> ToBorrowsEdge<'tcx> for AbstractionEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge {
             conditions,

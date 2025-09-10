@@ -2,7 +2,7 @@ use super::AbstractionBlockEdge;
 use crate::borrow_checker::BorrowCheckerInterface;
 use crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge};
 use crate::borrow_pcg::domain::LoopAbstractionOutput;
-use crate::borrow_pcg::edge::abstraction::{AbstractionType, LoopAbstractionInput};
+use crate::borrow_pcg::edge::abstraction::{AbstractionEdge, LoopAbstractionInput};
 use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
 use crate::borrow_pcg::edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate};
 use crate::borrow_pcg::has_pcs_elem::{
@@ -103,7 +103,7 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 impl<'tcx> ToBorrowsEdge<'tcx> for LoopAbstraction<'tcx> {
     fn to_borrow_pcg_edge(self, path_conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge::new(
-            BorrowPcgEdgeKind::Abstraction(AbstractionType::Loop(self)),
+            BorrowPcgEdgeKind::Abstraction(AbstractionEdge::Loop(self)),
             path_conditions,
         )
     }

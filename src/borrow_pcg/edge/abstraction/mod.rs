@@ -33,13 +33,13 @@ use crate::utils::validity::HasValidityCheck;
 
 /// Either a function call or a loop abstraction
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub enum AbstractionType<'tcx> {
+pub enum AbstractionEdge<'tcx> {
     FunctionCall(FunctionCallAbstraction<'tcx>),
     Loop(LoopAbstraction<'tcx>),
 }
 
 edgedata_enum!(
-    AbstractionType<'tcx>,
+    AbstractionEdge<'tcx>,
     FunctionCall(FunctionCallAbstraction<'tcx>),
     Loop(LoopAbstraction<'tcx>),
 );

@@ -1,20 +1,19 @@
 use serde_json::json;
 
-use super::display::DisplayWithCompilerCtxt;
-use super::{CompilerCtxt, Place, validity::HasValidityCheck};
-use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
-};
-use crate::pcg::{EvalStmtPhase, PcgNode, PcgNodeLike};
-use crate::utils::HasCompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use super::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
 use crate::{
-    borrow_pcg::borrow_pcg_edge::LocalNode,
-    pcg::LocalNodeLike,
-    rustc_interface::{
-        middle::mir::{self, BasicBlock, Location},
-        middle::ty,
+    borrow_pcg::{
+        borrow_pcg_edge::LocalNode,
+        region_projection::{
+            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
+        },
     },
+    pcg::{EvalStmtPhase, LocalNodeLike, PcgNode, PcgNodeLike},
+    rustc_interface::middle::{
+        mir::{self, BasicBlock, Location},
+        ty,
+    },
+    utils::{HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -83,6 +82,24 @@ pub enum SnapshotLocation {
 }
 
 impl SnapshotLocation {
+    pub fn location(self) -> Location {
+        match self {
+            SnapshotLocation::Before(analysis_location) => analysis_location.location(),
+            SnapshotLocation::After(block) => Location {
+                block,
+                statement_index: 0,
+            },
+            SnapshotLocation::Loop(block) => Location {
+                block,
+                statement_index: 0,
+            },
+            SnapshotLocation::BeforeJoin(block) => Location {
+                block,
+                statement_index: 0,
+            },
+            SnapshotLocation::BeforeRefReassignment(location) => location,
+        }
+    }
     pub fn before_block(block: BasicBlock) -> Self {
         SnapshotLocation::Before(AnalysisLocation {
             location: Location {

@@ -4,6 +4,7 @@ pub(crate) mod frozen;
 pub(crate) mod join;
 pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
+pub mod coupling;
 mod mutate;
 
 use crate::{
@@ -36,7 +37,7 @@ use super::{
     edge_data::EdgeData,
     path_condition::ValidityConditions,
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionType;
+use crate::borrow_pcg::edge::abstraction::AbstractionEdge;
 use crate::borrow_pcg::edge::borrow::BorrowEdge;
 use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
 use crate::utils::CompilerCtxt;
@@ -266,7 +267,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
-    ) -> impl Iterator<Item = &'slf AbstractionType<'tcx>> + 'slf {
+    ) -> impl Iterator<Item = &'slf AbstractionEdge<'tcx>> + 'slf {
         self.edges().filter_map(|edge| match edge.kind {
             BorrowPcgEdgeKind::Abstraction(abstraction) => Some(abstraction),
             _ => None,
@@ -275,7 +276,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn abstraction_edges<'slf>(
         &'slf self,
-    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionType<'tcx>>> + 'slf {
+    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionEdge<'tcx>>> + 'slf {
         self.edges().filter_map(|edge| match edge.kind {
             BorrowPcgEdgeKind::Abstraction(abstraction) => Some(Conditioned {
                 conditions: edge.conditions().clone(),
