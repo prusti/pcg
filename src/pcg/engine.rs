@@ -274,9 +274,12 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             let state = state.expect_transfer();
             self.analyzed_blocks.insert(location.block.index());
 
-            state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
-            for phase in EvalStmtPhase::phases() {
-                state.generate_dot_graph(phase.into(), location, state.ctxt);
+            #[cfg(feature = "visualization")]
+            {
+                state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
+                for phase in EvalStmtPhase::phases() {
+                    state.generate_dot_graph(phase.into(), location, state.ctxt);
+                }
             }
         }
         Ok(())

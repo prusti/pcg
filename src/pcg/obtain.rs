@@ -53,6 +53,7 @@ pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>>
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> RenderDebugGraph
     for PlaceObtainer<'_, 'a, 'tcx, Ctxt>
 {
+    #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
         self.pcg.as_ref().render_debug_graph(
             self.location(),
@@ -425,7 +426,11 @@ pub(crate) trait HasSnapshotLocation {
 }
 
 pub(crate) trait RenderDebugGraph {
+    #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str);
+
+    #[cfg(not(feature = "visualization"))]
+    fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {}
 }
 
 pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:

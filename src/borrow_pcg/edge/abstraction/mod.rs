@@ -15,7 +15,6 @@ use crate::{
             r#loop::LoopAbstraction,
         },
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
-        graph::coupling::PcgCoupledEdge,
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
@@ -25,6 +24,9 @@ use crate::{
     pcg::PcgNodeLike,
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
 };
+
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::PcgCoupledEdge;
 
 use crate::{
     borrow_pcg::{
@@ -64,6 +66,7 @@ edgedata_enum!(
 );
 
 impl<'tcx> AbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
     pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {

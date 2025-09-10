@@ -520,6 +520,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 borrow: self.pcg.borrow.as_ref(),
                 capabilities: self.pcg.capabilities,
             };
+            #[cfg(feature = "visualization")]
             if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
                 analysis_ctxt.generate_pcg_debug_visualization_graph(
                     location,
@@ -683,6 +684,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
 
         self.expand_to(place, obtain_type, self.ctxt)?;
+
+        #[cfg(feature = "visualization")]
         self.render_debug_graph(None, "after step 5");
 
         // pcg_validity_assert!(

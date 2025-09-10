@@ -1,5 +1,6 @@
 //! Defines the Borrow PCG Graph
 pub(crate) mod aliases;
+#[cfg(feature = "coupling")]
 pub mod coupling;
 pub(crate) mod frozen;
 pub(crate) mod join;

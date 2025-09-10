@@ -378,12 +378,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         'tcx: 'a,
         P: Ord + HasPlace<'tcx>,
     {
-        let place_ty = base.place().ty(ctxt);
-        #[rustversion::before(2025-04-01)]
-        let is_raw_ptr = place_ty.ty.is_unsafe_ptr();
-        #[rustversion::since(2025-04-01)]
-        let is_raw_ptr = place_ty.ty.is_raw_ptr();
-        if is_raw_ptr {
+        if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
         }
         pcg_validity_assert!(

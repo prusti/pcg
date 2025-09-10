@@ -238,7 +238,7 @@ impl<'tcx> Place<'tcx> {
         Ok(self.0.project_deeper(&[corrected_elem], ctxt.tcx()).into())
     }
 
-    #[rustversion::since(2025-05-24)]
+    #[rustversion::since(2025-03-01)]
     pub(crate) fn is_raw_ptr<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
@@ -246,7 +246,7 @@ impl<'tcx> Place<'tcx> {
         self.ty(ctxt).ty.is_raw_ptr()
     }
 
-    #[rustversion::before(2025-05-24)]
+    #[rustversion::before(2025-03-01)]
     pub(crate) fn is_raw_ptr<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
@@ -377,9 +377,9 @@ impl<'tcx> Place<'tcx> {
             if extract_regions(ty).is_empty() {
                 return false;
             }
-            #[rustversion::before(2025-04-01)]
+            #[rustversion::before(2025-03-01)]
             let is_raw_ptr = ty.is_unsafe_ptr();
-            #[rustversion::since(2025-04-01)]
+            #[rustversion::since(2025-03-01)]
             let is_raw_ptr = ty.is_raw_ptr();
             if is_raw_ptr {
                 return true;

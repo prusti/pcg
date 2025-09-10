@@ -480,6 +480,7 @@ pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
         &self.data().pcg[phase.into()]
     }
 
+    #[cfg(feature = "visualization")]
     fn generate_dot_graph(
         &self,
         phase: DataflowStmtPhase,

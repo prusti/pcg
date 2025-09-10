@@ -13,8 +13,10 @@ use crate::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
         SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap, logging::LogPredicate,
     },
-    visualization::write_pcg_dot_graph_to_file,
 };
+
+#[cfg(feature = "visualization")]
+use crate::visualization::write_pcg_dot_graph_to_file;
 
 impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,6 +57,7 @@ fn dot_filename_for(output_dir: &str, relative_filename: &str) -> String {
 pub use private::*;
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
+    #[cfg(feature = "visualization")]
     pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
         self,
         location: mir::Location,

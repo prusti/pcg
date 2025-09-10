@@ -11,7 +11,6 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
-        graph::coupling::HyperEdge,
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
@@ -24,10 +23,14 @@ use crate::{
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::HyperEdge;
+
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
 
 impl<'tcx> LoopAbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
     pub(crate) fn to_hyper_edge(
         &self,
     ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {

@@ -6,7 +6,6 @@ use crate::{
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
         edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
-        graph::coupling::HyperEdge,
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
@@ -26,6 +25,9 @@ use crate::{
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
+
+#[cfg(feature = "coupling")]
+use crate::borrow_pcg::graph::coupling::HyperEdge;
 
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
@@ -166,6 +168,7 @@ pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
 >;
 
 impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
+    #[cfg(feature = "coupling")]
     pub fn to_hyper_edge(
         &self,
     ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {

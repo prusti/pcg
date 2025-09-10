@@ -31,6 +31,7 @@ pub mod pcg;
 pub mod results;
 pub mod rustc_interface;
 pub mod utils;
+#[cfg(feature = "visualization")]
 pub mod visualization;
 
 use action::PcgActions;
@@ -52,6 +53,8 @@ use utils::{
     display::{DebugLines, DisplayWithCompilerCtxt},
     validity::HasValidityCheck,
 };
+
+#[cfg(feature = "visualization")]
 use visualization::mir_graph::generate_json_from_mir;
 
 use utils::json::ToJsonWithCompilerCtxt;
@@ -353,6 +356,7 @@ pub fn run_pcg<'a, 'tcx>(
         }
     }
 
+    #[cfg(feature = "visualization")]
     if let Some(dir_path) = visualization_output_path {
         let edge_legend_file_path = format!("{dir_path}/edge_legend.dot");
         let edge_legend_graph = crate::visualization::legend::generate_edge_legend().unwrap();

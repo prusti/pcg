@@ -22,8 +22,10 @@ use crate::{
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
-    visualization::{dot_graph::DotGraph, generate_pcg_dot_graph},
 };
+
+#[cfg(feature = "visualization")]
+use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pcg<'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
@@ -46,6 +48,7 @@ pub(crate) struct PcgRef<'pcg, 'tcx> {
 }
 
 impl<'tcx> PcgRef<'_, 'tcx> {
+    #[cfg(feature = "visualization")]
     pub(crate) fn render_debug_graph<'slf, 'a>(
         &'slf self,
         location: mir::Location,

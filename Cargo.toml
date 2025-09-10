@@ -9,7 +9,8 @@ memory_profiling = []
 custom-rust-toolchain = []
 visualization = []
 debug_info = []
-default = ["visualization"]
+coupling = []
+default = ["visualization", "coupling"]
 
 [dependencies]
 # For RustRover

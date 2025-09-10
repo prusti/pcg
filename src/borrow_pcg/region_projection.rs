@@ -109,33 +109,28 @@ impl PcgRegion {
         }
     }
 
-    #[rustversion::before(2025-05-24)]
     pub(crate) fn rust_region<'a, 'tcx: 'a>(
         self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> ty::Region<'tcx> {
-        match self {
-            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
-            PcgRegion::ReErased => todo!(),
-            PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
-            PcgRegion::RePlaceholder(_) => todo!(),
-            PcgRegion::ReBound(debruijn_index, bound_region) => {
-                ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
-            }
-            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
+        #[rustversion::before(2025-03-01)]
+        fn new_late_param<'a, 'tcx: 'a>(
+            late_param_region: ty::LateParamRegion,
+            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ) -> ty::Region<'tcx> {
+            ty::Region::new_late_param(
                 ctxt.tcx(),
                 late_param_region.scope,
                 late_param_region.bound_region,
-            ),
-            PcgRegion::PcgInternalError(_) => todo!(),
+            )
         }
-    }
-
-    #[rustversion::since(2025-05-24)]
-    pub(crate) fn rust_region<'a, 'tcx: 'a>(
-        self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> ty::Region<'tcx> {
+        #[rustversion::since(2025-03-01)]
+        fn new_late_param<'a, 'tcx: 'a>(
+            late_param_region: ty::LateParamRegion,
+            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ) -> ty::Region<'tcx> {
+            ty::Region::new_late_param(ctxt.tcx(), late_param_region.scope, late_param_region.kind)
+        }
         match self {
             PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
             PcgRegion::ReErased => todo!(),
@@ -144,11 +139,7 @@ impl PcgRegion {
             PcgRegion::ReBound(debruijn_index, bound_region) => {
                 ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
             }
-            PcgRegion::ReLateParam(late_param_region) => ty::Region::new_late_param(
-                ctxt.tcx(),
-                late_param_region.scope,
-                late_param_region.kind,
-            ),
+            PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
             PcgRegion::PcgInternalError(_) => todo!(),
         }
     }
