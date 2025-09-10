@@ -11,8 +11,6 @@ use super::{
     has_pcs_elem::LabelLifetimeProjection,
     region_projection::LifetimeProjectionLabel,
 };
-use crate::error::PcgUnsupportedError;
-use crate::utils::place::corrected::CorrectedPlace;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
@@ -22,25 +20,27 @@ use crate::{
             LabelPlaceWithContext, PlaceLabeller,
         },
     },
-    error::PcgError,
+    error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, MaybeHasLocation, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
     pcg_validity_assert,
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
-};
-use crate::{
-    pcg::{PcgNode, PcgNodeLike},
-    rustc_interface::middle::{mir::PlaceElem, ty},
+    rustc_interface::{
+        FieldIdx,
+        middle::{mir::PlaceElem, ty},
+    },
     utils::{
-        CompilerCtxt, HasPlace, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
+        validity::HasValidityCheck,
     },
 };
-use crate::{rustc_interface::FieldIdx, utils::place::maybe_old::MaybeLabelledPlace};
 
 /// The projections resulting from an expansion of a place.
 ///

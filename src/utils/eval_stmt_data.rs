@@ -1,7 +1,7 @@
-use crate::pcg::EvalStmtPhase;
-use crate::utils::CompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::validity::HasValidityCheck;
+use crate::{
+    pcg::EvalStmtPhase,
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt, validity::HasValidityCheck},
+};
 use serde_json::json;
 
 #[derive(Clone, PartialEq, Eq, Debug)]

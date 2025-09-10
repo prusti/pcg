@@ -2,14 +2,14 @@ use std::rc::Rc;
 
 use serde_json::json;
 
-use crate::DebugLines;
-use crate::action::PcgActions;
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::graph::BorrowsGraph;
-use crate::borrow_pcg::state::BorrowsState;
-use crate::rustc_interface::middle::mir::BasicBlock;
-use crate::utils::CompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use crate::{
+    DebugLines,
+    action::PcgActions,
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
+    rustc_interface::middle::mir::BasicBlock,
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+};
 
 #[derive(Debug)]
 pub struct PcgSuccessor<'tcx> {

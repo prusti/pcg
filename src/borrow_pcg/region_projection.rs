@@ -1,29 +1,23 @@
 //! Data structures for lifetime projections.
-use std::hash::Hash;
-use std::{fmt, marker::PhantomData};
+use std::{fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
 use serde_json::json;
 
-use super::has_pcs_elem::LabelLifetimeProjection;
-use super::{borrow_pcg_edge::LocalNode, visitor::extract_regions};
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
-use crate::borrow_pcg::has_pcs_elem::{
-    LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
-    LabelPlaceWithContext, PlaceLabeller,
-};
-use crate::error::{PcgError, PcgInternalError};
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::remote::RemotePlace;
-use crate::utils::{
-    CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, SnapshotLocation,
-    VALIDITY_CHECKS_WARN_ONLY,
+use super::{
+    borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
+        edge_data::LabelPlacePredicate,
+        graph::loop_abstraction::MaybeRemoteCurrentPlace,
+        has_pcs_elem::{
+            LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
+            LabelPlaceWithContext, PlaceLabeller,
+        },
+    },
+    error::{PcgError, PcgInternalError},
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::{
         index::{Idx, IndexVec},
@@ -35,7 +29,15 @@ use crate::{
             },
         },
     },
-    utils::{HasPlace, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+        VALIDITY_CHECKS_WARN_ONLY,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        remote::RemotePlace,
+        validity::HasValidityCheck,
+    },
 };
 
 /// A region occuring in region projections

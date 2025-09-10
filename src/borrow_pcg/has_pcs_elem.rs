@@ -1,13 +1,15 @@
 use derive_more::From;
 
 use super::region_projection::{LifetimeProjection, LifetimeProjectionLabel};
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::region_projection::RegionIdx;
-use crate::pcg::{MaybeHasLocation, PcgNodeLike};
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::{CompilerCtxt, FilterMutResult, HasPlace, Place, SnapshotLocation};
+use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
+    pcg::{MaybeHasLocation, PcgNodeLike},
+    utils::{
+        CompilerCtxt, FilterMutResult, HasPlace, Place, SnapshotLocation,
+        display::DisplayWithCompilerCtxt, place::maybe_old::MaybeLabelledPlace,
+    },
+};
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum LabelLifetimeProjectionPredicate<'tcx> {

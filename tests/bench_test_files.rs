@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use std::fs;
-use std::io;
-use std::path::Path;
-use std::path::PathBuf;
-use std::process::Command;
+use std::{
+    collections::HashMap,
+    fs, io,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 mod common;
 

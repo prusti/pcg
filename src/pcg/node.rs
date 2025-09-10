@@ -1,24 +1,25 @@
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::borrow_pcg::domain::LoopAbstractionInput;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
-use crate::borrow_pcg::has_pcs_elem::{
-    LabelLifetimeProjection, LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult,
-    LabelPlaceWithContext, PlaceLabeller,
-};
-use crate::borrow_pcg::region_projection::{LifetimeProjectionLabel, PcgLifetimeProjectionBase};
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::remote::RemotePlace;
-use crate::utils::{HasCompilerCtxt, Place, SnapshotLocation};
 use crate::{
+    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{LifetimeProjection, PcgLifetimeProjectionBaseLike, PlaceOrConst},
+        domain::LoopAbstractionInput,
+        edge_data::LabelPlacePredicate,
+        graph::loop_abstraction::MaybeRemoteCurrentPlace,
+        has_pcs_elem::{
+            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
+            LabelLifetimeProjectionResult, LabelPlaceWithContext, PlaceLabeller,
+        },
+        region_projection::{
+            LifetimeProjection, LifetimeProjectionLabel, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBaseLike, PlaceOrConst,
+        },
     },
     rustc_interface::middle::mir,
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        place::maybe_remote::MaybeRemotePlace, remote::RemotePlace, validity::HasValidityCheck,
+    },
 };
 
 #[deprecated(note = "Use `PcgNode` instead")]
@@ -53,13 +54,6 @@ impl<'tcx, Ctxt, T: LabelPlaceWithContext<'tcx, Ctxt>, U: LabelPlaceWithContext<
 }
 
 impl<'tcx> PcgNode<'tcx> {
-    pub fn expect_lifetime_projection(self) -> LifetimeProjection<'tcx> {
-        match self {
-            PcgNode::LifetimeProjection(rp) => rp,
-            _ => panic!("Expected lifetime projection, got {:?}", self),
-        }
-    }
-
     pub fn is_remote_place(self) -> bool {
         matches!(self, PcgNode::Place(MaybeRemotePlace::Remote(_)))
     }
@@ -91,6 +85,13 @@ impl<'tcx> PcgNode<'tcx> {
 impl<'tcx, T, U> PcgNode<'tcx, T, U> {
     pub(crate) fn is_place(&self) -> bool {
         matches!(self, PcgNode::Place(_))
+    }
+
+    pub fn expect_lifetime_projection(self) -> LifetimeProjection<'tcx, U> {
+        match self {
+            PcgNode::LifetimeProjection(rp) => rp,
+            _ => panic!(),
+        }
     }
 
     pub(crate) fn try_into_region_projection(self) -> Result<LifetimeProjection<'tcx, U>, Self> {

@@ -1,12 +1,14 @@
 //! Describes the kind of Borrow PCG edges
-use crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion;
-use crate::borrow_pcg::edge::abstraction::AbstractionEdge;
-use crate::borrow_pcg::edge::borrow::BorrowEdge;
-use crate::borrow_pcg::edge::deref::DerefEdge;
-use crate::utils::CompilerCtxt;
 
-use super::borrow::RemoteBorrow;
-use super::outlives::BorrowFlowEdge;
+use crate::{
+    borrow_pcg::{
+        borrow_pcg_expansion::BorrowPcgExpansion,
+        edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge},
+    },
+    utils::CompilerCtxt,
+};
+
+use super::{borrow::RemoteBorrow, outlives::BorrowFlowEdge};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum BorrowPcgEdgeKind<'tcx> {

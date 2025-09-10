@@ -37,11 +37,10 @@ use super::{
     edge_data::EdgeData,
     path_condition::ValidityConditions,
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionEdge;
-use crate::borrow_pcg::edge::borrow::BorrowEdge;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::utils::CompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use crate::{
+    borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug, Default)]

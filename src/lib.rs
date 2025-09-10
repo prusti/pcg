@@ -36,8 +36,7 @@ pub mod visualization;
 use action::PcgActions;
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::CapabilityKind;
-use pcg::{PcgEngine, PcgSuccessor};
+use pcg::{CapabilityKind, PcgEngine, PcgSuccessor};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -563,8 +562,7 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
-use crate::results::PcgLocation;
-use crate::utils::HasCompilerCtxt;
+use crate::{results::PcgLocation, utils::HasCompilerCtxt};
 
 pub(crate) fn validity_checks_enabled() -> bool {
     *VALIDITY_CHECKS

@@ -18,10 +18,12 @@ use super::{
     grapher::{CapabilityGetter, Grapher},
     node::IdLookup,
 };
-use crate::borrow_pcg::edge::abstraction::AbstractionEdge;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
-use crate::utils::place::remote::RemotePlace;
+use crate::{
+    borrow_pcg::edge::abstraction::AbstractionEdge,
+    utils::place::{
+        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace, remote::RemotePlace,
+    },
+};
 use std::collections::{BTreeSet, HashSet};
 
 pub(super) struct GraphConstructor<'mir, 'tcx> {

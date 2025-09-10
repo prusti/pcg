@@ -1,25 +1,31 @@
-use crate::action::{BorrowPcgAction, PcgAction};
-use crate::borrow_pcg::action::LabelPlaceReason;
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
-use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
-use crate::borrow_pcg::region_projection::{
-    LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+use crate::{
+    action::{BorrowPcgAction, PcgAction},
+    borrow_pcg::{
+        action::LabelPlaceReason,
+        borrow_pcg_edge::BorrowPcgEdge,
+        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        region_projection::{
+            LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+        },
+    },
+    owned_pcg::{OwnedPcg, RepackExpand},
+    pcg::{
+        CapabilityKind,
+        ctxt::AnalysisCtxt,
+        obtain::{PlaceCollapser, PlaceObtainer},
+        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
+        triple::TripleWalker,
+    },
+    rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
+    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
-use crate::owned_pcg::{OwnedPcg, RepackExpand};
-use crate::pcg::CapabilityKind;
-use crate::pcg::ctxt::AnalysisCtxt;
-use crate::pcg::obtain::{PlaceCollapser, PlaceObtainer};
-use crate::pcg::place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader};
-use crate::pcg::triple::TripleWalker;
-use crate::rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator};
-use crate::utils::data_structures::HashSet;
-use crate::utils::display::DisplayWithCompilerCtxt;
 
-use crate::action::PcgActions;
-use crate::utils::maybe_old::MaybeLabelledPlace;
-use crate::utils::visitor::FallableVisitor;
-use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+use crate::{
+    action::PcgActions,
+    utils::{
+        self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+        maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
+    },
 };
 
 use super::{AnalysisObject, EvalStmtPhase, Pcg, PcgNode};

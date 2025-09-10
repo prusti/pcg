@@ -1,20 +1,20 @@
-use crate::borrow_checker::BorrowCheckerInterface;
-use crate::pcg::place_capabilities::{
-    PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    pcg::{
+        BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
+        CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
+        PcgBlockDebugVisualizationGraphs, PcgRef, SymbolicCapability, SymbolicCapabilityCtxt,
+        place_capabilities::{
+            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+        },
+    },
+    rustc_interface::middle::{mir, ty},
+    utils::{
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
+        SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap, logging::LogPredicate,
+    },
+    visualization::write_pcg_dot_graph_to_file,
 };
-use crate::pcg::{
-    BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
-    CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
-    PcgBlockDebugVisualizationGraphs, PcgRef, SymbolicCapability, SymbolicCapabilityCtxt,
-};
-use crate::rustc_interface::middle::{mir, ty};
-use crate::utils::data_structures::HashMap;
-use crate::utils::logging::LogPredicate;
-use crate::utils::{
-    CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
-    SnapshotLocation, StmtGraphs, ToGraph,
-};
-use crate::visualization::write_pcg_dot_graph_to_file;
 
 impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

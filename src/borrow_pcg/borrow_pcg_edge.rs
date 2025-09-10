@@ -11,33 +11,28 @@ use super::{
     path_condition::ValidityConditions,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
 };
-use crate::borrow_pcg::{
-    edge::abstraction::AbstractionEdge, region_projection::LocalLifetimeProjectionBase,
-};
-use crate::error::PcgError;
-use crate::utils::place::maybe_remote::MaybeRemotePlace;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        edge_data::edgedata_enum,
+        edge::{
+            abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
+            kind::BorrowPcgEdgeKind,
+        },
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
         },
+        region_projection::LocalLifetimeProjectionBase,
     },
-    utils::place::maybe_old::MaybeLabelledPlace,
-};
-use crate::{borrow_pcg::edge::borrow::BorrowEdge, utils::HasPlace};
-use crate::{
-    borrow_pcg::{
-        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
-    },
-    utils::HasBorrowCheckerCtxt,
-};
-use crate::{
+    error::PcgError,
     pcg::PcgNode,
     rustc_interface,
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place,
+        display::DisplayWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        validity::HasValidityCheck,
+    },
 };
 
 /// A reference to an edge in the Borrow PCG

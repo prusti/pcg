@@ -2,25 +2,25 @@
 //!
 //! Also includes implementations for the Polonius and NLL borrow-checkers.
 
-use std::collections::BTreeSet;
-use std::ops::ControlFlow;
+use std::{collections::BTreeSet, ops::ControlFlow};
 
-use crate::borrow_checker::r#impl::get_reserve_location;
-use crate::borrow_pcg::region_projection::PcgRegion;
-use crate::pcg::PcgNode;
-use crate::rustc_interface::borrowck::BorrowData;
-use crate::rustc_interface::borrowck::PoloniusInput;
-use crate::rustc_interface::borrowck::PoloniusOutput;
-use crate::rustc_interface::borrowck::RegionInferenceContext;
-use crate::rustc_interface::borrowck::{
-    BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, places_conflict,
+use crate::{
+    borrow_checker::r#impl::get_reserve_location,
+    borrow_pcg::region_projection::PcgRegion,
+    pcg::PcgNode,
+    rustc_interface::{
+        borrowck::{
+            BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
+            PoloniusOutput, RegionInferenceContext, places_conflict,
+        },
+        data_structures::fx::{FxIndexMap, FxIndexSet},
+        middle::{
+            mir::{self, Location},
+            ty::RegionVid,
+        },
+    },
+    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
-use crate::rustc_interface::data_structures::fx::{FxIndexMap, FxIndexSet};
-use crate::rustc_interface::middle::mir::{self, Location};
-use crate::rustc_interface::middle::ty::RegionVid;
-use crate::utils::CompilerCtxt;
-use crate::utils::Place;
-use crate::utils::display::DisplayWithCompilerCtxt;
 
 pub mod r#impl;
 

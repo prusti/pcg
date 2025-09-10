@@ -1,18 +1,26 @@
 use super::PcgVisitor;
-use crate::action::BorrowPcgAction;
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdge;
-use crate::borrow_pcg::edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind};
-use crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate;
-use crate::borrow_pcg::region_projection::{LifetimeProjection, PlaceOrConst};
-use crate::pcg::CapabilityKind;
-use crate::pcg::EvalStmtPhase;
-use crate::pcg::obtain::{ActionApplier, HasSnapshotLocation, PlaceExpander};
-use crate::pcg::place_capabilities::PlaceCapabilitiesInterface;
-use crate::rustc_interface::middle::mir::{self, Operand, Rvalue};
+use crate::{
+    action::BorrowPcgAction,
+    borrow_pcg::{
+        borrow_pcg_edge::BorrowPcgEdge,
+        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        region_projection::{LifetimeProjection, PlaceOrConst},
+    },
+    pcg::{
+        CapabilityKind, EvalStmtPhase,
+        obtain::{ActionApplier, HasSnapshotLocation, PlaceExpander},
+        place_capabilities::PlaceCapabilitiesInterface,
+    },
+    rustc_interface::middle::mir::{self, Operand, Rvalue},
+};
 
-use crate::rustc_interface::middle::ty::{self};
-use crate::utils::maybe_old::MaybeLabelledPlace;
-use crate::utils::{self, AnalysisLocation, DataflowCtxt, SnapshotLocation};
+use crate::{
+    rustc_interface::middle::ty::{self},
+    utils::{
+        self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
+    },
+};
 
 use super::{PcgError, PcgUnsupportedError};
 

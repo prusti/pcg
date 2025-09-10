@@ -1,28 +1,31 @@
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdgeLike;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::borrow_pcg::graph::loop_abstraction::ConstructAbstractionGraphResult;
-use crate::borrow_pcg::has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate};
-use crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
-use crate::error::{PcgError, PcgUnsupportedError};
-use crate::r#loop::PlaceUsages;
-use crate::owned_pcg::OwnedPcg;
-use crate::pcg::ctxt::AnalysisCtxt;
-use crate::pcg::place_capabilities::{
-    PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-};
-use crate::pcg::{BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability};
-use crate::pcg_validity_assert;
-use crate::utils::data_structures::HashSet;
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::logging::LogPredicate;
-use crate::utils::{CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation, logging};
-use crate::visualization::dot_graph::DotGraph;
-use crate::visualization::generate_borrows_dot_graph;
 use crate::{
-    borrow_pcg::path_condition::ValidityConditions,
+    borrow_pcg::{
+        borrow_pcg_edge::BorrowPcgEdgeLike,
+        edge::kind::BorrowPcgEdgeKind,
+        graph::loop_abstraction::ConstructAbstractionGraphResult,
+        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
+        path_condition::ValidityConditions,
+        region_projection::LifetimeProjectionLabel,
+    },
+    error::{PcgError, PcgUnsupportedError},
+    r#loop::PlaceUsages,
+    owned_pcg::OwnedPcg,
+    pcg::{
+        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
+        ctxt::AnalysisCtxt,
+        place_capabilities::{
+            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+        },
+    },
+    pcg_validity_assert,
     rustc_interface::middle::{mir, mir::BasicBlock},
-    utils::validity::HasValidityCheck,
+    utils::{
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, logging, logging::LogPredicate,
+        validity::HasValidityCheck,
+    },
     validity_checks_enabled,
+    visualization::{dot_graph::DotGraph, generate_borrows_dot_graph},
 };
 
 use super::{BorrowsGraph, borrows_imgcat_debug};

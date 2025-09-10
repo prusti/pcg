@@ -115,7 +115,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     #[tracing::instrument(skip(self, repacker, seen, direct))]
-    fn direct_aliases<'slf, BC: Copy>(
+    fn direct_aliases<BC: Copy>(
         &self,
         node: LocalNode<'tcx>,
         repacker: CompilerCtxt<'_, 'tcx, BC>,
@@ -203,17 +203,20 @@ impl<'tcx> BorrowsGraph<'tcx> {
 #[cfg(test)]
 #[test]
 fn test_aliases() {
-    use crate::results::PcgLocation;
-    use crate::rustc_interface::middle::mir::{self, START_BLOCK};
-    use crate::rustc_interface::span::Symbol;
+    use crate::{
+        results::PcgLocation,
+        rustc_interface::{
+            middle::mir::{self, START_BLOCK},
+            span::Symbol,
+        },
+    };
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
         .with_writer(std::io::stderr)
         .init();
 
-    use crate::PcgOutput;
-    use crate::utils::test::run_pcg_on_str;
+    use crate::{PcgOutput, utils::test::run_pcg_on_str};
 
     fn check_all_statements<'mir, 'tcx>(
         body: &'mir mir::Body<'tcx>,

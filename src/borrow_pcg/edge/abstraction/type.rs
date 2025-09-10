@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
-use crate::pcg::PcgNode;
-use crate::rustc_interface::middle::mir::Location;
 use crate::{
     borrow_pcg::{
         domain::{AbstractionInputTarget, AbstractionOutputTarget, FunctionCallAbstractionOutput},
-        edge::abstraction::{AbstractionBlockEdge, AbstractionInputLike, AbstractionEdge},
+        edge::abstraction::{AbstractionBlockEdge, AbstractionEdge, AbstractionInputLike},
     },
+    pcg::PcgNode,
+    rustc_interface::middle::mir::Location,
     utils::CompilerCtxt,
 };
 

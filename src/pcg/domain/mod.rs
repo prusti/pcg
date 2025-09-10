@@ -180,9 +180,11 @@ impl std::fmt::Debug for PcgDomain<'_, '_> {
 mod private {
     use derive_more::From;
 
-    use crate::borrow_checker::BorrowCheckerInterface;
-    use crate::pcg::DomainDataWithCtxt;
-    use crate::utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt};
+    use crate::{
+        borrow_checker::BorrowCheckerInterface,
+        pcg::DomainDataWithCtxt,
+        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt},
+    };
 
     #[derive(Clone, From, Eq)]
     pub struct PendingDataflowState<'a, 'tcx, T> {

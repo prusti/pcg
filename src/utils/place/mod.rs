@@ -34,7 +34,6 @@ use crate::{
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
-use crate::utils::json::ToJsonWithCompilerCtxt;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -44,6 +43,7 @@ use crate::{
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
+    utils::json::ToJsonWithCompilerCtxt,
 };
 
 pub mod corrected;

@@ -1,16 +1,16 @@
 use super::PcgVisitor;
 
-use crate::action::BorrowPcgAction;
-use crate::borrow_pcg::action::LabelPlaceReason;
-use crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdgeLike;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::pcg::CapabilityKind;
-use crate::pcg::place_capabilities::PlaceCapabilitiesReader;
-use crate::pcg_validity_assert;
-use crate::rustc_interface::middle::mir::{Statement, StatementKind};
+use crate::{
+    action::BorrowPcgAction,
+    borrow_pcg::{
+        action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
+    },
+    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesReader},
+    pcg_validity_assert,
+    rustc_interface::middle::mir::{Statement, StatementKind},
+};
 
-use crate::utils::visitor::FallableVisitor;
-use crate::utils::{self, DataflowCtxt};
+use crate::utils::{self, DataflowCtxt, visitor::FallableVisitor};
 
 use super::{EvalStmtPhase, PcgError};
 

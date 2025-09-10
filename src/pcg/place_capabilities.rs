@@ -9,7 +9,7 @@ use crate::{
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
     error::PcgError,
-    pcg::{CapabilityKind, CapabilityLike, SymbolicCapability, ctxt::AnalysisCtxt},
+    pcg::{CapabilityKind, CapabilityLike, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
@@ -425,88 +425,6 @@ impl<'tcx, C: Copy + PartialEq> PlaceCapabilities<'tcx, C> {
         'tcx: 'a,
     {
         self.0.retain(|p, _| !place.is_strict_prefix_of(*p));
-    }
-}
-
-impl<'tcx> PlaceCapabilities<'tcx> {
-    pub(crate) fn retain(&mut self, predicate: impl Fn(&Place<'tcx>, &CapabilityKind) -> bool) {
-        self.0.retain(|place, cap| predicate(place, cap));
-    }
-
-    pub(crate) fn update_for_deref(
-        &mut self,
-        ref_place: Place<'tcx>,
-        capability: CapabilityKind,
-        ctxt: AnalysisCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError> {
-        if capability.is_read() || ref_place.is_shared_ref(ctxt.ctxt) {
-            self.insert(ref_place, CapabilityKind::Read, ctxt);
-            self.insert(
-                ref_place.project_deref(ctxt.ctxt),
-                CapabilityKind::Read,
-                ctxt,
-            );
-        } else {
-            self.insert(ref_place, CapabilityKind::Write, ctxt);
-            self.insert(
-                ref_place.project_deref(ctxt.ctxt),
-                CapabilityKind::Exclusive,
-                ctxt,
-            );
-        }
-        Ok(true)
-    }
-
-    #[tracing::instrument(skip(self, expansion, ctxt))]
-    pub(crate) fn update_for_expansion(
-        &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
-        block_type: BlockType,
-        ctxt: AnalysisCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError> {
-        let mut changed = false;
-        // We dont change if only expanding region projections
-        if expansion.base.is_place() {
-            let base = expansion.base;
-            let base_capability = self.get(base.place(), ctxt.ctxt);
-            let expanded_capability = if let Some(capability) = base_capability {
-                block_type.expansion_capability(base.place(), capability, ctxt.ctxt)
-            } else {
-                // TODO
-                // pcg_validity_assert!(
-                //     false,
-                //     "Base capability for {} is not set",
-                //     base.place().to_short_string(ctxt)
-                // );
-                return Ok(true);
-                // panic!("Base capability should be set");
-            };
-
-            changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
-
-            for p in expansion.expansion.iter() {
-                changed |= self.insert(p.place(), expanded_capability, ctxt);
-            }
-        }
-        Ok(changed)
-    }
-    pub(crate) fn update_capabilities_for_block_of_place(
-        &mut self,
-        blocked_place: Place<'tcx>,
-        block_type: BlockType,
-        ctxt: AnalysisCtxt<'_, 'tcx>,
-    ) -> bool {
-        let max_retained_capability = block_type.blocked_place_maximum_retained_capability();
-        if let Some(max_retained_cap) = max_retained_capability {
-            let resulting_cap = self
-                .get(blocked_place, ctxt.ctxt)
-                .unwrap()
-                .minimum(max_retained_cap)
-                .unwrap();
-            self.insert(blocked_place, resulting_cap, ctxt)
-        } else {
-            self.remove(blocked_place, ctxt).is_some()
-        }
     }
 }
 

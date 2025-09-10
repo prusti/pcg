@@ -1,19 +1,24 @@
 use std::borrow::Cow;
 
 use super::PcgError;
-use crate::borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode};
-use crate::borrow_pcg::edge::deref::DerefEdge;
-use crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind;
-use crate::borrow_pcg::edge_data::EdgeData;
-use crate::borrow_pcg::graph::Conditioned;
-use crate::borrow_pcg::graph::frozen::FrozenGraphRef;
-use crate::pcg::PcgNode;
-use crate::pcg::obtain::{PlaceCollapser, PlaceObtainer};
-use crate::utils::HasPlace;
-use crate::utils::data_structures::{HashMap, HashSet};
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::maybe_old::MaybeLabelledPlace;
-use crate::utils::{DataflowCtxt, Place};
+use crate::{
+    borrow_pcg::{
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
+        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
+        edge_data::EdgeData,
+        graph::{Conditioned, frozen::FrozenGraphRef},
+    },
+    pcg::{
+        PcgNode,
+        obtain::{PlaceCollapser, PlaceObtainer},
+    },
+    utils::{
+        DataflowCtxt, HasPlace, Place,
+        data_structures::{HashMap, HashSet},
+        display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace,
+    },
+};
 
 type Reason = Cow<'static, str>;
 

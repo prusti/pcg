@@ -1,16 +1,18 @@
-use std::path::Path;
-use std::sync::Arc;
-use std::{fs, io};
+use std::{fs, io, path::Path, sync::Arc};
 
-use crate::results::PcgAnalysisResults;
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::driver::run_compiler;
-use crate::rustc_interface::driver::{self, Compilation};
-use crate::rustc_interface::hir::def::DefKind;
-use crate::rustc_interface::interface::{Config, interface::Compiler};
-use crate::rustc_interface::middle::ty::TyCtxt;
-use crate::rustc_interface::span::source_map::FileLoader;
-use crate::utils::callbacks::set_mir_borrowck;
+use crate::{
+    results::PcgAnalysisResults,
+    rustc_interface::{
+        driver::{self, Compilation},
+        hir::def::DefKind,
+        interface::{Config, interface::Compiler},
+        middle::ty::TyCtxt,
+        span::source_map::FileLoader,
+    },
+    utils::callbacks::set_mir_borrowck,
+};
 
 use super::callbacks::{in_cargo_crate, run_pcg_on_fn, take_stored_body};
 

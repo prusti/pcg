@@ -30,9 +30,11 @@ use crate::{
     },
 };
 
-use crate::borrow_pcg::action::actions::BorrowPcgActions;
-use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::{owned_pcg::RepackOp, utils::CompilerCtxt};
+use crate::{
+    borrow_pcg::action::actions::BorrowPcgActions,
+    owned_pcg::RepackOp,
+    utils::{CompilerCtxt, eval_stmt_data::EvalStmtData},
+};
 
 type Cursor<'mir, 'tcx, E> = ResultsCursor<'mir, 'tcx, E>;
 /// The result of the PCG analysis.

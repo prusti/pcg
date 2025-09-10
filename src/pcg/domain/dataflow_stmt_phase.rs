@@ -1,8 +1,7 @@
 use derive_more::TryInto;
 use serde::{Serialize, Serializer};
 
-use crate::pcg::EvalStmtPhase;
-use crate::rustc_interface::middle::mir::BasicBlock;
+use crate::{pcg::EvalStmtPhase, rustc_interface::middle::mir::BasicBlock};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, TryInto)]
 pub enum DataflowStmtPhase {

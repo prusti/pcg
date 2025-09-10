@@ -1,21 +1,28 @@
 use derive_more::From;
 
-use crate::HasCompilerCtxt;
-use crate::borrow_pcg::edge_data::LabelPlacePredicate;
-use crate::borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace;
-use crate::borrow_pcg::has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller};
-use crate::borrow_pcg::region_projection::{
-    HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst,
-    RegionIdx,
+use crate::{
+    HasCompilerCtxt,
+    borrow_pcg::{
+        edge_data::LabelPlacePredicate,
+        graph::loop_abstraction::MaybeRemoteCurrentPlace,
+        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
+        region_projection::{
+            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion,
+            PlaceOrConst, RegionIdx,
+        },
+    },
+    pcg::{PcgNode, PcgNodeLike},
+    rustc_interface::{
+        index::IndexVec,
+        middle::{mir, ty},
+    },
+    utils::{
+        CompilerCtxt, HasPlace, LabelledPlace, Place,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
+    },
 };
-use crate::pcg::{PcgNode, PcgNodeLike};
-use crate::rustc_interface::index::IndexVec;
-use crate::rustc_interface::middle::{mir, ty};
-use crate::utils::display::DisplayWithCompilerCtxt;
-use crate::utils::json::ToJsonWithCompilerCtxt;
-use crate::utils::place::maybe_old::MaybeLabelledPlace;
-use crate::utils::place::remote::RemotePlace;
-use crate::utils::{CompilerCtxt, HasPlace, LabelledPlace, Place};
 
 #[derive(From, PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
 pub enum MaybeRemotePlace<'tcx> {

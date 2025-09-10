@@ -20,40 +20,33 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         action::{BorrowPcgActionKind, LabelPlaceReason},
+        edge::{
+            borrow::{BorrowEdge, LocalBorrow},
+            kind::BorrowPcgEdgeKind,
+            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        },
+        edge_data::EdgeData,
         has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller, SetLabel},
-        region_projection::LifetimeProjectionLabel,
+        region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     error::PcgError,
-    pcg::{ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface},
-    pcg_validity_assert,
-    utils::place::maybe_remote::MaybeRemotePlace,
-};
-use crate::{
-    borrow_pcg::edge::kind::BorrowPcgEdgeKind, utils::place::maybe_old::MaybeLabelledPlace,
-};
-use crate::{
-    borrow_pcg::edge::{
-        borrow::{BorrowEdge, LocalBorrow},
-        outlives::BorrowFlowEdgeKind,
+    pcg::{
+        CapabilityKind, PcgNode,
+        ctxt::AnalysisCtxt,
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
     },
-    pcg::place_capabilities::PlaceCapabilities,
-};
-use crate::{
-    borrow_pcg::edge_data::EdgeData,
-    pcg::PcgNode,
+    pcg_validity_assert,
     rustc_interface::middle::{
         mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
         ty::{self},
     },
-    utils::{display::DebugLines, validity::HasValidityCheck},
-};
-use crate::{
-    borrow_pcg::{edge::outlives::BorrowFlowEdge, region_projection::LifetimeProjection},
-    utils::remote::RemotePlace,
-};
-use crate::{
-    pcg::CapabilityKind,
-    utils::{CompilerCtxt, Place},
+    utils::{
+        CompilerCtxt, Place,
+        display::DebugLines,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        remote::RemotePlace,
+        validity::HasValidityCheck,
+    },
 };
 
 /// The state of the Borrow PCG, including the Borrow PCG graph and the validity
