@@ -61,7 +61,6 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
 impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
-        // TODO
         for node in nodes.iter() {
             if let Some(PcgNode::LifetimeProjection(rp)) = node.try_to_local_node(ctxt)
                 && rp.is_future()
