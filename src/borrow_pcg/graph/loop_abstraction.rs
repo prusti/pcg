@@ -20,8 +20,8 @@ use crate::{
         CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         obtain::{
-            ActionApplier, HasSnapshotLocation, ObtainType, PlaceExpander, PlaceObtainer,
-            RenderDebugGraph,
+            ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
+            expand::PlaceExpander,
         },
         place_capabilities::PlaceCapabilities,
     },
@@ -565,6 +565,15 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
 
     fn location(&self) -> mir::Location {
         self.loop_head_location()
+    }
+
+    fn capability_for_expand(
+        &self,
+        base_place: Place<'tcx>,
+        obtain_type: ObtainType,
+        ctxt: impl crate::utils::HasCompilerCtxt<'mir, 'tcx>,
+    ) -> CapabilityKind {
+        obtain_type.capability(base_place, ctxt)
     }
 }
 

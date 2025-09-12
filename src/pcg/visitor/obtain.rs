@@ -14,8 +14,8 @@ use crate::{
     pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         obtain::{
-            ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceExpander,
-            PlaceObtainer, RenderDebugGraph,
+            ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
+            RenderDebugGraph, expand::PlaceExpander,
         },
         place_capabilities::{
             BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
@@ -685,7 +685,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         self.expand_to(place, obtain_type, self.ctxt)?;
 
-        #[cfg(feature = "visualization")]
         self.render_debug_graph(None, "after step 5");
 
         // pcg_validity_assert!(
@@ -748,5 +747,22 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg
             .capabilities
             .update_for_deref(ref_place, capability, self.ctxt)
+    }
+
+    fn capability_for_expand(
+        &self,
+        base_place: Place<'tcx>,
+        obtain_type: ObtainType,
+        ctxt: impl crate::utils::HasCompilerCtxt<'a, 'tcx>,
+    ) -> CapabilityKind {
+        obtain_type.capability_for_expand(
+            base_place,
+            self.pcg
+                .capabilities
+                .get(base_place, ctxt)
+                .unwrap()
+                .expect_concrete(),
+            ctxt,
+        )
     }
 }

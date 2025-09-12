@@ -29,7 +29,8 @@ fn test(cond: bool) {
     let test_x1 = x1;
     // let test_y1 = y1;
 	let test_c = c;
-	let test_a = a;
+    // TODO: Uncomment next assignment
+	// let test_a = a;
 	// let test_d = d;
 	// let test_b = b;
     // let test_x = x;
