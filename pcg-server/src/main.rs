@@ -1,6 +1,4 @@
 use axum::{
-    #[allow(unused_imports)]
-    body::Body,
     extract::Multipart,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -9,16 +7,11 @@ use axum::{
 use hyper::StatusCode;
 use std::{
     backtrace::Backtrace,
-    #[allow(unused_imports)]
-    error::Error,
     fs,
     net::SocketAddr,
-    #[allow(unused_imports)]
-    path::{Path, PathBuf},
+    path::PathBuf,
     process::Command,
 };
-#[allow(unused_imports)]
-use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, Level};
