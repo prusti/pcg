@@ -61,7 +61,6 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
 impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
-        // TODO
         for node in nodes.iter() {
             if let Some(PcgNode::LifetimeProjection(rp)) = node.try_to_local_node(ctxt)
                 && rp.is_future()
@@ -239,7 +238,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.edges().any(|edge| {
             edge.blocks_node(node, repacker.bc_ctxt())
                 || node
-                    .as_blocking_node(repacker)
+                    .as_blocking_node()
                     .map(|blocking| {
                         edge.blocked_by_nodes(repacker.bc_ctxt())
                             .contains(&blocking)
@@ -348,7 +347,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         self.contains(node.into(), ctxt)
-            && match node.into().as_local_node(ctxt) {
+            && match node.into().as_local_node() {
                 Some(node) => match node {
                     PcgNode::Place(place) if place.is_owned(ctxt) => true,
                     _ => !self.has_edge_blocked_by(node, ctxt),

@@ -9,7 +9,7 @@ use crate::{
     },
     pcg::{
         CapabilityKind, EvalStmtPhase,
-        obtain::{ActionApplier, HasSnapshotLocation, PlaceExpander},
+        obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
         place_capabilities::PlaceCapabilitiesInterface,
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},

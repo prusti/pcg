@@ -12,7 +12,7 @@ use crate::{
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasTy, LifetimeProjection},
     },
-    pcg::obtain::{HasSnapshotLocation, PlaceExpander},
+    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
