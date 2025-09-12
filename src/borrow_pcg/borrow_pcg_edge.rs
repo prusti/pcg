@@ -28,7 +28,7 @@ use crate::{
     pcg::PcgNode,
     rustc_interface,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place,
+        CompilerCtxt, HasPlace, Place,
         display::DisplayWithCompilerCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
@@ -296,24 +296,18 @@ impl<'tcx> LocalNode<'tcx> {
 
 /// A node that could potentially be blocked in the PCG. In principle any kind
 /// of PCG node could be blocked; however this type alias should be preferred to
-/// [`PCGNode`] in contexts where the blocking is relevant.
+/// [`PcgNode`] in contexts where the blocking is relevant.
 pub type BlockedNode<'tcx> = PcgNode<'tcx>;
 
 impl<'tcx> PcgNode<'tcx> {
-    pub(crate) fn as_blocking_node<'a>(
-        &self,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Option<BlockingNode<'tcx>>
+    pub(crate) fn as_blocking_node<'a>(&self) -> Option<BlockingNode<'tcx>>
     where
         'tcx: 'a,
     {
-        self.as_local_node(repacker)
+        self.as_local_node()
     }
 
-    pub(crate) fn as_local_node<'a>(
-        &self,
-        _repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Option<LocalNode<'tcx>>
+    pub(crate) fn as_local_node<'a>(&self) -> Option<LocalNode<'tcx>>
     where
         'tcx: 'a,
     {
