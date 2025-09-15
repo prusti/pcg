@@ -27,7 +27,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::HyperEdge;
+use crate::coupling::HyperEdge;
 
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
@@ -184,7 +184,7 @@ pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
-    location: Location,
+    pub(crate) location: Location,
     pub(crate) function_data: Option<FunctionData<'tcx>>,
 }
 

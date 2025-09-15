@@ -1,4 +1,6 @@
 //! Definitions of edges in the Borrow PCG.
+use std::marker::PhantomData;
+
 use itertools::Itertools;
 use rustc_interface::middle::mir::{self, BasicBlock, PlaceElem};
 
@@ -45,9 +47,10 @@ pub struct BorrowPcgEdgeRef<'tcx, 'graph> {
 /// An edge in the Borrow PCG. This includes the kind of the edge as well as its
 /// associated validity conditions.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BorrowPcgEdge<'tcx> {
+pub struct BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> {
     pub(crate) conditions: ValidityConditions,
-    pub(crate) kind: BorrowPcgEdgeKind<'tcx>,
+    pub(crate) kind: Kind,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
@@ -129,10 +132,7 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
     }
 
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge {
-            conditions: self.conditions.clone(),
-            kind: self.kind.clone(),
-        }
+        BorrowPcgEdge::new(self.kind.clone(), self.conditions.clone())
     }
 }
 
@@ -383,7 +383,11 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
     }
 
     pub(crate) fn new(kind: BorrowPcgEdgeKind<'tcx>, conditions: ValidityConditions) -> Self {
-        Self { conditions, kind }
+        Self {
+            conditions,
+            kind,
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -443,37 +447,25 @@ pub(crate) trait ToBorrowsEdge<'tcx> {
 
 impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx, LocalNode<'tcx>> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge {
-            conditions,
-            kind: BorrowPcgEdgeKind::BorrowPcgExpansion(self),
-        }
+        BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowPcgExpansion(self), conditions)
     }
 }
 
 impl<'tcx> ToBorrowsEdge<'tcx> for AbstractionEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge {
-            conditions,
-            kind: BorrowPcgEdgeKind::Abstraction(self),
-        }
+        BorrowPcgEdge::new(BorrowPcgEdgeKind::Abstraction(self), conditions)
     }
 }
 
 impl<'tcx> ToBorrowsEdge<'tcx> for BorrowEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge {
-            conditions,
-            kind: BorrowPcgEdgeKind::Borrow(self),
-        }
+        BorrowPcgEdge::new(BorrowPcgEdgeKind::Borrow(self), conditions)
     }
 }
 
 impl<'tcx> ToBorrowsEdge<'tcx> for BorrowFlowEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge {
-            conditions,
-            kind: BorrowPcgEdgeKind::BorrowFlow(self),
-        }
+        BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowFlow(self), conditions)
     }
 }
 

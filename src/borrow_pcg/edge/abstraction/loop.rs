@@ -24,7 +24,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::HyperEdge;
+use crate::coupling::HyperEdge;
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;

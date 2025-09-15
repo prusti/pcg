@@ -1,5 +1,5 @@
 //! Data structures and algorithms related to [`UnblockGraph`].
-use std::collections::HashSet;
+use std::{collections::HashSet, marker::PhantomData};
 
 use derive_more::From;
 
@@ -16,8 +16,9 @@ type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;
 /// A subgraph of the Borrow PCG including the edges that should be removed
 /// in order to unblock a given node.
 #[derive(Clone, Debug)]
-pub struct UnblockGraph<'tcx> {
-    edges: HashSet<UnblockEdge<'tcx>>,
+pub struct UnblockGraph<'tcx, Edge = UnblockEdge<'tcx>> {
+    edges: HashSet<Edge>,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 /// An action that removes an edge from the Borrow PCG
@@ -49,6 +50,7 @@ impl<'tcx> UnblockGraph<'tcx> {
     pub(crate) fn new() -> Self {
         Self {
             edges: HashSet::new(),
+            _marker: PhantomData,
         }
     }
 
@@ -78,8 +80,6 @@ impl<'tcx> UnblockGraph<'tcx> {
 
     /// Returns an ordered list of actions to unblock the edges in the graph.
     /// This is essentially a topological sort of the edges.
-    ///
-    /// This method could fail if the If this method returns an error, it should be reported.
     pub fn actions(
         self,
         repacker: CompilerCtxt<'_, 'tcx>,

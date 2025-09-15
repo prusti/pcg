@@ -1,7 +1,5 @@
 //! Defines the Borrow PCG Graph
 pub(crate) mod aliases;
-#[cfg(feature = "coupling")]
-pub mod coupling;
 pub(crate) mod frozen;
 pub(crate) mod join;
 pub(crate) mod loop_abstraction;
@@ -247,11 +245,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         })
     }
 
-    #[allow(unused)]
     pub(crate) fn into_edges(self) -> impl Iterator<Item = BorrowPcgEdge<'tcx>> {
         self.edges
             .into_iter()
-            .map(|(kind, conditions)| BorrowPcgEdge { kind, conditions })
+            .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
     }
 
     pub fn edges<'slf>(&'slf self) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf>> + 'slf {
@@ -457,7 +454,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct Conditioned<T> {
+pub struct Conditioned<T> {
     pub(crate) conditions: ValidityConditions,
     pub(crate) value: T,
 }

@@ -26,7 +26,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::PcgCoupledEdge;
+use crate::coupling::PcgCoupledEdge;
 
 use crate::{
     borrow_pcg::{
@@ -75,10 +75,10 @@ impl<'tcx> AbstractionEdge<'tcx> {
     pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {
-                PcgCoupledEdge::FunctionCall(function_call.edge.to_hyper_edge())
+                PcgCoupledEdge::function_call(function_call.edge.to_hyper_edge())
             }
             AbstractionEdge::Loop(loop_abstraction) => {
-                PcgCoupledEdge::Loop(loop_abstraction.edge.to_hyper_edge())
+                PcgCoupledEdge::loop_(loop_abstraction.edge.to_hyper_edge())
             }
         }
     }
