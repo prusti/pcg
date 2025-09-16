@@ -19,11 +19,7 @@ use crate::{
         middle::mir::{self},
     },
     utils::{
-        DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
-        data_structures::HashSet,
-        display::{DebugLines, DisplayWithCompilerCtxt},
-        maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        data_structures::{HashMap, HashSet}, display::{DebugLines, DisplayWithCompilerCtxt}, maybe_old::MaybeLabelledPlace, validity::HasValidityCheck, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, DEBUG_BLOCK, DEBUG_IMGCAT
     },
 };
 use frozen::{CachedLeafEdges, FrozenGraphRef};
@@ -44,7 +40,7 @@ use crate::{
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug, Default)]
 pub struct BorrowsGraph<'tcx> {
-    edges: FxHashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions>,
+    pub(crate) edges: HashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions>,
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {

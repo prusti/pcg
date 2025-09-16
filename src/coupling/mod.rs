@@ -21,7 +21,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::EdgeData,
-        graph::Conditioned,
+        graph::{BorrowsGraph, Conditioned},
     },
     pcg::PcgNodeLike,
     utils::{
@@ -289,11 +289,64 @@ fn couple_edges<
     })
 }
 
-pub trait CouplingDataSource<'tcx> {
+pub trait MutableCouplingDataSource<'tcx> {
     fn extract_abstraction_edges(&mut self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
 }
 
-impl<'tcx> CouplingDataSource<'tcx> for HashSet<BorrowPcgEdge<'tcx>> {
+pub trait CouplingDataSource<'tcx> {
+    fn abstraction_edges(&self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
+}
+
+trait ObtainEdges<'tcx, Input> {
+    fn obtain_abstraction_edges(input: Input) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
+}
+
+struct ObtainExtract;
+struct ObtainGet;
+
+impl<'a, 'tcx: 'a, T: CouplingDataSource<'tcx> + 'a> ObtainEdges<'tcx, &'a T> for ObtainGet {
+    fn obtain_abstraction_edges(input: &'a T) -> HashSet<Conditioned<AbstractionEdge<'tcx>>> {
+        input.abstraction_edges()
+    }
+}
+
+impl<'a, 'tcx: 'a, T: MutableCouplingDataSource<'tcx> + 'a> ObtainEdges<'tcx, &'a mut T>
+    for ObtainExtract
+{
+    fn obtain_abstraction_edges(input: &'a mut T) -> HashSet<Conditioned<AbstractionEdge<'tcx>>> {
+        input.extract_abstraction_edges()
+    }
+}
+
+impl<'tcx> CouplingDataSource<'tcx> for BorrowsGraph<'tcx> {
+    fn abstraction_edges(&self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>> {
+        self.edges
+            .iter()
+            .filter_map(|(kind, conditions)| match kind {
+                BorrowPcgEdgeKind::Abstraction(abstraction) => {
+                    Some(Conditioned::new(abstraction.clone(), conditions.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+impl<'tcx> MutableCouplingDataSource<'tcx> for BorrowsGraph<'tcx> {
+    fn extract_abstraction_edges(&mut self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>> {
+        let mut abstraction_edges = HashSet::default();
+        self.edges.retain(|kind, conditions| match kind {
+            BorrowPcgEdgeKind::Abstraction(abstraction) => {
+                abstraction_edges.insert(Conditioned::new(abstraction.clone(), conditions.clone()));
+                false
+            }
+            _ => true,
+        });
+        abstraction_edges
+    }
+}
+
+impl<'tcx> MutableCouplingDataSource<'tcx> for HashSet<BorrowPcgEdge<'tcx>> {
     fn extract_abstraction_edges(&mut self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>> {
         let mut abstraction_edges = HashSet::default();
         self.retain(|edge| match edge.kind() {
@@ -348,13 +401,25 @@ impl<'tcx> PcgCouplingResults<'tcx> {
 }
 
 impl<'tcx> PcgCoupledEdges<'tcx> {
+    pub fn extract_coupled_edges(
+        data_source: &mut impl MutableCouplingDataSource<'tcx>,
+    ) -> Vec<PcgCoupledEdge<'tcx>> {
+        Self::coupled_edges::<_, ObtainExtract>(data_source)
+    }
+
+    pub fn get_coupled_edges(
+        data_source: &impl CouplingDataSource<'tcx>,
+    ) -> Vec<PcgCoupledEdge<'tcx>> {
+        Self::coupled_edges::<_, ObtainGet>(data_source)
+    }
+
     /// Returns the set of successful coupling results based on the abstraction
     /// edges.  If you are also interested in the unsuccessful
-    /// couplings, use [`PcgCoupledEdges::coupling_results`].
-    pub fn coupled_edges(
-        mut data_source: impl CouplingDataSource<'tcx>,
+    /// couplings, use [`PcgCoupledEdges::from_data_source`].
+    fn coupled_edges<T, ObtainType: ObtainEdges<'tcx, T>>(
+        data_source: T,
     ) -> Vec<PcgCoupledEdge<'tcx>> {
-        PcgCoupledEdges::from_data_source(&mut data_source)
+        PcgCoupledEdges::obtain_from_data_source::<_, ObtainType>(data_source)
             .into_iter()
             .flat_map(|result| {
                 let set = match result.0 {
@@ -366,8 +431,20 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
             .collect()
     }
 
-    pub fn from_data_source(
-        data_source: &mut impl CouplingDataSource<'tcx>,
+    pub fn extract_from_data_source(
+        data_source: &mut impl MutableCouplingDataSource<'tcx>,
+    ) -> PcgCouplingResults<'tcx> {
+        Self::obtain_from_data_source::<_, ObtainExtract>(data_source)
+    }
+
+    pub fn get_from_data_source(
+        data_source: &impl CouplingDataSource<'tcx>,
+    ) -> PcgCouplingResults<'tcx> {
+        Self::obtain_from_data_source::<_, ObtainGet>(data_source)
+    }
+
+    fn obtain_from_data_source<T, ObtainType: ObtainEdges<'tcx, T>>(
+        data_source: T,
     ) -> PcgCouplingResults<'tcx> {
         let mut function_edges: HashMap<
             Conditioned<FunctionCallAbstractionEdgeMetadata<'tcx>>,
@@ -377,7 +454,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
             Conditioned<LoopAbstractionEdgeMetadata<'tcx>>,
             HashSet<LoopAbstractionEdge<'tcx>>,
         > = HashMap::default();
-        for edge in data_source.extract_abstraction_edges() {
+        for edge in ObtainType::obtain_abstraction_edges(data_source) {
             match edge.value {
                 AbstractionEdge::FunctionCall(function_call) => {
                     function_edges

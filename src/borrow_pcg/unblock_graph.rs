@@ -107,7 +107,7 @@ impl<'tcx> UnblockGraph<'tcx> {
     pub fn into_coupled(
         mut self,
     ) -> UnblockGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> {
-        let coupled = PcgCoupledEdges::from_data_source(&mut self.edges);
+        let coupled = PcgCoupledEdges::extract_from_data_source(&mut self.edges);
         let mut edges: HashSet<MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> = self
             .edges
             .into_iter()
