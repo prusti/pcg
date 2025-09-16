@@ -1,9 +1,18 @@
 //! Data structures and algorithms related to [`UnblockGraph`].
-use std::{collections::HashSet, marker::PhantomData};
+use std::marker::PhantomData;
 
 use derive_more::From;
 
-use crate::{borrow_checker::BorrowCheckerInterface, error::PcgInternalError};
+use crate::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
+        edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
+        graph::Conditioned,
+    },
+    coupling::{CouplingDataSource, MaybeCoupledEdge, PcgCoupledEdges},
+    error::PcgInternalError,
+    utils::data_structures::HashSet,
+};
 
 use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike};
 use crate::{
@@ -23,12 +32,19 @@ pub struct UnblockGraph<'tcx, Edge = UnblockEdge<'tcx>> {
 
 /// An action that removes an edge from the Borrow PCG
 #[derive(Clone, Debug, Eq, PartialEq, From)]
-pub struct BorrowPcgUnblockAction<'tcx> {
-    pub(super) edge: BorrowPcgEdge<'tcx>,
+pub struct BorrowPcgUnblockAction<'tcx, Edge = BorrowPcgEdge<'tcx>> {
+    pub(super) edge: Edge,
+    _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx> BorrowPcgUnblockAction<'tcx> {
-    pub fn edge(&self) -> &BorrowPcgEdge<'tcx> {
+impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
+    pub fn new(edge: Edge) -> Self {
+        Self {
+            edge,
+            _marker: PhantomData,
+        }
+    }
+    pub fn edge(&self) -> &Edge {
         &self.edge
     }
 }
@@ -46,10 +62,72 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>
     }
 }
 
+impl<'tcx, Edge: EdgeData<'tcx> + std::fmt::Debug + Clone + Eq + std::hash::Hash>
+    UnblockGraph<'tcx, Edge>
+{
+    /// Returns an ordered list of actions to unblock the edges in the graph.
+    /// This is essentially a topological sort of the edges.
+    pub fn actions(
+        self,
+        repacker: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx, Edge>>, PcgInternalError> {
+        let mut edges = self.edges;
+        let mut actions = vec![];
+
+        while !edges.is_empty() {
+            let mut to_keep = edges.clone();
+
+            let should_kill_edge = |edge: &Edge| {
+                edge.blocked_by_nodes(repacker)
+                    .all(|node| edges.iter().all(|e| !e.blocks_node(node.into(), repacker)))
+            };
+            for edge in edges.iter() {
+                if should_kill_edge(edge) {
+                    actions.push(BorrowPcgUnblockAction::new(edge.clone()));
+                    to_keep.remove(edge);
+                }
+            }
+            if to_keep.len() >= edges.len() {
+                return Err(PcgInternalError::new(format!(
+                    "Didn't remove any leaves {edges:#?}"
+                )));
+            }
+            edges = to_keep;
+        }
+        Ok(actions)
+    }
+}
+
 impl<'tcx> UnblockGraph<'tcx> {
     pub(crate) fn new() -> Self {
         Self {
-            edges: HashSet::new(),
+            edges: HashSet::default(),
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn into_coupled(
+        mut self,
+    ) -> UnblockGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> {
+        let coupled = PcgCoupledEdges::from_data_source(&mut self.edges);
+        let mut edges: HashSet<MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> = self
+            .edges
+            .into_iter()
+            .map(|edge| MaybeCoupledEdge::NotCoupled(edge))
+            .collect();
+        edges.extend(
+            coupled
+                .into_maybe_coupled_edges()
+                .into_iter()
+                .map(|edge| match edge {
+                    MaybeCoupledEdge::Coupled(coupled) => MaybeCoupledEdge::Coupled(coupled),
+                    MaybeCoupledEdge::NotCoupled(not_coupled) => {
+                        MaybeCoupledEdge::NotCoupled(not_coupled.into())
+                    }
+                }),
+        );
+        UnblockGraph {
+            edges,
             _marker: PhantomData,
         }
     }
@@ -76,38 +154,6 @@ impl<'tcx> UnblockGraph<'tcx> {
 
     pub fn is_empty(&self) -> bool {
         self.edges.is_empty()
-    }
-
-    /// Returns an ordered list of actions to unblock the edges in the graph.
-    /// This is essentially a topological sort of the edges.
-    pub fn actions(
-        self,
-        repacker: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx>>, PcgInternalError> {
-        let mut edges = self.edges;
-        let mut actions = vec![];
-
-        while !edges.is_empty() {
-            let mut to_keep = edges.clone();
-
-            let should_kill_edge = |edge: &BorrowPcgEdge<'tcx>| {
-                edge.blocked_by_nodes(repacker)
-                    .all(|node| edges.iter().all(|e| !e.blocks_node(node.into(), repacker)))
-            };
-            for edge in edges.iter() {
-                if should_kill_edge(edge) {
-                    actions.push(BorrowPcgUnblockAction::from(edge.clone()));
-                    to_keep.remove(edge);
-                }
-            }
-            if to_keep.len() >= edges.len() {
-                return Err(PcgInternalError::new(format!(
-                    "Didn't remove any leaves {edges:#?}"
-                )));
-            }
-            edges = to_keep;
-        }
-        Ok(actions)
     }
 
     fn add_dependency(&mut self, unblock_edge: UnblockEdge<'tcx>) -> bool {

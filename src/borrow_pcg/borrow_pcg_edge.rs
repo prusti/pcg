@@ -85,7 +85,7 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgEdge<'tcx> {
 }
 
 /// Either a [`BorrowPcgEdge`] or a [`BorrowPcgEdgeRef`]
-pub trait BorrowPcgEdgeLike<'tcx>: EdgeData<'tcx> + Clone {
+pub trait BorrowPcgEdgeLike<'tcx>: EdgeData<'tcx> + Clone + std::fmt::Debug {
     fn kind(&self) -> &BorrowPcgEdgeKind<'tcx>;
     fn conditions(&self) -> &ValidityConditions;
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx>;

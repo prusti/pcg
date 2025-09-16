@@ -86,14 +86,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         call: &FunctionCall<'_, 'tcx>,
         function_data: Option<FunctionData<'tcx>>,
     ) -> Result<(), PcgError> {
-        for (input, output) in shape.iter().copied() {
+        for AbstractionBlockEdge { input, output, .. } in shape.iter().copied() {
             self.record_and_apply_action(
                 BorrowPcgAction::add_edge(
                     BorrowPcgEdge::new(
                         AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
                             call.location,
                             function_data,
-                            AbstractionBlockEdge::new(
+                            AbstractionBlockEdge::new_checked(
                                 self.node_for_input(call, input),
                                 self.node_for_output(call, output),
                                 self.ctxt,

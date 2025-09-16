@@ -4,13 +4,14 @@ use itertools::Itertools;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        edge::abstraction::AbstractionBlockEdge,
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
+    coupling::{CoupleInputError, CoupledEdgesData},
     rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        self, data_structures::HashSet, display::DisplayWithCompilerCtxt, CompilerCtxt, HasBorrowCheckerCtxt
     },
 };
 
@@ -113,12 +114,12 @@ impl<'tcx> From<ProjectionData<'tcx, ArgIdx>> for LifetimeProjection<'tcx, ArgId
     }
 }
 
+type FunctionShapeInput<'tcx> = LifetimeProjection<'tcx, ArgIdx>;
+type FunctionShapeOutput<'tcx> = LifetimeProjection<'tcx, ArgIdxOrResult>;
+
 #[derive(Deref, PartialEq, Eq, Clone, Debug)]
 pub struct FunctionShape<'tcx>(
-    HashSet<(
-        LifetimeProjection<'tcx, ArgIdx>,
-        LifetimeProjection<'tcx, ArgIdxOrResult>,
-    )>,
+    HashSet<AbstractionBlockEdge<'tcx, FunctionShapeInput<'tcx>, FunctionShapeOutput<'tcx>>>,
 );
 
 impl std::fmt::Display for ArgIdx {
@@ -142,7 +143,7 @@ impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
     fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0
             .iter()
-            .map(|(input, output)| format!("{} -> {}", input, output))
+            .map(|edge| format!("{}", edge))
             .sorted()
             .collect::<Vec<_>>()
             .join("\n, ")
@@ -182,17 +183,26 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
                     && shape_data.outlives(input.region, output.region, ctxt)
                 {
                     tracing::debug!("{} outlives {}", input, output);
-                    shape.insert((input.into(), output.into()));
+                    shape.insert(AbstractionBlockEdge::new(input.into(), output.into()));
                 }
             }
             for rp in result_projections.iter().copied() {
                 if shape_data.outlives(input.region, rp.region, ctxt) {
                     tracing::debug!("{} outlives {}", input, rp);
-                    shape.insert((input.into(), rp.into()));
+                    shape.insert(AbstractionBlockEdge::new(input.into(), rp.into()));
                 }
             }
         }
 
         FunctionShape(shape)
+    }
+
+    pub fn coupled(
+        self,
+    ) -> std::result::Result<
+        CoupledEdgesData<FunctionShapeInput<'tcx>, FunctionShapeOutput<'tcx>>,
+        CoupleInputError,
+    > {
+        CoupledEdgesData::new(self.0)
     }
 }

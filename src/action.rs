@@ -85,7 +85,7 @@ impl<'tcx> PcgActions<'tcx> {
                 PcgAction::Borrow(BorrowPcgAction {
                     kind: BorrowPcgActionKind::RemoveEdge(edge),
                     ..
-                }) => Some(BorrowPcgUnblockAction::from(edge.clone())),
+                }) => Some(BorrowPcgUnblockAction::new(edge.clone())),
                 _ => None,
             })
             .collect()

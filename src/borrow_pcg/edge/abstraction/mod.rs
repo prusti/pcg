@@ -84,11 +84,19 @@ impl<'tcx> AbstractionEdge<'tcx> {
     }
 }
 
-/// A hyperedge for a function or loop abstraction
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+impl<'tcx, Input: std::fmt::Display, Output: std::fmt::Display> std::fmt::Display
+    for AbstractionBlockEdge<'tcx, Input, Output>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> {}", self.input, self.output)
+    }
+}
+
+/// An edge for a function or loop abstraction
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     _phantom: PhantomData<&'tcx ()>,
-    input: Input,
+    pub(crate) input: Input,
     pub(crate) output: Output,
 }
 
@@ -100,6 +108,14 @@ impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
         AbstractionBlockEdgeWithMetadata {
             metadata,
             edge: self,
+        }
+    }
+
+    pub(crate) fn new(input: Input, output: Output) -> Self {
+        Self {
+            _phantom: PhantomData,
+            input,
+            output,
         }
     }
 }
@@ -297,7 +313,7 @@ impl<
     Output: Clone + PcgNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > AbstractionBlockEdge<'tcx, Input, Output>
 {
-    pub(crate) fn new(
+    pub(crate) fn new_checked(
         input: Input,
         output: Output,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,

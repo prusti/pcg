@@ -51,7 +51,9 @@ impl<'tcx> BorrowPcgActions<'tcx> {
         self.0
             .iter()
             .filter_map(|action| match action.kind() {
-                BorrowPcgActionKind::RemoveEdge(edge) => Some(edge.clone().into()),
+                BorrowPcgActionKind::RemoveEdge(edge) => {
+                    Some(BorrowPcgUnblockAction::new(edge.clone()))
+                }
                 _ => None,
             })
             .collect()

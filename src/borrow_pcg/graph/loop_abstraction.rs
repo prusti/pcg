@@ -589,7 +589,7 @@ fn add_block_edge<'tcx, 'mir>(
     short: LocalNode<'tcx>,
     ctxt: CompilerCtxt<'mir, 'tcx>,
 ) {
-    let long_edge = AbstractionBlockEdge::new(long.into(), short.into(), ctxt);
+    let long_edge = AbstractionBlockEdge::new_checked(long.into(), short.into(), ctxt);
     let loop_edge = LoopAbstraction::new(long_edge, expander.loop_head_block);
     expander.graph.insert(
         loop_edge.to_borrow_pcg_edge(expander.validity_conditions.clone()),
