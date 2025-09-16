@@ -13,7 +13,6 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
     },
-    coupling::{MaybeCoupledEdge, MaybeCoupledEdges, PcgCoupledEdges},
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike},
@@ -43,6 +42,9 @@ use crate::{
     borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
     utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
+
+#[cfg(feature = "coupling")]
+use crate::coupling::{MaybeCoupledEdge, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug)]
@@ -107,9 +109,9 @@ impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
     }
 }
 
-impl Eq for BorrowsGraph<'_> {}
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> Eq for BorrowsGraph<'tcx, Kind> {}
 
-impl PartialEq for BorrowsGraph<'_> {
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> PartialEq for BorrowsGraph<'tcx, Kind> {
     fn eq(&self, other: &Self) -> bool {
         self.edges == other.edges
     }
@@ -132,6 +134,7 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
     ) -> BorrowsGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>> {

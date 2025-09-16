@@ -1,5 +1,7 @@
 //! The data structure representing the state of the Borrow PCG.
 
+use std::marker::PhantomData;
+
 use crate::{
     borrow_pcg::graph::join::JoinBorrowsArgs,
     pcg::{
@@ -51,10 +53,22 @@ use crate::{
 
 /// The state of the Borrow PCG, including the Borrow PCG graph and the validity
 /// conditions associated with the current basic block.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct BorrowsState<'tcx> {
-    pub(crate) graph: BorrowsGraph<'tcx>,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BorrowsState<'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>>
+{
+    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
     pub(crate) validity_conditions: ValidityConditions,
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default for BorrowsState<'tcx, EdgeKind> {
+    fn default() -> Self {
+        Self {
+            graph: BorrowsGraph::default(),
+            validity_conditions: ValidityConditions::default(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 pub(crate) struct BorrowStateMutRef<'pcg, 'tcx> {
