@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::coupling::{MaybeCoupledEdge, PcgCoupledEdges};
+use crate::coupling::{MaybeCoupledEdgeKind, PcgCoupledEdges};
 
 type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;
 
@@ -106,14 +106,14 @@ impl<'tcx> UnblockGraph<'tcx> {
     #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
-    ) -> UnblockGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> {
+    ) -> UnblockGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> {
         use crate::coupling::MaybeCoupledEdges;
 
         let coupled = PcgCoupledEdges::extract_from_data_source(&mut self.edges);
-        let mut edges: HashSet<MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> = self
+        let mut edges: HashSet<MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> = self
             .edges
             .into_iter()
-            .map(MaybeCoupledEdge::NotCoupled)
+            .map(MaybeCoupledEdgeKind::NotCoupled)
             .collect();
         edges.extend(
             coupled
@@ -123,11 +123,11 @@ impl<'tcx> UnblockGraph<'tcx> {
                     MaybeCoupledEdges::Coupled(coupled) => coupled
                         .edges()
                         .into_iter()
-                        .map(MaybeCoupledEdge::Coupled)
+                        .map(MaybeCoupledEdgeKind::Coupled)
                         .collect::<Vec<_>>(),
                     MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
                         .into_iter()
-                        .map(|edge| MaybeCoupledEdge::NotCoupled(edge.into()))
+                        .map(|edge| MaybeCoupledEdgeKind::NotCoupled(edge.into()))
                         .collect::<Vec<_>>(),
                 }),
         );

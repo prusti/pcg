@@ -23,7 +23,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::coupling::PcgCoupledEdge;
+use crate::coupling::PcgCoupledEdgeKind;
 
 use crate::{
     borrow_pcg::{
@@ -69,13 +69,13 @@ impl<'tcx> AbstractionEdge<'tcx> {
     /// This is presumably NOT what you want, as there is no coupling logic
     /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
     /// However, Prusti is currently using this function for loops.
-    pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
+    pub fn to_hyper_edge(&self) -> PcgCoupledEdgeKind<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {
-                PcgCoupledEdge::function_call(function_call.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::function_call(function_call.edge.to_hyper_edge())
             }
             AbstractionEdge::Loop(loop_abstraction) => {
-                PcgCoupledEdge::loop_(loop_abstraction.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::loop_(loop_abstraction.edge.to_hyper_edge())
             }
         }
     }

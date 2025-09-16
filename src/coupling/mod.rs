@@ -152,14 +152,14 @@ type LoopCoupledEdges<'tcx> = CoupledEdges<
 
 /// A coupled edge derived from a function or loop
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
-pub struct PcgCoupledEdge<'tcx>(
+pub struct PcgCoupledEdgeKind<'tcx>(
     FunctionCallOrLoop<
         HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>>,
         HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
     >,
 );
 
-impl<'tcx> PcgCoupledEdge<'tcx> {
+impl<'tcx> PcgCoupledEdgeKind<'tcx> {
     pub(crate) fn function_call(
         edge: HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>>,
     ) -> Self {
@@ -224,21 +224,21 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
     fn loop_(edges: LoopCoupledEdges<'tcx>) -> Self {
         Self(FunctionCallOrLoop::Loop(edges))
     }
-    pub(crate) fn edges(&self) -> HashSet<PcgCoupledEdge<'tcx>> {
+    pub(crate) fn edges(&self) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
         fn for_function_call<'tcx>(
             data: FunctionCoupledEdges<'tcx>,
-        ) -> HashSet<PcgCoupledEdge<'tcx>> {
+        ) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
             data.edges
                 .0
                 .into_iter()
-                .map(PcgCoupledEdge::function_call)
+                .map(PcgCoupledEdgeKind::function_call)
                 .collect()
         }
-        fn for_loop<'tcx>(data: LoopCoupledEdges<'tcx>) -> HashSet<PcgCoupledEdge<'tcx>> {
+        fn for_loop<'tcx>(data: LoopCoupledEdges<'tcx>) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
             data.edges
                 .0
                 .into_iter()
-                .map(PcgCoupledEdge::loop_)
+                .map(PcgCoupledEdgeKind::loop_)
                 .collect()
         }
         self.0.clone().bimap(for_function_call, for_loop)
@@ -390,13 +390,13 @@ impl<'tcx> PcgCouplingResults<'tcx> {
 impl<'tcx> PcgCoupledEdges<'tcx> {
     pub fn extract_coupled_edges(
         data_source: &mut impl MutableCouplingDataSource<'tcx>,
-    ) -> Vec<PcgCoupledEdge<'tcx>> {
+    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
         Self::coupled_edges::<_, ObtainExtract>(data_source)
     }
 
     pub fn get_coupled_edges(
         data_source: &impl CouplingDataSource<'tcx>,
-    ) -> Vec<PcgCoupledEdge<'tcx>> {
+    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
         Self::coupled_edges::<_, ObtainGet>(data_source)
     }
 
@@ -405,7 +405,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
     /// couplings, use [`PcgCoupledEdges::from_data_source`].
     fn coupled_edges<T, ObtainType: ObtainEdges<'tcx, T>>(
         data_source: T,
-    ) -> Vec<PcgCoupledEdge<'tcx>> {
+    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
         PcgCoupledEdges::obtain_from_data_source::<_, ObtainType>(data_source)
             .into_iter()
             .flat_map(|result| {
@@ -511,12 +511,12 @@ pub enum MaybeCoupledEdges<'tcx, T> {
 }
 
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
-pub enum MaybeCoupledEdge<'tcx, T> {
-    Coupled(PcgCoupledEdge<'tcx>),
+pub enum MaybeCoupledEdgeKind<'tcx, T> {
+    Coupled(PcgCoupledEdgeKind<'tcx>),
     NotCoupled(T),
 }
 
-impl<'tcx> EdgeData<'tcx> for PcgCoupledEdge<'tcx> {
+impl<'tcx> EdgeData<'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
@@ -540,7 +540,7 @@ impl<'tcx> EdgeData<'tcx> for PcgCoupledEdge<'tcx> {
     }
 }
 
-impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdge<'tcx, T> {
+impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdgeKind<'tcx, T> {
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
@@ -549,8 +549,8 @@ impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdge<'tcx, T> {
         'tcx: 'slf,
     {
         match self {
-            MaybeCoupledEdge::Coupled(coupled) => coupled.blocked_nodes(ctxt),
-            MaybeCoupledEdge::NotCoupled(normal) => normal.blocked_nodes(ctxt),
+            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.blocked_nodes(ctxt),
+            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.blocked_nodes(ctxt),
         }
     }
 
@@ -564,8 +564,8 @@ impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdge<'tcx, T> {
         'tcx: 'mir,
     {
         match self {
-            MaybeCoupledEdge::Coupled(coupled) => coupled.blocked_by_nodes(ctxt),
-            MaybeCoupledEdge::NotCoupled(normal) => normal.blocked_by_nodes(ctxt),
+            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.blocked_by_nodes(ctxt),
+            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.blocked_by_nodes(ctxt),
         }
     }
 }

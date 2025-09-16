@@ -6,6 +6,7 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::{BorrowPcgActionKind, actions::BorrowPcgActions},
+        borrow_pcg_edge::BorrowPcgEdge,
         unblock_graph::BorrowPcgUnblockAction,
     },
     owned_pcg::RepackOp,
@@ -146,13 +147,14 @@ pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
-pub type BorrowPcgAction<'tcx> = ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx>>;
+pub type BorrowPcgAction<'tcx, RemovedEdge = BorrowPcgEdge<'tcx>> =
+    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, RemovedEdge>>;
 
 /// An action applied to the PCG during the PCG analysis.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, PartialEq, Eq, Debug, From)]
-pub enum PcgAction<'tcx> {
-    Borrow(BorrowPcgAction<'tcx>),
+pub enum PcgAction<'tcx, RemovedEdge = BorrowPcgEdge<'tcx>> {
+    Borrow(BorrowPcgAction<'tcx, RemovedEdge>),
     Owned(OwnedPcgAction<'tcx>),
 }
 

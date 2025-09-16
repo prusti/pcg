@@ -44,7 +44,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::coupling::{MaybeCoupledEdge, MaybeCoupledEdges, PcgCoupledEdges};
+use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug)]
@@ -137,15 +137,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
     #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
-    ) -> BorrowsGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>> {
+    ) -> BorrowsGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>> {
         let coupled = PcgCoupledEdges::extract_from_data_source(&mut self);
         let mut edges: HashMap<
-            MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>,
+            MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>,
             ValidityConditions,
         > = self
             .edges
             .into_iter()
-            .map(|(kind, conditions)| (MaybeCoupledEdge::NotCoupled(kind), conditions))
+            .map(|(kind, conditions)| (MaybeCoupledEdgeKind::NotCoupled(kind), conditions))
             .collect();
         edges.extend(
             coupled
@@ -157,7 +157,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .into_iter()
                         .map(|edge| {
                             (
-                                MaybeCoupledEdge::Coupled(edge),
+                                MaybeCoupledEdgeKind::Coupled(edge),
                                 coupled.conditions().clone(),
                             )
                         })
@@ -167,7 +167,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .map(|edge| {
                             let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
                             (
-                                MaybeCoupledEdge::NotCoupled(borrow_pcg_edge.kind),
+                                MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.kind),
                                 borrow_pcg_edge.conditions,
                             )
                         })
@@ -523,6 +523,10 @@ pub struct Conditioned<T> {
 impl<T> Conditioned<T> {
     pub(crate) fn new(value: T, conditions: ValidityConditions) -> Self {
         Self { conditions, value }
+    }
+
+    pub fn value(&self) -> &T {
+        &self.value
     }
 }
 

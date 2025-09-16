@@ -38,7 +38,7 @@ use crate::{
 };
 
 #[cfg(feature = "coupling")]
-use crate::coupling::MaybeCoupledEdge;
+use crate::coupling::MaybeCoupledEdgeKind;
 
 /// A reference to an edge in the Borrow PCG
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -57,8 +57,8 @@ pub struct BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> {
 }
 
 #[cfg(feature = "coupling")]
-pub type MaybeCoupledPcgEdge<'tcx> =
-    BorrowPcgEdge<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>>;
+pub type MaybeCoupledBorrowPcgEdge<'tcx> =
+    BorrowPcgEdge<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>>;
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(

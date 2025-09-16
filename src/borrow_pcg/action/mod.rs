@@ -19,6 +19,15 @@ use crate::{
 
 pub mod actions;
 
+impl<'tcx, RemovedEdge> BorrowPcgAction<'tcx, RemovedEdge> {
+    pub(crate) fn remove_edge(edge: RemovedEdge, context: impl Into<String>) -> Self {
+        BorrowPcgAction {
+            kind: BorrowPcgActionKind::RemoveEdge(edge),
+            debug_context: Some(context.into()),
+        }
+    }
+}
+
 impl<'tcx> BorrowPcgAction<'tcx> {
     pub(crate) fn restore_capability(
         place: Place<'tcx>,
@@ -43,13 +52,6 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Weaken(Weaken::new(place, from, to, ctxt)),
-            debug_context: Some(context.into()),
-        }
-    }
-
-    pub(crate) fn remove_edge(edge: BorrowPcgEdge<'tcx>, context: impl Into<String>) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::RemoveEdge(edge),
             debug_context: Some(context.into()),
         }
     }
@@ -183,7 +185,7 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BorrowPcgActionKind<'tcx> {
+pub enum BorrowPcgActionKind<'tcx, RemovedEdge = BorrowPcgEdge<'tcx>> {
     LabelLifetimeProjection(
         LabelLifetimeProjectionPredicate<'tcx>,
         Option<LifetimeProjectionLabel>,
@@ -198,7 +200,7 @@ pub enum BorrowPcgActionKind<'tcx> {
     /// symbolic-execution based Prusti purification already performs some
     /// filtering on edges based on validity conditions and might want to ignore
     /// removal actions for edges that it already ignored.
-    RemoveEdge(BorrowPcgEdge<'tcx>),
+    RemoveEdge(RemovedEdge),
     AddEdge {
         edge: BorrowPcgEdge<'tcx>,
     },
