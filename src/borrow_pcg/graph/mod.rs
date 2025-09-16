@@ -15,11 +15,15 @@ use crate::{
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
-        data_structures::fx::{FxHashMap, FxHashSet},
+        data_structures::fx::FxHashSet,
         middle::mir::{self},
     },
     utils::{
-        data_structures::{HashMap, HashSet}, display::{DebugLines, DisplayWithCompilerCtxt}, maybe_old::MaybeLabelledPlace, validity::HasValidityCheck, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, DEBUG_BLOCK, DEBUG_IMGCAT
+        DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        data_structures::{HashMap, HashSet},
+        display::{DebugLines, DisplayWithCompilerCtxt},
+        maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 use frozen::{CachedLeafEdges, FrozenGraphRef};
