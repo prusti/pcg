@@ -11,7 +11,8 @@ use crate::{
     coupling::{CoupleInputError, CoupledEdgesData},
     rustc_interface::middle::{mir, ty},
     utils::{
-        self, data_structures::HashSet, display::DisplayWithCompilerCtxt, CompilerCtxt, HasBorrowCheckerCtxt
+        self, CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 

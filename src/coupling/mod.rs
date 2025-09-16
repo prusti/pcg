@@ -351,7 +351,9 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
     /// Returns the set of successful coupling results based on the abstraction
     /// edges.  If you are also interested in the unsuccessful
     /// couplings, use [`PcgCoupledEdges::coupling_results`].
-    pub fn coupled_edges(mut data_source: impl CouplingDataSource<'tcx>) -> Vec<PcgCoupledEdge<'tcx>> {
+    pub fn coupled_edges(
+        mut data_source: impl CouplingDataSource<'tcx>,
+    ) -> Vec<PcgCoupledEdge<'tcx>> {
         PcgCoupledEdges::from_data_source(&mut data_source)
             .into_iter()
             .flat_map(|result| {
