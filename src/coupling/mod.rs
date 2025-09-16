@@ -22,6 +22,7 @@ use crate::{
         },
         edge_data::EdgeData,
         graph::{BorrowsGraph, Conditioned},
+        path_condition::ValidityConditions,
     },
     pcg::PcgNodeLike,
     utils::{
@@ -223,13 +224,19 @@ pub struct PcgCoupledEdges<'tcx>(
 );
 
 impl<'tcx> PcgCoupledEdges<'tcx> {
+    pub(crate) fn conditions(&self) -> &ValidityConditions {
+        match &self.0 {
+            FunctionCallOrLoop::FunctionCall(function) => &function.metadata.conditions,
+            FunctionCallOrLoop::Loop(loop_) => &loop_.metadata.conditions,
+        }
+    }
     fn function_call(edges: FunctionCoupledEdges<'tcx>) -> Self {
         Self(FunctionCallOrLoop::FunctionCall(edges))
     }
     fn loop_(edges: LoopCoupledEdges<'tcx>) -> Self {
         Self(FunctionCallOrLoop::Loop(edges))
     }
-    fn edges(&self) -> HashSet<PcgCoupledEdge<'tcx>> {
+    pub(crate) fn edges(&self) -> HashSet<PcgCoupledEdge<'tcx>> {
         fn for_function_call<'tcx>(
             data: FunctionCoupledEdges<'tcx>,
         ) -> HashSet<PcgCoupledEdge<'tcx>> {
@@ -382,19 +389,11 @@ impl<'tcx, SourceData> CouplingResults<'tcx, SourceData> {
 impl<'tcx> PcgCouplingResults<'tcx> {
     pub(crate) fn into_maybe_coupled_edges(
         self,
-    ) -> HashSet<MaybeCoupledEdge<'tcx, Conditioned<AbstractionEdge<'tcx>>>> {
+    ) -> HashSet<MaybeCoupledEdges<'tcx, Conditioned<AbstractionEdge<'tcx>>>> {
         self.into_iter()
-            .flat_map(|result| match result.0 {
-                Ok(result) => result
-                    .edges()
-                    .into_iter()
-                    .map(MaybeCoupledEdge::Coupled)
-                    .collect(),
-                Err(other) => {
-                    other
-                        .map_each_source_data_element(MaybeCoupledEdge::NotCoupled)
-                        .source_data
-                }
+            .map(|result| match result.0 {
+                Ok(result) => MaybeCoupledEdges::Coupled(result),
+                Err(other) => MaybeCoupledEdges::NotCoupled(other.source_data),
             })
             .collect()
     }
@@ -514,6 +513,13 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
         }));
         CouplingResults::new(result)
     }
+}
+
+/// The maybe-coupled edges for a function call or loop
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub enum MaybeCoupledEdges<'tcx, T> {
+    Coupled(PcgCoupledEdges<'tcx>),
+    NotCoupled(Vec<T>),
 }
 
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]

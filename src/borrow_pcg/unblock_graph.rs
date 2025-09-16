@@ -107,6 +107,8 @@ impl<'tcx> UnblockGraph<'tcx> {
     pub fn into_coupled(
         mut self,
     ) -> UnblockGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> {
+        use crate::coupling::MaybeCoupledEdges;
+
         let coupled = PcgCoupledEdges::extract_from_data_source(&mut self.edges);
         let mut edges: HashSet<MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> = self
             .edges
@@ -117,11 +119,16 @@ impl<'tcx> UnblockGraph<'tcx> {
             coupled
                 .into_maybe_coupled_edges()
                 .into_iter()
-                .map(|edge| match edge {
-                    MaybeCoupledEdge::Coupled(coupled) => MaybeCoupledEdge::Coupled(coupled),
-                    MaybeCoupledEdge::NotCoupled(not_coupled) => {
-                        MaybeCoupledEdge::NotCoupled(not_coupled.into())
-                    }
+                .flat_map(|edge| match edge {
+                    MaybeCoupledEdges::Coupled(coupled) => coupled
+                        .edges()
+                        .into_iter()
+                        .map(|edge| MaybeCoupledEdge::Coupled(edge))
+                        .collect::<Vec<_>>(),
+                    MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
+                        .into_iter()
+                        .map(|edge| MaybeCoupledEdge::NotCoupled(edge.into()))
+                        .collect::<Vec<_>>(),
                 }),
         );
         UnblockGraph {

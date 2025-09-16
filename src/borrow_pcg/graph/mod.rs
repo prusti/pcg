@@ -6,11 +6,14 @@ pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
 mod mutate;
 
+use std::marker::PhantomData;
+
 use crate::{
     borrow_pcg::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
     },
+    coupling::{MaybeCoupledEdge, MaybeCoupledEdges, PcgCoupledEdges},
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike},
@@ -42,9 +45,19 @@ use crate::{
 };
 
 /// The Borrow PCG Graph.
-#[derive(Clone, Debug, Default)]
-pub struct BorrowsGraph<'tcx> {
-    pub(crate) edges: HashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions>,
+#[derive(Clone, Debug)]
+pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    pub(crate) edges: HashMap<EdgeKind, ValidityConditions>,
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
+    fn default() -> Self {
+        Self {
+            edges: HashMap::default(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
@@ -119,6 +132,52 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub fn into_coupled(
+        mut self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> BorrowsGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>> {
+        let coupled = PcgCoupledEdges::extract_from_data_source(&mut self);
+        let mut edges: HashMap<
+            MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>,
+            ValidityConditions,
+        > = self
+            .edges
+            .into_iter()
+            .map(|(kind, conditions)| (MaybeCoupledEdge::NotCoupled(kind), conditions))
+            .collect();
+        edges.extend(
+            coupled
+                .into_maybe_coupled_edges()
+                .into_iter()
+                .flat_map(|edge| match edge {
+                    MaybeCoupledEdges::Coupled(coupled) => coupled
+                        .edges()
+                        .into_iter()
+                        .map(|edge| {
+                            (
+                                MaybeCoupledEdge::Coupled(edge),
+                                coupled.conditions().clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
+                        .into_iter()
+                        .map(|edge| {
+                            let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
+                            (
+                                MaybeCoupledEdge::NotCoupled(borrow_pcg_edge.kind),
+                                borrow_pcg_edge.conditions
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                }),
+        );
+        BorrowsGraph {
+            edges,
+            _marker: PhantomData,
+        }
+    }
+
     pub(crate) fn places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
