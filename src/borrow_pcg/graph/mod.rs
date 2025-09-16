@@ -134,7 +134,6 @@ pub(crate) fn borrows_imgcat_debug(
 impl<'tcx> BorrowsGraph<'tcx> {
     pub fn into_coupled(
         mut self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> BorrowsGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdgeKind<'tcx>>> {
         let coupled = PcgCoupledEdges::extract_from_data_source(&mut self);
         let mut edges: HashMap<
@@ -166,7 +165,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                             let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
                             (
                                 MaybeCoupledEdge::NotCoupled(borrow_pcg_edge.kind),
-                                borrow_pcg_edge.conditions
+                                borrow_pcg_edge.conditions,
                             )
                         })
                         .collect::<Vec<_>>(),

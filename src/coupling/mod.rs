@@ -81,18 +81,6 @@ impl<SourceData> CouplingError<SourceData> {
     }
 }
 
-impl<SourceData> CouplingError<Vec<SourceData>> {
-    pub(crate) fn map_each_source_data_element<T>(
-        self,
-        f: impl FnMut(SourceData) -> T,
-    ) -> CouplingError<Vec<T>> {
-        CouplingError {
-            source_data: self.source_data.into_iter().map(f).collect(),
-            error_type: self.error_type,
-        }
-    }
-}
-
 pub struct CoupleInputError;
 
 impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
@@ -392,7 +380,7 @@ impl<'tcx> PcgCouplingResults<'tcx> {
     ) -> HashSet<MaybeCoupledEdges<'tcx, Conditioned<AbstractionEdge<'tcx>>>> {
         self.into_iter()
             .map(|result| match result.0 {
-                Ok(result) => MaybeCoupledEdges::Coupled(result),
+                Ok(result) => MaybeCoupledEdges::Coupled(Box::new(result)),
                 Err(other) => MaybeCoupledEdges::NotCoupled(other.source_data),
             })
             .collect()
@@ -518,7 +506,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
 /// The maybe-coupled edges for a function call or loop
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
 pub enum MaybeCoupledEdges<'tcx, T> {
-    Coupled(PcgCoupledEdges<'tcx>),
+    Coupled(Box<PcgCoupledEdges<'tcx>>),
     NotCoupled(Vec<T>),
 }
 

@@ -123,7 +123,7 @@ impl<'tcx> UnblockGraph<'tcx> {
                     MaybeCoupledEdges::Coupled(coupled) => coupled
                         .edges()
                         .into_iter()
-                        .map(|edge| MaybeCoupledEdge::Coupled(edge))
+                        .map(MaybeCoupledEdge::Coupled)
                         .collect::<Vec<_>>(),
                     MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
                         .into_iter()
