@@ -4,13 +4,7 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
-    borrow_pcg::{
-        edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
-        graph::Conditioned,
-    },
-    coupling::{CouplingDataSource, MaybeCoupledEdge, PcgCoupledEdges},
-    error::PcgInternalError,
+    borrow_checker::BorrowCheckerInterface, error::PcgInternalError,
     utils::data_structures::HashSet,
 };
 
@@ -19,6 +13,9 @@ use crate::{
     borrow_pcg::{edge_data::EdgeData, state::BorrowsState},
     utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
+
+#[cfg(feature = "coupling")]
+use crate::coupling::{MaybeCoupledEdge, PcgCoupledEdges};
 
 type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;
 
@@ -106,6 +103,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         }
     }
 
+    #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
     ) -> UnblockGraph<'tcx, MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> {
@@ -113,7 +111,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         let mut edges: HashSet<MaybeCoupledEdge<'tcx, BorrowPcgEdge<'tcx>>> = self
             .edges
             .into_iter()
-            .map(|edge| MaybeCoupledEdge::NotCoupled(edge))
+            .map(MaybeCoupledEdge::NotCoupled)
             .collect();
         edges.extend(
             coupled

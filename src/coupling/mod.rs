@@ -4,7 +4,7 @@ use itertools::Itertools;
 use crate::{
     borrow_pcg::{
         AbstractionInputTarget, AbstractionOutputTarget,
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
+        borrow_pcg_edge::BorrowPcgEdge,
         domain::{
             FunctionCallAbstractionInput, FunctionCallAbstractionOutput, LoopAbstractionInput,
             LoopAbstractionOutput,
@@ -13,15 +13,15 @@ use crate::{
             abstraction::{
                 AbstractionBlockEdge, AbstractionEdge, FunctionCallOrLoop,
                 function::{
-                    AbstractionBlockEdgeWithMetadata, FunctionCallAbstraction,
-                    FunctionCallAbstractionEdge, FunctionCallAbstractionEdgeMetadata,
+                    FunctionCallAbstraction, FunctionCallAbstractionEdge,
+                    FunctionCallAbstractionEdgeMetadata,
                 },
                 r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata},
             },
             kind::BorrowPcgEdgeKind,
         },
         edge_data::EdgeData,
-        graph::{BorrowsGraph, Conditioned},
+        graph::Conditioned,
     },
     pcg::PcgNodeLike,
     utils::{
@@ -383,13 +383,13 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                     function_edges
                         .entry(Conditioned::new(function_call.metadata, edge.conditions))
                         .or_default()
-                        .insert(function_call.edge.clone());
+                        .insert(function_call.edge);
                 }
                 AbstractionEdge::Loop(loop_abstraction) => {
                     loop_edges
                         .entry(Conditioned::new(loop_abstraction.metadata, edge.conditions))
                         .or_default()
-                        .insert(loop_abstraction.edge.clone());
+                        .insert(loop_abstraction.edge);
                 }
             }
         }
@@ -402,7 +402,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                             AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
                                 metadata.value.location,
                                 metadata.value.function_data,
-                                edge.clone(),
+                                *edge,
                             )),
                             metadata.conditions.clone(),
                         )
@@ -414,7 +414,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                 .iter()
                 .map(|edge| {
                     Conditioned::new(
-                        AbstractionEdge::Loop(LoopAbstraction::new(edge.clone(), metadata.value)),
+                        AbstractionEdge::Loop(LoopAbstraction::new(*edge, metadata.value)),
                         metadata.conditions.clone(),
                     )
                 })
@@ -443,17 +443,6 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
 pub enum MaybeCoupledEdge<'tcx, T> {
     Coupled(PcgCoupledEdge<'tcx>),
     NotCoupled(T),
-}
-
-impl<'tcx, T> MaybeCoupledEdge<'tcx, T> {
-    pub(crate) fn map_not_coupled<U>(self, f: impl FnOnce(T) -> U) -> MaybeCoupledEdge<'tcx, U> {
-        match self {
-            MaybeCoupledEdge::Coupled(coupled) => MaybeCoupledEdge::Coupled(coupled),
-            MaybeCoupledEdge::NotCoupled(not_coupled) => {
-                MaybeCoupledEdge::NotCoupled(f(not_coupled))
-            }
-        }
-    }
 }
 
 impl<'tcx> EdgeData<'tcx> for PcgCoupledEdge<'tcx> {

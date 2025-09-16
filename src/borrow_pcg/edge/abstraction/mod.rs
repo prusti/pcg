@@ -10,10 +10,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
-        edge::abstraction::{
-            function::{AbstractionBlockEdgeWithMetadata, FunctionCallAbstraction},
-            r#loop::LoopAbstraction,
-        },
+        edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
@@ -101,16 +98,6 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
 }
 
 impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
-    pub(crate) fn with_metadata<Metadata>(
-        self,
-        metadata: Metadata,
-    ) -> AbstractionBlockEdgeWithMetadata<Metadata, Self> {
-        AbstractionBlockEdgeWithMetadata {
-            metadata,
-            edge: self,
-        }
-    }
-
     pub(crate) fn new(input: Input, output: Output) -> Self {
         Self {
             _phantom: PhantomData,

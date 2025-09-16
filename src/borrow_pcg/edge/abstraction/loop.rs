@@ -32,7 +32,7 @@ pub(crate) type LoopAbstractionEdge<'tcx> =
 impl<'tcx> LoopAbstractionEdge<'tcx> {
     #[cfg(feature = "coupling")]
     pub(crate) fn to_hyper_edge(
-        &self,
+        self,
     ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {
         HyperEdge::new(vec![self.input], vec![self.output])
     }

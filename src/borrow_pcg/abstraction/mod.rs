@@ -8,13 +8,15 @@ use crate::{
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
-    coupling::{CoupleInputError, CoupledEdgesData},
     rustc_interface::middle::{mir, ty},
     utils::{
         self, CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
+
+#[cfg(feature = "coupling")]
+use crate::coupling::{CoupleInputError, CoupledEdgesData};
 
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct ArgIdx(usize);
@@ -198,6 +200,8 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
         FunctionShape(shape)
     }
 
+    #[cfg(feature = "coupling")]
+    #[allow(unused)]
     pub fn coupled(
         self,
     ) -> std::result::Result<
