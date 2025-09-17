@@ -1,13 +1,28 @@
 use crate::{
+    DebugLines,
     borrow_pcg::{
-        borrow_pcg_edge::MaybeCoupledBorrowPcgEdge, edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind}, graph::{join::JoinBorrowsArgs, BorrowsGraph}, state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike}
-    }, borrows_imgcat_debug, error::PcgError, owned_pcg::{join::data::JoinOwnedData, OwnedPcg, RepackOp}, pcg::{
-        ctxt::AnalysisCtxt, place_capabilities::{
+        borrow_pcg_edge::{MaybeCoupledBorrowPcgEdge, MaybeCoupledBorrowPcgEdgeKind},
+        edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+        graph::{BorrowsGraph, join::JoinBorrowsArgs},
+        state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
+    },
+    borrows_imgcat_debug,
+    error::PcgError,
+    owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
+    pcg::{
+        CapabilityKind,
+        ctxt::AnalysisCtxt,
+        place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        }, triple::Triple, CapabilityKind
-    }, rustc_interface::middle::mir, utils::{
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace, validity::HasValidityCheck, CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, CHECK_CYCLES
-    }, DebugLines
+        },
+        triple::Triple,
+    },
+    rustc_interface::middle::mir,
+    utils::{
+        CHECK_CYCLES, CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
+    },
 };
 
 #[cfg(feature = "visualization")]
@@ -17,10 +32,10 @@ use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 pub struct Pcg<
     'tcx,
     Capabilities = SymbolicPlaceCapabilities<'tcx>,
-    BorrowPcgEdgeKind = MaybeCoupledBorrowPcgEdgeKind<'tcx>,
+    BorrowPcgEdgeKind: Eq + std::hash::Hash + PartialEq = MaybeCoupledBorrowPcgEdgeKind<'tcx>,
 > {
     pub(crate) owned: OwnedPcg<'tcx>,
-    pub(crate) borrow: BorrowsState<'tcx>,
+    pub(crate) borrow: BorrowsState<'tcx, BorrowPcgEdgeKind>,
     pub(crate) capabilities: Capabilities,
 }
 

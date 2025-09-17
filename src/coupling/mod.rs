@@ -503,6 +503,11 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
     }
 }
 
+pub enum MaybeCoupled<T, U> {
+    Coupled(T),
+    NotCoupled(U),
+}
+
 /// The maybe-coupled edges for a function call or loop
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
 pub enum MaybeCoupledEdges<'tcx, T> {

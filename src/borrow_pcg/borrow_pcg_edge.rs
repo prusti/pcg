@@ -57,8 +57,10 @@ pub struct BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> {
 }
 
 #[cfg(feature = "coupling")]
-pub type MaybeCoupledBorrowPcgEdge<'tcx> =
-    BorrowPcgEdge<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>>;
+pub type MaybeCoupledBorrowPcgEdge<'tcx> = BorrowPcgEdge<'tcx, MaybeCoupledBorrowPcgEdgeKind<'tcx>>;
+
+#[cfg(feature = "coupling")]
+pub type MaybeCoupledBorrowPcgEdgeKind<'tcx> = MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>;
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(
