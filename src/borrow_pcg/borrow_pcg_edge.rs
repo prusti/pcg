@@ -14,19 +14,28 @@ use super::{
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface, borrow_pcg::{
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
         edge::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{edgedata_enum, LabelEdgePlaces, LabelPlacePredicate},
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
         },
         region_projection::LocalLifetimeProjectionBase,
-    }, coupling::PcgCoupledEdgeKind, error::PcgError, pcg::PcgNode, rustc_interface, utils::{
-        display::DisplayWithCompilerCtxt, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, validity::HasValidityCheck, CompilerCtxt, HasPlace, Place
-    }
+    },
+    coupling::PcgCoupledEdgeKind,
+    error::PcgError,
+    pcg::PcgNode,
+    rustc_interface,
+    utils::{
+        CompilerCtxt, HasPlace, Place,
+        display::DisplayWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        validity::HasValidityCheck,
+    },
 };
 
 /// A reference to an edge in the Borrow PCG
@@ -49,7 +58,11 @@ impl<
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
-        format!("{} under conditions {}", self.kind.to_short_string(ctxt), self.conditions.to_short_string(ctxt))
+        format!(
+            "{} under conditions {}",
+            self.kind.to_short_string(ctxt),
+            self.conditions.to_short_string(ctxt)
+        )
     }
 }
 

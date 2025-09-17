@@ -4,8 +4,8 @@ use std::marker::PhantomData;
 
 use crate::{
     borrow_pcg::{
-        edge_data::LabelEdgePlaces,
-        graph::join::JoinBorrowsArgs, has_pcs_elem::LabelLifetimeProjection,
+        edge_data::LabelEdgePlaces, graph::join::JoinBorrowsArgs,
+        has_pcs_elem::LabelLifetimeProjection,
     },
     pcg::{
         SymbolicCapability,

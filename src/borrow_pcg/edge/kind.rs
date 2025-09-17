@@ -4,7 +4,8 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge},
-    }, coupling::PcgCoupledEdgeKind,
+    },
+    coupling::PcgCoupledEdgeKind,
 };
 
 use super::{borrow::RemoteBorrow, outlives::BorrowFlowEdge};

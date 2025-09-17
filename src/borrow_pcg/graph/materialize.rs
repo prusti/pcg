@@ -1,10 +1,7 @@
 use derive_more::From;
 
 use crate::{
-    borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdgeRef,
-        edge::kind::BorrowPcgEdgeKind,
-    },
+    borrow_pcg::{borrow_pcg_edge::BorrowPcgEdgeRef, edge::kind::BorrowPcgEdgeKind},
     pcg::PcgNode,
     utils::CompilerCtxt,
 };

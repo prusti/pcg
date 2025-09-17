@@ -2,11 +2,20 @@
 
 use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
-    action::BorrowPcgAction, borrow_checker::BorrowCheckerInterface, borrow_pcg::{
-        edge::kind::BorrowPcgEdgeKind, edge_data::{LabelEdgePlaces, LabelPlacePredicate}, has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller}, region_projection::{LifetimeProjection, LifetimeProjectionLabel}
-    }, pcg::CapabilityKind, utils::{
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation
-    }, RestoreCapability, Weaken
+    RestoreCapability, Weaken,
+    action::BorrowPcgAction,
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
+        edge::kind::BorrowPcgEdgeKind,
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
+        has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
+        region_projection::{LifetimeProjection, LifetimeProjectionLabel},
+    },
+    pcg::CapabilityKind,
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+    },
 };
 
 pub mod actions;

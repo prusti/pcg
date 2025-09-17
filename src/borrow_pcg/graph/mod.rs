@@ -429,7 +429,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         false
     }
 
-
     pub(crate) fn edges_blocking<'slf, 'a: 'slf, 'bc: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
@@ -534,7 +533,6 @@ impl<'tcx, EdgeKind: LabelLifetimeProjection<'tcx> + Eq + std::hash::Hash>
     }
 }
 impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-
     pub(crate) fn insert<'a>(
         &mut self,
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
