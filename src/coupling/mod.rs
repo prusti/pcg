@@ -2,6 +2,7 @@ use derive_more::Deref;
 use itertools::Itertools;
 
 use crate::{
+    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         AbstractionInputTarget, AbstractionOutputTarget,
         borrow_pcg_edge::BorrowPcgEdge,
@@ -28,6 +29,7 @@ use crate::{
     utils::{
         CompilerCtxt,
         data_structures::{HashMap, HashSet},
+        display::DisplayWithCompilerCtxt,
     },
 };
 use std::hash::Hash;
@@ -36,6 +38,26 @@ use std::hash::Hash;
 pub struct HyperEdge<InputNode, OutputNode> {
     inputs: Vec<InputNode>,
     outputs: Vec<OutputNode>,
+}
+
+impl<
+    'a,
+    'tcx,
+    InputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    OutputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for HyperEdge<InputNode, OutputNode>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!(
+            "HyperEdge(inputs: {}, outputs: {})",
+            self.inputs.to_short_string(ctxt),
+            self.outputs.to_short_string(ctxt)
+        )
+    }
 }
 
 impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
@@ -158,6 +180,22 @@ pub struct PcgCoupledEdgeKind<'tcx>(
         HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
     >,
 );
+
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for PcgCoupledEdgeKind<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        match self {
+            PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => {
+                function.to_short_string(ctxt)
+            }
+            PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.to_short_string(ctxt),
+        }
+    }
+}
 
 impl<'tcx> PcgCoupledEdgeKind<'tcx> {
     pub(crate) fn function_call(
@@ -519,6 +557,21 @@ pub enum MaybeCoupledEdges<'tcx, T> {
 pub enum MaybeCoupledEdgeKind<'tcx, T> {
     Coupled(PcgCoupledEdgeKind<'tcx>),
     NotCoupled(T),
+}
+
+impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for MaybeCoupledEdgeKind<'tcx, T>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        match self {
+            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.to_short_string(ctxt),
+            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.to_short_string(ctxt),
+        }
+    }
 }
 
 impl<'tcx> EdgeData<'tcx> for PcgCoupledEdgeKind<'tcx> {

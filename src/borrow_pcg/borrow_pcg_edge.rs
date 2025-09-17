@@ -37,30 +37,59 @@ use crate::{
     },
 };
 
-#[cfg(feature = "coupling")]
-use crate::coupling::MaybeCoupledEdgeKind;
-
 /// A reference to an edge in the Borrow PCG
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BorrowPcgEdgeRef<'tcx, 'graph> {
-    pub(crate) kind: &'graph BorrowPcgEdgeKind<'tcx>,
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub struct BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    pub(crate) kind: &'graph EdgeKind,
     pub(crate) conditions: &'graph ValidityConditions,
-}
-
-/// An edge in the Borrow PCG. This includes the kind of the edge as well as its
-/// associated validity conditions.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> {
-    pub(crate) kind: Kind,
-    pub(crate) conditions: ValidityConditions,
     _marker: PhantomData<&'tcx ()>,
 }
 
-#[cfg(feature = "coupling")]
-pub type MaybeCoupledBorrowPcgEdge<'tcx> = BorrowPcgEdge<'tcx, MaybeCoupledBorrowPcgEdgeKind<'tcx>>;
+impl<
+    'a,
+    'tcx,
+    'graph,
+    EdgeKind: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!("{} under conditions {}", self.kind.to_short_string(ctxt), self.conditions.to_short_string(ctxt))
+    }
+}
 
-#[cfg(feature = "coupling")]
-pub type MaybeCoupledBorrowPcgEdgeKind<'tcx> = MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>;
+impl<'tcx, 'graph, EdgeKind> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
+    pub(crate) fn new(kind: &'graph EdgeKind, conditions: &'graph ValidityConditions) -> Self {
+        Self {
+            kind,
+            conditions,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'tcx, 'graph, EdgeKind> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
+    pub fn kind(&self) -> &EdgeKind {
+        self.kind
+    }
+}
+
+impl<'tcx, 'graph, EdgeKind> Copy for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {}
+
+impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
+    fn clone(&self) -> Self {
+        Self {
+            kind: self.kind,
+            conditions: self.conditions,
+            _marker: PhantomData,
+        }
+    }
+}
+
+pub type BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> = Conditioned<Kind>;
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(
@@ -69,7 +98,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.kind.label_blocked_places(predicate, labeller, ctxt)
+        self.value.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
@@ -78,7 +107,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.kind.label_blocked_by_places(predicate, labeller, ctxt)
+        self.value
+            .label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
 
@@ -89,20 +119,17 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgEdge<'tcx> {
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.kind.label_lifetime_projection(predicate, label, ctxt)
+        self.value.label_lifetime_projection(predicate, label, ctxt)
     }
 }
 
 /// Either a [`BorrowPcgEdge`] or a [`BorrowPcgEdgeRef`]
-pub trait BorrowPcgEdgeLike<'tcx>: EdgeData<'tcx> + Clone + std::fmt::Debug {
-    fn kind(&self) -> &BorrowPcgEdgeKind<'tcx>;
+pub trait BorrowPcgEdgeLike<'tcx, Kind = BorrowPcgEdgeKind<'tcx>>:
+    EdgeData<'tcx> + Clone + std::fmt::Debug
+{
+    fn kind(&self) -> &Kind;
     fn conditions(&self) -> &ValidityConditions;
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx>;
-
-    /// true iff any of the blocked places can be mutated via the blocking places
-    fn is_shared_borrow(&self, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().is_shared_borrow(repacker)
-    }
 
     fn blocked_places<'slf>(
         &'slf self,
@@ -119,7 +146,7 @@ pub trait BorrowPcgEdgeLike<'tcx>: EdgeData<'tcx> + Clone + std::fmt::Debug {
 
 impl<'tcx> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdge<'tcx> {
     fn kind(&self) -> &BorrowPcgEdgeKind<'tcx> {
-        &self.kind
+        &self.value
     }
 
     fn conditions(&self) -> &ValidityConditions {
@@ -148,25 +175,6 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
 impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<'tcx> for T {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.kind().check_validity(ctxt)
-    }
-}
-
-impl<'tcx, 'a, T: BorrowPcgEdgeLike<'tcx>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for T
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        if self.conditions().is_empty() {
-            self.kind().to_short_string(ctxt)
-        } else {
-            format!(
-                "{} under conditions {}",
-                self.kind().to_short_string(ctxt),
-                self.conditions().to_short_string(ctxt)
-            )
-        }
     }
 }
 
@@ -388,15 +396,7 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
     }
 
     pub fn kind(&self) -> &BorrowPcgEdgeKind<'tcx> {
-        &self.kind
-    }
-
-    pub(crate) fn new(kind: BorrowPcgEdgeKind<'tcx>, conditions: ValidityConditions) -> Self {
-        Self {
-            conditions,
-            kind,
-            _marker: PhantomData,
-        }
+        &self.value
     }
 }
 

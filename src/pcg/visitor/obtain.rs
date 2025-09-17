@@ -270,9 +270,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             false
         };
 
-        self.update_unblocked_node_capabilities_and_remove_placeholder_projections(&edge.kind)?;
+        self.update_unblocked_node_capabilities_and_remove_placeholder_projections(&edge.value)?;
 
-        match &edge.kind {
+        match &edge.value {
             BorrowPcgEdgeKind::Deref(deref) => {
                 self.unlabel_blocked_region_projections_if_applicable(deref, context)?;
                 if deref.deref_place.is_current() {

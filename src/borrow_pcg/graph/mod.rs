@@ -9,6 +9,7 @@ mod mutate;
 use std::marker::PhantomData;
 
 use crate::{
+    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
@@ -167,7 +168,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .map(|edge| {
                             let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
                             (
-                                MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.kind),
+                                MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.value),
                                 borrow_pcg_edge.conditions,
                             )
                         })
@@ -191,21 +192,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 _ => None,
             })
             .collect()
-    }
-
-    pub(crate) fn label_region_projection<'a>(
-        &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.filter_mut_edges(|edge| {
-            edge.label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
-                .to_filter_mut_result()
-        })
     }
 
     pub(crate) fn leaf_places<'a>(
@@ -285,37 +271,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         None
     }
 
-    pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
-        &self,
-        node: T,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        let node = node.into();
-        self.edges().any(|edge| {
-            edge.blocks_node(node, repacker.bc_ctxt())
-                || node
-                    .as_blocking_node()
-                    .map(|blocking| {
-                        edge.blocked_by_nodes(repacker.bc_ctxt())
-                            .contains(&blocking)
-                    })
-                    .unwrap_or(false)
-        })
-    }
-
     pub(crate) fn into_edges(self) -> impl Iterator<Item = BorrowPcgEdge<'tcx>> {
         self.edges
             .into_iter()
             .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
-    }
-
-    pub fn edges<'slf>(&'slf self) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf>> + 'slf {
-        self.edges
-            .iter()
-            .map(|(kind, conditions)| BorrowPcgEdgeRef { kind, conditions })
     }
 
     pub fn frozen_graph(&self) -> FrozenGraphRef<'_, 'tcx> {
@@ -470,21 +429,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         false
     }
 
-    pub(crate) fn insert<'a>(
-        &mut self,
-        edge: BorrowPcgEdge<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        if let Some(conditions) = self.edges.get_mut(edge.kind()) {
-            conditions.join(&edge.conditions, ctxt.body())
-        } else {
-            self.edges.insert(edge.kind, edge.conditions);
-            true
-        }
-    }
 
     pub(crate) fn edges_blocking<'slf, 'a: 'slf, 'bc: 'slf>(
         &'slf self,
@@ -508,9 +452,19 @@ impl<'tcx> BorrowsGraph<'tcx> {
     {
         self.edges_blocking(node, ctxt).collect()
     }
+}
 
-    pub(crate) fn remove(&mut self, edge: &BorrowPcgEdgeKind<'tcx>) -> Option<ValidityConditions> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+    pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<ValidityConditions> {
         self.edges.remove(edge)
+    }
+
+    pub fn edges<'slf>(
+        &'slf self,
+    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind>> + 'slf {
+        self.edges
+            .iter()
+            .map(|(kind, conditions)| BorrowPcgEdgeRef::new(kind, conditions))
     }
 }
 
@@ -518,6 +472,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
 pub struct Conditioned<T> {
     pub(crate) conditions: ValidityConditions,
     pub(crate) value: T,
+}
+
+impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for Conditioned<T>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        if self.conditions.is_empty() {
+            self.value.to_short_string(ctxt)
+        } else {
+            format!(
+                "{} under conditions {}",
+                self.value.to_short_string(ctxt),
+                self.conditions.to_short_string(ctxt)
+            )
+        }
+    }
 }
 
 impl<T> Conditioned<T> {
@@ -537,6 +510,66 @@ impl<'tcx, T: ToJsonWithCompilerCtxt<'tcx, BC>, BC: Copy> ToJsonWithCompilerCtxt
         json!({
             "conditions": self.conditions.to_json(repacker),
             "value": self.value.to_json(repacker)
+        })
+    }
+}
+
+impl<'tcx, EdgeKind: LabelLifetimeProjection<'tcx> + Eq + std::hash::Hash>
+    BorrowsGraph<'tcx, EdgeKind>
+{
+    pub(crate) fn label_region_projection<'a>(
+        &mut self,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        self.filter_mut_edges(|edge| {
+            edge.value
+                .label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
+                .to_filter_mut_result()
+        })
+    }
+}
+impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+
+    pub(crate) fn insert<'a>(
+        &mut self,
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        if let Some(conditions) = self.edges.get_mut(&edge.value) {
+            conditions.join(&edge.conditions, ctxt.body())
+        } else {
+            self.edges.insert(edge.value, edge.conditions);
+            true
+        }
+    }
+
+    pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
+        &self,
+        node: T,
+        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        let node = node.into();
+        self.edges().any(|edge| {
+            edge.kind.blocks_node(node, repacker.bc_ctxt())
+                || node
+                    .as_blocking_node()
+                    .map(|blocking| {
+                        edge.kind
+                            .blocked_by_nodes(repacker.bc_ctxt())
+                            .contains(&blocking)
+                    })
+                    .unwrap_or(false)
         })
     }
 }

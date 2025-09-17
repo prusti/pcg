@@ -290,11 +290,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
             }
         };
         let leaf_edges = fg.leaf_edges(self.ctxt);
-        // tracing::debug!("Leaf edges: {}", leaf_edges.to_short_string(self.ctxt));
         for edge in leaf_edges.into_iter().map(|e| e.to_owned_edge()) {
             tracing::debug!(
                 "Checking leaf edge: {}",
-                edge.kind.to_short_string(self.ctxt.bc_ctxt())
+                edge.value.to_short_string(self.ctxt.bc_ctxt())
             );
             if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
                 edges_to_remove.push(edge, reason);

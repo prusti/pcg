@@ -1,7 +1,8 @@
 use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
-        borrow_pcg_edge::BorrowPcgEdge,
+        edge_data::LabelEdgePlaces,
+        graph::Conditioned,
         has_pcs_elem::PlaceLabeller,
         path_condition::{PathCondition, ValidityConditions},
     },
@@ -11,7 +12,7 @@ use crate::{
 
 use super::BorrowsGraph;
 
-impl<'tcx> BorrowsGraph<'tcx> {
+impl<'tcx, EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
     pub(crate) fn label_place<'a>(
         &mut self,
         place: Place<'tcx>,
@@ -22,51 +23,18 @@ impl<'tcx> BorrowsGraph<'tcx> {
     where
         'tcx: 'a,
     {
-        self.mut_edges(|edge| reason.apply_to_edge(place, edge, labeller, ctxt))
+        self.mut_edges(|edge| reason.apply_to_edge(place, &mut edge.value, labeller, ctxt))
     }
+}
 
-    pub(crate) fn filter_mut_edges<'slf>(
-        &'slf mut self,
-        mut f: impl FnMut(&mut BorrowPcgEdge<'tcx>) -> FilterMutResult,
-    ) -> bool {
-        let mut changed = false;
-        self.edges = self
-            .edges
-            .drain()
-            .filter_map(|(kind, conditions)| {
-                let mut edge = BorrowPcgEdge::new(kind, conditions);
-                match f(&mut edge) {
-                    FilterMutResult::Changed => {
-                        changed = true;
-                        Some((edge.kind, edge.conditions))
-                    }
-                    FilterMutResult::Unchanged => Some((edge.kind, edge.conditions)),
-                    FilterMutResult::Remove => None,
-                }
-            })
-            .collect();
-        changed
+impl<'tcx> BorrowsGraph<'tcx> {
+    pub(crate) fn filter_for_path(&mut self, path: &[BasicBlock], ctxt: CompilerCtxt<'_, 'tcx>) {
+        self.edges
+            .retain(|_, conditions| conditions.valid_for_path(path, ctxt.body()));
     }
+}
 
-    pub(crate) fn mut_edges<'slf>(
-        &'slf mut self,
-        mut f: impl FnMut(&mut BorrowPcgEdge<'tcx>) -> bool,
-    ) -> bool {
-        let mut changed = false;
-        self.edges = self
-            .edges
-            .drain()
-            .map(|(kind, conditions)| {
-                let mut edge = BorrowPcgEdge::new(kind, conditions);
-                if f(&mut edge) {
-                    changed = true;
-                }
-                (edge.kind, edge.conditions)
-            })
-            .collect();
-        changed
-    }
-
+impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
     fn mut_edge_conditions(&mut self, mut f: impl FnMut(&mut ValidityConditions) -> bool) -> bool {
         let mut changed = false;
         for (_, conditions) in self.edges.iter_mut() {
@@ -77,11 +45,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         changed
     }
 
-    pub(crate) fn filter_for_path(&mut self, path: &[BasicBlock], ctxt: CompilerCtxt<'_, 'tcx>) {
-        self.edges
-            .retain(|_, conditions| conditions.valid_for_path(path, ctxt.body()));
-    }
-
     pub(crate) fn add_path_condition(
         &mut self,
         pc: PathCondition,
@@ -90,7 +53,51 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.mut_edge_conditions(|conditions| conditions.insert(pc, ctxt.body()))
     }
 
-    // pub(crate) fn remove_path_conditions_after(&mut self, block: BasicBlock) -> bool {
-    //     self.mut_edge_conditions(|conditions| conditions.remove_after(block))
-    // }
+    pub(crate) fn mut_edges<'slf>(
+        &'slf mut self,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> bool,
+    ) -> bool
+    where
+        EdgeKind: Eq + std::hash::Hash + PartialEq,
+    {
+        let mut changed = false;
+        self.edges = self
+            .edges
+            .drain()
+            .map(|(kind, conditions)| {
+                let mut edge = Conditioned::new(kind, conditions);
+                if f(&mut edge) {
+                    changed = true;
+                }
+                (edge.value, edge.conditions)
+            })
+            .collect();
+        changed
+    }
+
+    pub(crate) fn filter_mut_edges<'slf>(
+        &'slf mut self,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> FilterMutResult,
+    ) -> bool
+    where
+        EdgeKind: Eq + std::hash::Hash + PartialEq,
+    {
+        let mut changed = false;
+        self.edges = self
+            .edges
+            .drain()
+            .filter_map(|(kind, conditions)| {
+                let mut edge = Conditioned::new(kind, conditions);
+                match f(&mut edge) {
+                    FilterMutResult::Changed => {
+                        changed = true;
+                        Some((edge.value, edge.conditions))
+                    }
+                    FilterMutResult::Unchanged => Some((edge.value, edge.conditions)),
+                    FilterMutResult::Remove => None,
+                }
+            })
+            .collect();
+        changed
+    }
 }

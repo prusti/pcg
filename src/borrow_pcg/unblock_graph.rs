@@ -4,11 +4,11 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface, error::PcgInternalError,
-    utils::data_structures::HashSet,
+    borrow_checker::BorrowCheckerInterface, borrow_pcg::borrow_pcg_edge::BorrowPcgEdge,
+    error::PcgInternalError, utils::data_structures::HashSet,
 };
 
-use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike};
+use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdgeLike};
 use crate::{
     borrow_pcg::{edge_data::EdgeData, state::BorrowsState},
     utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},

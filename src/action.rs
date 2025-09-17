@@ -6,7 +6,7 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::{BorrowPcgActionKind, actions::BorrowPcgActions},
-        borrow_pcg_edge::BorrowPcgEdge,
+        edge::kind::BorrowPcgEdgeKind,
         unblock_graph::BorrowPcgUnblockAction,
     },
     owned_pcg::RepackOp,
@@ -147,14 +147,14 @@ pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
-pub type BorrowPcgAction<'tcx, RemovedEdge = BorrowPcgEdge<'tcx>> =
-    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, RemovedEdge>>;
+pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
+    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind>>;
 
 /// An action applied to the PCG during the PCG analysis.
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone, PartialEq, Eq, Debug, From)]
-pub enum PcgAction<'tcx, RemovedEdge = BorrowPcgEdge<'tcx>> {
-    Borrow(BorrowPcgAction<'tcx, RemovedEdge>),
+pub enum PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    Borrow(BorrowPcgAction<'tcx, EdgeKind>),
     Owned(OwnedPcgAction<'tcx>),
 }
 
@@ -178,10 +178,10 @@ impl<'tcx> PcgAction<'tcx> {
         }
     }
 
-    pub(crate) fn debug_line(&self, repacker: CompilerCtxt<'_, 'tcx>) -> String {
+    pub(crate) fn debug_line(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         match self {
-            PcgAction::Borrow(action) => action.debug_line(repacker),
-            PcgAction::Owned(action) => action.debug_line(repacker),
+            PcgAction::Borrow(action) => action.debug_line(ctxt),
+            PcgAction::Owned(action) => action.debug_line(ctxt),
         }
     }
 }

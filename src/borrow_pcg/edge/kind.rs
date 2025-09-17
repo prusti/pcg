@@ -5,7 +5,6 @@ use crate::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge},
     },
-    utils::CompilerCtxt,
 };
 
 use super::{borrow::RemoteBorrow, outlives::BorrowFlowEdge};
@@ -22,14 +21,5 @@ pub enum BorrowPcgEdgeKind<'tcx> {
 impl<'tcx> From<RemoteBorrow<'tcx>> for BorrowPcgEdgeKind<'tcx> {
     fn from(borrow: RemoteBorrow<'tcx>) -> Self {
         BorrowPcgEdgeKind::Borrow(BorrowEdge::Remote(borrow))
-    }
-}
-
-impl<'tcx> BorrowPcgEdgeKind<'tcx> {
-    pub(crate) fn is_shared_borrow(&self, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        match self {
-            BorrowPcgEdgeKind::Borrow(reborrow) => !reborrow.is_mut(repacker),
-            _ => false,
-        }
     }
 }

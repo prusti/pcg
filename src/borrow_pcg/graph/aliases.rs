@@ -30,7 +30,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             if seen.insert(node.into()) {
                 for edge in self.edges_blocked_by(node, repacker) {
                     result.insert(edge);
-                    for node in edge.blocked_nodes(repacker) {
+                   for node in edge.blocked_nodes(repacker) {
                         if let Some(local_node) = node.try_to_local_node(repacker) {
                             stack.push(local_node);
                         }

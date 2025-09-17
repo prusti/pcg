@@ -171,7 +171,7 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
     }
 }
 
-pub(crate) trait LabelEdgePlaces<'tcx> {
+pub trait LabelEdgePlaces<'tcx> {
     fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,

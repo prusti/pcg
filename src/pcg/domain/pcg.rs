@@ -1,7 +1,6 @@
 use crate::{
     DebugLines,
     borrow_pcg::{
-        borrow_pcg_edge::{MaybeCoupledBorrowPcgEdge, MaybeCoupledBorrowPcgEdgeKind},
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
@@ -32,10 +31,10 @@ use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 pub struct Pcg<
     'tcx,
     Capabilities = SymbolicPlaceCapabilities<'tcx>,
-    BorrowPcgEdgeKind: Eq + std::hash::Hash + PartialEq = MaybeCoupledBorrowPcgEdgeKind<'tcx>,
+    EdgeKind: Eq + std::hash::Hash + PartialEq = BorrowPcgEdgeKind<'tcx>,
 > {
     pub(crate) owned: OwnedPcg<'tcx>,
-    pub(crate) borrow: BorrowsState<'tcx, BorrowPcgEdgeKind>,
+    pub(crate) borrow: BorrowsState<'tcx, EdgeKind>,
     pub(crate) capabilities: Capabilities,
 }
 
