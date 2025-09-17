@@ -81,15 +81,13 @@ pub(crate) struct BorrowStateMutRef<'pcg, 'tcx, EdgeKind = BorrowPcgEdgeKind<'tc
 
 pub(crate) struct BorrowStateRef<'pcg, 'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
+    #[allow(unused)]
     pub(crate) path_conditions: &'pcg ValidityConditions,
 }
 
 impl<'pcg, 'tcx, EdgeKind> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind> {
     fn clone(&self) -> Self {
-        Self {
-            graph: self.graph,
-            path_conditions: self.path_conditions,
-        }
+        *self
     }
 }
 

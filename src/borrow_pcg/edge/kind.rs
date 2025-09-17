@@ -4,7 +4,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge},
-    },
+    }, coupling::PcgCoupledEdgeKind,
 };
 
 use super::{borrow::RemoteBorrow, outlives::BorrowFlowEdge};
@@ -16,6 +16,7 @@ pub enum BorrowPcgEdgeKind<'tcx> {
     Deref(DerefEdge<'tcx>),
     Abstraction(AbstractionEdge<'tcx>),
     BorrowFlow(BorrowFlowEdge<'tcx>),
+    Coupled(PcgCoupledEdgeKind<'tcx>),
 }
 
 impl<'tcx> From<RemoteBorrow<'tcx>> for BorrowPcgEdgeKind<'tcx> {

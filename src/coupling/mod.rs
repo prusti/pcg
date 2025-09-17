@@ -21,15 +21,21 @@ use crate::{
             },
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::EdgeData,
+        edge_data::{EdgeData, LabelEdgePlaces},
         graph::{BorrowsGraph, Conditioned},
+        has_pcs_elem::{
+            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
+            LabelLifetimeProjectionResult,
+        },
         path_condition::ValidityConditions,
+        region_projection::LifetimeProjectionLabel,
     },
     pcg::PcgNodeLike,
     utils::{
         CompilerCtxt,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
+        validity::HasValidityCheck,
     },
 };
 use std::hash::Hash;
@@ -180,6 +186,43 @@ pub struct PcgCoupledEdgeKind<'tcx>(
         HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
     >,
 );
+
+impl<'tcx> HasValidityCheck<'tcx> for PcgCoupledEdgeKind<'tcx> {
+    fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        todo!()
+    }
+}
+
+impl<'tcx> LabelLifetimeProjection<'tcx> for PcgCoupledEdgeKind<'tcx> {
+    fn label_lifetime_projection(
+        &mut self,
+        _predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        _label: Option<LifetimeProjectionLabel>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        todo!()
+    }
+}
+
+impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
+    fn label_blocked_places(
+        &mut self,
+        _predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        todo!()
+    }
+
+    fn label_blocked_by_places(
+        &mut self,
+        _predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        todo!()
+    }
+}
 
 impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for PcgCoupledEdgeKind<'tcx>

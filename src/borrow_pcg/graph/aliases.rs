@@ -193,6 +193,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         );
                     }
                 },
+                BorrowPcgEdgeKind::Coupled(_) => todo!(),
             }
         }
         result

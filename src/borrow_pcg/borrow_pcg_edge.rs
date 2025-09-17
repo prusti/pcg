@@ -14,27 +14,19 @@ use super::{
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
-    borrow_pcg::{
+    borrow_checker::BorrowCheckerInterface, borrow_pcg::{
         edge::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
+        edge_data::{edgedata_enum, LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
         },
         region_projection::LocalLifetimeProjectionBase,
-    },
-    error::PcgError,
-    pcg::PcgNode,
-    rustc_interface,
-    utils::{
-        CompilerCtxt, HasPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        validity::HasValidityCheck,
-    },
+    }, coupling::PcgCoupledEdgeKind, error::PcgError, pcg::PcgNode, rustc_interface, utils::{
+        display::DisplayWithCompilerCtxt, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, validity::HasValidityCheck, CompilerCtxt, HasPlace, Place
+    }
 };
 
 /// A reference to an edge in the Borrow PCG
@@ -81,11 +73,7 @@ impl<'tcx, 'graph, EdgeKind> Copy for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
 
 impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
     fn clone(&self) -> Self {
-        Self {
-            kind: self.kind,
-            conditions: self.conditions,
-            _marker: PhantomData,
-        }
+        *self
     }
 }
 
@@ -437,6 +425,7 @@ edgedata_enum!(
     Abstraction(AbstractionEdge<'tcx>),
     BorrowFlow(BorrowFlowEdge<'tcx>),
     Deref(DerefEdge<'tcx>),
+    Coupled(PcgCoupledEdgeKind<'tcx>),
 );
 
 impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>

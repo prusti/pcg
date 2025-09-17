@@ -133,6 +133,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                     kind: member.kind,
                 });
             }
+            BorrowPcgEdgeKind::Coupled(_) => todo!(),
         }
     }
 }
