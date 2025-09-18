@@ -14,7 +14,6 @@ use crate::{
     utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::{MaybeCoupledEdgeKind, PcgCoupledEdges};
 
 type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;
@@ -103,7 +102,6 @@ impl<'tcx> UnblockGraph<'tcx> {
         }
     }
 
-    #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
     ) -> UnblockGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> {

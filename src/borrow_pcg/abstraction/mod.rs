@@ -15,7 +15,6 @@ use crate::{
     },
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
 
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq)]

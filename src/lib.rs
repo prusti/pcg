@@ -22,7 +22,6 @@ may already be stabilized */
 pub mod action;
 pub mod borrow_checker;
 pub mod borrow_pcg;
-#[cfg(feature = "coupling")]
 pub mod coupling;
 pub mod error;
 pub mod r#loop;

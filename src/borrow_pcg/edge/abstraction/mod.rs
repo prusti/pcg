@@ -22,7 +22,6 @@ use crate::{
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::PcgCoupledEdgeKind;
 
 use crate::{
@@ -63,7 +62,6 @@ edgedata_enum!(
 );
 
 impl<'tcx> AbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
     /// Creates a singleton coupling hyperedge from this edge.
     ///
     /// This is presumably NOT what you want, as there is no coupling logic

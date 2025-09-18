@@ -114,6 +114,22 @@ pub struct CoupleInputError;
 impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     CoupledEdgesData<InputNode, OutputNode>
 {
+    #[cfg(not(feature = "coupling"))]
+    fn try_couple_input(
+        input: InputNode,
+        other_inputs: &mut Vec<InputNode>,
+        outputs_map: &mut HashMap<InputNode, HashSet<OutputNode>>,
+    ) -> Result<HyperEdge<InputNode, OutputNode>, CoupleInputError> {
+        unimplemented!(
+            "Enable the `coupling` feature to use this function.  Coupling
+            functionality is locked behind a feature flag because it is only
+            supported on relatively recent Rust versions (for example, the
+            implementation uses [`Vec::extract_if`] which is only available in
+            Rust 1.87.0 and later)."
+        )
+    }
+
+    #[cfg(feature = "coupling")]
     fn try_couple_input(
         input: InputNode,
         other_inputs: &mut Vec<InputNode>,

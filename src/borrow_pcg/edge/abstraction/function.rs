@@ -26,7 +26,6 @@ use crate::{
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::HyperEdge;
 
 #[rustversion::since(2025-05-24)]
@@ -168,7 +167,6 @@ pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
 >;
 
 impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
     pub fn to_hyper_edge(
         &self,
     ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {

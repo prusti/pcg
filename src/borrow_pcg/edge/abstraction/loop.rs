@@ -23,14 +23,12 @@ use crate::{
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::HyperEdge;
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
 
 impl<'tcx> LoopAbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
     pub(crate) fn to_hyper_edge(
         self,
     ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {

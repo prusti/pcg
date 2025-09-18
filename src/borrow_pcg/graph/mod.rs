@@ -44,7 +44,6 @@ use crate::{
     utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
 };
 
-#[cfg(feature = "coupling")]
 use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
@@ -135,7 +134,6 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
-    #[cfg(feature = "coupling")]
     pub fn into_coupled(
         mut self,
     ) -> BorrowsGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>> {
