@@ -21,7 +21,7 @@ use crate::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{SETTINGS, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -105,7 +105,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )
             })
             .collect();
-        if cfg!(feature = "coupling")
+        if SETTINGS.coupling
             && let Ok(coupled_edges) = CoupledEdgesData::new(&abstraction_edges)
         {
             for edge in coupled_edges {

@@ -297,7 +297,7 @@ macro_rules! edgedata_enum {
             }
         }
 
-        impl<$tcx> HasValidityCheck<$tcx> for $enum_name<$tcx> {
+        impl<$tcx> HasValidityCheck<'_, $tcx> for $enum_name<$tcx> {
             fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
                 match self {
                     $(

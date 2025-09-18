@@ -71,7 +71,7 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
         for node in nodes.iter() {

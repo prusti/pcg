@@ -14,7 +14,9 @@ use crate::{
     },
     error::PcgError,
     r#loop::PlaceUsages,
-    pcg::{EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, successor_blocks},
+    pcg::{
+        EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings, successor_blocks,
+    },
     rustc_interface::{
         data_structures::fx::FxHashSet,
         dataflow::AnalysisEngine,
@@ -26,7 +28,8 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        Place, display::DebugLines, domain_data::DomainDataStates, validity::HasValidityCheck,
+        HasBorrowCheckerCtxt, Place, display::DebugLines, domain_data::DomainDataStates,
+        validity::HasValidityCheck,
     },
 };
 
@@ -310,8 +313,10 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for PcgLocation<'_, 'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
+    HasValidityCheck<'a, 'tcx, Ctxt> for PcgLocation<'a, 'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // TODO
         self.states.check_validity(ctxt)
     }

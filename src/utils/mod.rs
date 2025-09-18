@@ -51,18 +51,38 @@ impl DebugImgcat {
     }
 }
 
-#[derive(Clone)]
-pub struct PcgSettings<'a> {
+pub struct GlobalPcgSettings {
     pub skip_bodies_with_loops: bool,
     pub max_basic_blocks: Option<usize>,
-    pub max_nodes: Option<usize>,
     pub test_crates_start_from: Option<usize>,
-    pub num_test_crates: Option<usize>,
-    pub test_crate_parallelism: Option<usize>,
+}
+
+impl GlobalPcgSettings {
+    pub(crate) fn new() -> (Self, HashSet<String>) {
+        let mut processed_vars = HashSet::new();
+        let skip_bodies_with_loops =
+            PcgSettings::process_bool_var(&mut processed_vars, "PCG_SKIP_BODIES_WITH_LOOPS", false);
+        let max_basic_blocks =
+            PcgSettings::process_usize_var(&mut processed_vars, "PCG_MAX_BASIC_BLOCKS");
+        let test_crates_start_from =
+            PcgSettings::process_usize_var(&mut processed_vars, "PCG_TEST_CRATES_START_FROM");
+        (
+            Self {
+                skip_bodies_with_loops,
+                max_basic_blocks,
+                test_crates_start_from,
+            },
+            processed_vars,
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct PcgSettings {
     pub check_cycles: bool,
     pub validity_checks: bool,
     pub debug_block: Option<BasicBlock>,
-    pub debug_imgcat: &'a [DebugImgcat],
+    pub debug_imgcat: Vec<DebugImgcat>,
     pub validity_checks_warn_only: bool,
     pub panic_on_error: bool,
     pub polonius: bool,
@@ -73,22 +93,15 @@ pub struct PcgSettings<'a> {
     pub emit_annotations: bool,
     pub check_function: Option<String>,
     pub skip_function: Option<String>,
+    pub coupling: bool,
 }
 
-impl PcgSettings<'_> {
-    fn new() -> Self {
-        let mut processed_vars = HashSet::new();
+impl PcgSettings {
+    pub(crate) fn new() -> Self {
+        // Hack just to ensure that we dont raise an error when seeing a global var
+        let mut processed_vars = GlobalPcgSettings::new().1;
 
         // Process all known settings
-        let skip_bodies_with_loops =
-            Self::process_bool_var(&mut processed_vars, "PCG_SKIP_BODIES_WITH_LOOPS", false);
-        let max_basic_blocks = Self::process_usize_var(&mut processed_vars, "PCG_MAX_BASIC_BLOCKS");
-        let max_nodes = Self::process_usize_var(&mut processed_vars, "PCG_MAX_NODES");
-        let test_crates_start_from =
-            Self::process_usize_var(&mut processed_vars, "PCG_TEST_CRATES_START_FROM");
-        let num_test_crates = Self::process_usize_var(&mut processed_vars, "PCG_NUM_TEST_CRATES");
-        let test_crate_parallelism =
-            Self::process_usize_var(&mut processed_vars, "PCG_TEST_CRATE_PARALLELISM");
         let check_cycles = Self::process_bool_var(&mut processed_vars, "PCG_CHECK_CYCLES", false);
         let validity_checks = Self::process_bool_var(
             &mut processed_vars,
@@ -113,17 +126,16 @@ impl PcgSettings<'_> {
             Self::process_bool_var(&mut processed_vars, "PCG_EMIT_ANNOTATIONS", false);
         let check_function = Self::process_string_var(&mut processed_vars, "PCG_CHECK_FUNCTION");
         let skip_function = Self::process_string_var(&mut processed_vars, "PCG_SKIP_FUNCTION");
+        let coupling = Self::process_bool_var(
+            &mut processed_vars,
+            "PCG_COUPLING",
+            cfg!(feature = "coupling"),
+        );
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);
 
         Self {
-            skip_bodies_with_loops,
-            max_basic_blocks,
-            max_nodes,
-            test_crates_start_from,
-            num_test_crates,
-            test_crate_parallelism,
             check_cycles,
             validity_checks,
             debug_block: pcg_debug_block,
@@ -138,6 +150,7 @@ impl PcgSettings<'_> {
             emit_annotations,
             check_function,
             skip_function,
+            coupling,
         }
     }
 
@@ -185,7 +198,7 @@ impl PcgSettings<'_> {
         }
     }
 
-    fn process_debug_imgcat(processed: &mut HashSet<String>) -> &'static [DebugImgcat] {
+    fn process_debug_imgcat(processed: &mut HashSet<String>) -> Vec<DebugImgcat> {
         processed.insert("PCG_DEBUG_IMGCAT".to_string());
         match std::env::var("PCG_DEBUG_IMGCAT") {
             Ok(val) => {
@@ -206,10 +219,9 @@ impl PcgSettings<'_> {
                         }
                     })
                     .collect();
-                // We are getting this from an env var, so we might as well leak it
-                Box::leak(vec.into_boxed_slice())
+                vec
             }
-            Err(_) => &[],
+            Err(_) => vec![],
         }
     }
 
@@ -235,19 +247,11 @@ impl PcgSettings<'_> {
 }
 
 lazy_static! {
-    pub static ref SETTINGS: PcgSettings<'static> = PcgSettings::new();
-
-    // Backward-compatible references to individual settings
-    pub static ref SKIP_BODIES_WITH_LOOPS: bool = SETTINGS.skip_bodies_with_loops;
-    pub static ref MAX_BASIC_BLOCKS: Option<usize> = SETTINGS.max_basic_blocks;
-    pub static ref MAX_NODES: Option<usize> = SETTINGS.max_nodes;
-    pub static ref TEST_CRATES_START_FROM: Option<usize> = SETTINGS.test_crates_start_from;
-    pub static ref NUM_TEST_CRATES: Option<usize> = SETTINGS.num_test_crates;
-    pub static ref TEST_CRATE_PARALLELISM: Option<usize> = SETTINGS.test_crate_parallelism;
-    pub static ref CHECK_CYCLES: bool = SETTINGS.check_cycles;
+    pub static ref SETTINGS: PcgSettings = PcgSettings::new();
+    pub static ref GLOBAL_SETTINGS: GlobalPcgSettings = GlobalPcgSettings::new().0;
     pub static ref VALIDITY_CHECKS: bool = SETTINGS.validity_checks;
     pub static ref DEBUG_BLOCK: Option<BasicBlock> = SETTINGS.debug_block;
-    pub static ref DEBUG_IMGCAT: &'static [DebugImgcat] = SETTINGS.debug_imgcat;
+    pub static ref DEBUG_IMGCAT: &'static [DebugImgcat] = &SETTINGS.debug_imgcat;
     pub static ref VALIDITY_CHECKS_WARN_ONLY: bool = SETTINGS.validity_checks_warn_only;
     pub static ref PANIC_ON_ERROR: bool = SETTINGS.panic_on_error;
     pub static ref POLONIUS: bool = SETTINGS.polonius;

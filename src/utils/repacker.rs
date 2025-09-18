@@ -589,7 +589,7 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for Place<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for Place<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.local.check_validity(ctxt)?;
         Ok(())

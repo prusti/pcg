@@ -1,6 +1,6 @@
 use derive_more::From;
 
-use crate::pcg::EvalStmtPhase;
+use crate::{pcg::EvalStmtPhase, utils::HasCompilerCtxt};
 
 use super::{arena::PcgArenaRef, eval_stmt_data::EvalStmtData, validity::HasValidityCheck};
 
@@ -44,8 +44,10 @@ impl<T: Clone> DomainDataStates<PcgArenaRef<'_, T>> {
         DomainDataStates(self.0.clone().map(|x| (*x).clone()))
     }
 }
-impl<'tcx, T: HasValidityCheck<'tcx>> HasValidityCheck<'tcx> for DomainDataStates<T> {
-    fn check_validity(&self, ctxt: super::CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<'a, 'tcx, Ctxt>>
+    HasValidityCheck<'a, 'tcx, Ctxt> for DomainDataStates<T>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }

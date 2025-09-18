@@ -303,14 +303,14 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'_, 'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowStateRef<'_, 'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateRef<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.graph.check_validity(ctxt)?;
         Ok(())
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowStateMutRef<'_, 'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateMutRef<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.as_ref().check_validity(ctxt)
     }

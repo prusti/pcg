@@ -202,6 +202,10 @@ pub(crate) enum GraphEdge {
         target: NodeId,
         kind: BorrowFlowEdgeKind,
     },
+    Coupled {
+        source: NodeId,
+        target: NodeId,
+    },
 }
 
 impl GraphEdge {
@@ -293,6 +297,13 @@ impl GraphEdge {
                     options,
                 }
             }
+            GraphEdge::Coupled { source, target } => DotEdge {
+                from: source.to_string(),
+                to: target.to_string(),
+                options: EdgeOptions::undirected()
+                    .with_color("red".to_string())
+                    .with_style("dashed".to_string()),
+            },
         }
     }
 }

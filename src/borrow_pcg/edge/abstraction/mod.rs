@@ -158,11 +158,9 @@ impl<
         changed |= self
             .input
             .label_lifetime_projection(projection, label, ctxt);
-        self.assert_validity(ctxt);
         changed |= self
             .output
             .label_lifetime_projection(projection, label, ctxt);
-        self.assert_validity(ctxt);
         changed
     }
 }
@@ -275,15 +273,15 @@ impl<
 impl<
     'tcx: 'a,
     'a,
-    Input: HasValidityCheck<'tcx>
+    Input: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: HasValidityCheck<'tcx>
+    Output: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> HasValidityCheck<'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
+> HasValidityCheck<'a, 'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.input.check_validity(ctxt)?;
         self.output.check_validity(ctxt)?;
         if self.input.to_pcg_node(ctxt) == self.output.to_pcg_node(ctxt) {
@@ -307,7 +305,10 @@ impl<
         input: Input,
         output: Output,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Self {
+    ) -> Self
+    where
+        Self: HasValidityCheck<'a, 'tcx>,
+    {
         let result = Self {
             _phantom: PhantomData,
             input,

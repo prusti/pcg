@@ -169,7 +169,7 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
     }
 }
 
-impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<'tcx> for T {
+impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<'_, 'tcx> for T {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.kind().check_validity(ctxt)
     }
@@ -237,11 +237,14 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
         }
     }
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: mir::PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Result<Self, PcgError> {
+        repacker: CompilerCtxt<'a, 'tcx, C>,
+    ) -> Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
         Ok(match self {
             LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, repacker)?),
             LocalNode::LifetimeProjection(rp) => {
@@ -284,7 +287,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'tcx> HasValidityCheck<'tcx> for MaybeRemotePlace<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeRemotePlace<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }

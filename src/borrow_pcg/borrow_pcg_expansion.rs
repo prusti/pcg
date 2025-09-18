@@ -66,7 +66,7 @@ pub enum PlaceExpansion<'tcx> {
     Guided(RepackGuide),
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for PlaceExpansion<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceExpansion<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
@@ -255,7 +255,7 @@ impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'tcx, P> {
+impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansion<'tcx, P> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
             return Err(format!("expansion contains base: {:?}", self));
@@ -396,7 +396,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
                 .collect::<Result<Vec<_>, _>>()?,
             _marker: PhantomData,
         };
-        result.assert_validity(ctxt);
+        result.assert_validity(ctxt.bc_ctxt());
         Ok(result)
     }
 }

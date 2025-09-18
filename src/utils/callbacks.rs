@@ -38,7 +38,7 @@ use crate::{
         session::{EarlyDiagCtxt, Session, config::ErrorOutputType},
         span::SpanSnippetError,
     },
-    utils::{DEBUG_BLOCK, MAX_BASIC_BLOCKS, SKIP_BODIES_WITH_LOOPS},
+    utils::{DEBUG_BLOCK, GLOBAL_SETTINGS},
     validity_checks_enabled,
 };
 
@@ -183,10 +183,10 @@ pub(crate) unsafe fn take_stored_body(
 }
 
 fn should_check_body(body: &Body<'_>) -> bool {
-    if *SKIP_BODIES_WITH_LOOPS && is_cyclic(&body.basic_blocks) {
+    if GLOBAL_SETTINGS.skip_bodies_with_loops && is_cyclic(&body.basic_blocks) {
         return false;
     }
-    if let Some(len) = *MAX_BASIC_BLOCKS {
+    if let Some(len) = GLOBAL_SETTINGS.max_basic_blocks {
         body.basic_blocks.len() <= len
     } else {
         true

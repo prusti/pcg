@@ -1,3 +1,5 @@
+use derive_more::From;
+
 use super::AbstractionBlockEdge;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
@@ -26,10 +28,28 @@ use crate::{
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
 
-pub type LoopAbstractionEdgeMetadata<'tcx> = mir::BasicBlock;
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
+pub struct LoopAbstractionEdgeMetadata(mir::BasicBlock);
+
+impl LoopAbstractionEdgeMetadata {
+    pub(crate) fn loop_head_block(self) -> mir::BasicBlock {
+        self.0
+    }
+}
+
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LoopAbstractionEdgeMetadata
+{
+    fn to_short_string(
+        &self,
+        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!("Loop {:?}", self.0)
+    }
+}
 
 pub type LoopAbstraction<'tcx> =
-    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata<'tcx>, LoopAbstractionEdge<'tcx>>;
+    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
 impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstraction<'tcx> {
     fn label_lifetime_projection(
@@ -86,24 +106,9 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for LoopAbstraction<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstraction<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.edge.check_validity(ctxt)
-    }
-}
-
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LoopAbstraction<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        format!(
-            "Loop({:?}): {}",
-            self.metadata,
-            self.edge.to_short_string(ctxt)
-        )
     }
 }
 
@@ -123,13 +128,13 @@ impl<'tcx> LoopAbstraction<'tcx> {
     ) -> Self {
         Self {
             edge,
-            metadata: block,
+            metadata: block.into(),
         }
     }
 
     pub(crate) fn location(&self) -> Location {
         Location {
-            block: self.metadata,
+            block: self.metadata.0,
             statement_index: 0,
         }
     }

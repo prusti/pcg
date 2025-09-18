@@ -25,7 +25,7 @@ use crate::{
         graph::{BorrowsGraph, Conditioned},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult,
+            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext,
         },
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
@@ -70,11 +70,21 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
     pub(crate) fn new(inputs: Vec<InputNode>, outputs: Vec<OutputNode>) -> Self {
         Self { inputs, outputs }
     }
+
     pub fn inputs(&self) -> &Vec<InputNode> {
         &self.inputs
     }
+
     pub fn outputs(&self) -> &Vec<OutputNode> {
         &self.outputs
+    }
+
+    pub(crate) fn try_to_singleton_edge(&self) -> Option<(&InputNode, &OutputNode)> {
+        if self.inputs.len() == 1 && self.outputs.len() == 1 {
+            Some((&self.inputs[0], &self.outputs[0]))
+        } else {
+            None
+        }
     }
 }
 
@@ -189,7 +199,7 @@ type FunctionCoupledEdges<'tcx> = CoupledEdges<
 >;
 
 type LoopCoupledEdges<'tcx> = CoupledEdges<
-    Conditioned<LoopAbstractionEdgeMetadata<'tcx>>,
+    Conditioned<LoopAbstractionEdgeMetadata>,
     LoopAbstractionInput<'tcx>,
     LoopAbstractionOutput<'tcx>,
 >;
@@ -219,15 +229,34 @@ impl<Metadata, InputNode, OutputNode> CoupledEdgeKind<Metadata, InputNode, Outpu
     }
 }
 
-impl<'a, 'tcx, Metadata, InputNode, OutputNode>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<
+    'a,
+    'tcx,
+    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    InputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    OutputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for CoupledEdgeKind<Metadata, InputNode, OutputNode>
 {
     fn to_short_string(
         &self,
-        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
-        todo!()
+        if let Some((input, output)) = self.edge.try_to_singleton_edge() {
+            format!(
+                "{}: {} -> {}",
+                self.metadata.to_short_string(ctxt),
+                input.to_short_string(ctxt),
+                output.to_short_string(ctxt)
+            )
+        } else {
+            format!(
+                "{}: {} -> {}",
+                self.metadata.to_short_string(ctxt),
+                self.edge.inputs.to_short_string(ctxt),
+                self.edge.outputs.to_short_string(ctxt)
+            )
+        }
     }
 }
 
@@ -238,45 +267,160 @@ pub type FunctionCallCoupledEdgeKind<'tcx> = CoupledEdgeKind<
 >;
 
 pub type LoopCoupledEdgeKind<'tcx> = CoupledEdgeKind<
-    LoopAbstractionEdgeMetadata<'tcx>,
+    LoopAbstractionEdgeMetadata,
     LoopAbstractionInput<'tcx>,
     LoopAbstractionOutput<'tcx>,
 >;
 
-impl<'tcx> HasValidityCheck<'tcx> for PcgCoupledEdgeKind<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         todo!()
+    }
+}
+
+impl<'tcx, Input: LabelLifetimeProjection<'tcx>, Output: LabelLifetimeProjection<'tcx>>
+    LabelLifetimeProjection<'tcx> for HyperEdge<Input, Output>
+{
+    fn label_lifetime_projection(
+        &mut self,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        let mut result = LabelLifetimeProjectionResult::Unchanged;
+        for input in self.inputs.iter_mut() {
+            result |= input.label_lifetime_projection(predicate, label, ctxt);
+        }
+        for output in self.outputs.iter_mut() {
+            result |= output.label_lifetime_projection(predicate, label, ctxt);
+        }
+        result
+    }
+}
+
+impl<'tcx, Metadata, Input: LabelLifetimeProjection<'tcx>, Output: LabelLifetimeProjection<'tcx>>
+    LabelLifetimeProjection<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
+{
+    fn label_lifetime_projection(
+        &mut self,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        self.edge.label_lifetime_projection(predicate, label, ctxt)
     }
 }
 
 impl<'tcx> LabelLifetimeProjection<'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        _predicate: &LabelLifetimeProjectionPredicate<'tcx>,
-        _label: Option<LifetimeProjectionLabel>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        todo!()
+        match &mut self.0 {
+            FunctionCallOrLoop::FunctionCall(function) => {
+                function.label_lifetime_projection(predicate, label, ctxt)
+            }
+            FunctionCallOrLoop::Loop(loop_) => {
+                loop_.label_lifetime_projection(predicate, label, ctxt)
+            }
+        }
+    }
+}
+
+impl<
+    'tcx,
+    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+> LabelEdgePlaces<'tcx> for HyperEdge<Input, Output>
+{
+    fn label_blocked_places(
+        &mut self,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        let mut result = false;
+        for input in self.inputs.iter_mut() {
+            result |=
+                input.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
+        }
+        result
+    }
+
+    fn label_blocked_by_places(
+        &mut self,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        let mut result = false;
+        for output in self.outputs.iter_mut() {
+            result |=
+                output.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
+        }
+        result
+    }
+}
+
+impl<
+    'tcx,
+    Metadata,
+    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+> LabelEdgePlaces<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
+{
+    fn label_blocked_places(
+        &mut self,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.edge.label_blocked_places(predicate, labeller, ctxt)
+    }
+
+    fn label_blocked_by_places(
+        &mut self,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn label_blocked_places(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
-        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        todo!()
+        match &mut self.0 {
+            FunctionCallOrLoop::FunctionCall(function) => {
+                function.label_blocked_places(predicate, labeller, ctxt)
+            }
+            FunctionCallOrLoop::Loop(loop_) => {
+                loop_.label_blocked_places(predicate, labeller, ctxt)
+            }
+        }
     }
 
     fn label_blocked_by_places(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
-        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        todo!()
+        match &mut self.0 {
+            FunctionCallOrLoop::FunctionCall(function) => {
+                function.label_blocked_by_places(predicate, labeller, ctxt)
+            }
+            FunctionCallOrLoop::Loop(loop_) => {
+                loop_.label_blocked_by_places(predicate, labeller, ctxt)
+            }
+        }
     }
 }
 
@@ -578,7 +722,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
             HashSet<FunctionCallAbstractionEdge<'tcx>>,
         > = HashMap::default();
         let mut loop_edges: HashMap<
-            Conditioned<LoopAbstractionEdgeMetadata<'tcx>>,
+            Conditioned<LoopAbstractionEdgeMetadata>,
             HashSet<LoopAbstractionEdge<'tcx>>,
         > = HashMap::default();
         for edge in ObtainType::obtain_abstraction_edges(data_source) {
@@ -612,12 +756,15 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                     })
                     .collect::<Vec<_>>()
             };
-        let restore_loop_edge = |metadata: Conditioned<LoopAbstractionEdgeMetadata<'tcx>>| {
+        let restore_loop_edge = |metadata: Conditioned<LoopAbstractionEdgeMetadata>| {
             loop_edges[&metadata]
                 .iter()
                 .map(|edge| {
                     Conditioned::new(
-                        AbstractionEdge::Loop(LoopAbstraction::new(*edge, metadata.value)),
+                        AbstractionEdge::Loop(LoopAbstraction::new(
+                            *edge,
+                            metadata.value.loop_head_block(),
+                        )),
                         metadata.conditions.clone(),
                     )
                 })

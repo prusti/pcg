@@ -10,7 +10,7 @@ use crate::{
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
-        ctxt::AnalysisCtxt,
+        ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
@@ -18,8 +18,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CHECK_CYCLES, CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -39,8 +39,10 @@ pub struct Pcg<
     pub(crate) capabilities: Capabilities,
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for Pcg<'_, 'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> std::result::Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
+    HasValidityCheck<'a, 'tcx, Ctxt> for Pcg<'a, 'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
         self.as_ref().check_validity(ctxt)
     }
 }
@@ -176,23 +178,27 @@ impl<'tcx> PcgRefLike<'tcx> for PcgRef<'_, 'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for PcgRef<'_, 'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> std::result::Result<(), String> {
-        self.capabilities.to_concrete(ctxt).check_validity(ctxt)?;
-        self.borrow.check_validity(ctxt)?;
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
+    HasValidityCheck<'a, 'tcx, Ctxt> for PcgRef<'_, 'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
+        self.capabilities
+            .to_concrete(ctxt)
+            .check_validity(ctxt.bc_ctxt())?;
+        self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
-            .check_validity(&self.capabilities.to_concrete(ctxt), ctxt)?;
-        if *CHECK_CYCLES && !self.is_acyclic(ctxt) {
+            .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
+        if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
             return Err("PCG is not acyclic".to_string());
         }
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {
-            if !self.owned.contains_place(place, ctxt)
+            if !self.owned.contains_place(place, ctxt.bc_ctxt())
                 && !self.borrow.graph.places(ctxt).contains(&place)
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",
-                    place.to_short_string(ctxt),
+                    place.to_short_string(ctxt.bc_ctxt()),
                     cap
                 ));
             }
@@ -230,22 +236,22 @@ impl<'tcx> HasValidityCheck<'tcx> for PcgRef<'_, 'tcx> {
                     {
                         return Err(format!(
                             "Deref edge {} blocked place {} has capability {:?} but deref place {} has no capability",
-                            deref_edge.to_short_string(ctxt),
-                            blocked_place.to_short_string(ctxt),
+                            deref_edge.to_short_string(ctxt.bc_ctxt()),
+                            blocked_place.to_short_string(ctxt.bc_ctxt()),
                             c,
-                            deref_place.to_short_string(ctxt)
+                            deref_place.to_short_string(ctxt.bc_ctxt())
                         ));
                     }
                 }
                 BorrowPcgEdgeKind::Borrow(BorrowEdge::Local(borrow_edge)) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = borrow_edge.blocked_place
                         && blocked_place.is_owned(ctxt)
-                        && !self.owned.contains_place(blocked_place, ctxt)
+                        && !self.owned.contains_place(blocked_place, ctxt.bc_ctxt())
                     {
                         return Err(format!(
                             "Borrow edge {} blocks owned place {}, which is not in the owned PCG",
-                            borrow_edge.to_short_string(ctxt),
-                            blocked_place.to_short_string(ctxt)
+                            borrow_edge.to_short_string(ctxt.bc_ctxt()),
+                            blocked_place.to_short_string(ctxt.bc_ctxt())
                         ));
                     }
                 }

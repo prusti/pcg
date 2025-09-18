@@ -194,6 +194,25 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) function_data: Option<FunctionData<'tcx>>,
 }
 
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for FunctionCallAbstractionEdgeMetadata<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!(
+            "call{} at {:?}",
+            if let Some(function_data) = &self.function_data {
+                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
+            } else {
+                "".to_string()
+            },
+            self.location
+        )
+    }
+}
+
 pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdgeMetadata<'tcx>,
     FunctionCallAbstractionEdge<'tcx>,
@@ -257,27 +276,27 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for FunctionCallAbstraction<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.edge.check_validity(ctxt)
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for FunctionCallAbstraction<'tcx>
+impl<
+    'tcx,
+    'a,
+    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Edge: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
     fn to_short_string(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         format!(
-            "call{} at {:?}: {}",
-            if let Some(function_data) = &self.metadata.function_data {
-                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
-            } else {
-                "".to_string()
-            },
-            self.metadata.location,
+            "{}: {}",
+            self.metadata.to_short_string(ctxt),
             self.edge.to_short_string(ctxt)
         )
     }

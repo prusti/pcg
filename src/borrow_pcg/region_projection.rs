@@ -318,7 +318,7 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
         }
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
             PlaceOrConst::Place(p) => p.check_validity(ctxt),
@@ -797,13 +797,14 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
         self.base.place_mut()
     }
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
+        repacker: CompilerCtxt<'a, 'tcx, C>,
     ) -> Result<Self, PcgError>
     where
-        Self: Clone + HasValidityCheck<'tcx>,
+        'tcx: 'a,
+        Self: Clone + HasValidityCheck<'a, 'tcx>,
     {
         LifetimeProjection::new(
             self.region(repacker),
@@ -843,7 +844,7 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'_, 'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {

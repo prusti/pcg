@@ -297,7 +297,33 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
 pub struct PcgCtxt<'mir, 'tcx> {
     compiler_ctxt: CompilerCtxt<'mir, 'tcx>,
     move_data: MoveData<'tcx>,
+    settings: PcgSettings,
     pub(crate) arena: bumpalo::Bump,
+}
+
+impl<'a, 'mir: 'a, 'tcx: 'mir>
+    HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for &'a PcgCtxt<'mir, 'tcx>
+{
+    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+        self.compiler_ctxt
+    }
+
+    fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
+        self.compiler_ctxt.bc()
+    }
+}
+
+impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
+    fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, ()> {
+        CompilerCtxt::new(self.body(), self.tcx(), ())
+    }
+}
+
+impl<'a, 'mir, 'tcx> HasSettings<'a> for &'a PcgCtxt<'mir, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        &self.settings
+    }
 }
 
 fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
@@ -314,6 +340,7 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
         Self {
             compiler_ctxt: ctxt,
             move_data: gather_moves(ctxt.body(), ctxt.tcx()),
+            settings: PcgSettings::new(),
             arena: bumpalo::Bump::new(),
         }
     }
@@ -383,7 +410,7 @@ pub fn run_pcg<'a, 'tcx>(
                         block,
                         statement_index,
                     },
-                    pcg_ctxt.compiler_ctxt,
+                    pcg_ctxt,
                 );
             }
         }
@@ -600,7 +627,10 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    borrow_checker::r#impl::NllBorrowCheckerImpl, results::PcgLocation, utils::HasCompilerCtxt,
+    borrow_checker::r#impl::NllBorrowCheckerImpl,
+    pcg::ctxt::HasSettings,
+    results::PcgLocation,
+    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {

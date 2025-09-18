@@ -108,7 +108,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
     ) -> Result<(), PcgError> {
         let other_block = args.other_block;
         let self_block = args.self_block;
-        pcg_validity_assert!(other_graph.is_valid(ctxt), [ctxt], "Other graph is invalid");
+        pcg_validity_assert!(
+            other_graph.is_valid(ctxt.bc_ctxt()),
+            [ctxt],
+            "Other graph is invalid"
+        );
         pcg_validity_assert!(
             !ctxt.ctxt.is_back_edge(other_block, self_block),
             [ctxt],
@@ -129,7 +133,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 );
             }
             pcg_validity_assert!(
-                self.is_valid(ctxt),
+                self.is_valid(ctxt.bc_ctxt()),
                 [ctxt],
                 "Graph became invalid after join"
             );
@@ -154,7 +158,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         self.apply_placeholder_labels(args.capabilities, ctxt);
 
-        if validity_checks_enabled() && !self.is_valid(ctxt) {
+        if validity_checks_enabled() && !self.is_valid(ctxt.bc_ctxt()) {
             pcg_validity_assert!(
                 false,
                 [ctxt],
