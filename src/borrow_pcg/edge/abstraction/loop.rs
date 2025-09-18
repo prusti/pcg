@@ -44,7 +44,7 @@ impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
         &self,
         _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
-        format!("Loop {:?}", self.0)
+        format!("Loop({:?})", self.0)
     }
 }
 
