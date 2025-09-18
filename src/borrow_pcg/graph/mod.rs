@@ -478,15 +478,7 @@ impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
-        if self.conditions.is_empty() {
-            self.value.to_short_string(ctxt)
-        } else {
-            format!(
-                "{} under conditions {}",
-                self.value.to_short_string(ctxt),
-                self.conditions.to_short_string(ctxt)
-            )
-        }
+        self.conditions.conditional_string(&self.value, ctxt)
     }
 }
 

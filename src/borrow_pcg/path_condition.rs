@@ -146,6 +146,24 @@ pub type PathConditions = ValidityConditions;
 #[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
 pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
 
+impl ValidityConditions {
+    pub(crate) fn conditional_string<'a, 'tcx, BC: Copy>(
+        &self,
+        content: &impl DisplayWithCompilerCtxt<'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+    ) -> String {
+        if self.is_empty() {
+            content.to_short_string(ctxt)
+        } else {
+            format!(
+                "{} under conditions {}",
+                content.to_short_string(ctxt),
+                self.to_short_string(ctxt)
+            )
+        }
+    }
+}
+
 impl Default for ValidityConditions {
     fn default() -> Self {
         Self(SmallVec::new())

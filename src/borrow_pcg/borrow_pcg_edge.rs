@@ -58,11 +58,7 @@ impl<
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
-        format!(
-            "{} under conditions {}",
-            self.kind.to_short_string(ctxt),
-            self.conditions.to_short_string(ctxt)
-        )
+        self.conditions.conditional_string(self.kind, ctxt)
     }
 }
 
