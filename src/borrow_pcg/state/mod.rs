@@ -4,8 +4,10 @@ use std::marker::PhantomData;
 
 use crate::{
     borrow_pcg::{
-        edge_data::LabelEdgePlaces, graph::join::JoinBorrowsArgs,
+        edge_data::LabelEdgePlaces,
+        graph::join::JoinBorrowsArgs,
         has_pcs_elem::LabelLifetimeProjection,
+        validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
     },
     pcg::{
         SymbolicCapability,
@@ -18,7 +20,7 @@ use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, ToBorrowsEdge},
     edge::borrow::RemoteBorrow,
     graph::BorrowsGraph,
-    path_condition::{PathCondition, ValidityConditions},
+    validity_conditions::{PathCondition, ValidityConditions},
     visitor::extract_regions,
 };
 use crate::{
@@ -57,18 +59,23 @@ use crate::{
 /// The state of the Borrow PCG, including the Borrow PCG graph and the validity
 /// conditions associated with the current basic block.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct BorrowsState<'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>>
-{
+pub struct BorrowsState<
+    'a,
+    'tcx,
+    EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>,
+> {
     pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
-    pub(crate) validity_conditions: ValidityConditions,
+    pub(crate) validity_conditions: &'a ValidityConditions,
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default for BorrowsState<'tcx, EdgeKind> {
+impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default
+    for BorrowsState<'a, 'tcx, EdgeKind>
+{
     fn default() -> Self {
         Self {
             graph: BorrowsGraph::default(),
-            validity_conditions: ValidityConditions::default(),
+            validity_conditions: EMPTY_VALIDITY_CONDITIONS_REF,
             _marker: PhantomData,
         }
     }
@@ -259,11 +266,11 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 }
 
-impl<'tcx> BorrowsStateLike<'tcx> for BorrowsState<'tcx> {
+impl<'a, 'tcx> BorrowsStateLike<'tcx> for BorrowsState<'a, 'tcx> {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx> {
         BorrowStateMutRef {
             graph: &mut self.graph,
-            validity_conditions: &self.validity_conditions,
+            validity_conditions: self.validity_conditions,
         }
     }
 
@@ -274,21 +281,21 @@ impl<'tcx> BorrowsStateLike<'tcx> for BorrowsState<'tcx> {
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx> {
         BorrowStateRef {
             graph: &self.graph,
-            path_conditions: &self.validity_conditions,
+            path_conditions: self.validity_conditions,
         }
     }
 }
 
-impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'tcx>> for BorrowStateMutRef<'pcg, 'tcx> {
-    fn from(borrows_state: &'pcg mut BorrowsState<'tcx>) -> Self {
+impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'pcg, 'tcx> {
+    fn from(borrows_state: &'pcg mut BorrowsState<'_, 'tcx>) -> Self {
         Self {
             graph: &mut borrows_state.graph,
-            validity_conditions: &borrows_state.validity_conditions,
+            validity_conditions: borrows_state.validity_conditions,
         }
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'tcx> {
+impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'_, 'tcx> {
     fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.graph.debug_lines(repacker));
@@ -309,8 +316,8 @@ impl<'tcx> HasValidityCheck<'tcx> for BorrowStateMutRef<'_, 'tcx> {
     }
 }
 
-impl<'tcx> BorrowsState<'tcx> {
-    fn introduce_initial_borrows<'a>(
+impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
+    fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
         capabilities: &mut PlaceCapabilities<'tcx, SymbolicCapability>,
@@ -368,7 +375,7 @@ impl<'tcx> BorrowsState<'tcx> {
         }
     }
 
-    pub(crate) fn start_block<'a>(
+    pub(crate) fn start_block(
         capabilities: &mut PlaceCapabilities<'tcx, SymbolicCapability>,
         analysis_ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Self {
@@ -383,16 +390,20 @@ impl<'tcx> BorrowsState<'tcx> {
         &self.graph
     }
 
-    pub(crate) fn join<'a>(
+    pub(crate) fn join(
         &mut self,
         other: &Self,
         args: JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError> {
         self.graph
-            .join(&other.graph, &self.validity_conditions, args, ctxt)?;
-        self.validity_conditions
-            .join(&other.validity_conditions, ctxt.body());
+            .join(&other.graph, self.validity_conditions, args, ctxt)?;
+        if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self
+            .validity_conditions
+            .join_result(other.validity_conditions, ctxt.body())
+        {
+            self.validity_conditions = ctxt.arena.alloc(new_validity_conditions);
+        }
         Ok(())
     }
 
@@ -441,7 +452,7 @@ impl<'tcx> BorrowsState<'tcx> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_borrow<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         blocked_place: Place<'tcx>,
         assigned_place: Place<'tcx>,
@@ -506,20 +517,22 @@ impl<'tcx> BorrowsState<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> BorrowsState<'tcx, EdgeKind> {
+impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> {
     pub(crate) fn add_cfg_edge(
         &mut self,
         from: BasicBlock,
         to: BasicBlock,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> bool {
         pcg_validity_assert!(
-            !ctxt.is_back_edge(from, to),
+            !ctxt.ctxt.is_back_edge(from, to),
             [ctxt],
             "Adding CFG edge from {from:?} to {to:?} is a back edge"
         );
         let pc = PathCondition::new(from, to);
-        self.validity_conditions.insert(pc, ctxt.body());
-        self.graph.add_path_condition(pc, ctxt)
+        let mut validity_conditions = self.validity_conditions.clone();
+        validity_conditions.insert(pc, ctxt.body());
+        self.validity_conditions = ctxt.arena.alloc(validity_conditions);
+        self.graph.add_path_condition(pc, ctxt.ctxt)
     }
 }

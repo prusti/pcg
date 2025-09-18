@@ -1,3 +1,5 @@
+use crate::rustc_interface::middle::mir::HasLocalDecls;
+
 use crate::{
     pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir,
     utils::HasBorrowCheckerCtxt,
@@ -24,5 +26,19 @@ pub trait HasValidityCheck<'tcx> {
         'tcx: 'a,
     {
         self.check_validity(ctxt.bc_ctxt()).is_ok()
+    }
+}
+
+impl<'tcx> HasValidityCheck<'tcx> for mir::Local {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        if ctxt.body().local_decls().len() <= self.as_usize() {
+            return Err(format!(
+                "Local {:?} is out of bounds: provided MIR at {:?} only has {} local declarations",
+                self,
+                ctxt.body().span,
+                ctxt.body().local_decls().len()
+            ));
+        }
+        Ok(())
     }
 }

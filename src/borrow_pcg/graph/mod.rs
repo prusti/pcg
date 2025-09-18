@@ -37,7 +37,7 @@ use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
     edge::borrow::LocalBorrow,
     edge_data::EdgeData,
-    path_condition::ValidityConditions,
+    validity_conditions::ValidityConditions,
 };
 use crate::{
     borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
@@ -466,8 +466,8 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Conditioned<T> {
-    pub(crate) conditions: ValidityConditions,
+pub struct Conditioned<T, Conditions = ValidityConditions> {
+    pub(crate) conditions: Conditions,
     pub(crate) value: T,
 }
 

@@ -15,26 +15,16 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
         },
-        path_condition::ValidityConditions,
         region_projection::LifetimeProjectionLabel,
+        validity_conditions::ValidityConditions,
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-use crate::coupling::HyperEdge;
-
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
-
-impl<'tcx> LoopAbstractionEdge<'tcx> {
-    pub(crate) fn to_hyper_edge(
-        self,
-    ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {
-        HyperEdge::new(vec![self.input], vec![self.output])
-    }
-}
 
 pub type LoopAbstractionEdgeMetadata<'tcx> = mir::BasicBlock;
 

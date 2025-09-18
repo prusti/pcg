@@ -199,14 +199,13 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
         FunctionShape(shape)
     }
 
-    #[cfg(feature = "coupling")]
     #[allow(unused)]
     pub fn coupled(
-        self,
+        &self,
     ) -> std::result::Result<
         CoupledEdgesData<FunctionShapeInput<'tcx>, FunctionShapeOutput<'tcx>>,
         CoupleInputError,
     > {
-        CoupledEdgesData::new(self.0)
+        CoupledEdgesData::new(&self.0)
     }
 }

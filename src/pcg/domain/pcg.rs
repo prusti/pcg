@@ -29,16 +29,17 @@ use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pcg<
+    'a,
     'tcx,
     Capabilities = SymbolicPlaceCapabilities<'tcx>,
     EdgeKind: Eq + std::hash::Hash + PartialEq = BorrowPcgEdgeKind<'tcx>,
 > {
     pub(crate) owned: OwnedPcg<'tcx>,
-    pub(crate) borrow: BorrowsState<'tcx, EdgeKind>,
+    pub(crate) borrow: BorrowsState<'a, 'tcx, EdgeKind>,
     pub(crate) capabilities: Capabilities,
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for Pcg<'tcx> {
+impl<'tcx> HasValidityCheck<'tcx> for Pcg<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> std::result::Result<(), String> {
         self.as_ref().check_validity(ctxt)
     }
@@ -69,8 +70,8 @@ impl<'tcx> PcgRef<'_, 'tcx> {
     }
 }
 
-impl<'pcg, 'tcx> From<&'pcg Pcg<'tcx>> for PcgRef<'pcg, 'tcx> {
-    fn from(pcg: &'pcg Pcg<'tcx>) -> Self {
+impl<'pcg, 'tcx> From<&'pcg Pcg<'_, 'tcx>> for PcgRef<'pcg, 'tcx> {
+    fn from(pcg: &'pcg Pcg<'_, 'tcx>) -> Self {
         Self {
             owned: &pcg.owned,
             borrow: pcg.borrow.as_ref(),
@@ -110,8 +111,8 @@ impl<'pcg, 'tcx> PcgMutRef<'pcg, 'tcx> {
     }
 }
 
-impl<'pcg, 'tcx> From<&'pcg mut Pcg<'tcx>> for PcgMutRef<'pcg, 'tcx> {
-    fn from(pcg: &'pcg mut Pcg<'tcx>) -> Self {
+impl<'pcg, 'tcx> From<&'pcg mut Pcg<'_, 'tcx>> for PcgMutRef<'pcg, 'tcx> {
+    fn from(pcg: &'pcg mut Pcg<'_, 'tcx>) -> Self {
         Self::new(
             &mut pcg.owned,
             (&mut pcg.borrow).into(),
@@ -163,7 +164,7 @@ impl<'tcx> PcgRefLike<'tcx> for PcgMutRef<'_, 'tcx> {
     }
 }
 
-impl<'tcx> PcgRefLike<'tcx> for Pcg<'tcx> {
+impl<'tcx> PcgRefLike<'tcx> for Pcg<'_, 'tcx> {
     fn as_ref(&self) -> PcgRef<'_, 'tcx> {
         PcgRef::from(self)
     }
@@ -255,7 +256,7 @@ impl<'tcx> HasValidityCheck<'tcx> for PcgRef<'_, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> Pcg<'tcx> {
+impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     pub(crate) fn is_expansion_leaf(
         &self,
         place: Place<'tcx>,
@@ -294,7 +295,7 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
         &self.owned
     }
 
-    pub fn borrow_pcg(&self) -> &BorrowsState<'tcx> {
+    pub fn borrow_pcg(&self) -> &BorrowsState<'a, 'tcx> {
         &self.borrow
     }
 
@@ -309,7 +310,7 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
     pub(crate) fn join_owned_data(
         &mut self,
         block: mir::BasicBlock,
-    ) -> JoinOwnedData<'_, 'tcx, &mut OwnedPcg<'tcx>> {
+    ) -> JoinOwnedData<'a, '_, 'tcx, &mut OwnedPcg<'tcx>> {
         JoinOwnedData {
             owned: &mut self.owned,
             borrows: &mut self.borrow,
@@ -358,9 +359,7 @@ impl<'a, 'tcx: 'a> Pcg<'tcx> {
         // For edges in the other graph that actually belong to it,
         // add the path condition that leads them to this block
         let mut other = other.clone();
-        other
-            .borrow
-            .add_cfg_edge(other_block, self_block, ctxt.ctxt);
+        other.borrow.add_cfg_edge(other_block, self_block, ctxt);
         self.capabilities.join(&other_capabilities, ctxt);
         let borrow_args = JoinBorrowsArgs {
             self_block,

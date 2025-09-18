@@ -26,6 +26,7 @@ use crate::{
             ty::{TyCtxt, TyKind},
         },
     },
+    utils::validity::HasValidityCheck,
     validity_checks_enabled,
 };
 
@@ -588,28 +589,19 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
+impl<'tcx> HasValidityCheck<'tcx> for Place<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        self.local.check_validity(ctxt)?;
+        Ok(())
+    }
+}
+
 impl<'tcx> Place<'tcx> {
     pub fn ty<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PlaceTy<'tcx>
     where
         'tcx: 'a,
     {
-        debug_assert!(
-            ctxt.body().local_decls().len() > self.local.as_usize(),
-            "Place {:?} has local {:?}, but the provided MIR at {:?} only has {} local declarations",
-            self,
-            self.local,
-            ctxt.body().span,
-            ctxt.body().local_decls().len()
-        );
         (*self).ty(ctxt.body(), ctxt.tcx())
-    }
-
-    #[allow(unused)]
-    pub(crate) fn get_ref_region(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
-        match self.ty(repacker).ty.kind() {
-            TyKind::Ref(region, ..) => Some((*region).into()),
-            _ => None,
-        }
     }
 
     pub(crate) fn projects_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool

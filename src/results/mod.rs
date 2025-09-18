@@ -44,7 +44,7 @@ pub struct PcgAnalysisResults<'a, 'tcx: 'a> {
     end_stmt: Option<Location>,
 }
 
-impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
+impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     pub(crate) fn new(cursor: Cursor<'a, 'tcx, AnalysisEngine<PcgEngine<'a, 'tcx>>>) -> Self {
         Self {
             cursor,
@@ -83,7 +83,7 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
     ///
     /// This function may return `None` if the PCG did not analyze this block.
     /// This could happen, for example, if the block would only be reached when unwinding from a panic.
-    fn next(&mut self, exp_loc: Location) -> Result<Option<PcgLocation<'tcx>>, PcgError> {
+    fn next(&mut self, exp_loc: Location) -> Result<Option<PcgLocation<'a, 'tcx>>, PcgError> {
         let location = self.curr_stmt.unwrap();
         assert_eq!(location, exp_loc);
         assert!(location < self.end_stmt.unwrap());
@@ -102,7 +102,7 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
 
         Ok(Some(result))
     }
-    pub(crate) fn terminator(&mut self) -> Result<PcgTerminator<'tcx>, PcgError> {
+    pub(crate) fn terminator<'slf>(&'slf mut self) -> Result<PcgTerminator<'a, 'tcx>, PcgError> {
         let location = self.curr_stmt.unwrap();
         assert!(location == self.end_stmt.unwrap());
         self.curr_stmt = None;
@@ -185,7 +185,7 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
     ///
     /// This is rather expensive to compute and may take a lot of memory. You
     /// may want to consider using `get_all_for_bb` instead.
-    pub fn results_for_all_blocks(&mut self) -> Result<PcgBasicBlocks<'tcx>, PcgError> {
+    pub fn results_for_all_blocks(&mut self) -> Result<PcgBasicBlocks<'a, 'tcx>, PcgError> {
         let mut result = IndexVec::new();
         for block in self.body().basic_blocks.indices() {
             let pcg_block = self.get_all_for_bb(block)?;
@@ -206,16 +206,17 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
     /// Does *not* require that one calls `analysis_for_bb` first
     /// This function may return `None` if the PCG did not analyze this block.
     /// This could happen, for example, if the block would only be reached when unwinding from a panic.
-    pub fn get_all_for_bb(
-        &mut self,
+    pub fn get_all_for_bb<'slf>(
+        &'slf mut self,
         block: BasicBlock,
-    ) -> Result<Option<PcgBasicBlock<'tcx>>, PcgError> {
+    ) -> Result<Option<PcgBasicBlock<'a, 'tcx>>, PcgError> {
         if !self.analysis().reachable_blocks.contains(block.index()) {
             return Ok(None);
         }
         self.analysis_for_bb(block);
-        let mut statements = Vec::new();
-        while self.curr_stmt.unwrap() != self.end_stmt.unwrap() {
+        let mut statements: Vec<PcgLocation<'a, 'tcx>> = Vec::new();
+        let end_stmt = self.end_stmt.unwrap();
+        while self.curr_stmt.unwrap() != end_stmt {
             let stmt = self.next(self.curr_stmt.unwrap())?;
             if let Some(stmt) = stmt {
                 statements.push(stmt);
@@ -233,10 +234,10 @@ impl<'a, 'tcx> PcgAnalysisResults<'a, 'tcx> {
 
 /// The results of the PCG analysis for all basic blocks.
 #[derive(Deref)]
-pub struct PcgBasicBlocks<'tcx>(IndexVec<BasicBlock, Option<PcgBasicBlock<'tcx>>>);
+pub struct PcgBasicBlocks<'a, 'tcx>(IndexVec<BasicBlock, Option<PcgBasicBlock<'a, 'tcx>>>);
 
-impl<'tcx> PcgBasicBlocks<'tcx> {
-    pub fn get_statement(&self, location: Location) -> Option<&PcgLocation<'tcx>> {
+impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
+    pub fn get_statement(&self, location: Location) -> Option<&PcgLocation<'_, 'tcx>> {
         if let Some(pcg_block) = &self.0[location.block] {
             pcg_block.statements.get(location.statement_index)
         } else {
@@ -246,7 +247,7 @@ impl<'tcx> PcgBasicBlocks<'tcx> {
 
     fn aggregate<T: std::hash::Hash + std::cmp::Eq>(
         &self,
-        f: impl Fn(&PcgLocation<'tcx>) -> FxHashSet<T>,
+        f: impl Fn(&PcgLocation<'_, 'tcx>) -> FxHashSet<T>,
     ) -> FxHashSet<T> {
         let mut result = FxHashSet::default();
         for block in self.0.iter() {
@@ -270,12 +271,12 @@ impl<'tcx> PcgBasicBlocks<'tcx> {
 }
 
 /// The results of the PCG analysis for a basic block.
-pub struct PcgBasicBlock<'tcx> {
-    pub statements: Vec<PcgLocation<'tcx>>,
-    pub terminator: PcgTerminator<'tcx>,
+pub struct PcgBasicBlock<'a, 'tcx> {
+    pub statements: Vec<PcgLocation<'a, 'tcx>>,
+    pub terminator: PcgTerminator<'a, 'tcx>,
 }
 
-impl<'tcx> PcgBasicBlock<'tcx> {
+impl<'tcx> PcgBasicBlock<'_, 'tcx> {
     pub fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
         for stmt in self.statements.iter() {
@@ -297,9 +298,9 @@ impl<'tcx> PcgBasicBlock<'tcx> {
 /// The PCG state at a MIR location. Also contains associated actions performed
 /// when analysing the statement at that location.
 #[derive(Debug, Clone)]
-pub struct PcgLocation<'tcx> {
+pub struct PcgLocation<'a, 'tcx> {
     pub location: Location,
-    pub states: DomainDataStates<Pcg<'tcx>>,
+    pub states: DomainDataStates<Pcg<'a, 'tcx>>,
     pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
 }
 
@@ -309,14 +310,14 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for PcgLocation<'tcx> {
+impl<'tcx> HasValidityCheck<'tcx> for PcgLocation<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         // TODO
         self.states.check_validity(ctxt)
     }
 }
 
-impl<'tcx> PcgLocation<'tcx> {
+impl<'tcx> PcgLocation<'_, 'tcx> {
     pub fn borrow_pcg_actions(&self, phase: EvalStmtPhase) -> BorrowPcgActions<'tcx> {
         self.actions[phase].borrow_pcg_actions()
     }
@@ -383,6 +384,6 @@ impl<'tcx> PcgLocation<'tcx> {
 }
 
 #[derive(Debug)]
-pub struct PcgTerminator<'tcx> {
-    pub succs: Vec<PcgSuccessor<'tcx>>,
+pub struct PcgTerminator<'a, 'tcx> {
+    pub succs: Vec<PcgSuccessor<'a, 'tcx>>,
 }

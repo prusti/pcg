@@ -75,7 +75,7 @@ impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
 
 #[derive(Clone, Eq, Debug)]
 pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
-    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'tcx, Capabilities>>>,
+    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
     pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
 }
 
@@ -88,7 +88,7 @@ impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
         let mut entry_state = (*other.data.pcg.states.0.post_main).clone();
         entry_state
             .borrow
-            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt.ctxt);
+            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt);
         let domain_data = DomainData::new(Rc::new_in(entry_state, other.ctxt.arena));
         Self {
             pcg: domain_data,
@@ -473,7 +473,7 @@ impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
 pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
     fn data(&self) -> &PcgDomainData<'a, 'tcx>;
 
-    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'tcx>
+    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'a, 'tcx>
     where
         'a: 'slf,
     {

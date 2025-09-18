@@ -4,7 +4,7 @@ use crate::{
         edge_data::LabelEdgePlaces,
         graph::Conditioned,
         has_pcs_elem::PlaceLabeller,
-        path_condition::{PathCondition, ValidityConditions},
+        validity_conditions::{PathCondition, ValidityConditions},
     },
     rustc_interface::middle::mir::BasicBlock,
     utils::{CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, Place},

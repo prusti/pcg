@@ -1,4 +1,4 @@
-use derive_more::Deref;
+use derive_more::{Deref, IntoIterator};
 use itertools::Itertools;
 
 use crate::{
@@ -27,8 +27,8 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult,
         },
-        path_condition::ValidityConditions,
         region_projection::LifetimeProjectionLabel,
+        validity_conditions::ValidityConditions,
     },
     pcg::PcgNodeLike,
     utils::{
@@ -80,7 +80,7 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
 
 /// A collection of hyper edges generated for a function or loop, without
 /// identifying metadata.
-#[derive(Eq, Hash, PartialEq, Clone, Debug, Deref)]
+#[derive(Eq, Hash, PartialEq, Clone, Debug, Deref, IntoIterator)]
 pub struct CoupledEdgesData<InputNode, OutputNode>(Vec<HyperEdge<InputNode, OutputNode>>);
 
 impl<InputNode: Eq + Hash, OutputNode: Eq + Hash> CoupledEdgesData<InputNode, OutputNode> {
@@ -153,11 +153,11 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     }
 
     pub(crate) fn new(
-        edges: HashSet<AbstractionBlockEdge<'_, InputNode, OutputNode>>,
+        edges: &HashSet<AbstractionBlockEdge<'_, InputNode, OutputNode>>,
     ) -> Result<Self, CoupleInputError> {
         let mut inputs = HashSet::default();
         let mut outputs_map: HashMap<InputNode, HashSet<OutputNode>> = HashMap::default();
-        for edge in edges {
+        for edge in edges.iter() {
             inputs.insert(edge.input());
             outputs_map
                 .entry(edge.input())
@@ -197,11 +197,51 @@ type LoopCoupledEdges<'tcx> = CoupledEdges<
 /// A coupled edge derived from a function or loop
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
 pub struct PcgCoupledEdgeKind<'tcx>(
-    FunctionCallOrLoop<
-        HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>>,
-        HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
-    >,
+    FunctionCallOrLoop<FunctionCallCoupledEdgeKind<'tcx>, LoopCoupledEdgeKind<'tcx>>,
 );
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct CoupledEdgeKind<Metadata, InputNode, OutputNode> {
+    metadata: Metadata,
+    edge: HyperEdge<InputNode, OutputNode>,
+}
+
+impl<Metadata, InputNode, OutputNode> CoupledEdgeKind<Metadata, InputNode, OutputNode> {
+    pub(crate) fn new(metadata: Metadata, edge: HyperEdge<InputNode, OutputNode>) -> Self {
+        Self { metadata, edge }
+    }
+    pub(crate) fn inputs(&self) -> &Vec<InputNode> {
+        self.edge.inputs()
+    }
+
+    pub(crate) fn outputs(&self) -> &Vec<OutputNode> {
+        self.edge.outputs()
+    }
+}
+
+impl<'a, 'tcx, Metadata, InputNode, OutputNode>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for CoupledEdgeKind<Metadata, InputNode, OutputNode>
+{
+    fn to_short_string(
+        &self,
+        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        todo!()
+    }
+}
+
+pub type FunctionCallCoupledEdgeKind<'tcx> = CoupledEdgeKind<
+    FunctionCallAbstractionEdgeMetadata<'tcx>,
+    FunctionCallAbstractionInput<'tcx>,
+    FunctionCallAbstractionOutput<'tcx>,
+>;
+
+pub type LoopCoupledEdgeKind<'tcx> = CoupledEdgeKind<
+    LoopAbstractionEdgeMetadata<'tcx>,
+    LoopAbstractionInput<'tcx>,
+    LoopAbstractionOutput<'tcx>,
+>;
 
 impl<'tcx> HasValidityCheck<'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
@@ -257,14 +297,10 @@ impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 }
 
 impl<'tcx> PcgCoupledEdgeKind<'tcx> {
-    pub(crate) fn function_call(
-        edge: HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>>,
-    ) -> Self {
+    pub(crate) fn function_call(edge: FunctionCallCoupledEdgeKind<'tcx>) -> Self {
         Self(FunctionCallOrLoop::FunctionCall(edge))
     }
-    pub(crate) fn loop_(
-        edge: HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>,
-    ) -> Self {
+    pub(crate) fn loop_(edge: LoopCoupledEdgeKind<'tcx>) -> Self {
         Self(FunctionCallOrLoop::Loop(edge))
     }
     pub fn inputs<C: Copy>(
@@ -328,14 +364,21 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
             data.edges
                 .0
                 .into_iter()
-                .map(PcgCoupledEdgeKind::function_call)
+                .map(|edge| {
+                    PcgCoupledEdgeKind::function_call(FunctionCallCoupledEdgeKind::new(
+                        data.metadata.value,
+                        edge,
+                    ))
+                })
                 .collect()
         }
         fn for_loop<'tcx>(data: LoopCoupledEdges<'tcx>) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
             data.edges
                 .0
                 .into_iter()
-                .map(PcgCoupledEdgeKind::loop_)
+                .map(|edge| {
+                    PcgCoupledEdgeKind::loop_(LoopCoupledEdgeKind::new(data.metadata.value, edge))
+                })
                 .collect()
         }
         self.0.clone().bimap(for_function_call, for_loop)
@@ -344,7 +387,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
 
 /// Either all of the coupled edges for a function or loop, or an error
 #[derive(Eq, Hash, PartialEq, Clone, Debug, Deref)]
-struct CoupleEdgesResult<'tcx, SourceEdges>(
+pub(crate) struct CoupleEdgesResult<'tcx, SourceEdges>(
     Result<PcgCoupledEdges<'tcx>, CouplingError<SourceEdges>>,
 );
 
@@ -359,17 +402,17 @@ impl<'tcx, SourceEdges> CoupleEdgesResult<'tcx, SourceEdges> {
     }
 }
 
-fn couple_edges<
+pub(crate) fn couple_edges<
     'tcx,
     Metadata: Clone,
     InputNode: Eq + Hash + Copy,
     OutputNode: Eq + Hash + Copy,
 >(
     metadata: Metadata,
-    edges: HashSet<AbstractionBlockEdge<'tcx, InputNode, OutputNode>>,
+    edges: &HashSet<AbstractionBlockEdge<'tcx, InputNode, OutputNode>>,
     f: impl FnOnce(CoupledEdges<Metadata, InputNode, OutputNode>) -> PcgCoupledEdges<'tcx>,
 ) -> CoupleEdgesResult<'tcx, Metadata> {
-    CoupleEdgesResult(match CoupledEdgesData::new(edges.clone()) {
+    CoupleEdgesResult(match CoupledEdgesData::new(edges) {
         Ok(coupled_edges) => Ok(f(CoupledEdges {
             metadata,
             edges: coupled_edges,
@@ -561,8 +604,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                     .map(|edge| {
                         Conditioned::new(
                             AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
-                                metadata.value.location,
-                                metadata.value.function_data,
+                                metadata.value,
                                 *edge,
                             )),
                             metadata.conditions.clone(),
@@ -584,16 +626,12 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
         let mut result: Vec<PcgCoupleEdgesResult<'tcx>> = function_edges
             .iter()
             .map(|(metadata, edges)| {
-                couple_edges(
-                    metadata.clone(),
-                    edges.clone(),
-                    PcgCoupledEdges::function_call,
-                )
-                .map_source_edges(restore_fn_edges)
+                couple_edges(metadata.clone(), edges, PcgCoupledEdges::function_call)
+                    .map_source_edges(restore_fn_edges)
             })
             .collect::<Vec<_>>();
         result.extend(loop_edges.iter().map(|(metadata, edges)| {
-            couple_edges(metadata.clone(), edges.clone(), PcgCoupledEdges::loop_)
+            couple_edges(metadata.clone(), edges, PcgCoupledEdges::loop_)
                 .map_source_edges(restore_loop_edge)
         }));
         CouplingResults::new(result)

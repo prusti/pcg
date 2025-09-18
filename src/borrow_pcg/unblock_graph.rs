@@ -137,7 +137,7 @@ impl<'tcx> UnblockGraph<'tcx> {
 
     pub fn for_node(
         node: impl Into<BlockedNode<'tcx>>,
-        state: &BorrowsState<'tcx>,
+        state: &BorrowsState<'_, 'tcx>,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) -> Self {
         Self::for_nodes(vec![node], state, repacker)
@@ -145,7 +145,7 @@ impl<'tcx> UnblockGraph<'tcx> {
 
     pub fn for_nodes(
         nodes: impl IntoIterator<Item = impl Into<BlockedNode<'tcx>>>,
-        state: &BorrowsState<'tcx>,
+        state: &BorrowsState<'_, 'tcx>,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) -> Self {
         let mut ug = Self::new();
@@ -166,7 +166,7 @@ impl<'tcx> UnblockGraph<'tcx> {
     pub(crate) fn kill_edge(
         &mut self,
         edge: impl BorrowPcgEdgeLike<'tcx>,
-        borrows: &BorrowsState<'tcx>,
+        borrows: &BorrowsState<'_, 'tcx>,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) {
         if self.add_dependency(edge.clone().to_owned_edge()) {
@@ -180,7 +180,7 @@ impl<'tcx> UnblockGraph<'tcx> {
     pub(crate) fn unblock_node(
         &mut self,
         node: BlockedNode<'tcx>,
-        borrows: &BorrowsState<'tcx>,
+        borrows: &BorrowsState<'_, 'tcx>,
         repacker: CompilerCtxt<'_, 'tcx>,
     ) {
         for edge in borrows.edges_blocking(node, repacker) {

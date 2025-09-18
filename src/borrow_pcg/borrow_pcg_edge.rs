@@ -10,8 +10,8 @@ use super::{
     edge_data::EdgeData,
     graph::Conditioned,
     has_pcs_elem::LabelLifetimeProjection,
-    path_condition::ValidityConditions,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
+    validity_conditions::ValidityConditions,
 };
 use crate::{
     borrow_checker::BorrowCheckerInterface,

@@ -146,6 +146,10 @@ pub type PathConditions = ValidityConditions;
 #[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
 pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
 
+pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
+    ValidityConditions(SmallVec::new_const());
+pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
+
 impl ValidityConditions {
     pub(crate) fn conditional_string<'a, 'tcx, BC: Copy>(
         &self,
@@ -166,7 +170,7 @@ impl ValidityConditions {
 
 impl Default for ValidityConditions {
     fn default() -> Self {
-        Self(SmallVec::new())
+        EMPTY_VALIDITY_CONDITIONS
     }
 }
 
@@ -200,6 +204,12 @@ fn effective_successors(from: BasicBlock, body: &mir::Body<'_>) -> Vec<BasicBloc
     }
 }
 
+#[must_use]
+pub(crate) enum JoinValidityConditionsResult {
+    Changed(Box<ValidityConditions>),
+    Unchanged,
+}
+
 impl ValidityConditions {
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -230,13 +240,18 @@ impl ValidityConditions {
         self.0.retain(|c| c.from != from);
     }
 
-    pub(crate) fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> bool {
+    pub(crate) fn join_result(
+        &self,
+        other: &Self,
+        body: &mir::Body<'_>,
+    ) -> JoinValidityConditionsResult {
+        let mut slf = self.clone();
         let mut changed = false;
         for other_branch_choices in other.all_branch_choices() {
-            if let Some(existing) = self.branch_choices_for(other_branch_choices.from) {
+            if let Some(existing) = slf.branch_choices_for(other_branch_choices.from) {
                 match existing.join(other_branch_choices, body) {
                     BranchChoicesJoinResult::CoversAllChoices => {
-                        self.delete_branch_choices(other_branch_choices.from);
+                        slf.delete_branch_choices(other_branch_choices.from);
                         changed = true;
                     }
                     BranchChoicesJoinResult::Changed => {
@@ -246,7 +261,22 @@ impl ValidityConditions {
                 }
             }
         }
-        changed
+        if changed {
+            JoinValidityConditionsResult::Changed(Box::new(slf))
+        } else {
+            JoinValidityConditionsResult::Unchanged
+        }
+    }
+
+    pub(crate) fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> bool {
+        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
+            self.join_result(other, body)
+        {
+            *self = *new_validity_conditions;
+            true
+        } else {
+            false
+        }
     }
 
     pub(crate) fn insert(&mut self, pc: PathCondition, body: &mir::Body<'_>) -> bool {

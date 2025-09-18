@@ -18,6 +18,7 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
     },
+    coupling::HyperEdge,
     pcg::PcgNodeLike,
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
 };
@@ -67,13 +68,13 @@ impl<'tcx> AbstractionEdge<'tcx> {
     /// This is presumably NOT what you want, as there is no coupling logic
     /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
     /// However, Prusti is currently using this function for loops.
-    pub fn to_hyper_edge(&self) -> PcgCoupledEdgeKind<'tcx> {
+    pub fn into_singleton_coupled_edge(self) -> PcgCoupledEdgeKind<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {
-                PcgCoupledEdgeKind::function_call(function_call.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::function_call(function_call.into_singleton_coupled_edge())
             }
             AbstractionEdge::Loop(loop_abstraction) => {
-                PcgCoupledEdgeKind::loop_(loop_abstraction.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::loop_(loop_abstraction.into_singleton_coupled_edge())
             }
         }
     }
@@ -95,13 +96,17 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     pub(crate) output: Output,
 }
 
-impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
+impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> {
     pub(crate) fn new(input: Input, output: Output) -> Self {
         Self {
             _phantom: PhantomData,
             input,
             output,
         }
+    }
+
+    pub(crate) fn to_singleton_hyper_edge(self) -> HyperEdge<Input, Output> {
+        HyperEdge::new(vec![self.input], vec![self.output])
     }
 }
 

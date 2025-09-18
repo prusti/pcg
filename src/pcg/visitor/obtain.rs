@@ -719,7 +719,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg.borrow.graph
     }
 
-    fn path_conditions(&self) -> crate::borrow_pcg::path_condition::ValidityConditions {
+    fn path_conditions(&self) -> crate::borrow_pcg::validity_conditions::ValidityConditions {
         self.pcg.borrow.validity_conditions.clone()
     }
 

@@ -222,7 +222,7 @@ fn test_aliases() {
     fn check_all_statements<'mir, 'tcx>(
         body: &'mir mir::Body<'tcx>,
         analysis: &mut PcgOutput<'mir, 'tcx>,
-        f: impl Fn(mir::Location, &PcgLocation<'tcx>),
+        f: impl Fn(mir::Location, &PcgLocation<'_, 'tcx>),
     ) {
         for block in body.basic_blocks.indices() {
             let stmts_option = analysis.get_all_for_bb(block).unwrap();

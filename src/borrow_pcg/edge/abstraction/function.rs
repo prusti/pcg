@@ -12,6 +12,7 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
+    coupling::CoupledEdgeKind,
     pcg::PcgNode,
     rustc_interface::{
         hir::def_id::DefId,
@@ -180,6 +181,13 @@ pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) edge: Edge,
 }
 
+impl<'tcx, Metadata, Input: Copy, Output: Copy>
+    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'tcx, Input, Output>>
+{
+    pub(crate) fn into_singleton_coupled_edge(self) -> CoupledEdgeKind<Metadata, Input, Output> {
+        CoupledEdgeKind::new(self.metadata, self.edge.to_singleton_hyper_edge())
+    }
+}
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) location: Location,
@@ -298,20 +306,13 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
     }
 
     pub fn new(
-        location: Location,
-        function_data: Option<FunctionData<'tcx>>,
+        metadata: FunctionCallAbstractionEdgeMetadata<'tcx>,
         edge: AbstractionBlockEdge<
             'tcx,
             FunctionCallAbstractionInput<'tcx>,
             FunctionCallAbstractionOutput<'tcx>,
         >,
     ) -> Self {
-        Self {
-            metadata: FunctionCallAbstractionEdgeMetadata {
-                location,
-                function_data,
-            },
-            edge,
-        }
+        Self { metadata, edge }
     }
 }

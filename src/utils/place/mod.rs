@@ -33,7 +33,7 @@ use crate::{
     utils::{HasCompilerCtxt, data_structures::HashSet},
 };
 
-use super::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
+use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -119,15 +119,6 @@ impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         (*self).into()
-    }
-}
-
-impl<'tcx> HasValidityCheck<'tcx> for Place<'tcx> {
-    fn check_validity(
-        &self,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), std::string::String> {
-        Ok(())
     }
 }
 

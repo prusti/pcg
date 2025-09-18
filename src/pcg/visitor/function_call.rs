@@ -7,17 +7,21 @@ use crate::{
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
-            function::{FunctionCallAbstraction, FunctionCallData, FunctionData},
+            function::{
+                FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
+                FunctionData,
+            },
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasTy, LifetimeProjection},
     },
+    coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::display::DisplayWithCompilerCtxt,
+    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -86,27 +90,57 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         call: &FunctionCall<'_, 'tcx>,
         function_data: Option<FunctionData<'tcx>>,
     ) -> Result<(), PcgError> {
-        for AbstractionBlockEdge { input, output, .. } in shape.iter().copied() {
-            self.record_and_apply_action(
-                BorrowPcgAction::add_edge(
-                    BorrowPcgEdge::new(
-                        AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
-                            call.location,
-                            function_data,
-                            AbstractionBlockEdge::new_checked(
-                                self.node_for_input(call, input),
-                                self.node_for_output(call, output),
-                                self.ctxt,
-                            ),
-                        ))
-                        .into(),
-                        self.pcg.borrow.validity_conditions.clone(),
-                    ),
-                    "Function call",
+        let metadata = FunctionCallAbstractionEdgeMetadata {
+            location: call.location,
+            function_data,
+        };
+        let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
+            .iter()
+            .copied()
+            .map(|AbstractionBlockEdge { input, output, .. }| {
+                AbstractionBlockEdge::new_checked(
+                    self.node_for_input(call, input),
+                    self.node_for_output(call, output),
                     self.ctxt,
                 )
-                .into(),
-            )?;
+            })
+            .collect();
+        if cfg!(feature = "coupling")
+            && let Ok(coupled_edges) = CoupledEdgesData::new(&abstraction_edges)
+        {
+            for edge in coupled_edges {
+                let pcg_coupled_edge = PcgCoupledEdgeKind::function_call(
+                    FunctionCallCoupledEdgeKind::new(metadata, edge),
+                );
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            pcg_coupled_edge.into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        "Function call",
+                        self.ctxt,
+                    )
+                    .into(),
+                )?;
+            }
+        } else {
+            for edge in abstraction_edges {
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
+                                metadata, edge,
+                            ))
+                            .into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        "Function call",
+                        self.ctxt,
+                    )
+                    .into(),
+                )?;
+            }
         }
         Ok(())
     }
