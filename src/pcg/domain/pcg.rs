@@ -206,8 +206,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
 
         // For now we don't do this, due to interactions with future nodes: we
         // detect that a node is no longer blocked but still technically not a
-        // leaf due to historical reborrows that could have changed the value in
-        // its lifetime projections see format_fields in tracing-subscriber
+        // leaf due to previous reborrows that could have changed the value in
+        // its lifetime projections. See format_fields in tracing-subscriber
         //
         // In the future we might want to change how this works
         //

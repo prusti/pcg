@@ -316,7 +316,7 @@ impl<'a, 'mir: 'a, 'tcx: 'mir>
 
 impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
     fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, ()> {
-        CompilerCtxt::new(self.body(), self.tcx(), ())
+        CompilerCtxt::new(self.compiler_ctxt.mir, self.compiler_ctxt.tcx, ())
     }
 }
 

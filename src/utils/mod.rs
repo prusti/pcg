@@ -77,7 +77,7 @@ impl GlobalPcgSettings {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PcgSettings {
     pub check_cycles: bool,
     pub validity_checks: bool,

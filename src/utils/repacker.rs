@@ -12,7 +12,10 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     owned_pcg::RepackGuide,
-    pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
+    pcg::{
+        DataflowStmtPhase, EvalStmtPhase,
+        ctxt::{AnalysisCtxt, HasSettings},
+    },
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
@@ -224,7 +227,9 @@ impl StmtGraphs {
     }
 }
 
-pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>: HasBorrowCheckerCtxt<'a, 'tcx> {
+pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
+    HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
+{
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
@@ -260,8 +265,8 @@ impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, '
 
 #[derive(Copy, Clone)]
 pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
-    pub(super) mir: &'a Body<'tcx>,
-    pub(super) tcx: TyCtxt<'tcx>,
+    pub(crate) mir: &'a Body<'tcx>,
+    pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) bc: T,
 }
 

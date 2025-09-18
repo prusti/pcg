@@ -21,7 +21,7 @@ use crate::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{SETTINGS, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -49,6 +49,10 @@ fn get_function_call_data<'a, 'tcx: 'a>(
 }
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
+    pub(crate) fn settings(&self) -> &'a PcgSettings {
+        self.ctxt.settings()
+    }
+
     fn node_for_input(
         &self,
         call: &FunctionCall<'_, 'tcx>,
@@ -105,9 +109,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )
             })
             .collect();
-        if SETTINGS.coupling
+        if self.settings().coupling
             && let Ok(coupled_edges) = CoupledEdgesData::new(&abstraction_edges)
         {
+            if !coupled_edges.is_empty() {
+                tracing::info!("Coupled edges: {:?}", coupled_edges);
+            }
             for edge in coupled_edges {
                 let pcg_coupled_edge = PcgCoupledEdgeKind::function_call(
                     FunctionCallCoupledEdgeKind::new(metadata, edge),

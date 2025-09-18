@@ -18,7 +18,8 @@ use crate::{
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
-        ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
+        ctxt::{AnalysisCtxt, HasSettings},
+        dot_graphs::PcgDotGraphsForBlock,
         place_capabilities::SymbolicPlaceCapabilities,
     },
     pcg_validity_assert,
@@ -27,7 +28,8 @@ use crate::{
         mir_dataflow::{JoinSemiLattice, fmt::DebugWithContext, move_paths::MoveData},
     },
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, Place, ToGraph,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
+        ToGraph,
         arena::PcgArenaRef,
         domain_data::{DomainData, DomainDataIndex},
         eval_stmt_data::EvalStmtData,
@@ -183,7 +185,7 @@ mod private {
     use crate::{
         borrow_checker::BorrowCheckerInterface,
         pcg::DomainDataWithCtxt,
-        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt},
+        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
     };
 
     #[derive(Clone, From, Eq)]
@@ -230,11 +232,12 @@ mod private {
     #[derive(Clone, Copy, Debug)]
     pub struct ResultsCtxt<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
+        pub(crate) settings: &'a PcgSettings,
     }
 
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
-        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>) -> Self {
-            Self { ctxt }
+        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {
+            Self { ctxt, settings }
         }
     }
 
@@ -387,7 +390,10 @@ impl<'a, 'tcx: 'a, T> HasPcgDomainData<'a, 'tcx> for DomainDataWithCtxt<'a, 'tcx
 
 impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     fn into_results(self) -> DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
-        DomainDataWithCtxt::new(self.data, ResultsCtxt::new(self.ctxt.bc_ctxt()))
+        DomainDataWithCtxt::new(
+            self.data,
+            ResultsCtxt::new(self.ctxt.bc_ctxt(), self.ctxt.settings),
+        )
     }
 }
 
@@ -467,6 +473,12 @@ impl<'a, 'tcx: 'a> PcgDomain<'a, 'tcx> {
 impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>> {
         None
+    }
+}
+
+impl<'a, 'tcx: 'a> HasSettings<'a> for ResultsCtxt<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
     }
 }
 

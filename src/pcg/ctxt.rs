@@ -25,6 +25,12 @@ impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
     }
 }
 
+impl<'a, 'tcx: 'a> HasSettings<'a> for AnalysisCtxt<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
 impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>> {
         Some(self)

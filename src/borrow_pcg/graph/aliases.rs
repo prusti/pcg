@@ -193,7 +193,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         );
                     }
                 },
-                BorrowPcgEdgeKind::Coupled(_) => todo!(),
+                BorrowPcgEdgeKind::Coupled(edges) => {
+                    for input in edges.inputs(repacker) {
+                        extend(input.0.into(), seen, &mut result, false);
+                    }
+                }
             }
         }
         result

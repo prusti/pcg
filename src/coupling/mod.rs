@@ -31,6 +31,7 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     pcg::PcgNodeLike,
+    pcg_validity_assert,
     utils::{
         CompilerCtxt,
         data_structures::{HashMap, HashSet},
@@ -68,6 +69,11 @@ impl<
 
 impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
     pub(crate) fn new(inputs: Vec<InputNode>, outputs: Vec<OutputNode>) -> Self {
+        pcg_validity_assert!(!inputs.is_empty(), "HyperEdge must have at least one input");
+        pcg_validity_assert!(
+            !outputs.is_empty(),
+            "HyperEdge must have at least one output"
+        );
         Self { inputs, outputs }
     }
 
@@ -149,17 +155,18 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
         if expected_outputs.is_empty() {
             return Err(CoupleInputError);
         }
-        let other_inputs_in_edge: Vec<InputNode> = other_inputs
+        let mut coupled_inputs: Vec<InputNode> = other_inputs
             .extract_if(.., |elem| outputs_map[elem] == expected_outputs)
             .collect();
-        outputs_map.retain(|input, _| !other_inputs_in_edge.contains(input));
+        outputs_map.retain(|input, _| !coupled_inputs.contains(input));
         for v in outputs_map.values_mut() {
             v.retain(|output| !expected_outputs.contains(output));
         }
-        Ok(HyperEdge {
-            inputs: other_inputs_in_edge,
-            outputs: expected_outputs.into_iter().collect(),
-        })
+        coupled_inputs.push(input);
+        Ok(HyperEdge::new(
+            coupled_inputs,
+            expected_outputs.into_iter().collect(),
+        ))
     }
 
     pub(crate) fn new(

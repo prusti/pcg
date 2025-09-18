@@ -300,7 +300,7 @@ impl GraphEdge {
             GraphEdge::Coupled { source, target } => DotEdge {
                 from: source.to_string(),
                 to: target.to_string(),
-                options: EdgeOptions::undirected()
+                options: EdgeOptions::directed(EdgeDirection::Forward)
                     .with_color("red".to_string())
                     .with_style("dashed".to_string()),
             },
