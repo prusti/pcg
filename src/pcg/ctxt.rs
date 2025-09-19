@@ -51,7 +51,7 @@ mod private {
 }
 
 fn dot_filename_for(output_dir: &str, relative_filename: &str) -> String {
-    format!("{}/{}", output_dir, relative_filename)
+    format!("{output_dir}/{relative_filename}")
 }
 
 pub use private::*;

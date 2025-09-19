@@ -143,14 +143,8 @@ pub type PathConditions = ValidityConditions;
 
 /// Validity conditions describing the control-flow paths for which a given edge
 /// in the PCG applies.
-#[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
+#[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug, Default)]
 pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
-
-impl Default for ValidityConditions {
-    fn default() -> Self {
-        Self(SmallVec::new())
-    }
-}
 
 impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for ValidityConditions {
     fn to_json(&self, _ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {

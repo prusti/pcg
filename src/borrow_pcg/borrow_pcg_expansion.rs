@@ -258,7 +258,7 @@ impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'
 impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'tcx, P> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
-            return Err(format!("expansion contains base: {:?}", self));
+            return Err(format!("expansion contains base: {self:?}"));
         }
         for p in &self.expansion {
             if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt)
