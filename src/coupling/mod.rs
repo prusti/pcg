@@ -85,6 +85,14 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
         &self.outputs
     }
 
+    pub(crate) fn map_inputs<T>(self, f: impl FnMut(InputNode) -> T) -> HyperEdge<T, OutputNode> {
+        HyperEdge::new(self.inputs.into_iter().map(f).collect(), self.outputs)
+    }
+
+    pub(crate) fn map_outputs<T>(self, f: impl FnMut(OutputNode) -> T) -> HyperEdge<InputNode, T> {
+        HyperEdge::new(self.inputs, self.outputs.into_iter().map(f).collect())
+    }
+
     pub(crate) fn try_to_singleton_edge(&self) -> Option<(&InputNode, &OutputNode)> {
         if self.inputs.len() == 1 && self.outputs.len() == 1 {
             Some((&self.inputs[0], &self.outputs[0]))
