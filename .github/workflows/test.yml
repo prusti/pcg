@@ -10,6 +10,10 @@ env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/pcg-server
+  MUTATION_TESTS_REF: 51e405356950cf73a66af65c19626a0c274f56fb
+  FLOWISTRY_REF: e18121f560b86c0f05aad6c9eb94e1d1bcdb7bee
+  SYMBOLIC_EXECUTION_REF: a29836dcd15bc7550e2f9ef76b9fa94c87125f92
+  PURIFICATION_PRUSTI_REF: zgrannan/next5
 
 jobs:
   check_warnings:
@@ -100,14 +104,14 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: zgrannan/symbolic-execution
-        ref: main
+        ref: ${{ env.SYMBOLIC_EXECUTION_REF }}
         path: symbolic-execution
 
     - name: Checkout prusti repository
       uses: actions/checkout@v4
       with:
         repository: zgrannan/prusti-dev
-        ref: zgrannan/next5
+        ref: ${{ env.PURIFICATION_PRUSTI_REF }}
         path: prusti-dev
 
     - name: Install Rust
@@ -140,7 +144,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: prusti/pcg-mutation-testing
-        ref: zgrannan/update-pcg
+        ref: ${{ env.MUTATION_TESTS_REF }}
         path: pcg-mutation-testing
 
     - name: Build mutation testing tool
@@ -160,7 +164,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: zgrannan/flowistry
-        ref: zgrannan/pcg-next4
+        ref: ${{ env.FLOWISTRY_REF }}
         path: flowistry
 
     - name: Run flowistry tests
