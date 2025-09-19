@@ -214,7 +214,7 @@ type LoopCoupledEdges<'tcx> = CoupledEdges<
 /// A coupled edge derived from a function or loop
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
 pub struct PcgCoupledEdgeKind<'tcx>(
-    FunctionCallOrLoop<FunctionCallCoupledEdgeKind<'tcx>, LoopCoupledEdgeKind<'tcx>>,
+    pub FunctionCallOrLoop<FunctionCallCoupledEdgeKind<'tcx>, LoopCoupledEdgeKind<'tcx>>,
 );
 
 #[derive(Eq, Hash, PartialEq, Clone, Debug)]
@@ -233,6 +233,10 @@ impl<Metadata, InputNode, OutputNode> CoupledEdgeKind<Metadata, InputNode, Outpu
 
     pub(crate) fn outputs(&self) -> &Vec<OutputNode> {
         self.edge.outputs()
+    }
+
+    pub fn metadata(&self) -> &Metadata {
+        &self.metadata
     }
 }
 
@@ -575,11 +579,11 @@ pub(crate) fn couple_edges<
     })
 }
 
-pub trait MutableCouplingDataSource<'tcx> {
+pub(crate) trait MutableCouplingDataSource<'tcx> {
     fn extract_abstraction_edges(&mut self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
 }
 
-pub trait CouplingDataSource<'tcx> {
+pub(crate) trait CouplingDataSource<'tcx> {
     fn abstraction_edges(&self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
 }
 
@@ -679,13 +683,15 @@ impl<'tcx> PcgCouplingResults<'tcx> {
 }
 
 impl<'tcx> PcgCoupledEdges<'tcx> {
-    pub fn extract_coupled_edges(
+    #[allow(unused)]
+    pub(crate) fn extract_coupled_edges(
         data_source: &mut impl MutableCouplingDataSource<'tcx>,
     ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
         Self::coupled_edges::<_, ObtainExtract>(data_source)
     }
 
-    pub fn get_coupled_edges(
+    #[allow(unused)]
+    pub(crate) fn get_coupled_edges(
         data_source: &impl CouplingDataSource<'tcx>,
     ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
         Self::coupled_edges::<_, ObtainGet>(data_source)
@@ -709,13 +715,14 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
             .collect()
     }
 
-    pub fn extract_from_data_source(
+    pub(crate) fn extract_from_data_source(
         data_source: &mut impl MutableCouplingDataSource<'tcx>,
     ) -> PcgCouplingResults<'tcx> {
         Self::obtain_from_data_source::<_, ObtainExtract>(data_source)
     }
 
-    pub fn get_from_data_source(
+    #[allow(unused)]
+    pub(crate) fn get_from_data_source(
         data_source: &impl CouplingDataSource<'tcx>,
     ) -> PcgCouplingResults<'tcx> {
         Self::obtain_from_data_source::<_, ObtainGet>(data_source)

@@ -212,6 +212,15 @@ impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
         )
     }
 }
+impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
+    pub fn location(&self) -> Location {
+        self.location
+    }
+
+    pub fn def_id(&self) -> Option<DefId> {
+        self.function_data.as_ref().map(|f| f.def_id)
+    }
+}
 
 pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdgeMetadata<'tcx>,

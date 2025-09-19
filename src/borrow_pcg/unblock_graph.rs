@@ -102,7 +102,8 @@ impl<'tcx> UnblockGraph<'tcx> {
         }
     }
 
-    pub fn into_coupled(
+    #[allow(unused)]
+    pub(crate) fn into_coupled(
         mut self,
     ) -> UnblockGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> {
         use crate::coupling::MaybeCoupledEdges;
