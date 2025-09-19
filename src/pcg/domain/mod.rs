@@ -167,12 +167,12 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
 impl std::fmt::Debug for PcgDomain<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PcgDomain::Error(pcg_error) => write!(f, "Error({:?})", pcg_error),
+            PcgDomain::Error(pcg_error) => write!(f, "Error({pcg_error:?})"),
             PcgDomain::Analysis(dataflow_state) => {
-                write!(f, "Analysis({:?})", dataflow_state)
+                write!(f, "Analysis({dataflow_state:?})")
             }
             PcgDomain::Results(dataflow_state) => {
-                write!(f, "Results({:?})", dataflow_state)
+                write!(f, "Results({dataflow_state:?})")
             }
             PcgDomain::Bottom => write!(f, "Bottom"),
         }
@@ -326,21 +326,21 @@ impl<'a, 'tcx, T> DataflowState<'a, 'tcx, T> {
     pub(crate) fn expect_pending_mut(&mut self) -> &mut PendingDataflowState<'a, 'tcx, T> {
         match self {
             DataflowState::Pending(pending) => pending,
-            _ => panic!("Expected pending domain, got {:?}", self),
+            _ => panic!("Expected pending domain, got {self:?}"),
         }
     }
 
     pub(crate) fn expect_transfer(&self) -> &DomainDataWithCtxt<'a, 'tcx, T> {
         match self {
             DataflowState::Transfer(transfer) => transfer,
-            _ => panic!("Expected transfer domain, got {:?}", self),
+            _ => panic!("Expected transfer domain, got {self:?}"),
         }
     }
 
     pub(crate) fn expect_transfer_mut(&mut self) -> &mut DomainDataWithCtxt<'a, 'tcx, T> {
         match self {
             DataflowState::Transfer(transfer) => transfer,
-            _ => panic!("Expected transfer domain, got {:?}", self),
+            _ => panic!("Expected transfer domain, got {self:?}"),
         }
     }
 }
@@ -377,7 +377,7 @@ impl<'a, 'tcx: 'a> HasPcgDomainData<'a, 'tcx> for PcgDomain<'a, 'tcx> {
         match self {
             PcgDomain::Analysis(dataflow_state) => &dataflow_state.expect_transfer().data,
             PcgDomain::Results(data) => &data.data,
-            _ => panic!("Expected analysis or results domain, got {:?}", self),
+            _ => panic!("Expected analysis or results domain, got {self:?}"),
         }
     }
 }
@@ -452,7 +452,7 @@ impl<'a, 'tcx: 'a> PcgDomain<'a, 'tcx> {
         match self {
             PcgDomain::Analysis(dataflow_state) => &mut dataflow_state.expect_transfer_mut().data,
             PcgDomain::Results(data) => &mut data.data,
-            _ => panic!("Expected analysis or results domain, got {:?}", self),
+            _ => panic!("Expected analysis or results domain, got {self:?}"),
         }
     }
     pub(crate) fn complete(&mut self, ctxt: AnalysisCtxt<'a, 'tcx>) {
@@ -523,7 +523,7 @@ impl ErrorState {
 
     pub(crate) fn record_error(&mut self, error: PcgError) {
         if *PANIC_ON_ERROR {
-            panic!("PCG Error: {:?}", error);
+            panic!("PCG Error: {error:?}");
         }
         tracing::error!("PCG Error: {:?}", error);
         self.error = Some(error);
@@ -548,7 +548,7 @@ impl<'a, 'tcx> PcgDomain<'a, 'tcx> {
     pub(crate) fn take_analysis(self) -> DataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
         match self {
             PcgDomain::Analysis(dataflow_state) => dataflow_state,
-            _ => panic!("Expected analysis domain, got {:?}", self),
+            _ => panic!("Expected analysis domain, got {self:?}"),
         }
     }
 
@@ -558,7 +558,7 @@ impl<'a, 'tcx> PcgDomain<'a, 'tcx> {
         match self {
             PcgDomain::Results(dataflow_state) => Ok(dataflow_state),
             PcgDomain::Error(pcg_error) => Err(pcg_error.clone()),
-            _ => panic!("Expected results or error domain, got {:?}", self),
+            _ => panic!("Expected results or error domain, got {self:?}"),
         }
     }
 }

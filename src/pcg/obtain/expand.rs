@@ -148,7 +148,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         self.capability_for_expand(expansion.base_place(), obtain_type, ctxt),
                         ctxt,
                     ),
-                    Some(format!("Expand owned place one level ({:?})", obtain_type)),
+                    Some(format!("Expand owned place one level ({obtain_type:?})")),
                 )
                 .into(),
             )?;
@@ -394,7 +394,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     .into(),
                     self.path_conditions(),
                 ),
-                format!("{}: placeholder bookkeeping", context),
+                format!("{context}: placeholder bookkeeping"),
                 ctxt,
             )
             .into(),
@@ -414,7 +414,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         .into(),
                         self.path_conditions(),
                     ),
-                    format!("{}: placeholder bookkeeping", context),
+                    format!("{context}: placeholder bookkeeping"),
                     ctxt,
                 )
                 .into(),

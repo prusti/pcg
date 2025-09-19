@@ -145,7 +145,7 @@ impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
     fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0
             .iter()
-            .map(|edge| format!("{}", edge))
+            .map(|edge| format!("{edge}"))
             .sorted()
             .collect::<Vec<_>>()
             .join("\n, ")

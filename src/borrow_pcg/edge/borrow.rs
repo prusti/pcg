@@ -360,7 +360,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
 impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LocalBorrow<'tcx> {
     fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
-            format!(" <{}>", rp)
+            format!(" <{rp}>")
         } else {
             "".to_string()
         };

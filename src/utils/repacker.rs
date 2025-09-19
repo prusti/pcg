@@ -219,9 +219,7 @@ impl StmtGraphs {
         assert_eq!(
             within_phase.len(),
             action_idx,
-            "Action index {} isn't equal to number of existing actions for {:?}",
-            action_idx,
-            phase
+            "Action index {action_idx} isn't equal to number of existing actions for {phase:?}"
         );
         within_phase.push(filename);
     }

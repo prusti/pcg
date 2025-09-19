@@ -162,11 +162,10 @@ impl PcgSettings {
     fn process_usize_var(processed: &mut HashSet<String>, var_name: &str) -> Option<usize> {
         processed.insert(var_name.to_string());
         match std::env::var(var_name) {
-            Ok(val) => {
-                Some(val.parse().unwrap_or_else(|_| {
-                    panic!("{} must be a valid usize, got: '{}'", var_name, val)
-                }))
-            }
+            Ok(val) => Some(
+                val.parse()
+                    .unwrap_or_else(|_| panic!("{var_name} must be a valid usize, got: '{val}'")),
+            ),
             Err(_) => None,
         }
     }
@@ -188,8 +187,7 @@ impl PcgSettings {
                 }
                 let block_id: usize = val[2..].parse().unwrap_or_else(|_| {
                     panic!(
-                        "PCG_DEBUG_BLOCK must be in format 'bbN' where N is a number, got: '{}'",
-                        val
+                        "PCG_DEBUG_BLOCK must be in format 'bbN' where N is a number, got: '{val}'"
                     )
                 });
                 Some(block_id.into())
@@ -215,7 +213,7 @@ impl PcgSettings {
                         } else if s.to_lowercase() == "join_borrows" {
                             vec![DebugImgcat::JoinBorrows]
                         } else {
-                            panic!("Unexpected value for PCG_DEBUG_IMGCAT: {}", s);
+                            panic!("Unexpected value for PCG_DEBUG_IMGCAT: {s}");
                         }
                     })
                     .collect();
@@ -274,8 +272,7 @@ fn env_feature_enabled(feature: &str) -> Option<bool> {
                     "true" | "1" => Some(true),
                     "false" | "0" => Some(false),
                     other => panic!(
-                        "Environment variable {} has unexpected value: '{}'. Expected one of: true, false, 1, 0, or empty string",
-                        feature, other
+                        "Environment variable {feature} has unexpected value: '{other}'. Expected one of: true, false, 1, 0, or empty string"
                     ),
                 }
             }
