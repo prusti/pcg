@@ -226,7 +226,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             if self.pcg.is_leaf_place(ref_place, self.ctxt) {
                 self.restore_place(
                     ref_place,
-                    &format!("{}: remove_deref_edges_to: restore parent place", context),
+                    &format!("{context}: remove_deref_edges_to: restore parent place"),
                 )?;
             }
         }
@@ -362,7 +362,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         self.record_and_apply_action(
             BorrowPcgAction::remove_lifetime_projection_label(
                 deref.blocked_lifetime_projection,
-                format!("{}: unlabel blocked_region_projections", context),
+                format!("{context}: unlabel blocked_region_projections"),
             )
             .into(),
         )?;

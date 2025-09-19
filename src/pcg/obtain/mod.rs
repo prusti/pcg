@@ -292,8 +292,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 BorrowPcgAction::add_edge(
                     BorrowPcgEdge::new(rp.into(), conditions.clone()),
                     format!(
-                        "label_deref_projections_of_postfix_places. Shared refs only: {}",
-                        shared_refs_only
+                        "label_deref_projections_of_postfix_places. Shared refs only: {shared_refs_only}"
                     ),
                     ctxt,
                 )

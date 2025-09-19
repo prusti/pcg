@@ -377,7 +377,7 @@ pub enum LifetimeProjectionLabel {
 impl std::fmt::Display for LifetimeProjectionLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LifetimeProjectionLabel::Location(location) => write!(f, "{}", location),
+            LifetimeProjectionLabel::Location(location) => write!(f, "{location}"),
             LifetimeProjectionLabel::Future => write!(f, "FUTURE"),
         }
     }

@@ -428,7 +428,7 @@ impl SymbolicCapability {
     pub(crate) fn expect_concrete(self) -> CapabilityKind {
         match self {
             SymbolicCapability::Concrete(c) => c,
-            other => panic!("Expected concrete capability, got {:?}", other),
+            other => panic!("Expected concrete capability, got {other:?}"),
         }
     }
 }

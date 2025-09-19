@@ -60,3 +60,7 @@ rustc_private = true
 name = "pcg_bin"
 path = "src/main.rs"
 required-features = ["visualization"]
+
+[lints.clippy]
+uninlined_format_args = "deny"
+derivable_impls = "deny"
