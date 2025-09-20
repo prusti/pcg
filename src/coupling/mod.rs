@@ -85,6 +85,10 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
         &self.outputs
     }
 
+    pub fn map_into<T>(self, f: impl FnOnce(Vec<InputNode>, Vec<OutputNode>) -> T) -> T {
+        f(self.inputs, self.outputs)
+    }
+
     #[allow(unused)]
     pub(crate) fn map_inputs<T>(self, f: impl FnMut(InputNode) -> T) -> HyperEdge<T, OutputNode> {
         HyperEdge::new(self.inputs.into_iter().map(f).collect(), self.outputs)
@@ -180,11 +184,11 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     }
 
     pub(crate) fn new(
-        edges: &HashSet<AbstractionBlockEdge<'_, InputNode, OutputNode>>,
+        edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
     ) -> Result<Self, CoupleInputError> {
         let mut inputs = HashSet::default();
         let mut outputs_map: HashMap<InputNode, HashSet<OutputNode>> = HashMap::default();
-        for edge in edges.iter() {
+        for edge in edges {
             inputs.insert(edge.input());
             outputs_map
                 .entry(edge.input())
@@ -577,7 +581,7 @@ pub(crate) fn couple_edges<
     edges: &HashSet<AbstractionBlockEdge<'tcx, InputNode, OutputNode>>,
     f: impl FnOnce(CoupledEdges<Metadata, InputNode, OutputNode>) -> PcgCoupledEdges<'tcx>,
 ) -> CoupleEdgesResult<'tcx, Metadata> {
-    CoupleEdgesResult(match CoupledEdgesData::new(edges) {
+    CoupleEdgesResult(match CoupledEdgesData::new(edges.iter().copied()) {
         Ok(coupled_edges) => Ok(f(CoupledEdges {
             metadata,
             edges: coupled_edges,

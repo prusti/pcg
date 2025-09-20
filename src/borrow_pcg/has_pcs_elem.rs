@@ -69,7 +69,7 @@ impl<'tcx> LabelLifetimeProjectionPredicate<'tcx> {
             }
             LabelLifetimeProjectionPredicate::AllNonFuture(maybe_old_place, region_idx) => {
                 to_match.region_idx == *region_idx
-                    && to_match.place() == (*maybe_old_place).into()
+                    && to_match.base() == (*maybe_old_place).into()
                     && !to_match.is_future()
             }
             LabelLifetimeProjectionPredicate::Postfix(predicate_projection) => {

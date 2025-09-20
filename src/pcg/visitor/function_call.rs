@@ -6,22 +6,20 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
-            AbstractionBlockEdge, AbstractionEdge,
             function::{
                 FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
-                FunctionData,
-            },
+            }, AbstractionBlockEdge, AbstractionEdge
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasTy, LifetimeProjection},
+        region_projection::{HasTy, LifetimeProjection}, FunctionData,
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
-    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
+    pcg::obtain::{expand::PlaceExpander, HasSnapshotLocation},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt, PcgSettings},
 };
 
 use super::PcgError;
@@ -110,7 +108,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             })
             .collect();
         if self.settings().coupling
-            && let Ok(coupled_edges) = CoupledEdgesData::new(&abstraction_edges)
+            && let Ok(coupled_edges) = CoupledEdgesData::new(abstraction_edges.iter().copied())
         {
             if !coupled_edges.is_empty() {
                 tracing::info!("Coupled edges: {:?}", coupled_edges);

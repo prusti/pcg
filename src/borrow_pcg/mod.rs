@@ -14,4 +14,7 @@ pub mod unblock_graph;
 pub mod validity_conditions;
 pub(crate) mod visitor;
 
+pub use abstraction::{
+    FunctionData, FunctionShape, FunctionShapeInput, FunctionShapeNode, FunctionShapeOutput,
+};
 pub use domain::{AbstractionInputTarget, AbstractionOutputTarget};

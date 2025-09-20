@@ -1,6 +1,7 @@
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        FunctionData,
         abstraction::{FunctionShape, FunctionShapeDataSource},
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
@@ -32,12 +33,6 @@ use crate::coupling::HyperEdge;
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-pub struct FunctionData<'tcx> {
-    pub(crate) def_id: DefId,
-    pub(crate) substs: GenericArgsRef<'tcx>,
-}
-
 pub(crate) struct FunctionDataShapeDataSource<'tcx> {
     input_tys: Vec<ty::Ty<'tcx>>,
     output_ty: ty::Ty<'tcx>,
@@ -63,20 +58,20 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::since(2025-05-24)]
     pub(crate) fn new(
         data: FunctionData<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        tracing::debug!("Base Sig: {:#?}", data.fn_sig(ctxt));
-        let sig = data.instantiated_fn_sig(ctxt);
+        tracing::debug!("Base Sig: {:#?}", data.fn_sig(tcx));
+        let sig = data.instantiated_fn_sig(tcx);
         tracing::debug!("Instantiated Sig: {:#?}", sig);
-        let sig = ctxt.tcx().liberate_late_bound_regions(data.def_id, sig);
+        let sig = tcx.liberate_late_bound_regions(data.def_id, sig);
         tracing::debug!("Liberated Sig: {:#?}", sig);
-        let typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id());
-        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(typing_env);
+        let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
+        let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         if sig.has_aliases() {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
         tracing::debug!("Normalized sig: {:#?}", sig);
-        let outlives = OutlivesEnvironment::new(&infcx, ctxt.def_id(), param_env, vec![]);
+        let outlives = OutlivesEnvironment::new(&infcx, data.def_id, param_env, vec![]);
         Ok(Self {
             input_tys: sig.inputs().to_vec(),
             output_ty: sig.output(),
@@ -88,18 +83,16 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 impl<'tcx> FunctionData<'tcx> {
     pub(crate) fn fn_sig(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> ty::EarlyBinder<'tcx, ty::Binder<'tcx, ty::FnSig<'tcx>>> {
-        ctxt.tcx().fn_sig(self.def_id)
+        tcx.fn_sig(self.def_id)
     }
 
     pub(crate) fn instantiated_fn_sig(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
-        ctxt.tcx()
-            .fn_sig(self.def_id)
-            .instantiate(ctxt.tcx(), self.substs)
+        tcx.fn_sig(self.def_id).instantiate(tcx, self.substs)
     }
 }
 

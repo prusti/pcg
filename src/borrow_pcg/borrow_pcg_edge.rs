@@ -179,7 +179,7 @@ impl<'tcx> LocalNode<'tcx> {
     pub(crate) fn is_old(&self) -> bool {
         match self {
             PcgNode::Place(p) => p.is_old(),
-            PcgNode::LifetimeProjection(region_projection) => region_projection.place().is_old(),
+            PcgNode::LifetimeProjection(region_projection) => region_projection.base().is_old(),
         }
     }
     pub(crate) fn related_current_place(self) -> Option<Place<'tcx>> {
@@ -208,7 +208,7 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
     fn place(&self) -> Place<'tcx> {
         match self {
             LocalNode::Place(p) => p.place(),
-            LocalNode::LifetimeProjection(rp) => rp.place().place(),
+            LocalNode::LifetimeProjection(rp) => rp.base().place(),
         }
     }
 
@@ -334,7 +334,7 @@ impl<'tcx> PcgNode<'tcx> {
             }
             PcgNode::Place(MaybeRemotePlace::Remote(_)) => None,
             PcgNode::LifetimeProjection(rp) => {
-                let place = rp.place().as_local_place()?;
+                let place = rp.base().as_local_place()?;
                 Some(LocalNode::LifetimeProjection(rp.with_base(place)))
             }
         }

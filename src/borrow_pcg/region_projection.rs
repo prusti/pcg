@@ -614,12 +614,6 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
     }
 }
 
-impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, P> {
-    pub fn base(&self) -> P {
-        self.base
-    }
-}
-
 impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, Place<'tcx>> {
     fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self.with_base(MaybeLabelledPlace::Current(self.base)))
@@ -930,7 +924,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 }
 
 impl<T: Copy> LifetimeProjection<'_, T> {
-    pub fn place(&self) -> T {
+    pub fn base(&self) -> T {
         self.base
     }
 }
@@ -949,7 +943,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         self.with_base(self.base.into())
     }
 
-    pub(crate) fn with_base<U>(self, base: U) -> LifetimeProjection<'tcx, U> {
+    pub fn with_base<U>(self, base: U) -> LifetimeProjection<'tcx, U> {
         LifetimeProjection {
             base,
             region_idx: self.region_idx,

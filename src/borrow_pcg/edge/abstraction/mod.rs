@@ -89,7 +89,7 @@ impl<'tcx, Input: std::fmt::Display, Output: std::fmt::Display> std::fmt::Displa
 }
 
 /// An edge for a function or loop abstraction
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     _phantom: PhantomData<&'tcx ()>,
     pub(crate) input: Input,
