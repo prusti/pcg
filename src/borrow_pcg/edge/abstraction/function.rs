@@ -22,7 +22,7 @@ use crate::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
-        span::Span,
+        span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
@@ -44,6 +44,7 @@ pub(crate) struct FunctionDataShapeDataSource<'tcx> {
 pub enum MakeFunctionShapeError {
     ContainsAliasType,
     UnsupportedRustVersion,
+    NoFunctionData,
 }
 
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
@@ -71,7 +72,8 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
         tracing::debug!("Normalized sig: {:#?}", sig);
-        let outlives = OutlivesEnvironment::new(&infcx, data.def_id, param_env, vec![]);
+        let outlives =
+            OutlivesEnvironment::new(&infcx, data.caller_def_id.unwrap(), param_env, vec![]);
         Ok(Self {
             input_tys: sig.inputs().to_vec(),
             output_ty: sig.output(),
@@ -97,26 +99,27 @@ impl<'tcx> FunctionData<'tcx> {
 }
 
 impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
-    fn input_tys(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+    type Ctxt = ty::TyCtxt<'tcx>;
+    fn input_tys(&self, _ctxt: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
     }
-    fn output_ty(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
+    fn output_ty(&self, _ctxt: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
         self.output_ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: ty::TyCtxt<'tcx>) -> bool {
         if sup.is_static() || sup == sub {
             return true;
         }
         tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                ctxt.bc.outlives_everywhere(sup, sub)
+                todo!()
             }
             (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,
             (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => true,
             _ => self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
+                ctxt,
                 sup.rust_region(ctxt),
                 sub.rust_region(ctxt),
             ),
@@ -136,10 +139,11 @@ impl<'tcx> FunctionCallData<'tcx> {
         def_id: DefId,
         substs: GenericArgsRef<'tcx>,
         operand_tys: Vec<ty::Ty<'tcx>>,
+        caller_def_id: LocalDefId,
         span: Span,
     ) -> Self {
         Self {
-            function_data: FunctionData { def_id, substs },
+            function_data: FunctionData::new(def_id, substs, Some(caller_def_id)),
             operand_tys,
             span,
         }
@@ -148,9 +152,9 @@ impl<'tcx> FunctionCallData<'tcx> {
     pub(crate) fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<FunctionShape<'tcx>, MakeFunctionShapeError> {
-        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt)?;
-        Ok(FunctionShape::new(&data, ctxt))
+    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt.tcx)?;
+        Ok(FunctionShape::new(&data, ctxt.tcx))
     }
 }
 
@@ -212,6 +216,20 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
 
     pub fn def_id(&self) -> Option<DefId> {
         self.function_data.as_ref().map(|f| f.def_id)
+    }
+
+    pub fn shape(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+        let function_data = self
+            .function_data
+            .as_ref()
+            .ok_or(MakeFunctionShapeError::NoFunctionData)?;
+        Ok(FunctionShape::new(
+            &function_data.shape(ctxt.tcx)?,
+            ctxt.tcx,
+        ))
     }
 }
 

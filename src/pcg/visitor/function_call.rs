@@ -2,24 +2,26 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
+        FunctionData,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
+            AbstractionBlockEdge, AbstractionEdge,
             function::{
                 FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
-            }, AbstractionBlockEdge, AbstractionEdge
+            },
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasTy, LifetimeProjection}, FunctionData,
+        region_projection::{HasTy, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
-    pcg::obtain::{expand::PlaceExpander, HasSnapshotLocation},
+    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt, PcgSettings},
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -39,6 +41,7 @@ fn get_function_call_data<'a, 'tcx: 'a>(
             *def_id,
             substs,
             operand_tys,
+            ctxt.ctxt().def_id(),
             call_span,
         )),
         ty::TyKind::FnPtr(..) => None,
@@ -88,7 +91,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     fn create_edges_for_shape(
         &mut self,
-        shape: FunctionShape<'tcx>,
+        shape: FunctionShape,
         call: &FunctionCall<'_, 'tcx>,
         function_data: Option<FunctionData<'tcx>>,
     ) -> Result<(), PcgError> {

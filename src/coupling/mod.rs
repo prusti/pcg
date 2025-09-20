@@ -88,6 +88,9 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
     pub fn map_into<T>(self, f: impl FnOnce(Vec<InputNode>, Vec<OutputNode>) -> T) -> T {
         f(self.inputs, self.outputs)
     }
+    pub fn into_tuple(self) -> (Vec<InputNode>, Vec<OutputNode>) {
+        (self.inputs, self.outputs)
+    }
 
     #[allow(unused)]
     pub(crate) fn map_inputs<T>(self, f: impl FnMut(InputNode) -> T) -> HyperEdge<T, OutputNode> {
@@ -139,6 +142,7 @@ impl<SourceData> CouplingError<SourceData> {
     }
 }
 
+#[derive(Debug)]
 pub struct CoupleInputError;
 
 impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>

@@ -10,24 +10,20 @@ use serde_derive::Serialize;
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::TyVarianceVisitor},
     owned_pcg::RepackGuide,
     pcg::{
-        DataflowStmtPhase, EvalStmtPhase,
-        ctxt::{AnalysisCtxt, HasSettings},
+        ctxt::{AnalysisCtxt, HasSettings}, DataflowStmtPhase, EvalStmtPhase
     },
     pcg_validity_assert,
     rustc_interface::{
-        FieldIdx, PlaceTy, RustBitSet,
-        hir::def_id::LocalDefId,
-        index::Idx,
-        middle::{
+        hir::def_id::LocalDefId, index::Idx, middle::{
             mir::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
                 PlaceElem, ProjectionElem, VarDebugInfoContents,
             },
-            ty::{TyCtxt, TyKind},
-        },
+            ty::{self, TyCtxt, TyKind, TypeVisitable},
+        }, FieldIdx, PlaceTy, RustBitSet
     },
     utils::validity::HasValidityCheck,
     validity_checks_enabled,
@@ -261,11 +257,37 @@ impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, '
     }
 }
 
+pub(crate) trait HasTyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx>;
+
+    fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
+        let mut visitor = TyVarianceVisitor {
+            tcx: self.tcx(),
+            target: region,
+            found: false,
+        };
+        ty.visit_with(&mut visitor);
+        visitor.found
+    }
+}
+
+impl<'tcx> HasTyCtxt<'tcx> for TyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        *self
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) bc: T,
+}
+
+impl<'a, 'tcx> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
 }
 
 impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
