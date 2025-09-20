@@ -133,6 +133,18 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                     kind: member.kind,
                 });
             }
+            BorrowPcgEdgeKind::Coupled(hyper_edge) => {
+                for input in hyper_edge.inputs(self.ctxt()) {
+                    let input_node = self.insert_pcg_node(input.0);
+                    for output in hyper_edge.outputs() {
+                        let output_node = self.insert_pcg_node(output.to_pcg_node(self.ctxt()));
+                        self.constructor().edges.insert(GraphEdge::Coupled {
+                            source: input_node,
+                            target: output_node,
+                        });
+                    }
+                }
+            }
         }
     }
 }

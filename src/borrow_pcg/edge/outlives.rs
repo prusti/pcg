@@ -110,7 +110,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowFlowEdge<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.long.check_validity(ctxt)?;
         self.short.check_validity(ctxt)?;

@@ -6,7 +6,7 @@ use crate::{
     action::{BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
+        borrow_pcg_edge::BorrowPcgEdge,
         edge::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},

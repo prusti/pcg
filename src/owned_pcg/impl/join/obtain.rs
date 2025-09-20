@@ -13,7 +13,7 @@ use crate::{
 
 pub(crate) struct JoinObtainer<'pcg: 'exp, 'exp, 'slf, 'a, 'tcx> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
-    pub(crate) data: &'slf mut JoinOwnedData<'pcg, 'tcx, &'exp mut LocalExpansions<'tcx>>,
+    pub(crate) data: &'slf mut JoinOwnedData<'a, 'pcg, 'tcx, &'exp mut LocalExpansions<'tcx>>,
     pub(crate) actions: Vec<RepackOp<'tcx>>,
 }
 

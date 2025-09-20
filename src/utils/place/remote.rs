@@ -49,7 +49,7 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for RemotePlace {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for RemotePlace {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }

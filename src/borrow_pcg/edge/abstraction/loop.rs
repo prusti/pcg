@@ -1,3 +1,5 @@
+use derive_more::From;
+
 use super::AbstractionBlockEdge;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
@@ -15,33 +17,39 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
         },
-        path_condition::ValidityConditions,
         region_projection::LifetimeProjectionLabel,
+        validity_conditions::ValidityConditions,
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-#[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::HyperEdge;
-
 pub(crate) type LoopAbstractionEdge<'tcx> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
 
-impl<'tcx> LoopAbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
-    pub(crate) fn to_hyper_edge(
-        &self,
-    ) -> HyperEdge<LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>> {
-        HyperEdge::new(vec![self.input], vec![self.output])
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
+pub struct LoopAbstractionEdgeMetadata(mir::BasicBlock);
+
+impl LoopAbstractionEdgeMetadata {
+    pub(crate) fn loop_head_block(self) -> mir::BasicBlock {
+        self.0
     }
 }
 
-pub type LoopAbstractionEdgeMetadata<'tcx> = mir::BasicBlock;
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LoopAbstractionEdgeMetadata
+{
+    fn to_short_string(
+        &self,
+        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!("Loop({:?})", self.0)
+    }
+}
 
 pub type LoopAbstraction<'tcx> =
-    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata<'tcx>, LoopAbstractionEdge<'tcx>>;
+    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
 impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstraction<'tcx> {
     fn label_lifetime_projection(
@@ -98,24 +106,9 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for LoopAbstraction<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstraction<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.edge.check_validity(ctxt)
-    }
-}
-
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LoopAbstraction<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        format!(
-            "Loop({:?}): {}",
-            self.metadata,
-            self.edge.to_short_string(ctxt)
-        )
     }
 }
 
@@ -135,13 +128,13 @@ impl<'tcx> LoopAbstraction<'tcx> {
     ) -> Self {
         Self {
             edge,
-            metadata: block,
+            metadata: block.into(),
         }
     }
 
     pub(crate) fn location(&self) -> Location {
         Location {
-            block: self.metadata,
+            block: self.metadata.0,
             statement_index: 0,
         }
     }

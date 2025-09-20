@@ -3,7 +3,7 @@ use itertools::Itertools;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
+        borrow_pcg_edge::BorrowPcgEdge,
         edge::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},

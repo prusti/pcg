@@ -1,28 +1,36 @@
-use crate::{
-    pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir,
-    utils::HasBorrowCheckerCtxt,
-};
+use crate::rustc_interface::middle::mir::HasLocalDecls;
+
+use crate::utils::HasCompilerCtxt;
+use crate::{pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir};
 
 use super::CompilerCtxt;
 
-pub trait HasValidityCheck<'tcx> {
-    fn check_validity(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Result<(), String>;
+pub trait HasValidityCheck<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> = CompilerCtxt<'a, 'tcx>> {
+    fn check_validity(&self, repacker: Ctxt) -> Result<(), String>;
 
-    fn assert_validity<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>)
-    where
-        'tcx: 'a,
-    {
-        pcg_validity_expect_ok!(self.check_validity(ctxt.bc_ctxt()), fallback: (), [ctxt], "Validity check failed");
+    fn assert_validity(&self, ctxt: Ctxt) {
+        pcg_validity_expect_ok!(self.check_validity(ctxt), fallback: (), [ctxt], "Validity check failed");
     }
 
-    fn assert_validity_at_location(&self, location: mir::Location, ctxt: CompilerCtxt<'_, 'tcx>) {
+    fn assert_validity_at_location(&self, location: mir::Location, ctxt: Ctxt) {
         pcg_validity_expect_ok!(self.check_validity(ctxt), fallback: (), [ctxt at location]);
     }
 
-    fn is_valid<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.check_validity(ctxt.bc_ctxt()).is_ok()
+    fn is_valid(&self, ctxt: Ctxt) -> bool {
+        self.check_validity(ctxt).is_ok()
+    }
+}
+
+impl<'tcx> HasValidityCheck<'_, 'tcx> for mir::Local {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        if ctxt.body().local_decls().len() <= self.as_usize() {
+            return Err(format!(
+                "Local {:?} is out of bounds: provided MIR at {:?} only has {} local declarations",
+                self,
+                ctxt.body().span,
+                ctxt.body().local_decls().len()
+            ));
+        }
+        Ok(())
     }
 }

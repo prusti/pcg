@@ -8,10 +8,13 @@ pub mod edge;
 pub mod edge_data;
 pub mod graph;
 pub(crate) mod has_pcs_elem;
-pub mod path_condition;
 pub mod region_projection;
 pub mod state;
 pub mod unblock_graph;
+pub mod validity_conditions;
 pub(crate) mod visitor;
 
+pub use abstraction::{
+    FunctionData, FunctionShape, FunctionShapeInput, FunctionShapeNode, FunctionShapeOutput,
+};
 pub use domain::{AbstractionInputTarget, AbstractionOutputTarget};

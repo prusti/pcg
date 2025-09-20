@@ -40,7 +40,7 @@ mod triple;
 mod upgrade;
 
 pub(crate) struct PcgVisitor<'pcg, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
-    pcg: &'pcg mut Pcg<'tcx>,
+    pcg: &'pcg mut Pcg<'a, 'tcx>,
     ctxt: Ctxt,
     actions: PcgActions<'tcx>,
     analysis_location: AnalysisLocation,
@@ -49,7 +49,7 @@ pub(crate) struct PcgVisitor<'pcg, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
 
 impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx, Ctxt> {
     pub(crate) fn visit(
-        pcg: &'pcg mut Pcg<'tcx>,
+        pcg: &'pcg mut Pcg<'a, 'tcx>,
         tw: &'pcg TripleWalker<'a, 'tcx>,
         analysis_location: AnalysisLocation,
         analysis_object: AnalysisObject<'_, 'tcx>,
@@ -61,7 +61,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
     }
 
     pub(crate) fn new(
-        pcg: &'pcg mut Pcg<'tcx>,
+        pcg: &'pcg mut Pcg<'a, 'tcx>,
         ctxt: Ctxt,
         tw: &'pcg TripleWalker<'a, 'tcx>,
         analysis_location: AnalysisLocation,

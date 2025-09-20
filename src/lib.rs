@@ -22,6 +22,7 @@ may already be stabilized */
 pub mod action;
 pub mod borrow_checker;
 pub mod borrow_pcg;
+pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
@@ -46,6 +47,7 @@ use rustc_interface::{
         ty::{self, TyCtxt},
     },
     mir_dataflow::move_paths::MoveData,
+    span::def_id::LocalDefId,
 };
 use serde_json::json;
 use utils::{
@@ -190,8 +192,8 @@ struct PcgSuccessorVisualizationData<'a, 'tcx> {
     actions: &'a PcgActions<'tcx>,
 }
 
-impl<'tcx, 'a> From<&'a PcgSuccessor<'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
-    fn from(successor: &'a PcgSuccessor<'tcx>) -> Self {
+impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
+    fn from(successor: &'a PcgSuccessor<'a, 'tcx>) -> Self {
         Self {
             actions: &successor.actions,
         }
@@ -222,7 +224,7 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>
 }
 
 impl<'a, 'tcx> PCGStmtVisualizationData<'a, 'tcx> {
-    fn new<'mir>(location: &'a PcgLocation<'tcx>) -> Self
+    fn new<'mir>(location: &'a PcgLocation<'a, 'tcx>) -> Self
     where
         'tcx: 'mir,
     {
@@ -264,10 +266,64 @@ impl<'tcx> BodyAndBorrows<'tcx> for borrowck::BodyWithBorrowckFacts<'tcx> {
     }
 }
 
+pub struct PcgCtxtCreator<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    arena: bumpalo::Bump,
+}
+
+impl<'tcx> PcgCtxtCreator<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            tcx,
+            arena: bumpalo::Bump::new(),
+        }
+    }
+
+    fn alloc<'a, T: 'a>(&'a self, val: T) -> &'a T {
+        self.arena.alloc(val)
+    }
+
+    pub fn new_nll_ctxt<'slf: 'mir, 'mir>(
+        &'slf self,
+        body: &'mir impl BodyAndBorrows<'tcx>,
+    ) -> &'mir PcgCtxt<'mir, 'tcx> {
+        let bc: &'mir NllBorrowCheckerImpl<'mir, 'tcx> =
+            self.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
+        let pcg_ctxt: PcgCtxt<'mir, 'tcx> = PcgCtxt::new(body.body(), self.tcx, bc);
+        self.alloc(pcg_ctxt)
+    }
+}
+
 pub struct PcgCtxt<'mir, 'tcx> {
     compiler_ctxt: CompilerCtxt<'mir, 'tcx>,
     move_data: MoveData<'tcx>,
+    settings: PcgSettings,
     pub(crate) arena: bumpalo::Bump,
+}
+
+impl<'a, 'mir: 'a, 'tcx: 'mir>
+    HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for &'a PcgCtxt<'mir, 'tcx>
+{
+    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+        self.compiler_ctxt
+    }
+
+    fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
+        self.compiler_ctxt.bc()
+    }
+}
+
+impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
+    fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, ()> {
+        CompilerCtxt::new(self.compiler_ctxt.mir, self.compiler_ctxt.tcx, ())
+    }
+}
+
+impl<'a, 'mir, 'tcx> HasSettings<'a> for &'a PcgCtxt<'mir, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        &self.settings
+    }
 }
 
 fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
@@ -284,8 +340,12 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
         Self {
             compiler_ctxt: ctxt,
             move_data: gather_moves(ctxt.body(), ctxt.tcx()),
+            settings: PcgSettings::new(),
             arena: bumpalo::Bump::new(),
         }
+    }
+    pub fn body_def_id(&self) -> LocalDefId {
+        self.compiler_ctxt.def_id()
     }
 }
 
@@ -350,7 +410,7 @@ pub fn run_pcg<'a, 'tcx>(
                         block,
                         statement_index,
                     },
-                    pcg_ctxt.compiler_ctxt,
+                    pcg_ctxt,
                 );
             }
         }
@@ -566,7 +626,12 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
-use crate::{results::PcgLocation, utils::HasCompilerCtxt};
+use crate::{
+    borrow_checker::r#impl::NllBorrowCheckerImpl,
+    pcg::ctxt::HasSettings,
+    results::PcgLocation,
+    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
+};
 
 pub(crate) fn validity_checks_enabled() -> bool {
     *VALIDITY_CHECKS

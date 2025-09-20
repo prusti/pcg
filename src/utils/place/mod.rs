@@ -33,7 +33,7 @@ use crate::{
     utils::{HasCompilerCtxt, data_structures::HashSet},
 };
 
-use super::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
+use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -122,15 +122,6 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for Place<'tcx> {
-    fn check_validity(
-        &self,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), std::string::String> {
-        Ok(())
-    }
-}
-
 /// A trait for PCG nodes that contain a single place.
 pub trait HasPlace<'tcx>: Sized {
     fn is_place(&self) -> bool;
@@ -139,15 +130,17 @@ pub trait HasPlace<'tcx>: Sized {
 
     fn place_mut(&mut self) -> &mut Place<'tcx>;
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> std::result::Result<Self, PcgError>;
+        ctxt: CompilerCtxt<'a, 'tcx, C>,
+    ) -> std::result::Result<Self, PcgError>
+    where
+        'tcx: 'a;
 
     fn iter_projections<C: Copy>(
         &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
+        ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
@@ -159,11 +152,14 @@ impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
         self
     }
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> std::result::Result<Self, PcgError> {
+        repacker: CompilerCtxt<'a, 'tcx, C>,
+    ) -> std::result::Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
         Place::project_deeper(*self, elem, repacker).map_err(PcgError::unsupported)
     }
 

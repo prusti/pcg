@@ -10,9 +10,9 @@ env:
   CARGO_TERM_COLOR: always
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/pcg-server
-  MUTATION_TESTS_REF: 51e405356950cf73a66af65c19626a0c274f56fb
-  FLOWISTRY_REF: e18121f560b86c0f05aad6c9eb94e1d1bcdb7bee
-  SYMBOLIC_EXECUTION_REF: a29836dcd15bc7550e2f9ef76b9fa94c87125f92
+  MUTATION_TESTS_REF: zgrannan/update-pcg
+  FLOWISTRY_REF: zgrannan/pcg-next4
+  SYMBOLIC_EXECUTION_REF: main
   PURIFICATION_PRUSTI_REF: zgrannan/next5
 
 jobs:

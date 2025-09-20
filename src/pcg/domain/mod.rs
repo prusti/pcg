@@ -18,7 +18,8 @@ use crate::{
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
-        ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
+        ctxt::{AnalysisCtxt, HasSettings},
+        dot_graphs::PcgDotGraphsForBlock,
         place_capabilities::SymbolicPlaceCapabilities,
     },
     pcg_validity_assert,
@@ -27,7 +28,8 @@ use crate::{
         mir_dataflow::{JoinSemiLattice, fmt::DebugWithContext, move_paths::MoveData},
     },
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, Place, ToGraph,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
+        ToGraph,
         arena::PcgArenaRef,
         domain_data::{DomainData, DomainDataIndex},
         eval_stmt_data::EvalStmtData,
@@ -75,7 +77,7 @@ impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
 
 #[derive(Clone, Eq, Debug)]
 pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
-    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'tcx, Capabilities>>>,
+    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
     pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
 }
 
@@ -88,7 +90,7 @@ impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
         let mut entry_state = (*other.data.pcg.states.0.post_main).clone();
         entry_state
             .borrow
-            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt.ctxt);
+            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt);
         let domain_data = DomainData::new(Rc::new_in(entry_state, other.ctxt.arena));
         Self {
             pcg: domain_data,
@@ -183,7 +185,7 @@ mod private {
     use crate::{
         borrow_checker::BorrowCheckerInterface,
         pcg::DomainDataWithCtxt,
-        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt},
+        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
     };
 
     #[derive(Clone, From, Eq)]
@@ -230,11 +232,12 @@ mod private {
     #[derive(Clone, Copy, Debug)]
     pub struct ResultsCtxt<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
+        pub(crate) settings: &'a PcgSettings,
     }
 
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
-        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>) -> Self {
-            Self { ctxt }
+        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {
+            Self { ctxt, settings }
         }
     }
 
@@ -387,7 +390,10 @@ impl<'a, 'tcx: 'a, T> HasPcgDomainData<'a, 'tcx> for DomainDataWithCtxt<'a, 'tcx
 
 impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     fn into_results(self) -> DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
-        DomainDataWithCtxt::new(self.data, ResultsCtxt::new(self.ctxt.bc_ctxt()))
+        DomainDataWithCtxt::new(
+            self.data,
+            ResultsCtxt::new(self.ctxt.bc_ctxt(), self.ctxt.settings),
+        )
     }
 }
 
@@ -470,10 +476,16 @@ impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
     }
 }
 
+impl<'a, 'tcx: 'a> HasSettings<'a> for ResultsCtxt<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
 pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
     fn data(&self) -> &PcgDomainData<'a, 'tcx>;
 
-    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'tcx>
+    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'a, 'tcx>
     where
         'a: 'slf,
     {

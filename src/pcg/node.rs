@@ -162,10 +162,10 @@ impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNode
     }
 }
 
-impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
-    for PcgNode<'tcx, T, U>
+impl<'a, 'tcx, T: HasValidityCheck<'a, 'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>>
+    HasValidityCheck<'a, 'tcx> for PcgNode<'tcx, T, U>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         match self {
             PcgNode::Place(p) => p.check_validity(ctxt),
             PcgNode::LifetimeProjection(rp) => rp.check_validity(ctxt),
@@ -220,7 +220,7 @@ impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHa
 }
 
 pub trait PcgNodeLike<'tcx>:
-    Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash + HasValidityCheck<'tcx>
+    Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash
 {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx>;
 

@@ -69,7 +69,7 @@ impl<'tcx> LabelLifetimeProjectionPredicate<'tcx> {
             }
             LabelLifetimeProjectionPredicate::AllNonFuture(maybe_old_place, region_idx) => {
                 to_match.region_idx == *region_idx
-                    && to_match.place() == (*maybe_old_place).into()
+                    && to_match.base() == (*maybe_old_place).into()
                     && !to_match.is_future()
             }
             LabelLifetimeProjectionPredicate::Postfix(predicate_projection) => {
@@ -111,7 +111,7 @@ impl std::ops::BitOrAssign for LabelLifetimeProjectionResult {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, PartialOrd, Ord)]
-pub(crate) enum LabelLifetimeProjectionResult {
+pub enum LabelLifetimeProjectionResult {
     Unchanged = 0,
     Changed = 1,
     ShouldCollapse = 2,
@@ -127,7 +127,7 @@ impl LabelLifetimeProjectionResult {
     }
 }
 
-pub(crate) trait LabelLifetimeProjection<'tcx> {
+pub trait LabelLifetimeProjection<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
@@ -174,7 +174,7 @@ pub(crate) trait LabelPlace<'tcx> {
     ) -> bool;
 }
 
-pub(crate) trait PlaceLabeller<'tcx> {
+pub trait PlaceLabeller<'tcx> {
     fn place_label(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> SnapshotLocation;
 }
 

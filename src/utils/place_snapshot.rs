@@ -187,7 +187,7 @@ impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for LabelledPlace<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LabelledPlace<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.place.check_validity(ctxt)
     }

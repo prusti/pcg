@@ -10,10 +10,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
-        edge::abstraction::{
-            function::{AbstractionBlockEdgeWithMetadata, FunctionCallAbstraction},
-            r#loop::LoopAbstraction,
-        },
+        edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
@@ -21,12 +18,12 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
     },
+    coupling::HyperEdge,
     pcg::PcgNodeLike,
     utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
 };
 
-#[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::PcgCoupledEdge;
+use crate::coupling::PcgCoupledEdgeKind;
 
 use crate::{
     borrow_pcg::{
@@ -66,41 +63,50 @@ edgedata_enum!(
 );
 
 impl<'tcx> AbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
     /// Creates a singleton coupling hyperedge from this edge.
     ///
     /// This is presumably NOT what you want, as there is no coupling logic
     /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
     /// However, Prusti is currently using this function for loops.
-    pub fn to_hyper_edge(&self) -> PcgCoupledEdge<'tcx> {
+    pub fn into_singleton_coupled_edge(self) -> PcgCoupledEdgeKind<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {
-                PcgCoupledEdge::FunctionCall(function_call.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::function_call(function_call.into_singleton_coupled_edge())
             }
             AbstractionEdge::Loop(loop_abstraction) => {
-                PcgCoupledEdge::Loop(loop_abstraction.edge.to_hyper_edge())
+                PcgCoupledEdgeKind::loop_(loop_abstraction.into_singleton_coupled_edge())
             }
         }
     }
 }
 
-/// A hyperedge for a function or loop abstraction
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+impl<'tcx, Input: std::fmt::Display, Output: std::fmt::Display> std::fmt::Display
+    for AbstractionBlockEdge<'tcx, Input, Output>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> {}", self.input, self.output)
+    }
+}
+
+/// An edge for a function or loop abstraction
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     _phantom: PhantomData<&'tcx ()>,
-    input: Input,
+    pub(crate) input: Input,
     pub(crate) output: Output,
 }
 
-impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
-    pub(crate) fn with_metadata<Metadata>(
-        self,
-        metadata: Metadata,
-    ) -> AbstractionBlockEdgeWithMetadata<Metadata, Self> {
-        AbstractionBlockEdgeWithMetadata {
-            metadata,
-            edge: self,
+impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> {
+    pub(crate) fn new(input: Input, output: Output) -> Self {
+        Self {
+            _phantom: PhantomData,
+            input,
+            output,
         }
+    }
+
+    pub(crate) fn to_singleton_hyper_edge(self) -> HyperEdge<Input, Output> {
+        HyperEdge::new(vec![self.input], vec![self.output])
     }
 }
 
@@ -152,11 +158,9 @@ impl<
         changed |= self
             .input
             .label_lifetime_projection(projection, label, ctxt);
-        self.assert_validity(ctxt);
         changed |= self
             .output
             .label_lifetime_projection(projection, label, ctxt);
-        self.assert_validity(ctxt);
         changed
     }
 }
@@ -269,15 +273,15 @@ impl<
 impl<
     'tcx: 'a,
     'a,
-    Input: HasValidityCheck<'tcx>
+    Input: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: HasValidityCheck<'tcx>
+    Output: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
         + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> HasValidityCheck<'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
+> HasValidityCheck<'a, 'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.input.check_validity(ctxt)?;
         self.output.check_validity(ctxt)?;
         if self.input.to_pcg_node(ctxt) == self.output.to_pcg_node(ctxt) {
@@ -297,11 +301,14 @@ impl<
     Output: Clone + PcgNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > AbstractionBlockEdge<'tcx, Input, Output>
 {
-    pub(crate) fn new(
+    pub(crate) fn new_checked(
         input: Input,
         output: Output,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Self {
+    ) -> Self
+    where
+        Self: HasValidityCheck<'a, 'tcx>,
+    {
         let result = Self {
             _phantom: PhantomData,
             input,

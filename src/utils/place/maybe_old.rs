@@ -90,7 +90,7 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for MaybeLabelledPlace<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeLabelledPlace<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
             MaybeLabelledPlace::Current(place) => place.check_validity(ctxt),
@@ -167,11 +167,14 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
         }
     }
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Result<Self, PcgError> {
+        repacker: CompilerCtxt<'a, 'tcx, C>,
+    ) -> Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
         let mut cloned = *self;
         *cloned.place_mut() = self
             .place()

@@ -60,7 +60,7 @@ impl<'tcx> DerefEdge<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for DerefEdge<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.deref_place.check_validity(ctxt)?;

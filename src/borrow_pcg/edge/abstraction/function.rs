@@ -1,6 +1,7 @@
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        FunctionData,
         abstraction::{FunctionShape, FunctionShapeDataSource},
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
@@ -12,6 +13,7 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
+    coupling::CoupledEdgeKind,
     pcg::PcgNode,
     rustc_interface::{
         hir::def_id::DefId,
@@ -20,23 +22,16 @@ use crate::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
-        span::Span,
+        span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-#[cfg(feature = "coupling")]
-use crate::borrow_pcg::graph::coupling::HyperEdge;
+use crate::coupling::HyperEdge;
 
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-pub struct FunctionData<'tcx> {
-    pub(crate) def_id: DefId,
-    pub(crate) substs: GenericArgsRef<'tcx>,
-}
 
 pub(crate) struct FunctionDataShapeDataSource<'tcx> {
     input_tys: Vec<ty::Ty<'tcx>>,
@@ -49,6 +44,7 @@ pub(crate) struct FunctionDataShapeDataSource<'tcx> {
 pub enum MakeFunctionShapeError {
     ContainsAliasType,
     UnsupportedRustVersion,
+    NoFunctionData,
 }
 
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
@@ -63,20 +59,21 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::since(2025-05-24)]
     pub(crate) fn new(
         data: FunctionData<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        tracing::debug!("Base Sig: {:#?}", data.fn_sig(ctxt));
-        let sig = data.instantiated_fn_sig(ctxt);
+        tracing::debug!("Base Sig: {:#?}", data.fn_sig(tcx));
+        let sig = data.instantiated_fn_sig(tcx);
         tracing::debug!("Instantiated Sig: {:#?}", sig);
-        let sig = ctxt.tcx().liberate_late_bound_regions(data.def_id, sig);
+        let sig = tcx.liberate_late_bound_regions(data.def_id, sig);
         tracing::debug!("Liberated Sig: {:#?}", sig);
-        let typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id());
-        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(typing_env);
+        let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
+        let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         if sig.has_aliases() {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
         tracing::debug!("Normalized sig: {:#?}", sig);
-        let outlives = OutlivesEnvironment::new(&infcx, ctxt.def_id(), param_env, vec![]);
+        let outlives =
+            OutlivesEnvironment::new(&infcx, data.caller_def_id.unwrap(), param_env, vec![]);
         Ok(Self {
             input_tys: sig.inputs().to_vec(),
             output_ty: sig.output(),
@@ -88,42 +85,41 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 impl<'tcx> FunctionData<'tcx> {
     pub(crate) fn fn_sig(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> ty::EarlyBinder<'tcx, ty::Binder<'tcx, ty::FnSig<'tcx>>> {
-        ctxt.tcx().fn_sig(self.def_id)
+        tcx.fn_sig(self.def_id)
     }
 
     pub(crate) fn instantiated_fn_sig(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
     ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
-        ctxt.tcx()
-            .fn_sig(self.def_id)
-            .instantiate(ctxt.tcx(), self.substs)
+        tcx.fn_sig(self.def_id).instantiate(tcx, self.substs)
     }
 }
 
 impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
-    fn input_tys(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+    type Ctxt = ty::TyCtxt<'tcx>;
+    fn input_tys(&self, _ctxt: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
     }
-    fn output_ty(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
+    fn output_ty(&self, _ctxt: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
         self.output_ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: ty::TyCtxt<'tcx>) -> bool {
         if sup.is_static() || sup == sub {
             return true;
         }
         tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                ctxt.bc.outlives_everywhere(sup, sub)
+                todo!()
             }
             (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,
             (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => true,
             _ => self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
+                ctxt,
                 sup.rust_region(ctxt),
                 sub.rust_region(ctxt),
             ),
@@ -143,10 +139,11 @@ impl<'tcx> FunctionCallData<'tcx> {
         def_id: DefId,
         substs: GenericArgsRef<'tcx>,
         operand_tys: Vec<ty::Ty<'tcx>>,
+        caller_def_id: LocalDefId,
         span: Span,
     ) -> Self {
         Self {
-            function_data: FunctionData { def_id, substs },
+            function_data: FunctionData::new(def_id, substs, Some(caller_def_id)),
             operand_tys,
             span,
         }
@@ -155,9 +152,9 @@ impl<'tcx> FunctionCallData<'tcx> {
     pub(crate) fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<FunctionShape<'tcx>, MakeFunctionShapeError> {
-        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt)?;
-        Ok(FunctionShape::new(&data, ctxt))
+    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt.tcx)?;
+        Ok(FunctionShape::new(&data, ctxt.tcx))
     }
 }
 
@@ -168,7 +165,6 @@ pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
 >;
 
 impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
-    #[cfg(feature = "coupling")]
     pub fn to_hyper_edge(
         &self,
     ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {
@@ -182,10 +178,59 @@ pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) edge: Edge,
 }
 
+impl<'tcx, Metadata, Input: Copy, Output: Copy>
+    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'tcx, Input, Output>>
+{
+    pub(crate) fn into_singleton_coupled_edge(self) -> CoupledEdgeKind<Metadata, Input, Output> {
+        CoupledEdgeKind::new(self.metadata, self.edge.to_singleton_hyper_edge())
+    }
+}
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
-    location: Location,
+    pub(crate) location: Location,
     pub(crate) function_data: Option<FunctionData<'tcx>>,
+}
+
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for FunctionCallAbstractionEdgeMetadata<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
+        format!(
+            "call{} at {:?}",
+            if let Some(function_data) = &self.function_data {
+                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
+            } else {
+                "".to_string()
+            },
+            self.location
+        )
+    }
+}
+impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
+    pub fn location(&self) -> Location {
+        self.location
+    }
+
+    pub fn def_id(&self) -> Option<DefId> {
+        self.function_data.as_ref().map(|f| f.def_id)
+    }
+
+    pub fn shape(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+        let function_data = self
+            .function_data
+            .as_ref()
+            .ok_or(MakeFunctionShapeError::NoFunctionData)?;
+        Ok(FunctionShape::new(
+            &function_data.shape(ctxt.tcx)?,
+            ctxt.tcx,
+        ))
+    }
 }
 
 pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
@@ -251,27 +296,27 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for FunctionCallAbstraction<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.edge.check_validity(ctxt)
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for FunctionCallAbstraction<'tcx>
+impl<
+    'tcx,
+    'a,
+    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Edge: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
     fn to_short_string(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         format!(
-            "call{} at {:?}: {}",
-            if let Some(function_data) = &self.metadata.function_data {
-                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
-            } else {
-                "".to_string()
-            },
-            self.metadata.location,
+            "{}: {}",
+            self.metadata.to_short_string(ctxt),
             self.edge.to_short_string(ctxt)
         )
     }
@@ -300,20 +345,13 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
     }
 
     pub fn new(
-        location: Location,
-        function_data: Option<FunctionData<'tcx>>,
+        metadata: FunctionCallAbstractionEdgeMetadata<'tcx>,
         edge: AbstractionBlockEdge<
             'tcx,
             FunctionCallAbstractionInput<'tcx>,
             FunctionCallAbstractionOutput<'tcx>,
         >,
     ) -> Self {
-        Self {
-            metadata: FunctionCallAbstractionEdgeMetadata {
-                location,
-                function_data,
-            },
-            edge,
-        }
+        Self { metadata, edge }
     }
 }

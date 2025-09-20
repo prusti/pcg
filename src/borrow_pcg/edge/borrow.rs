@@ -214,8 +214,9 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for RemoteBorrow<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for RemoteBorrow<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        self.local.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)
     }
 }
@@ -348,7 +349,7 @@ impl<'tcx> BorrowEdge<'tcx> {
         }
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for LocalBorrow<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)?;
@@ -433,7 +434,7 @@ impl<'tcx> LocalBorrow<'tcx> {
         'tcx: 'a,
     {
         assert!(assigned_place.ty(ctxt).ty.ref_mutability().is_some());
-        Self {
+        let borrow = Self {
             blocked_place,
             assigned_ref: assigned_place,
             kind,
@@ -441,7 +442,9 @@ impl<'tcx> LocalBorrow<'tcx> {
             region,
             assigned_lifetime_projection_label: None,
             borrow_index: ctxt.bc().region_to_borrow_index(region.into()),
-        }
+        };
+        borrow.assert_validity(ctxt.bc_ctxt());
+        borrow
     }
 
     pub(crate) fn reserve_location(&self) -> Location {

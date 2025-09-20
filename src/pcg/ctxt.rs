@@ -10,8 +10,9 @@ use crate::{
     },
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SETTINGS,
-        SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap, logging::LogPredicate,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, Place,
+        SETTINGS, SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap,
+        logging::LogPredicate,
     },
 };
 
@@ -24,10 +25,20 @@ impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
     }
 }
 
+impl<'a, 'tcx: 'a> HasSettings<'a> for AnalysisCtxt<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
 impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>> {
         Some(self)
     }
+}
+
+pub(crate) trait HasSettings<'a> {
+    fn settings(&self) -> &'a PcgSettings;
 }
 
 mod private {
@@ -41,7 +52,7 @@ mod private {
     pub struct AnalysisCtxt<'a, 'tcx> {
         pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
         pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
-        pub(crate) settings: &'a PcgSettings<'a>,
+        pub(crate) settings: &'a PcgSettings,
         #[allow(dead_code)]
         pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         pub(crate) block: mir::BasicBlock,

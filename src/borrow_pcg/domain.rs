@@ -78,7 +78,7 @@ impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for FunctionCallAbstractionInput<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionInput<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -163,7 +163,7 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for LoopAbstractionInput<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionInput<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -224,7 +224,7 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for LoopAbstractionOutput<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionOutput<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -271,7 +271,7 @@ impl<'tcx> PcgNodeLike<'tcx> for AbstractionInputTarget<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for AbstractionInputTarget<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionInputTarget<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -303,7 +303,7 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for AbstractionOutputTarget<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for AbstractionOutputTarget<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -340,7 +340,7 @@ impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionOutput<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for FunctionCallAbstractionOutput<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }

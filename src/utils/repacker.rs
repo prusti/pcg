@@ -10,22 +10,22 @@ use serde_derive::Serialize;
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::TyVarianceVisitor},
     owned_pcg::RepackGuide,
-    pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
+    pcg::{
+        ctxt::{AnalysisCtxt, HasSettings}, DataflowStmtPhase, EvalStmtPhase
+    },
     pcg_validity_assert,
     rustc_interface::{
-        FieldIdx, PlaceTy, RustBitSet,
-        hir::def_id::LocalDefId,
-        index::Idx,
-        middle::{
+        hir::def_id::LocalDefId, index::Idx, middle::{
             mir::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
                 PlaceElem, ProjectionElem, VarDebugInfoContents,
             },
-            ty::{TyCtxt, TyKind},
-        },
+            ty::{self, TyCtxt, TyKind, TypeVisitable},
+        }, FieldIdx, PlaceTy, RustBitSet
     },
+    utils::validity::HasValidityCheck,
     validity_checks_enabled,
 };
 
@@ -221,7 +221,9 @@ impl StmtGraphs {
     }
 }
 
-pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>: HasBorrowCheckerCtxt<'a, 'tcx> {
+pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
+    HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
+{
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
@@ -255,11 +257,37 @@ impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, '
     }
 }
 
+pub(crate) trait HasTyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx>;
+
+    fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
+        let mut visitor = TyVarianceVisitor {
+            tcx: self.tcx(),
+            target: region,
+            found: false,
+        };
+        ty.visit_with(&mut visitor);
+        visitor.found
+    }
+}
+
+impl<'tcx> HasTyCtxt<'tcx> for TyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        *self
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
-    pub(super) mir: &'a Body<'tcx>,
-    pub(super) tcx: TyCtxt<'tcx>,
+    pub(crate) mir: &'a Body<'tcx>,
+    pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) bc: T,
+}
+
+impl<'a, 'tcx> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
 }
 
 impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
@@ -586,28 +614,19 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
+impl<'tcx> HasValidityCheck<'_, 'tcx> for Place<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        self.local.check_validity(ctxt)?;
+        Ok(())
+    }
+}
+
 impl<'tcx> Place<'tcx> {
     pub fn ty<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PlaceTy<'tcx>
     where
         'tcx: 'a,
     {
-        debug_assert!(
-            ctxt.body().local_decls().len() > self.local.as_usize(),
-            "Place {:?} has local {:?}, but the provided MIR at {:?} only has {} local declarations",
-            self,
-            self.local,
-            ctxt.body().span,
-            ctxt.body().local_decls().len()
-        );
         (*self).ty(ctxt.body(), ctxt.tcx())
-    }
-
-    #[allow(unused)]
-    pub(crate) fn get_ref_region(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
-        match self.ty(repacker).ty.kind() {
-            TyKind::Ref(region, ..) => Some((*region).into()),
-            _ => None,
-        }
     }
 
     pub(crate) fn projects_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool

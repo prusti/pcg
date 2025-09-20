@@ -111,15 +111,15 @@ impl PcgRegion {
 
     pub(crate) fn rust_region<'a, 'tcx: 'a>(
         self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: ty::TyCtxt<'tcx>,
     ) -> ty::Region<'tcx> {
         #[rustversion::before(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
-            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+            ctxt: ty::TyCtxt<'tcx>,
         ) -> ty::Region<'tcx> {
             ty::Region::new_late_param(
-                ctxt.tcx(),
+                ctxt,
                 late_param_region.scope,
                 late_param_region.bound_region,
             )
@@ -127,17 +127,17 @@ impl PcgRegion {
         #[rustversion::since(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
-            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+            ctxt: ty::TyCtxt<'tcx>,
         ) -> ty::Region<'tcx> {
-            ty::Region::new_late_param(ctxt.tcx(), late_param_region.scope, late_param_region.kind)
+            ty::Region::new_late_param(ctxt, late_param_region.scope, late_param_region.kind)
         }
         match self {
-            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt.tcx(), region_vid),
+            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt, region_vid),
             PcgRegion::ReErased => todo!(),
-            PcgRegion::ReStatic => ctxt.tcx().lifetimes.re_static,
+            PcgRegion::ReStatic => ctxt.lifetimes.re_static,
             PcgRegion::RePlaceholder(_) => todo!(),
             PcgRegion::ReBound(debruijn_index, bound_region) => {
-                ty::Region::new_bound(ctxt.tcx(), debruijn_index, bound_region)
+                ty::Region::new_bound(ctxt, debruijn_index, bound_region)
             }
             PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
             PcgRegion::PcgInternalError(_) => todo!(),
@@ -318,7 +318,7 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
         }
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
             PlaceOrConst::Place(p) => p.check_validity(ctxt),
@@ -480,20 +480,20 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>>
     }
 }
 
-struct TyVarianceVisitor<'mir, 'tcx> {
-    ctxt: CompilerCtxt<'mir, 'tcx>,
-    target: PcgRegion,
-    found: bool,
+pub(crate) struct TyVarianceVisitor<'tcx> {
+    pub(crate) tcx: ty::TyCtxt<'tcx>,
+    pub(crate) target: PcgRegion,
+    pub(crate) found: bool,
 }
 
-impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'_, 'tcx> {
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'tcx> {
     fn visit_ty(&mut self, t: ty::Ty<'tcx>) {
         if self.found {
             return;
         }
         match t.kind() {
             TyKind::Adt(def_id, substs) => {
-                let variances = self.ctxt.tcx().variances_of(def_id.did());
+                let variances = self.tcx.variances_of(def_id.did());
                 for (idx, region) in substs.regions().enumerate() {
                     if self.target == region.into()
                         && variances.get(idx) == Some(&ty::Variance::Invariant)
@@ -516,16 +516,18 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'_, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> CompilerCtxt<'a, 'tcx> {
-    pub(crate) fn region_is_invariant_in_type(self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
-        let mut visitor = TyVarianceVisitor {
-            ctxt: self,
-            target: region,
-            found: false,
-        };
-        ty.visit_with(&mut visitor);
-        visitor.found
-    }
+pub(crate) fn region_is_invariant_in_type<'tcx>(
+    tcx: ty::TyCtxt<'tcx>,
+    region: PcgRegion,
+    ty: ty::Ty<'tcx>,
+) -> bool {
+    let mut visitor = TyVarianceVisitor {
+        tcx,
+        target: region,
+        found: false,
+    };
+    ty.visit_with(&mut visitor);
+    visitor.found
 }
 
 impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
@@ -533,7 +535,8 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
     where
         'tcx: 'a,
     {
-        ctxt.bc_ctxt().region_is_invariant_in_type(
+        region_is_invariant_in_type(
+            ctxt.ctxt().tcx(),
             self.region(ctxt.ctxt()),
             self.base.to_pcg_lifetime_projection_base().base_ty(ctxt),
         )
@@ -611,12 +614,6 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
                 Err("Const cannot be converted to a region projection".to_string())
             }
         }
-    }
-}
-
-impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, P> {
-    pub fn base(&self) -> P {
-        self.base
     }
 }
 
@@ -797,13 +794,14 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
         self.base.place_mut()
     }
 
-    fn project_deeper<C: Copy>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
+        repacker: CompilerCtxt<'a, 'tcx, C>,
     ) -> Result<Self, PcgError>
     where
-        Self: Clone + HasValidityCheck<'tcx>,
+        'tcx: 'a,
+        Self: Clone + HasValidityCheck<'a, 'tcx>,
     {
         LifetimeProjection::new(
             self.region(repacker),
@@ -843,7 +841,7 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'_, 'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
@@ -929,7 +927,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 }
 
 impl<T: Copy> LifetimeProjection<'_, T> {
-    pub fn place(&self) -> T {
+    pub fn base(&self) -> T {
         self.base
     }
 }
@@ -948,7 +946,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         self.with_base(self.base.into())
     }
 
-    pub(crate) fn with_base<U>(self, base: U) -> LifetimeProjection<'tcx, U> {
+    pub fn with_base<U>(self, base: U) -> LifetimeProjection<'tcx, U> {
         LifetimeProjection {
             base,
             region_idx: self.region_idx,
