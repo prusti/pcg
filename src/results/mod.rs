@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::collections::HashMap;
+
 use derive_more::Deref;
 
 use crate::{
@@ -13,9 +15,10 @@ use crate::{
         region_projection::PlaceOrConst,
     },
     error::PcgError,
-    r#loop::PlaceUsages,
+    r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings, successor_blocks,
+        CapabilityKind, CapabilityLike, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor,
+        ctxt::HasSettings, place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
         data_structures::fx::FxHashSet,
@@ -28,8 +31,8 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        HasBorrowCheckerCtxt, Place, display::DebugLines, domain_data::DomainDataStates,
-        validity::HasValidityCheck,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
+        domain_data::DomainDataStates, validity::HasValidityCheck,
     },
 };
 
@@ -69,7 +72,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     pub fn loop_place_usages(&self, loop_head: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
         self.analysis()
             .body_analysis
-            .loop_analysis
+            .loop_place_usage_analysis
             .get_used_places(loop_head)
     }
 
@@ -197,7 +200,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         Ok(PcgBasicBlocks(result))
     }
 
-    fn analysis(&self) -> &PcgEngine<'a, 'tcx> {
+    pub fn analysis(&self) -> &PcgEngine<'a, 'tcx> {
         &self.cursor.analysis().0
     }
 
@@ -280,6 +283,31 @@ pub struct PcgBasicBlock<'a, 'tcx> {
 }
 
 impl<'tcx> PcgBasicBlock<'_, 'tcx> {
+    pub fn loop_invariant_place_capabilities(
+        &self,
+        place_usages: &PlaceUsages<'tcx>,
+        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
+    ) -> HashMap<Place<'tcx>, CapabilityKind> {
+        let initial_capabilities =
+            self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
+        let mut result = HashMap::default();
+        for place_usage in place_usages.iter() {
+            if let Some(initial_capability) = initial_capabilities.get(place_usage.place, ctxt) {
+                let usage_capability = match place_usage.usage {
+                    PlaceUsageType::Read => CapabilityKind::Read,
+                    PlaceUsageType::Mutate => CapabilityKind::Exclusive,
+                };
+                if let Some(joined_capability) = initial_capability
+                    .expect_concrete()
+                    .minimum(usage_capability)
+                {
+                    result.insert(place_usage.place, joined_capability);
+                }
+            }
+        }
+        result
+    }
+
     pub fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
         for stmt in self.statements.iter() {

@@ -36,7 +36,11 @@ use crate::rustc_interface::middle::mir::BasicBlock;
 pub(crate) mod test;
 
 use lazy_static::lazy_static;
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub enum DebugImgcat {
@@ -88,7 +92,7 @@ pub struct PcgSettings {
     pub polonius: bool,
     pub dump_mir_dataflow: bool,
     pub visualization: bool,
-    pub visualization_data_dir: Option<String>,
+    pub visualization_data_dir: PathBuf,
     pub check_annotations: bool,
     pub emit_annotations: bool,
     pub check_function: Option<String>,
@@ -97,6 +101,60 @@ pub struct PcgSettings {
 }
 
 impl PcgSettings {
+    pub(crate) fn create_visualization_data_directory(path: &Path, erase_contents: bool) {
+        if erase_contents {
+            std::fs::remove_dir_all(path)
+                .expect("Failed to delete visualization directory contents");
+        }
+        std::fs::create_dir_all(path).expect("Failed to create visualization directory");
+
+        // Log the absolute path after directory creation
+        if let Ok(absolute_path) = std::fs::canonicalize(path) {
+            tracing::info!("Visualization directory: {:?}", absolute_path);
+        } else {
+            tracing::info!("Visualization directory: {:?}", path);
+        }
+    }
+
+    pub(crate) fn functions_json_path(&self) -> PathBuf {
+        self.visualization_data_dir.join("functions.json")
+    }
+
+    pub(crate) fn write_functions_json(&self, functions_map: &HashMap<String, String>) {
+        let file_path = self.functions_json_path();
+        let json_data =
+            serde_json::to_string(functions_map).expect("Failed to serialize item names to JSON");
+        let mut file = std::fs::File::create(file_path).expect("Failed to create JSON file");
+        file.write_all(json_data.as_bytes())
+            .expect("Failed to write item names to JSON file");
+    }
+
+    pub(crate) fn write_debug_visualization_metadata(
+        &self,
+        debug_visualization_identifiers: &[String],
+    ) {
+        let functions_map = &debug_visualization_identifiers
+            .iter()
+            .map(|name| (name.clone(), name.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
+        self.write_functions_json(&functions_map);
+    }
+
+    pub(crate) fn read_functions_json(&self) -> HashMap<String, String> {
+        let file_path = self.functions_json_path();
+        if !file_path.exists() {
+            return HashMap::new();
+        }
+        let json_data = std::fs::read_to_string(file_path).expect("Failed to read JSON file");
+        serde_json::from_str(&json_data).expect("Failed to deserialize item names from JSON")
+    }
+
+    pub(crate) fn write_new_debug_visualization_metadata(&self, new_identifier: &str) {
+        let mut functions_map = self.read_functions_json();
+        functions_map.insert(new_identifier.to_string(), new_identifier.to_string());
+        self.write_functions_json(&functions_map);
+    }
+
     pub(crate) fn new() -> Self {
         // Hack just to ensure that we dont raise an error when seeing a global var
         let mut processed_vars = GlobalPcgSettings::new().1;
@@ -117,9 +175,13 @@ impl PcgSettings {
         let polonius = Self::process_bool_var(&mut processed_vars, "PCG_POLONIUS", false);
         let dump_mir_dataflow =
             Self::process_bool_var(&mut processed_vars, "PCG_DUMP_MIR_DATAFLOW", false);
+
         let visualization = Self::process_bool_var(&mut processed_vars, "PCG_VISUALIZATION", false);
-        let visualization_data_dir =
-            Self::process_string_var(&mut processed_vars, "PCG_VISUALIZATION_DATA_DIR");
+        let visualization_data_dir = PathBuf::from(
+            Self::process_string_var(&mut processed_vars, "PCG_VISUALIZATION_DATA_DIR")
+                .unwrap_or("visualization/data".into()),
+        );
+
         let check_annotations =
             Self::process_bool_var(&mut processed_vars, "PCG_CHECK_ANNOTATIONS", false);
         let emit_annotations =
@@ -255,7 +317,6 @@ lazy_static! {
     pub static ref POLONIUS: bool = SETTINGS.polonius;
     pub static ref DUMP_MIR_DATAFLOW: bool = SETTINGS.dump_mir_dataflow;
     pub static ref VISUALIZATION: bool = SETTINGS.visualization;
-    pub static ref VISUALIZATION_DATA_DIR: Option<String> = SETTINGS.visualization_data_dir.clone();
     pub static ref CHECK_ANNOTATIONS: bool = SETTINGS.check_annotations;
     pub static ref EMIT_ANNOTATIONS: bool = SETTINGS.emit_annotations;
     pub static ref CHECK_FUNCTION: Option<String> = SETTINGS.check_function.clone();

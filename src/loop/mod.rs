@@ -34,7 +34,7 @@ use crate::{
     validity_checks_enabled,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LoopAnalysis {
     /// Tracks the loops that each basic block is in.
     bb_data: IndexVec<BasicBlock, LoopSet>,

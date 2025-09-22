@@ -50,6 +50,7 @@ pub enum PcgRegion {
     ReBound(DebruijnIndex, ty::BoundRegion),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
+    ReEarlyParam(ty::EarlyParamRegion),
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
@@ -99,6 +100,9 @@ impl PcgRegion {
                 format!("{pcg_region_internal_error:?}")
             }
             PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
+            PcgRegion::ReEarlyParam(early_param_region) => {
+                format!("ReEarlyParam({early_param_region:?})")
+            }
         }
     }
 
@@ -109,10 +113,7 @@ impl PcgRegion {
         }
     }
 
-    pub(crate) fn rust_region<'a, 'tcx: 'a>(
-        self,
-        ctxt: ty::TyCtxt<'tcx>,
-    ) -> ty::Region<'tcx> {
+    pub(crate) fn rust_region<'a, 'tcx: 'a>(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
         #[rustversion::before(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
@@ -141,6 +142,9 @@ impl PcgRegion {
             }
             PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
             PcgRegion::PcgInternalError(_) => todo!(),
+            PcgRegion::ReEarlyParam(early_param_region) => {
+                ty::Region::new_early_param(ctxt, early_param_region)
+            }
         }
     }
 }
@@ -159,7 +163,7 @@ impl<'tcx> From<ty::Region<'tcx>> for PcgRegion {
         match region.kind() {
             ty::RegionKind::ReVar(vid) => PcgRegion::RegionVid(vid),
             ty::RegionKind::ReErased => PcgRegion::ReErased,
-            ty::RegionKind::ReEarlyParam(_) => todo!(),
+            ty::RegionKind::ReEarlyParam(p) => PcgRegion::ReEarlyParam(p),
             ty::RegionKind::ReBound(debruijn_index, inner) => {
                 PcgRegion::ReBound(debruijn_index, inner)
             }

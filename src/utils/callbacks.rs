@@ -1,23 +1,15 @@
+#[cfg(feature = "visualization")]
+use std::path::Path;
 use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet},
-    fs::File,
-    io::Write,
+    cell::RefCell, collections::{BTreeMap, BTreeSet}, io::Write
 };
 
 use derive_more::From;
 
 use crate::{
-    PcgCtxt, PcgOutput,
     borrow_checker::{
-        InScopeBorrows, RustBorrowCheckerInterface,
-        r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
-    },
-    borrow_pcg::region_projection::{PcgRegion, RegionIdx},
-    pcg::{self, BodyWithBorrowckFacts},
-    results::PcgAnalysisResults,
-    run_pcg,
-    rustc_interface::{
+        r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker}, InScopeBorrows, RustBorrowCheckerInterface
+    }, borrow_pcg::region_projection::{PcgRegion, RegionIdx}, pcg::{self, BodyWithBorrowckFacts}, results::PcgAnalysisResults, run_pcg, rustc_interface::{
         borrowck::{
             self, BorrowIndex, BorrowSet, LocationTable, PoloniusInput, PoloniusOutput,
             RegionInferenceContext, RichLocation,
@@ -26,20 +18,18 @@ use crate::{
             fx::{FxHashMap, FxHashSet},
             graph::is_cyclic,
         },
-        driver::{self, Compilation, init_rustc_env_logger},
+        driver::{self, init_rustc_env_logger, Compilation},
         hir::{def::DefKind, def_id::LocalDefId},
-        interface::{Config, interface::Compiler},
+        interface::{interface::Compiler, Config},
         middle::{
             mir::{Body, Local, Location},
             query::queries::mir_borrowck::ProvidedValue as MirBorrowck,
             ty::{RegionVid, TyCtxt},
             util::Providers,
         },
-        session::{EarlyDiagCtxt, Session, config::ErrorOutputType},
+        session::{config::ErrorOutputType, EarlyDiagCtxt, Session},
         span::SpanSnippetError,
-    },
-    utils::{DEBUG_BLOCK, GLOBAL_SETTINGS},
-    validity_checks_enabled,
+    }, utils::{DEBUG_BLOCK, GLOBAL_SETTINGS}, validity_checks_enabled, PcgCtxtCreator, PcgOutput
 };
 
 #[cfg(feature = "visualization")]
@@ -227,32 +217,7 @@ pub(crate) unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
         return;
     }
 
-    let mut item_names = vec![];
-
-    let vis_dir: Option<&str> = if *crate::utils::VISUALIZATION {
-        Some(
-            crate::utils::VISUALIZATION_DATA_DIR
-                .as_deref()
-                .unwrap_or("visualization/data"),
-        )
-    } else {
-        None
-    };
-
-    if let Some(path) = &vis_dir {
-        if std::path::Path::new(path).exists() {
-            std::fs::remove_dir_all(path)
-                .expect("Failed to delete visualization directory contents");
-        }
-        std::fs::create_dir_all(path).expect("Failed to create visualization directory");
-
-        // Log the absolute path after directory creation
-        if let Ok(absolute_path) = std::fs::canonicalize(path) {
-            tracing::info!("Visualization directory: {:?}", absolute_path);
-        } else {
-            tracing::info!("Visualization directory: {:?}", path);
-        }
-    }
+    let mut ctxt_creator = PcgCtxtCreator::new(tcx);
 
     for def_id in hir_body_owners(tcx) {
         let kind = tcx.def_kind(def_id);
@@ -292,36 +257,21 @@ pub(crate) unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
         tracing::info!("Path: {:?}", body.body.span);
         tracing::debug!("Number of basic blocks: {}", body.body.basic_blocks.len());
         tracing::debug!("Number of locals: {}", body.body.local_decls.len());
-        run_pcg_on_fn(def_id, &body, tcx, polonius, vis_dir, None);
-        item_names.push(item_name);
+        run_pcg_on_fn(&body, &mut ctxt_creator, polonius, None);
     }
 
-    if let Some(dir_path) = &vis_dir {
-        let file_path = format!("{dir_path}/functions.json");
-
-        let json_data = serde_json::to_string(
-            &item_names
-                .iter()
-                .map(|name| (name.clone(), name.clone()))
-                .collect::<std::collections::HashMap<_, _>>(),
-        )
-        .expect("Failed to serialize item names to JSON");
-        let mut file = File::create(file_path).expect("Failed to create JSON file");
-        file.write_all(json_data.as_bytes())
-            .expect("Failed to write item names to JSON file");
-    }
+    ctxt_creator.write_debug_visualization_metadata();
 }
 
 type PcgCallback<'tcx> = dyn for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + 'static;
 
 pub(crate) fn run_pcg_on_fn<'tcx>(
-    def_id: LocalDefId,
     body: &BodyWithBorrowckFacts<'tcx>,
-    tcx: TyCtxt<'tcx>,
+    ctxt_creator: &mut PcgCtxtCreator<'tcx>,
     polonius: bool,
-    vis_dir: Option<&str>,
     callback: Option<&PcgCallback<'tcx>>,
 ) {
+    let tcx = ctxt_creator.tcx;
     let region_debug_name_overrides = if let Ok(lines) = source_lines(tcx, &body.body) {
         lines
             .iter()
@@ -343,18 +293,16 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
             region_printer.insert(region, name.to_string());
         }
     }
-    let item_name = tcx.def_path_str(def_id.to_def_id()).to_string();
-    let item_dir = vis_dir.map(|dir| format!("{dir}/{item_name}"));
-    let pcg_ctxt = PcgCtxt::new(&body.body, tcx, &bc);
-    let mut output = run_pcg(&pcg_ctxt, item_dir.as_deref());
+    let pcg_ctxt = ctxt_creator.new_ctxt(body, &bc);
+    let mut output = run_pcg(&pcg_ctxt);
     let ctxt = CompilerCtxt::new(&body.body, tcx, &bc);
 
     #[cfg(feature = "visualization")]
-    if let Some(dir_path) = &item_dir {
-        emit_borrowcheck_graphs(dir_path, ctxt);
+    if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
+        emit_borrowcheck_graphs(&dir_path, ctxt);
     }
 
-    emit_and_check_annotations(item_name, &mut output);
+    emit_and_check_annotations(pcg_ctxt.compiler_ctxt.body_def_path_str(), &mut output);
     if let Some(callback) = callback {
         callback(output);
     }
@@ -566,7 +514,7 @@ fn source_lines(tcx: TyCtxt<'_>, mir: &Body<'_>) -> Result<Vec<String>, SpanSnip
 
 #[cfg(feature = "visualization")]
 fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
-    dir_path: &str,
+    dir_path: &Path,
     ctxt: CompilerCtxt<'a, 'tcx, &'bc RustBorrowCheckerImpl<'a, 'tcx>>,
 ) {
     if let RustBorrowCheckerImpl::Polonius(ref bc) = *ctxt.bc() {
@@ -580,18 +528,18 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
                 };
                 let start_dot_graph = subset_at_location(location, true, ctxt);
                 let start_file_path =
-                    format!("{dir_path}/bc_facts_graph_{block_index:?}_{stmt_index}_start.dot");
+                    dir_path.join(format!("bc_facts_graph_{block_index:?}_{stmt_index}_start.dot"));
                 start_dot_graph
-                    .write_to_file(start_file_path.as_str())
+                    .write_to_file(&start_file_path)
                     .unwrap();
                 let mid_dot_graph = subset_at_location(location, false, ctxt);
                 let mid_file_path =
-                    format!("{dir_path}/bc_facts_graph_{block_index:?}_{stmt_index}_mid.dot");
-                mid_dot_graph.write_to_file(mid_file_path.as_str()).unwrap();
+                    dir_path.join(format!("bc_facts_graph_{block_index:?}_{stmt_index}_mid.dot"));
+                mid_dot_graph.write_to_file(&mid_file_path).unwrap();
 
-                let mut bc_facts_file = std::fs::File::create(format!(
-                    "{dir_path}/bc_facts_{block_index:?}_{stmt_index}.txt"
-                ))
+                let mut bc_facts_file = std::fs::File::create(dir_path.join(format!(
+                    "bc_facts_{block_index:?}_{stmt_index}.txt"
+                )))
                 .unwrap();
 
                 fn write_loans(
@@ -643,11 +591,11 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
             }
         }
         let dot_graph = subset_anywhere(ctxt);
-        let file_path = format!("{dir_path}/bc_facts_graph_anywhere.dot");
-        dot_graph.write_to_file(file_path.as_str()).unwrap();
+        let file_path = dir_path.join(format!("bc_facts_graph_anywhere.dot"));
+        dot_graph.write_to_file(&file_path).unwrap();
     }
 
     let region_inference_dot_graph = region_inference_outlives(ctxt);
-    let file_path = format!("{dir_path}/region_inference_outlives.dot");
+    let file_path = dir_path.join(format!("region_inference_outlives.dot"));
     std::fs::write(file_path, region_inference_dot_graph).unwrap();
 }

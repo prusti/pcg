@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     pcg::{
@@ -61,8 +63,8 @@ mod private {
     }
 }
 
-fn dot_filename_for(output_dir: &str, relative_filename: &str) -> String {
-    format!("{output_dir}/{relative_filename}")
+fn dot_filename_for(output_dir: &Path, relative_filename: &Path) -> PathBuf {
+    output_dir.join(relative_filename)
 }
 
 pub use private::*;

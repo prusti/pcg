@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{cell::RefCell, fs::create_dir_all, rc::Rc};
+use std::{cell::RefCell, fs::create_dir_all, path::{Path, PathBuf}, rc::Rc};
 
 use bit_set::BitSet;
 use derive_more::From;
@@ -14,30 +14,22 @@ use super::{
     domain::PcgDomain, visitor::PcgVisitor,
 };
 use crate::{
-    BodyAndBorrows,
-    error::PcgError,
-    pcg::{
-        BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
-        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
-        triple::TripleWalker,
-    },
-    pcg_validity_assert,
-    rustc_interface::{
+    error::PcgError, r#loop::{LoopAnalysis, PlaceUsages}, pcg::{
+        ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock, triple::TripleWalker, BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData, SymbolicCapabilityCtxt
+    }, pcg_validity_assert, rustc_interface::{
         borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
         dataflow::Analysis,
         index::IndexVec,
         middle::{
             mir::{
-                self, BasicBlock, Body, Location, Promoted, START_BLOCK, Statement, Terminator,
-                TerminatorEdges,
+                self, BasicBlock, Body, Location, Promoted, Statement, Terminator, TerminatorEdges, START_BLOCK
             },
             ty::{self, GenericArgsRef},
         },
-        mir_dataflow::{Forward, move_paths::MoveData},
-    },
-    utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, arena::PcgArenaRef, visitor::FallableVisitor,
-    },
+        mir_dataflow::{move_paths::MoveData, Forward},
+    }, utils::{
+        arena::PcgArenaRef, visitor::FallableVisitor, AnalysisLocation, CompilerCtxt, DataflowCtxt
+    }, BodyAndBorrows
 };
 
 #[derive(Clone)]
@@ -111,7 +103,7 @@ impl<'tcx> From<borrowck::BodyWithBorrowckFacts<'tcx>> for BodyWithBorrowckFacts
 }
 
 struct PCGEngineDebugData<'a> {
-    debug_output_dir: &'a str,
+    debug_output_dir: &'a Path,
     dot_graphs: IndexVec<BasicBlock, &'a RefCell<PcgDotGraphsForBlock>>,
 }
 
@@ -179,6 +171,14 @@ pub(crate) enum AnalysisObject<'mir, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
+    pub fn loop_analysis(&self) -> &LoopAnalysis {
+        &self.body_analysis.loop_analysis
+    }
+
+    pub fn loop_place_usages(&self, block: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
+        self.body_analysis.loop_place_usage_analysis.get_used_places(block)
+    }
+
     fn dot_graphs(&self, block: BasicBlock) -> Option<PcgBlockDebugVisualizationGraphs<'a>> {
         self.debug_graphs.as_ref().map(|data| {
             PcgBlockDebugVisualizationGraphs::new(
@@ -289,13 +289,13 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
         move_data: &'a MoveData<'tcx>,
         arena: PcgArena<'a>,
-        debug_output_dir: Option<&str>,
+        debug_output_dir: Option<PathBuf>,
     ) -> Self {
         let debug_data = debug_output_dir.map(|dir_path| {
-            if std::path::Path::new(&dir_path).exists() {
-                std::fs::remove_dir_all(dir_path).expect("Failed to delete directory contents");
+            if dir_path.exists() {
+                std::fs::remove_dir_all(&dir_path).expect("Failed to delete directory contents");
             }
-            create_dir_all(dir_path).expect("Failed to create directory for DOT files");
+            create_dir_all(&dir_path).expect("Failed to create directory for DOT files");
             let dot_graphs: IndexVec<BasicBlock, &'a RefCell<PcgDotGraphsForBlock>> =
                 IndexVec::from_fn_n(
                     |b| {
@@ -306,7 +306,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
                     ctxt.body().basic_blocks.len(),
                 );
             PCGEngineDebugData {
-                debug_output_dir: arena.alloc(dir_path.to_string()),
+                debug_output_dir: arena.alloc(dir_path),
                 dot_graphs,
             }
         });

@@ -25,7 +25,7 @@ use crate::{
 use std::{
     collections::HashSet,
     fs::File,
-    io::{self},
+    io::{self}, path::Path,
 };
 
 use dot::escape_html;
@@ -380,12 +380,12 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     pcg: PcgRef<'_, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
-    file_path: &str,
+    file_path: &Path,
 ) -> io::Result<()> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
     let drawer = GraphDrawer::new(File::create(file_path).unwrap_or_else(|e| {
-        panic!("Failed to create file at path: {file_path}: {e}");
+        panic!("Failed to create file at path: {:?}: {e}", file_path);
     }));
     drawer.draw(graph)
 }

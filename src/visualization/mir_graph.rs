@@ -5,7 +5,7 @@ use crate::{
 use serde_derive::Serialize;
 use std::{
     fs::File,
-    io::{self},
+    io::{self}, path::Path,
 };
 
 use rustc_interface::middle::mir::{
@@ -444,7 +444,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
 
     MirGraph { nodes, edges }
 }
-pub(crate) fn generate_json_from_mir(path: &str, ctxt: CompilerCtxt<'_, '_>) -> io::Result<()> {
+pub(crate) fn generate_json_from_mir(path: &Path, ctxt: CompilerCtxt<'_, '_>) -> io::Result<()> {
     let mir_graph = mk_mir_graph(ctxt);
     let mut file = File::create(path)?;
     serde_json::to_writer(&mut file, &mir_graph)?;

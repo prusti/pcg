@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::{Path, PathBuf}};
 
 use serde_derive::Serialize;
 
@@ -13,17 +13,21 @@ use crate::{
     borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::TyVarianceVisitor},
     owned_pcg::RepackGuide,
     pcg::{
-        ctxt::{AnalysisCtxt, HasSettings}, DataflowStmtPhase, EvalStmtPhase
+        DataflowStmtPhase, EvalStmtPhase,
+        ctxt::{AnalysisCtxt, HasSettings},
     },
     pcg_validity_assert,
     rustc_interface::{
-        hir::def_id::LocalDefId, index::Idx, middle::{
+        FieldIdx, PlaceTy, RustBitSet,
+        hir::def_id::LocalDefId,
+        index::Idx,
+        middle::{
             mir::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
                 PlaceElem, ProjectionElem, VarDebugInfoContents,
             },
             ty::{self, TyCtxt, TyKind, TypeVisitable},
-        }, FieldIdx, PlaceTy, RustBitSet
+        },
     },
     utils::validity::HasValidityCheck,
     validity_checks_enabled,
@@ -177,13 +181,13 @@ pub(crate) enum ToGraph {
 
 #[derive(Clone, Serialize, Default, Debug)]
 pub(crate) struct StmtGraphs {
-    at_phase: Vec<(DataflowStmtPhase, String)>,
-    actions: BTreeMap<EvalStmtPhase, Vec<String>>,
+    at_phase: Vec<(DataflowStmtPhase, PathBuf)>,
+    actions: BTreeMap<EvalStmtPhase, Vec<PathBuf>>,
 }
 
 impl StmtGraphs {
-    pub(crate) fn relative_filename(location: mir::Location, to_graph: ToGraph) -> String {
-        match to_graph {
+    pub(crate) fn relative_filename(location: mir::Location, to_graph: ToGraph) -> PathBuf {
+        let path_str = match to_graph {
             ToGraph::Phase(phase) => {
                 format!(
                     "{:?}_stmt_{}_{}.dot",
@@ -198,10 +202,11 @@ impl StmtGraphs {
                     location.block, location.statement_index, phase, action_idx,
                 )
             }
-        }
+        };
+        PathBuf::from(path_str)
     }
 
-    pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: String) {
+    pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: PathBuf) {
         self.at_phase.push((phase, filename));
     }
 
@@ -209,7 +214,7 @@ impl StmtGraphs {
         &mut self,
         phase: EvalStmtPhase,
         action_idx: usize,
-        filename: String,
+        filename: PathBuf,
     ) {
         let within_phase = self.actions.entry(phase).or_default();
         assert_eq!(
@@ -324,6 +329,10 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         T: Copy,
     {
         self.bc
+    }
+
+    pub(crate) fn body_def_path_str(&self) -> String {
+        self.tcx.def_path_str(self.def_id())
     }
 
     pub fn local_place(&self, var_name: &str) -> Option<Place<'tcx>> {

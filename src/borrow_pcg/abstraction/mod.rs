@@ -19,8 +19,7 @@ use crate::{
         span::def_id::{DefId, LocalDefId},
     },
     utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, HasTyCtxt, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        self, CompilerCtxt, HasTyCtxt, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -281,7 +280,7 @@ impl FunctionShape {
         Self(diff)
     }
 
-    pub fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
+    pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
         shape_data: &ShapeData,
         ctxt: ShapeData::Ctxt,
     ) -> Self {

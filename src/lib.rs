@@ -26,6 +26,8 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
+use std::{borrow::Cow, path::PathBuf};
+
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
 pub mod pcg;
@@ -269,6 +271,8 @@ impl<'tcx> BodyAndBorrows<'tcx> for borrowck::BodyWithBorrowckFacts<'tcx> {
 pub struct PcgCtxtCreator<'tcx> {
     tcx: TyCtxt<'tcx>,
     arena: bumpalo::Bump,
+    settings: PcgSettings,
+    debug_visualization_identifiers: Vec<String>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -276,6 +280,8 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         Self {
             tcx,
             arena: bumpalo::Bump::new(),
+            debug_visualization_identifiers: vec![],
+            settings: PcgSettings::new(),
         }
     }
 
@@ -283,21 +289,44 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         self.arena.alloc(val)
     }
 
-    pub fn new_nll_ctxt<'slf: 'mir, 'mir>(
-        &'slf self,
-        body: &'mir impl BodyAndBorrows<'tcx>,
-    ) -> &'mir PcgCtxt<'mir, 'tcx> {
-        let bc: &'mir NllBorrowCheckerImpl<'mir, 'tcx> =
-            self.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
-        let pcg_ctxt: PcgCtxt<'mir, 'tcx> = PcgCtxt::new(body.body(), self.tcx, bc);
+    pub fn new_ctxt<'slf: 'a, 'a>(
+        &'slf mut self,
+        body: &'a impl BodyAndBorrows<'tcx>,
+        bc: &'a impl BorrowCheckerInterface<'tcx>,
+    ) -> &'a PcgCtxt<'a, 'tcx> {
+        let pcg_ctxt: PcgCtxt<'a, 'tcx> =
+            PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
+            self.debug_visualization_identifiers.push(identifier);
+        }
         self.alloc(pcg_ctxt)
+    }
+
+    pub fn new_nll_ctxt<'slf: 'a, 'a>(
+        &'slf mut self,
+        body: &'a impl BodyAndBorrows<'tcx>,
+    ) -> &'a PcgCtxt<'a, 'tcx> {
+        let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
+        let pcg_ctxt: PcgCtxt<'a, 'tcx> =
+            PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
+            self.debug_visualization_identifiers.push(identifier);
+        }
+        self.alloc(pcg_ctxt)
+    }
+
+    pub(crate) fn write_debug_visualization_metadata(self) {
+        if !self.debug_visualization_identifiers.is_empty() {
+            self.settings
+                .write_debug_visualization_metadata(&self.debug_visualization_identifiers);
+        }
     }
 }
 
-pub struct PcgCtxt<'mir, 'tcx> {
-    compiler_ctxt: CompilerCtxt<'mir, 'tcx>,
+pub struct PcgCtxt<'a, 'tcx> {
+    compiler_ctxt: CompilerCtxt<'a, 'tcx>,
     move_data: MoveData<'tcx>,
-    settings: PcgSettings,
+    settings: Cow<'a, PcgSettings>,
     pub(crate) arena: bumpalo::Bump,
 }
 
@@ -330,22 +359,68 @@ fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx
     MoveData::gather_moves(body, tcx, |_| true)
 }
 
-impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
+impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     pub fn new<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
-        body: &'mir Body<'tcx>,
+        body: &'a Body<'tcx>,
         tcx: TyCtxt<'tcx>,
-        bc: &'mir BC,
+        bc: &'a BC,
+    ) -> Self {
+        Self::with_settings(body, tcx, bc, Cow::Owned(PcgSettings::new()))
+    }
+
+    pub fn with_settings<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
+        body: &'a Body<'tcx>,
+        tcx: TyCtxt<'tcx>,
+        bc: &'a BC,
+        settings: Cow<'a, PcgSettings>,
     ) -> Self {
         let ctxt = CompilerCtxt::new(body, tcx, bc.as_dyn());
         Self {
             compiler_ctxt: ctxt,
             move_data: gather_moves(ctxt.body(), ctxt.tcx()),
-            settings: PcgSettings::new(),
+            settings,
             arena: bumpalo::Bump::new(),
         }
     }
+
+    pub fn update_debug_visualization_metadata(&self) {
+        eprintln!("Updating debug visualization metadata");
+        if let Some(identifier) = self.visualization_output_identifier() {
+            eprintln!(
+                "Writing new debug visualization metadata for {}",
+                identifier
+            );
+            self.settings
+                .write_new_debug_visualization_metadata(&identifier);
+        }
+    }
+
     pub fn body_def_id(&self) -> LocalDefId {
         self.compiler_ctxt.def_id()
+    }
+
+    pub(crate) fn visualization_output_identifier(&self) -> Option<String> {
+        if self.settings.visualization {
+            Some(
+                self.compiler_ctxt
+                    .tcx()
+                    .def_path_str(self.compiler_ctxt.def_id()),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn visualization_output_path(&self) -> Option<PathBuf> {
+        if self.settings.visualization {
+            Some(
+                self.settings
+                    .visualization_data_dir
+                    .join(self.visualization_output_identifier()?),
+            )
+        } else {
+            None
+        }
     }
 }
 
@@ -354,16 +429,12 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
 /// # Arguments
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
-/// * `visualization_output_path` - If provided, the analysis will output debug visualization files to this path.
-pub fn run_pcg<'a, 'tcx>(
-    pcg_ctxt: &'a PcgCtxt<'_, 'tcx>,
-    visualization_output_path: Option<&str>,
-) -> PcgOutput<'a, 'tcx> {
+pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
     let engine = PcgEngine::new(
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
         &pcg_ctxt.arena,
-        visualization_output_path,
+        pcg_ctxt.visualization_output_path(),
     );
     let body = pcg_ctxt.compiler_ctxt.body();
     let tcx = pcg_ctxt.compiler_ctxt.tcx();
@@ -374,14 +445,14 @@ pub fn run_pcg<'a, 'tcx>(
         let state = analysis.entry_state_for_block_mut(block);
         state.complete(ctxt);
     }
-    if let Some(dir_path) = &visualization_output_path {
+    if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
         for block in body.basic_blocks.indices() {
             let state = analysis.entry_set_for_block(block);
             if state.is_bottom() {
                 continue;
             }
             let block_iterations_json_file =
-                format!("{}/block_{}_iterations.json", dir_path, block.index());
+                dir_path.join(format!("block_{}_iterations.json", block.index()));
             let ctxt = analysis.get_analysis().analysis_ctxt(block);
             if let Some(graphs) = ctxt.graphs {
                 graphs
@@ -417,17 +488,17 @@ pub fn run_pcg<'a, 'tcx>(
     }
 
     #[cfg(feature = "visualization")]
-    if let Some(dir_path) = visualization_output_path {
-        let edge_legend_file_path = format!("{dir_path}/edge_legend.dot");
+    if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
+        let edge_legend_file_path = dir_path.join("edge_legend.dot");
         let edge_legend_graph = crate::visualization::legend::generate_edge_legend().unwrap();
         std::fs::write(&edge_legend_file_path, edge_legend_graph)
             .expect("Failed to write edge legend");
 
-        let node_legend_file_path = format!("{dir_path}/node_legend.dot");
+        let node_legend_file_path = dir_path.join("node_legend.dot");
         let node_legend_graph = crate::visualization::legend::generate_node_legend().unwrap();
         std::fs::write(&node_legend_file_path, node_legend_graph)
             .expect("Failed to write node legend");
-        generate_json_from_mir(&format!("{dir_path}/mir.json"), pcg_ctxt.compiler_ctxt)
+        generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
             .expect("Failed to generate JSON from MIR");
 
         // Iterate over each statement in the MIR
@@ -443,24 +514,22 @@ pub fn run_pcg<'a, 'tcx>(
             let pcs_block = pcs_block_option.unwrap();
             for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
                 let data = PCGStmtVisualizationData::new(statement);
-                let pcg_data_file_path = format!(
-                    "{}/block_{}_stmt_{}_pcg_data.json",
-                    &dir_path,
+                let pcg_data_file_path = dir_path.join(format!(
+                    "block_{}_stmt_{}_pcg_data.json",
                     block.index(),
                     statement_index
-                );
+                ));
                 let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");
             }
             for succ in pcs_block.terminator.succs {
                 let data = PcgSuccessorVisualizationData::from(&succ);
-                let pcg_data_file_path = format!(
-                    "{}/block_{}_term_block_{}_pcg_data.json",
-                    &dir_path,
+                let pcg_data_file_path = dir_path.join(format!(
+                    "block_{}_term_block_{}_pcg_data.json",
                     block.index(),
                     succ.block().index()
-                );
+                ));
                 let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");

@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use crate::{
     pcg::{DataflowStmtPhase, EvalStmtPhase},
     pcg_validity_assert,
@@ -20,7 +22,7 @@ impl PcgDotGraphsForBlock {
         }
     }
 
-    pub(crate) fn write_json_file(&self, filename: &str) {
+    pub(crate) fn write_json_file(&self, filename: &Path) {
         std::fs::write(
             filename,
             serde_json::to_string_pretty(&self.graphs).unwrap(),
@@ -33,7 +35,7 @@ impl PcgDotGraphsForBlock {
         location: mir::Location,
         phase: EvalStmtPhase,
         action_idx: usize,
-        filename: String,
+        filename: PathBuf,
     ) {
         pcg_validity_assert!(location.block == self.block);
         self.graphs[location.statement_index].insert_for_action(phase, action_idx, filename);
@@ -43,7 +45,7 @@ impl PcgDotGraphsForBlock {
         &mut self,
         statement_index: usize,
         phase: DataflowStmtPhase,
-        filename: String,
+        filename: PathBuf,
     ) {
         self.graphs[statement_index].insert_for_phase(phase, filename);
     }

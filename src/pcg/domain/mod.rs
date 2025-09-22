@@ -5,9 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    cell::RefCell,
-    fmt::{Debug, Formatter},
-    rc::Rc,
+    cell::RefCell, fmt::{Debug, Formatter}, path::Path, rc::Rc
 };
 
 use derive_more::From;
@@ -57,14 +55,14 @@ pub struct DataflowIterationDebugInfo {
 pub(crate) struct PcgBlockDebugVisualizationGraphs<'a> {
     #[allow(dead_code)]
     block: BasicBlock,
-    pub(crate) dot_output_dir: &'a str,
+    pub(crate) dot_output_dir: &'a Path,
     pub(crate) dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
 }
 
 impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
     pub(crate) fn new(
         block: BasicBlock,
-        dot_output_dir: &'a str,
+        dot_output_dir: &'a Path,
         dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
     ) -> Self {
         Self {
@@ -117,7 +115,8 @@ impl<Capabilities: PartialEq> PartialEq for PcgDomainData<'_, '_, Capabilities> 
 pub(crate) struct BodyAnalysis<'a, 'tcx> {
     pub(crate) definitely_initialized: DefinitelyInitialized<'a, 'tcx>,
     pub(crate) place_liveness: PlaceLiveness<'a, 'tcx>,
-    pub(crate) loop_analysis: LoopPlaceUsageAnalysis<'tcx>,
+    pub(crate) loop_place_usage_analysis: LoopPlaceUsageAnalysis<'tcx>,
+    pub(crate) loop_analysis: LoopAnalysis,
 }
 
 impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
@@ -125,24 +124,25 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         let definitely_initialized = DefinitelyInitialized::new(ctxt.tcx(), ctxt.body(), move_data);
         let place_liveness = PlaceLiveness::new(ctxt);
         let loop_analysis = LoopAnalysis::find_loops(ctxt.body());
-        let loop_place_analysis =
+        let loop_place_usage_analysis =
             LoopPlaceUsageAnalysis::new(ctxt.tcx(), ctxt.body(), &loop_analysis);
         Self {
             definitely_initialized,
             place_liveness,
-            loop_analysis: loop_place_analysis,
+            loop_analysis,
+            loop_place_usage_analysis,
         }
     }
 
     pub(crate) fn is_loop_head(&self, block: BasicBlock) -> bool {
-        self.loop_analysis.is_loop_head(block)
+        self.loop_place_usage_analysis.is_loop_head(block)
     }
 
     pub(crate) fn get_places_used_in_loop(
         &self,
         loop_head: BasicBlock,
     ) -> Option<&PlaceUsages<'tcx>> {
-        self.loop_analysis.get_used_places(loop_head)
+        self.loop_place_usage_analysis.get_used_places(loop_head)
     }
 
     pub(crate) fn is_live_and_initialized_at(

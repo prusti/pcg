@@ -1,10 +1,17 @@
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError}, borrow_pcg_edge::{BlockedNode, LocalNode}, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::AbstractionBlockEdge, edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate}, has_pcs_elem::{
+        FunctionData,
+        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError},
+        borrow_pcg_edge::{BlockedNode, LocalNode},
+        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
+        edge::abstraction::AbstractionBlockEdge,
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
-        }, region_projection::{LifetimeProjectionLabel, PcgRegion}, FunctionData
+        },
+        region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNode,
@@ -15,10 +22,10 @@ use crate::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
-        span::{def_id::LocalDefId, Span},
+        span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::{display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt},
+    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
 use crate::coupling::HyperEdge;
@@ -31,8 +38,6 @@ pub struct FunctionDataShapeDataSource<'tcx> {
     output_ty: ty::Ty<'tcx>,
     outlives: OutlivesEnvironment<'tcx>,
 }
-
-
 
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::before(2025-05-24)]
@@ -56,8 +61,17 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
         tracing::debug!("Normalized sig: {:#?}", sig);
-        let outlives =
-            OutlivesEnvironment::new(&infcx, data.caller_def_id.unwrap(), param_env, vec![]);
+        let outlives = match data.caller_def_id {
+            Some(caller_def_id) => {
+                OutlivesEnvironment::new(&infcx, caller_def_id, param_env, vec![])
+            }
+            None => OutlivesEnvironment::from_normalized_bounds(
+                param_env,
+                vec![],
+                vec![],
+                Default::default(),
+            ),
+        };
         Ok(Self {
             input_tys: sig.inputs().to_vec(),
             output_ty: sig.output(),
@@ -67,17 +81,8 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 }
 
 impl<'tcx> FunctionData<'tcx> {
-    pub(crate) fn fn_sig(
-        &self,
-        tcx: ty::TyCtxt<'tcx>,
-    ) -> ty::EarlyBinder<'tcx, ty::Binder<'tcx, ty::FnSig<'tcx>>> {
-        tcx.fn_sig(self.def_id)
-    }
 
-    pub fn instantiated_fn_sig(
-        &self,
-        tcx: ty::TyCtxt<'tcx>,
-    ) -> ty::FnSig<'tcx> {
+    pub fn instantiated_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, self.substs);
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
