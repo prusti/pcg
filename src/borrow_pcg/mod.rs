@@ -16,5 +16,6 @@ pub(crate) mod visitor;
 
 pub use abstraction::{
     FunctionData, FunctionShape, FunctionShapeInput, FunctionShapeNode, FunctionShapeOutput,
+    MakeFunctionShapeError, FunctionShapeCoupledEdges,
 };
 pub use domain::{AbstractionInputTarget, AbstractionOutputTarget};

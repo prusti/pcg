@@ -1,42 +1,29 @@
-use derive_more::{Deref, IntoIterator};
+use derive_more::{Deref, From, IntoIterator};
 use itertools::Itertools;
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        AbstractionInputTarget, AbstractionOutputTarget,
-        borrow_pcg_edge::BorrowPcgEdge,
-        domain::{
+        borrow_pcg_edge::BorrowPcgEdge, domain::{
             FunctionCallAbstractionInput, FunctionCallAbstractionOutput, LoopAbstractionInput,
             LoopAbstractionOutput,
-        },
-        edge::{
+        }, edge::{
             abstraction::{
-                AbstractionBlockEdge, AbstractionEdge, FunctionCallOrLoop,
                 function::{
                     FunctionCallAbstraction, FunctionCallAbstractionEdge,
                     FunctionCallAbstractionEdgeMetadata,
-                },
-                r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata},
+                }, r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata}, AbstractionBlockEdge, AbstractionEdge, FunctionCallOrLoop
             },
             kind::BorrowPcgEdgeKind,
-        },
-        edge_data::{EdgeData, LabelEdgePlaces},
-        graph::{BorrowsGraph, Conditioned},
-        has_pcs_elem::{
+        }, edge_data::{EdgeData, LabelEdgePlaces}, graph::{BorrowsGraph, Conditioned}, has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext,
-        },
-        region_projection::LifetimeProjectionLabel,
-        validity_conditions::ValidityConditions,
+        }, region_projection::LifetimeProjectionLabel, validity_conditions::ValidityConditions, AbstractionInputTarget, AbstractionOutputTarget, MakeFunctionShapeError
     },
     pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
-        CompilerCtxt,
-        data_structures::{HashMap, HashSet},
-        display::DisplayWithCompilerCtxt,
-        validity::HasValidityCheck,
+        data_structures::{HashMap, HashSet}, display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt
     },
 };
 use std::hash::Hash;
@@ -88,6 +75,7 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
     pub fn map_into<T>(self, f: impl FnOnce(Vec<InputNode>, Vec<OutputNode>) -> T) -> T {
         f(self.inputs, self.outputs)
     }
+
     pub fn into_tuple(self) -> (Vec<InputNode>, Vec<OutputNode>) {
         (self.inputs, self.outputs)
     }
@@ -142,7 +130,13 @@ impl<SourceData> CouplingError<SourceData> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
+pub enum CoupleAbstractionError {
+    CoupleInput(CoupleInputError),
+    MakeFunctionShape(MakeFunctionShapeError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CoupleInputError;
 
 impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>

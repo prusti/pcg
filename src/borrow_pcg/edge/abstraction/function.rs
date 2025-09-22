@@ -1,17 +1,10 @@
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        FunctionData,
-        abstraction::{FunctionShape, FunctionShapeDataSource},
-        borrow_pcg_edge::{BlockedNode, LocalNode},
-        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
-        edge::abstraction::AbstractionBlockEdge,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
-        has_pcs_elem::{
+        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError}, borrow_pcg_edge::{BlockedNode, LocalNode}, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::AbstractionBlockEdge, edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate}, has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
-        },
-        region_projection::{LifetimeProjectionLabel, PcgRegion},
+        }, region_projection::{LifetimeProjectionLabel, PcgRegion}, FunctionData
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNode,
@@ -22,10 +15,10 @@ use crate::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
-        span::{Span, def_id::LocalDefId},
+        span::{def_id::LocalDefId, Span},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt},
 };
 
 use crate::coupling::HyperEdge;
@@ -33,19 +26,13 @@ use crate::coupling::HyperEdge;
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
 
-pub(crate) struct FunctionDataShapeDataSource<'tcx> {
+pub struct FunctionDataShapeDataSource<'tcx> {
     input_tys: Vec<ty::Ty<'tcx>>,
     output_ty: ty::Ty<'tcx>,
     outlives: OutlivesEnvironment<'tcx>,
 }
 
-#[allow(unused)]
-#[derive(Debug)]
-pub enum MakeFunctionShapeError {
-    ContainsAliasType,
-    UnsupportedRustVersion,
-    NoFunctionData,
-}
+
 
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::before(2025-05-24)]
@@ -61,10 +48,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
         data: FunctionData<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        tracing::debug!("Base Sig: {:#?}", data.fn_sig(tcx));
         let sig = data.instantiated_fn_sig(tcx);
-        tracing::debug!("Instantiated Sig: {:#?}", sig);
-        let sig = tcx.liberate_late_bound_regions(data.def_id, sig);
         tracing::debug!("Liberated Sig: {:#?}", sig);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
         let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
@@ -90,11 +74,12 @@ impl<'tcx> FunctionData<'tcx> {
         tcx.fn_sig(self.def_id)
     }
 
-    pub(crate) fn instantiated_fn_sig(
+    pub fn instantiated_fn_sig(
         &self,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> ty::Binder<'tcx, ty::FnSig<'tcx>> {
-        tcx.fn_sig(self.def_id).instantiate(tcx, self.substs)
+    ) -> ty::FnSig<'tcx> {
+        let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, self.substs);
+        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
 }
 
@@ -218,6 +203,10 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
         self.function_data.as_ref().map(|f| f.def_id)
     }
 
+    pub fn function_data(&self) -> Option<FunctionData<'tcx>> {
+        self.function_data
+    }
+
     pub fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
@@ -227,7 +216,7 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
             .as_ref()
             .ok_or(MakeFunctionShapeError::NoFunctionData)?;
         Ok(FunctionShape::new(
-            &function_data.shape(ctxt.tcx)?,
+            &function_data.shape_data_source(ctxt.tcx)?,
             ctxt.tcx,
         ))
     }

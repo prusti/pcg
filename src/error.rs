@@ -1,4 +1,6 @@
-use crate::utils::PANIC_ON_ERROR;
+use derive_more::From;
+
+use crate::{coupling::CoupleInputError, utils::PANIC_ON_ERROR};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PcgError {
@@ -62,7 +64,7 @@ impl From<PcgInternalError> for PcgError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum PcgUnsupportedError {
     AssignBorrowToNonReferenceType,
     DerefUnsafePtr,
@@ -72,4 +74,5 @@ pub enum PcgUnsupportedError {
     IndexingNonIndexableType,
     InlineAssembly,
     MaxNodesExceeded,
+    Coupling(CoupleInputError),
 }

@@ -6,13 +6,11 @@ use itertools::Itertools;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        edge::abstraction::{
-            AbstractionBlockEdge,
-            function::{FunctionDataShapeDataSource, MakeFunctionShapeError},
-        },
+        edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
+    coupling::CoupleAbstractionError,
     rustc_interface::{
         middle::{
             mir,
@@ -57,7 +55,7 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
     }
 }
 
-pub trait FunctionShapeDataSource<'tcx> {
+pub(crate) trait FunctionShapeDataSource<'tcx> {
     type Ctxt: HasTyCtxt<'tcx> + Copy;
     fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>>;
     fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
@@ -139,6 +137,7 @@ impl FunctionShapeInput {
 
 pub type FunctionShapeOutput = LifetimeProjection<'static, ArgIdxOrResult>;
 
+/// Either an input or output in the shape of the function.
 pub type FunctionShapeNode = LifetimeProjection<'static, ArgIdxOrResult>;
 
 impl FunctionShapeNode {
@@ -170,7 +169,7 @@ impl FunctionShape {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         let data = FunctionData::new(def_id, substs, caller_def_id);
-        Ok(Self::new(&data.shape(tcx)?, tcx))
+        Ok(Self::new(&data.shape_data_source(tcx)?, tcx))
     }
 }
 
@@ -179,6 +178,13 @@ pub struct FunctionData<'tcx> {
     pub(crate) def_id: DefId,
     pub(crate) substs: GenericArgsRef<'tcx>,
     pub(crate) caller_def_id: Option<LocalDefId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MakeFunctionShapeError {
+    ContainsAliasType,
+    UnsupportedRustVersion,
+    NoFunctionData,
 }
 
 impl<'tcx> FunctionData<'tcx> {
@@ -193,11 +199,43 @@ impl<'tcx> FunctionData<'tcx> {
             caller_def_id,
         }
     }
-    pub fn shape(
+
+    pub fn param_env(self, tcx: ty::TyCtxt<'tcx>) -> ty::ParamEnv<'tcx> {
+        let def_id = self
+            .caller_def_id
+            .map(|local_def_id| local_def_id.to_def_id())
+            .unwrap_or(self.def_id);
+        tcx.param_env(def_id)
+    }
+
+    pub fn substs(self) -> GenericArgsRef<'tcx> {
+        self.substs
+    }
+
+    pub fn def_id(self) -> DefId {
+        self.def_id
+    }
+
+    pub(crate) fn shape_data_source(
         self,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError> {
         FunctionDataShapeDataSource::new(self, tcx)
+    }
+
+    pub fn shape(self, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError> {
+        Ok(FunctionShape::new(&self.shape_data_source(tcx)?, tcx))
+    }
+
+    pub fn coupled_edges(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError>
+    {
+        let shape = self
+            .shape(tcx)
+            .map_err(CoupleAbstractionError::MakeFunctionShape)?;
+        shape.coupled().map_err(CoupleAbstractionError::CoupleInput)
     }
 }
 
@@ -278,12 +316,9 @@ impl FunctionShape {
         FunctionShape(shape)
     }
 
-    pub fn coupled(
-        &self,
-    ) -> std::result::Result<
-        CoupledEdgesData<FunctionShapeInput, FunctionShapeOutput>,
-        CoupleInputError,
-    > {
+    pub fn coupled(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
         CoupledEdgesData::new(self.0.iter().copied())
     }
 }
+
+pub type FunctionShapeCoupledEdges = CoupledEdgesData<FunctionShapeInput, FunctionShapeOutput>;

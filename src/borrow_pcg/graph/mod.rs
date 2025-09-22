@@ -14,6 +14,7 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
     },
+    coupling::PcgCoupledEdgeKind,
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike},
@@ -134,6 +135,17 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub fn coupled_edges(&self) -> HashSet<Conditioned<PcgCoupledEdgeKind<'tcx>>> {
+        self.edges
+            .iter()
+            .filter_map(|(kind, conditions)| match kind {
+                BorrowPcgEdgeKind::Coupled(coupled) => {
+                    Some(Conditioned::new(coupled.clone(), conditions.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
     pub fn into_coupled(
         mut self,
     ) -> BorrowsGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>> {
