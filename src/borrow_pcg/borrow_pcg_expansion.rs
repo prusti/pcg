@@ -24,21 +24,14 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
-        obtain::ObtainType,
-        place_capabilities::{BlockType, PlaceCapabilitiesReader},
+        obtain::ObtainType, place_capabilities::{BlockType, PlaceCapabilitiesReader}, CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability
     },
     pcg_validity_assert,
     rustc_interface::{
-        FieldIdx,
-        middle::{mir::PlaceElem, ty},
+        middle::{mir::PlaceElem, ty}, FieldIdx
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
-        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
-        validity::HasValidityCheck,
+        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace}, validity::HasValidityCheck, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable
     },
 };
 
@@ -369,14 +362,14 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         &self.expansion
     }
 
-    pub(crate) fn new<'a>(
+    pub(crate) fn new<'a, Ctxt>(
         base: P,
         expansion: PlaceExpansion<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
-        P: Ord + HasPlace<'tcx>,
+        P: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());

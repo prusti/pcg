@@ -30,8 +30,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
-        VALIDITY_CHECKS_WARN_ONLY,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
         display::DisplayWithCompilerCtxt,
         json::ToJsonWithCompilerCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
@@ -203,11 +203,8 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
-impl<'tcx, T: HasTy<'tcx>> HasTy<'tcx> for PlaceOrConst<'tcx, T> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
             PlaceOrConst::Place(p) => p.rust_ty(ctxt),
             PlaceOrConst::Const(c) => c.ty(),
@@ -633,25 +630,20 @@ impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'
     }
 }
 
-pub trait HasTy<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a;
+pub trait HasTy<'tcx, Ctxt> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
 
-    fn regions<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> IndexVec<RegionIdx, PcgRegion>
-    where
-        'tcx: 'a,
-    {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
         extract_regions(self.rust_ty(ctxt))
     }
 
     fn lifetime_projections<'a>(
         self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
     where
         Self: Sized + Copy + std::fmt::Debug,
-        'tcx: 'a,
+        Ctxt: HasCompilerCtxt<'a, 'tcx>,
     {
         self.regions(ctxt)
             .into_iter()
@@ -662,7 +654,7 @@ pub trait HasTy<'tcx> {
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
 pub trait PcgLifetimeProjectionBaseLike<'tcx>:
-    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq + HasTy<'tcx>
+    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx>;
 }
@@ -787,6 +779,24 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>>
     }
 }
 
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + PlaceProjectable<'tcx>> PlaceProjectable<'tcx>
+    for LifetimeProjection<'tcx, T>
+{
+    fn project_deeper<'a>(
+        &self,
+        elem: PlaceElem<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Result<Self, PcgError> {
+        LifetimeProjection::new(
+            self.region(ctxt),
+            self.base.project_deeper(elem, ctxt)?,
+            self.label,
+            ctxt,
+        )
+        .map_err(|e| e.into())
+    }
+}
+
 impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
     for LifetimeProjection<'tcx, T>
 {
@@ -796,24 +806,6 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
 
     fn place_mut(&mut self) -> &mut Place<'tcx> {
         self.base.place_mut()
-    }
-
-    fn project_deeper<'a, C: Copy>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx, C>,
-    ) -> Result<Self, PcgError>
-    where
-        'tcx: 'a,
-        Self: Clone + HasValidityCheck<'a, 'tcx>,
-    {
-        LifetimeProjection::new(
-            self.region(repacker),
-            self.base.project_deeper(elem, repacker)?,
-            self.label,
-            repacker,
-        )
-        .map_err(|e| e.into())
     }
 
     fn iter_projections<C: Copy>(
@@ -883,7 +875,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     ) -> Result<Self, PcgInternalError>
     where
         'tcx: 'a,
-        T: HasTy<'tcx>,
+        T: HasTy<'tcx, Ctxt>,
     {
         let region_idx = base
             .regions(ctxt)

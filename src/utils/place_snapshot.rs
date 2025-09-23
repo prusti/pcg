@@ -146,10 +146,8 @@ pub struct LabelledPlace<'tcx> {
     pub(crate) at: SnapshotLocation,
 }
 
-impl<'tcx> HasTy<'tcx> for LabelledPlace<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>
     {
         self.place.ty(ctxt).ty
     }

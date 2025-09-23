@@ -20,7 +20,7 @@ use crate::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
+        edge_data::{edgedata_enum, LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
         },
@@ -31,10 +31,7 @@ use crate::{
     pcg::PcgNode,
     rustc_interface,
     utils::{
-        CompilerCtxt, HasPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        validity::HasValidityCheck,
+        display::DisplayWithCompilerCtxt, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, validity::HasValidityCheck, CompilerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable
     },
 };
 
@@ -237,18 +234,18 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
         }
     }
 
-    fn project_deeper<'a, C: Copy>(
+}
+
+impl<'tcx> PlaceProjectable<'tcx> for LocalNode<'tcx> {
+    fn project_deeper<'a>(
         &self,
-        elem: mir::PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx, C>,
-    ) -> Result<Self, PcgError>
-    where
-        'tcx: 'a,
-    {
+        elem: PlaceElem<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Result<Self, PcgError> {
         Ok(match self {
-            LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, repacker)?),
+            LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, ctxt)?),
             LocalNode::LifetimeProjection(rp) => {
-                LocalNode::LifetimeProjection(rp.project_deeper(elem, repacker)?)
+                LocalNode::LifetimeProjection(rp.project_deeper(elem, ctxt)?)
             }
         })
     }

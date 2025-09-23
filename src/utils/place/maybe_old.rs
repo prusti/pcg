@@ -11,13 +11,10 @@ use crate::{
     error::PcgError,
     pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
     rustc_interface::{
-        PlaceTy,
-        middle::{mir, mir::PlaceElem, ty},
+        middle::{mir::{self, PlaceElem}, ty}, PlaceTy
     },
     utils::{
-        CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, SnapshotLocation,
-        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt,
-        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
+        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, maybe_remote::MaybeRemotePlace, validity::HasValidityCheck, CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable, SnapshotLocation
     },
 };
 use derive_more::{From, TryInto};
@@ -32,11 +29,8 @@ pub enum MaybeLabelledPlace<'tcx> {
     Labelled(LabelledPlace<'tcx>),
 }
 
-impl<'tcx> HasTy<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.place().ty(ctxt).ty
     }
 }
@@ -153,6 +147,23 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
+impl<'tcx> PlaceProjectable<'tcx> for MaybeLabelledPlace<'tcx> {
+    fn project_deeper<'a>(
+        &self,
+        elem: PlaceElem<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Result<Self, PcgError> {
+        Ok(match self {
+            MaybeLabelledPlace::Current(place) => {
+                MaybeLabelledPlace::Current(place.project_deeper(elem, ctxt)?)
+            }
+            MaybeLabelledPlace::Labelled(old_place) => {
+                MaybeLabelledPlace::Labelled(old_place.project_deeper(elem, ctxt)?)
+            }
+        })
+    }
+}
+
 impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
     fn place(&self) -> Place<'tcx> {
         match self {
@@ -165,22 +176,6 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
             MaybeLabelledPlace::Current(place) => place,
             MaybeLabelledPlace::Labelled(old_place) => &mut old_place.place,
         }
-    }
-
-    fn project_deeper<'a, C: Copy>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx, C>,
-    ) -> Result<Self, PcgError>
-    where
-        'tcx: 'a,
-    {
-        let mut cloned = *self;
-        *cloned.place_mut() = self
-            .place()
-            .project_deeper(elem, repacker)
-            .map_err(PcgError::unsupported)?;
-        Ok(cloned)
     }
 
     fn iter_projections<C: Copy>(

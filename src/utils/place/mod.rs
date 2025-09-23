@@ -122,6 +122,17 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     }
 }
 
+pub (crate) trait PlaceProjectable<'tcx>: Sized {
+    fn project_deeper<'a>(
+        &self,
+        elem: PlaceElem<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> std::result::Result<Self, PcgError>
+    where
+        'tcx: 'a;
+
+}
+
 /// A trait for PCG nodes that contain a single place.
 pub trait HasPlace<'tcx>: Sized {
     fn is_place(&self) -> bool;
@@ -129,14 +140,6 @@ pub trait HasPlace<'tcx>: Sized {
     fn place(&self) -> Place<'tcx>;
 
     fn place_mut(&mut self) -> &mut Place<'tcx>;
-
-    fn project_deeper<'a, C: Copy>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx, C>,
-    ) -> std::result::Result<Self, PcgError>
-    where
-        'tcx: 'a;
 
     fn iter_projections<C: Copy>(
         &self,
@@ -150,17 +153,6 @@ impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
     }
     fn place_mut(&mut self) -> &mut Place<'tcx> {
         self
-    }
-
-    fn project_deeper<'a, C: Copy>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx, C>,
-    ) -> std::result::Result<Self, PcgError>
-    where
-        'tcx: 'a,
-    {
-        Place::project_deeper(*self, elem, repacker).map_err(PcgError::unsupported)
     }
 
     fn iter_projections<C: Copy>(
