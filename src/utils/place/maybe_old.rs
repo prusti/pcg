@@ -332,9 +332,9 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
     pub(crate) fn project_deref<BC: Copy>(
         &self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> MaybeLabelledPlace<'tcx> {
-        MaybeLabelledPlace::new(self.place().project_deref(repacker), self.location())
+        MaybeLabelledPlace::new(self.place().project_deref(ctxt), self.location())
     }
 
     pub fn is_current(&self) -> bool {
