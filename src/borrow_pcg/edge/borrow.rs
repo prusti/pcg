@@ -18,7 +18,10 @@ use crate::{
             ty::{self},
         },
     },
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, remote::RemotePlace},
+    utils::{
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, display::DisplayWithCtxt,
+        remote::RemotePlace,
+    },
 };
 
 use crate::{
@@ -55,12 +58,12 @@ pub struct LocalBorrow<'tcx> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for LocalBorrow<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LocalBorrow<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
         if predicate.matches(
@@ -121,12 +124,12 @@ pub struct RemoteBorrow<'tcx> {
     rp_snapshot_location: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for RemoteBorrow<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for RemoteBorrow<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if predicate.matches(
             self.assigned_lifetime_projection(repacker).rebase(),
@@ -198,13 +201,10 @@ impl<'tcx> RemoteBorrow<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for RemoteBorrow<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
             self.blocked_place().to_short_string(ctxt),
@@ -357,8 +357,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LocalBorrow<'tcx> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LocalBorrow<'tcx> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
             format!(" <{rp}>")
         } else {

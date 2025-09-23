@@ -25,7 +25,8 @@ use crate::{
     utils::{
         DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
-        display::{DebugLines, DisplayWithCompilerCtxt},
+        display::{DebugLines, DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -483,13 +484,10 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
     pub(crate) value: T,
 }
 
-impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for Conditioned<T>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for Conditioned<T>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.conditions.conditional_string(&self.value, ctxt)
     }
 }
@@ -504,10 +502,8 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'tcx, T: ToJsonWithCompilerCtxt<'tcx, BC>, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC>
-    for Conditioned<T>
-{
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for Conditioned<T> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "conditions": self.conditions.to_json(repacker),
             "value": self.value.to_json(repacker)
@@ -515,10 +511,10 @@ impl<'tcx, T: ToJsonWithCompilerCtxt<'tcx, BC>, BC: Copy> ToJsonWithCompilerCtxt
     }
 }
 
-impl<'tcx, EdgeKind: LabelLifetimeProjection<'tcx> + Eq + std::hash::Hash>
+impl<'a, 'tcx, EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash>
     BorrowsGraph<'tcx, EdgeKind>
 {
-    pub(crate) fn label_region_projection<'a>(
+    pub(crate) fn label_region_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,

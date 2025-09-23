@@ -18,7 +18,10 @@ use crate::{
         },
         span::def_id::{DefId, LocalDefId},
     },
-    utils::{self, CompilerCtxt, HasTyCtxt, display::DisplayWithCompilerCtxt},
+    utils::{
+        self, CompilerCtxt, HasBorrowCheckerCtxt, HasTyCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
@@ -250,8 +253,8 @@ impl std::fmt::Display for ArgIdxOrResult {
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>> for FunctionShape {
-    fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
+    fn to_short_string(&self, _ctxt: Ctxt) -> String {
         self.0
             .iter()
             .map(|edge| format!("{edge}"))

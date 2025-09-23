@@ -21,7 +21,7 @@ use rustc_interface::{
     span::Span,
 };
 
-use crate::rustc_interface;
+use crate::{borrow_checker::BorrowCheckerInterface, rustc_interface, utils::HasCompilerCtxt};
 
 use super::{CompilerCtxt, Place};
 
@@ -50,14 +50,11 @@ pub trait DisplayWithCtxt<Ctxt> {
     fn to_short_string(&self, ctxt: Ctxt) -> String;
 }
 
-pub trait DisplayWithCompilerCtxt<'tcx, BC: Copy> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String;
-}
+pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =
+    DisplayWithCtxt<CompilerCtxt<'a, 'tcx, BC>>;
 
-impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC>
-    for Vec<T>
-{
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for Vec<T> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let comma_sep = self
             .iter()
             .map(|t| t.to_short_string(ctxt))
@@ -67,10 +64,8 @@ impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCt
     }
 }
 
-impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC>
-    for FxHashSet<T>
-{
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let comma_sep = self
             .iter()
             .map(|t| t.to_short_string(ctxt))
@@ -80,9 +75,9 @@ impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCt
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for Place<'tcx> {
-    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
-        match self.to_string(repacker) {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Place<'tcx> {
+    fn to_short_string(&self, repacker: Ctxt) -> String {
+        match self.to_string(repacker.ctxt()) {
             PlaceDisplay::Temporary(p) => format!("{p:?}"),
             PlaceDisplay::User(_p, s) => s,
         }

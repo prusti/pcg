@@ -12,8 +12,10 @@ use crate::{
     pcg::{LocalNodeLike, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, Place, SnapshotLocation, display::DisplayWithCompilerCtxt,
-        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -72,13 +74,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for DerefEdge<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefEdge<'tcx> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{{{}}} -> {{{}}}",
             self.blocked_place.to_short_string(ctxt),
@@ -87,12 +84,12 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for DerefEdge<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         location: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if predicate.matches(self.blocked_lifetime_projection.into(), ctxt) {
             self.blocked_lifetime_projection =

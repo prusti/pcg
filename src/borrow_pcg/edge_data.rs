@@ -3,7 +3,10 @@ use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
     rustc_interface::middle::mir::ProjectionElem,
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
@@ -86,13 +89,10 @@ pub enum EdgePredicate {
     BorrowEdges,
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlacePredicate<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             LabelPlacePredicate::Postfix { place, .. } => {
                 place.to_short_string(ctxt) // As a hack for now so debug output doesn't change
@@ -282,12 +282,12 @@ macro_rules! edgedata_enum {
             }
         )+
 
-        impl<$tcx> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjection<$tcx> for $enum_name<$tcx> {
+        impl<'a, $tcx> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjection<'a, $tcx> for $enum_name<$tcx> {
             fn label_lifetime_projection(
                 &mut self,
                 predicate: &$crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate<'tcx>,
                 location: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
-                repacker: CompilerCtxt<'_, 'tcx>,
+                repacker: CompilerCtxt<'a, 'tcx>,
             ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
                 match self {
                     $(
@@ -307,8 +307,8 @@ macro_rules! edgedata_enum {
             }
         }
 
-        impl<$tcx, 'a> DisplayWithCompilerCtxt<$tcx, &'a dyn $crate::borrow_checker::BorrowCheckerInterface<'tcx>> for $enum_name<$tcx> {
-            fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, &'a dyn $crate::borrow_checker::BorrowCheckerInterface<'tcx>>) -> String {
+        impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
+            fn to_short_string(&self, ctxt: Ctxt) -> String {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.to_short_string(ctxt),

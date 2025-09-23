@@ -33,9 +33,9 @@ use crate::{
     pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
-        CompilerCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
         data_structures::{HashMap, HashSet},
-        display::DisplayWithCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
         validity::HasValidityCheck,
     },
 };
@@ -47,18 +47,10 @@ pub struct HyperEdge<InputNode, OutputNode> {
     outputs: Vec<OutputNode>,
 }
 
-impl<
-    'a,
-    'tcx,
-    InputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    OutputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for HyperEdge<InputNode, OutputNode>
+impl<Ctxt: Copy, InputNode: DisplayWithCtxt<Ctxt>, OutputNode: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for HyperEdge<InputNode, OutputNode>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "HyperEdge(inputs: {}, outputs: {})",
             self.inputs.to_short_string(ctxt),
@@ -266,18 +258,13 @@ impl<Metadata, InputNode, OutputNode> CoupledEdgeKind<Metadata, InputNode, Outpu
 }
 
 impl<
-    'a,
-    'tcx,
-    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    InputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    OutputNode: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for CoupledEdgeKind<Metadata, InputNode, OutputNode>
+    Ctxt: Copy,
+    Metadata: DisplayWithCtxt<Ctxt>,
+    InputNode: DisplayWithCtxt<Ctxt>,
+    OutputNode: DisplayWithCtxt<Ctxt>,
+> DisplayWithCtxt<Ctxt> for CoupledEdgeKind<Metadata, InputNode, OutputNode>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         if let Some((input, output)) = self.edge.try_to_singleton_edge() {
             format!(
                 "{}: {} -> {}",
@@ -314,14 +301,18 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgCoupledEdgeKind<'tcx> {
     }
 }
 
-impl<'tcx, Input: LabelLifetimeProjection<'tcx>, Output: LabelLifetimeProjection<'tcx>>
-    LabelLifetimeProjection<'tcx> for HyperEdge<Input, Output>
+impl<
+    'a,
+    'tcx: 'a,
+    Input: LabelLifetimeProjection<'a, 'tcx>,
+    Output: LabelLifetimeProjection<'a, 'tcx>,
+> LabelLifetimeProjection<'a, 'tcx> for HyperEdge<Input, Output>
 {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut result = LabelLifetimeProjectionResult::Unchanged;
         for input in self.inputs.iter_mut() {
@@ -334,25 +325,30 @@ impl<'tcx, Input: LabelLifetimeProjection<'tcx>, Output: LabelLifetimeProjection
     }
 }
 
-impl<'tcx, Metadata, Input: LabelLifetimeProjection<'tcx>, Output: LabelLifetimeProjection<'tcx>>
-    LabelLifetimeProjection<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
+impl<
+    'a,
+    'tcx: 'a,
+    Metadata,
+    Input: LabelLifetimeProjection<'a, 'tcx>,
+    Output: LabelLifetimeProjection<'a, 'tcx>,
+> LabelLifetimeProjection<'a, 'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.edge.label_lifetime_projection(predicate, label, ctxt)
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for PcgCoupledEdgeKind<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
@@ -460,13 +456,10 @@ impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PcgCoupledEdgeKind<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => {
                 function.to_short_string(ctxt)
@@ -842,14 +835,10 @@ pub enum MaybeCoupledEdgeKind<'tcx, T> {
     NotCoupled(T),
 }
 
-impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for MaybeCoupledEdgeKind<'tcx, T>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for MaybeCoupledEdgeKind<'tcx, T>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             MaybeCoupledEdgeKind::Coupled(coupled) => coupled.to_short_string(ctxt),
             MaybeCoupledEdgeKind::NotCoupled(normal) => normal.to_short_string(ctxt),

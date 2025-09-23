@@ -1,4 +1,6 @@
 //! Data structures for validity conditions.
+use crate::utils::HasCompilerCtxt;
+use crate::utils::display::DisplayWithCtxt;
 use crate::{rustc_interface::middle::mir, utils::display::DisplayWithCompilerCtxt};
 use bit_set::BitSet;
 use itertools::Itertools;
@@ -6,7 +8,7 @@ use smallvec::SmallVec;
 
 use crate::{rustc_interface::middle::mir::BasicBlock, utils::CompilerCtxt};
 
-use crate::utils::json::ToJsonWithCompilerCtxt;
+use crate::utils::json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt};
 
 /// Represents transfer of control flow from the block `from` to the block `to`.
 #[derive(Copy, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
@@ -110,8 +112,8 @@ impl BranchChoices {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for BranchChoices {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for BranchChoices {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let successors = effective_successors(self.from, ctxt.body());
         if self.chosen.len() == 1 {
             format!(
@@ -151,10 +153,10 @@ pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
 pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
 
 impl ValidityConditions {
-    pub(crate) fn conditional_string<'a, 'tcx, BC: Copy>(
+    pub(crate) fn conditional_string<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
-        content: &impl DisplayWithCompilerCtxt<'tcx, BC>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        content: &impl DisplayWithCtxt<Ctxt>,
+        ctxt: Ctxt,
     ) -> String {
         if self.is_empty() {
             content.to_short_string(ctxt)
@@ -174,14 +176,14 @@ impl Default for ValidityConditions {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for ValidityConditions {
-    fn to_json(&self, _ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<Ctxt> ToJsonWithCtxt<Ctxt> for ValidityConditions {
+    fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for ValidityConditions {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for ValidityConditions {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.all_branch_choices()
             .map(|bc| bc.to_short_string(ctxt))
             .collect::<Vec<_>>()

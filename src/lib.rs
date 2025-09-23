@@ -8,6 +8,7 @@
 may already be stabilized */
 
 #![allow(stable_features)]
+#![feature(trait_alias)]
 #![feature(associated_type_defaults)]
 #![feature(rustc_private)]
 #![feature(box_patterns)]
@@ -134,10 +135,12 @@ pub struct RestoreCapability<'tcx> {
     capability: CapabilityKind,
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RestoreCapability<'tcx> {
-    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
+    for RestoreCapability<'tcx>
+{
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(ctxt),
+            "place": self.place.to_json(ctxt.ctxt()),
             "capability": format!("{:?}", self.capability),
         })
     }
@@ -164,10 +167,10 @@ impl<'tcx> RestoreCapability<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for Weaken<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker),
+            "place": self.place.to_json(repacker.ctxt()),
             "old": format!("{:?}", self.from),
             "new": format!("{:?}", self.to),
         })
@@ -202,23 +205,20 @@ impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationDat
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for PcgSuccessorVisualizationData<'a, 'tcx>
 {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "actions": self.actions.iter().map(|a| a.to_json(repacker)).collect::<Vec<_>>(),
         })
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for PCGStmtVisualizationData<'a, 'tcx>
 {
-    fn to_json(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "actions": self.actions.to_json(repacker),
         })
@@ -699,7 +699,7 @@ use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     pcg::ctxt::HasSettings,
     results::PcgLocation,
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
+    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {

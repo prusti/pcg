@@ -13,7 +13,9 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        validity::HasValidityCheck,
     },
 };
 
@@ -46,12 +48,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowFlowEdge<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
@@ -69,13 +71,10 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
             self.long.to_short_string(ctxt),

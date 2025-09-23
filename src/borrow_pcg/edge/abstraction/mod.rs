@@ -20,7 +20,7 @@ use crate::{
     },
     coupling::HyperEdge,
     pcg::PcgNodeLike,
-    utils::{HasBorrowCheckerCtxt, maybe_remote::MaybeRemotePlace},
+    utils::{HasBorrowCheckerCtxt, display::DisplayWithCtxt, maybe_remote::MaybeRemotePlace},
 };
 
 use crate::coupling::PcgCoupledEdgeKind;
@@ -140,19 +140,19 @@ impl<
 impl<
     'tcx: 'a,
     'a,
-    Input: LabelLifetimeProjection<'tcx>
+    Input: LabelLifetimeProjection<'a, 'tcx>
         + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: LabelLifetimeProjection<'tcx>
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Output: LabelLifetimeProjection<'a, 'tcx>
         + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> LabelLifetimeProjection<'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> LabelLifetimeProjection<'a, 'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
         changed |= self
@@ -250,18 +250,10 @@ impl<'tcx, Input: AbstractionInputLike<'tcx>, Output: Copy + PcgNodeLike<'tcx>> 
     }
 }
 
-impl<
-    'tcx,
-    'a,
-    Input: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for AbstractionBlockEdge<'tcx, Input, Output>
+impl<'tcx, Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
             self.input.to_short_string(ctxt),
@@ -275,10 +267,10 @@ impl<
     'a,
     Input: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     Output: HasValidityCheck<'a, 'tcx>
         + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > HasValidityCheck<'a, 'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
@@ -297,8 +289,12 @@ impl<
 impl<
     'tcx: 'a,
     'a,
-    Input: Clone + PcgNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: Clone + PcgNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Input: Clone
+        + PcgNodeLike<'tcx>
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Output: Clone
+        + PcgNodeLike<'tcx>
+        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
 > AbstractionBlockEdge<'tcx, Input, Output>
 {
     pub(crate) fn new_checked(

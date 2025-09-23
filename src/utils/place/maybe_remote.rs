@@ -18,8 +18,8 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasPlace, LabelledPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
     },
 };
@@ -109,8 +109,10 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for MaybeRemotePlace<'tcx> {
-    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for MaybeRemotePlace<'tcx>
+{
+    fn to_short_string(&self, repacker: Ctxt) -> String {
         match self {
             MaybeRemotePlace::Local(p) => p.to_short_string(repacker),
             MaybeRemotePlace::Remote(rp) => format!("{rp}"),
@@ -118,10 +120,12 @@ impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for MaybeRemotePlace<'tcx
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for MaybeRemotePlace<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
+    for MaybeRemotePlace<'tcx>
+{
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         match self {
-            MaybeRemotePlace::Local(p) => p.to_json(repacker),
+            MaybeRemotePlace::Local(p) => p.to_json(repacker.ctxt()),
             MaybeRemotePlace::Remote(rp) => format!("{rp}").into(),
         }
     }

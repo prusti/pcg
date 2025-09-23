@@ -6,8 +6,9 @@ use crate::{
     borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
     pcg::{MaybeHasLocation, PcgNodeLike},
     utils::{
-        CompilerCtxt, FilterMutResult, HasPlace, Place, SnapshotLocation,
-        display::DisplayWithCompilerCtxt, place::maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        place::maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -29,13 +30,10 @@ pub enum LabelLifetimeProjectionPredicate<'tcx> {
     AllFuturePostfixes(Place<'tcx>),
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelLifetimeProjectionPredicate<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             LabelLifetimeProjectionPredicate::Postfix(region_projection) => {
                 format!("postfixes of {}", region_projection.to_short_string(ctxt))
@@ -127,12 +125,12 @@ impl LabelLifetimeProjectionResult {
     }
 }
 
-pub trait LabelLifetimeProjection<'tcx> {
+pub trait LabelLifetimeProjection<'a, 'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult;
 }
 

@@ -13,7 +13,11 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{HasCompilerCtxt, PlaceProjectable, json::ToJsonWithCompilerCtxt},
+    utils::{
+        HasCompilerCtxt, PlaceProjectable,
+        display::DisplayWithCtxt,
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+    },
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -212,16 +216,16 @@ impl std::fmt::Display for LabelledPlace<'_> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
-    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
+    fn to_short_string(&self, repacker: Ctxt) -> String {
         format!("{} at {:?}", self.place.to_short_string(repacker), self.at)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for LabelledPlace<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker),
+            "place": self.place.to_json(repacker.ctxt()),
             "at": self.at.to_json(),
         })
     }

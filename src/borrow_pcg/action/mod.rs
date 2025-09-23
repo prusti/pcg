@@ -14,7 +14,8 @@ use crate::{
     pcg::CapabilityKind,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -173,13 +174,10 @@ pub struct LabelPlaceAction<'tcx> {
     pub(crate) reason: LabelPlaceReason,
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlaceAction<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "Make {} an old place ({:?})",
             self.place.to_short_string(ctxt),
@@ -210,14 +208,10 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     },
 }
 
-impl<'tcx, 'a, EdgeKind: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowPcgActionKind<'tcx, EdgeKind>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
                 format!(
@@ -226,8 +220,10 @@ impl<'tcx, 'a, EdgeKind: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInte
                     label
                 )
             }
-            BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt),
-            BorrowPcgActionKind::Restore(restore_capability) => restore_capability.debug_line(ctxt),
+            BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt.ctxt()),
+            BorrowPcgActionKind::Restore(restore_capability) => {
+                restore_capability.debug_line(ctxt.ctxt())
+            }
             BorrowPcgActionKind::MakePlaceOld(action) => action.to_short_string(ctxt),
             BorrowPcgActionKind::RemoveEdge(borrow_pcgedge) => {
                 format!("Remove Edge {}", borrow_pcgedge.to_short_string(ctxt))

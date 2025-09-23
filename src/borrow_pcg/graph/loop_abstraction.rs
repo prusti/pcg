@@ -28,9 +28,9 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        CompilerCtxt, DebugImgcat, Place, SnapshotLocation,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
-        display::DisplayWithCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
         logging::{self, LogPredicate},
         maybe_old::MaybeLabelledPlace,
         remote::RemotePlace,
@@ -63,13 +63,10 @@ pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Remote(RemotePlace),
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeRemoteCurrentPlace<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place.to_short_string(ctxt),
             MaybeRemoteCurrentPlace::Remote(place) => place.to_short_string(ctxt),

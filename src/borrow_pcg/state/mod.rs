@@ -140,7 +140,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     ) -> bool
     where
         'tcx: 'a,
-        EdgeKind: LabelLifetimeProjection<'tcx> + Eq + std::hash::Hash,
+        EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash,
     {
         self.graph_mut()
             .label_region_projection(predicate, label, ctxt)
@@ -180,7 +180,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         'tcx: 'a,
         EdgeKind: EdgeData<'tcx>
             + LabelEdgePlaces<'tcx>
-            + LabelLifetimeProjection<'tcx>
+            + LabelLifetimeProjection<'a, 'tcx>
             + Eq
             + std::hash::Hash,
     {

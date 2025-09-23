@@ -32,8 +32,8 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
@@ -58,12 +58,9 @@ pub enum PcgRegionInternalError {
     RegionIndexOutOfBounds(RegionIdx),
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>> for RegionVid {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        if let Some(string) = ctxt.bc.override_region_debug_string(*self) {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RegionVid {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
             string.to_string()
         } else {
             format!("{self:?}")
@@ -149,12 +146,9 @@ impl PcgRegion {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PcgRegion {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
-        self.to_string(Some(ctxt))
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        self.to_string(Some(ctxt.bc_ctxt()))
     }
 }
 
@@ -212,13 +206,11 @@ impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, 
     }
 }
 
-impl<'tcx, 'a, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PlaceOrConst<'tcx, T>
+impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
+where
+    T: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             PlaceOrConst::Place(p) => p.to_short_string(ctxt),
             PlaceOrConst::Const(c) => format!("Const({c:?})"),
@@ -328,15 +320,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for PcgLifetimeProjectionBase<'tcx>
 {
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         match self {
-            PlaceOrConst::Place(p) => p.to_json(ctxt),
+            PlaceOrConst::Place(p) => p.to_json(ctxt.bc_ctxt()),
             PlaceOrConst::Const(_) => todo!(),
         }
     }
@@ -446,7 +435,7 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
     }
 }
 
-impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
+impl<'a, 'tcx, P: Copy> LabelLifetimeProjection<'a, 'tcx> for LifetimeProjection<'tcx, P>
 where
     P: PcgLifetimeProjectionBaseLike<'tcx>,
 {
@@ -454,7 +443,7 @@ where
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if predicate.matches(
             self.with_base(self.base.to_pcg_lifetime_projection_base()),
@@ -677,49 +666,39 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PlaceOrConst<'tcx, MaybeLabel
 }
 
 impl<
-    'tcx,
     'a,
-    T: PcgLifetimeProjectionBaseLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LifetimeProjection<'tcx, T>
+    'tcx: 'a,
+    Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+    T: PcgLifetimeProjectionBaseLike<'tcx> + DisplayWithCtxt<Ctxt> + HasTy<'tcx, Ctxt>,
+> DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let label_part = match self.label {
             Some(LifetimeProjectionLabel::Location(location)) => format!(" {location}"),
             Some(LifetimeProjectionLabel::Future) => " FUTURE".to_string(),
             _ => "".to_string(),
         };
-        todo!()
-        // format!(
-        //     "{}↓{}{}",
-        //     self.base.to_short_string(ctxt),
-        //     self.region(ctxt).to_short_string(ctxt),
-        //     label_part
-        // )
+        format!(
+            "{}↓{}{}",
+            self.base.to_short_string(ctxt),
+            self.region(ctxt).to_short_string(ctxt.bc_ctxt()),
+            label_part
+        )
     }
 }
 
 impl<
-    'tcx,
     'a,
-    T: PcgLifetimeProjectionBaseLike<'tcx>
-        + ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LifetimeProjection<'tcx, T>
+    'tcx: 'a,
+    Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+    T: HasTy<'tcx, Ctxt> + PcgLifetimeProjectionBaseLike<'tcx> + ToJsonWithCtxt<Ctxt>,
+> ToJsonWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
-        todo!()
-        // json!({
-        //     "place": self.base.to_json(ctxt),
-        //     "region": self.region(ctxt).to_string(Some(ctxt)),
-        // })
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
+        json!({
+            "place": self.base.to_json(ctxt),
+            "region": self.region(ctxt).to_string(Some(ctxt.bc_ctxt())),
+        })
     }
 }
 

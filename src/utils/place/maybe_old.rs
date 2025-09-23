@@ -19,8 +19,11 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation, display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt,
-        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
+        SnapshotLocation,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        maybe_remote::MaybeRemotePlace,
+        validity::HasValidityCheck,
     },
 };
 use derive_more::{From, TryInto};
@@ -99,8 +102,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for MaybeLabelledPlace<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_json(repacker),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_json(repacker),
@@ -203,8 +208,10 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for MaybeLabelledPlace<'tcx> {
-    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn to_short_string(&self, repacker: Ctxt) -> String {
         let p = self.place().to_short_string(repacker);
         format!(
             "{}{}",

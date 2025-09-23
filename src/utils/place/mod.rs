@@ -30,7 +30,7 @@ use crate::{
             ty::{self, Ty, TyKind},
         },
     },
-    utils::{HasCompilerCtxt, data_structures::HashSet},
+    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
@@ -95,8 +95,8 @@ impl Ord for Place<'_> {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for Place<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Place<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         serde_json::Value::String(self.to_short_string(repacker))
     }
 }

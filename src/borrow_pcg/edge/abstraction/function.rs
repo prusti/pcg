@@ -25,7 +25,11 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        validity::HasValidityCheck,
+    },
 };
 
 use crate::coupling::HyperEdge;
@@ -180,13 +184,10 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) function_data: Option<FunctionData<'tcx>>,
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for FunctionCallAbstractionEdgeMetadata<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "call{} at {:?}",
             if let Some(function_data) = &self.function_data {
@@ -231,12 +232,12 @@ pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdge<'tcx>,
 >;
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstraction<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.edge
             .label_lifetime_projection(predicate, label, repacker)
@@ -295,18 +296,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
     }
 }
 
-impl<
-    'tcx,
-    'a,
-    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Edge: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{}: {}",
             self.metadata.to_short_string(ctxt),

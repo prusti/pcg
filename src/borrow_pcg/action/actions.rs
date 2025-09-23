@@ -6,7 +6,10 @@ use crate::{
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt,
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+    },
 };
 
 use super::BorrowPcgActionKind;
@@ -16,13 +19,10 @@ use super::BorrowPcgActionKind;
 #[derive(Clone, Deref, DerefMut, Debug, Default)]
 pub struct BorrowPcgActions<'tcx>(pub(crate) Vec<BorrowPcgAction<'tcx>>);
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for BorrowPcgActions<'tcx>
 {
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         self.0
             .iter()
             .map(|a| a.to_json(ctxt))

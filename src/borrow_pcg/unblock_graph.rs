@@ -4,8 +4,10 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface, borrow_pcg::borrow_pcg_edge::BorrowPcgEdge,
-    error::PcgInternalError, utils::data_structures::HashSet,
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::borrow_pcg_edge::BorrowPcgEdge,
+    error::PcgInternalError,
+    utils::{HasBorrowCheckerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
 };
 
 use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdgeLike};
@@ -45,13 +47,8 @@ impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowPcgUnblockAction<'tcx>
-{
-    fn to_json(
-        &self,
-        _repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+impl<'tcx, Ctxt> ToJsonWithCtxt<Ctxt> for BorrowPcgUnblockAction<'tcx> {
+    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
         serde_json::json!({
             "edge": format!("{:?}", self.edge)
         })

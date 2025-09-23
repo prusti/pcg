@@ -10,7 +10,8 @@ use crate::{
     pcg::CapabilityKind,
     rustc_interface::{self, VariantIdx, span::Symbol},
     utils::{
-        CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
     },
 };
 
@@ -190,8 +191,8 @@ pub enum RepackOp<'tcx> {
     RegainLoanedCapability(Place<'tcx>, CapabilityKind),
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RepackOp<'tcx> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             RepackOp::RegainLoanedCapability(place, capability_kind) => {
                 format!(

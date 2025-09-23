@@ -18,8 +18,11 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        CompilerCtxt, Place, display::DisplayWithCompilerCtxt, maybe_remote::MaybeRemotePlace,
-        place::maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        maybe_remote::MaybeRemotePlace,
+        place::maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -37,14 +40,14 @@ impl<'tcx> LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx>
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx>
     for PcgNode<'tcx, MaybeLabelledPlace<'tcx>, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>
 {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         match self {
             PcgNode::LifetimeProjection(rp) => rp.label_lifetime_projection(predicate, label, ctxt),
@@ -61,12 +64,12 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgLifetimeProjectionLike<'tc
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstractionInput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.0.label_lifetime_projection(predicate, label, ctxt)
     }
@@ -84,10 +87,11 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionInput<'tcx> {
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
-    for FunctionCallAbstractionInput<'tcx>
+impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionInput<'tcx>
+where
+    LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -138,21 +142,21 @@ impl<'tcx> LoopAbstractionOutput<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionInput<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionInput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.0.label_lifetime_projection(projection, label, ctxt)
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionInput<'tcx>
 {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -199,21 +203,21 @@ impl<'tcx> TryFrom<LoopAbstractionInput<'tcx>> for LifetimeProjection<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionOutput<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionOutput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.0.label_lifetime_projection(projection, label, ctxt)
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionOutput<'tcx>
 {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -292,12 +296,12 @@ impl<'tcx> LabelPlace<'tcx> for AbstractionOutputTarget<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for AbstractionOutputTarget<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for AbstractionOutputTarget<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.0.label_lifetime_projection(projection, label, ctxt)
     }
@@ -309,10 +313,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for AbstractionOutputTarget<'tcx>
 {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -326,10 +330,11 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for FunctionCallAbstracti
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
-    for FunctionCallAbstractionOutput<'tcx>
+impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionOutput<'tcx>
+where
+    LocalLifetimeProjection<'tcx>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -346,12 +351,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionOutput<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.0.label_lifetime_projection(projection, label, ctxt)
     }

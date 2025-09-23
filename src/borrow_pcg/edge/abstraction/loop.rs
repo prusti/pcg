@@ -22,7 +22,11 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        validity::HasValidityCheck,
+    },
 };
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
@@ -37,13 +41,8 @@ impl LoopAbstractionEdgeMetadata {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LoopAbstractionEdgeMetadata
-{
-    fn to_short_string(
-        &self,
-        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
+    fn to_short_string(&self, _ctxt: Ctxt) -> String {
         format!("Loop({:?})", self.0)
     }
 }
@@ -51,12 +50,12 @@ impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 pub type LoopAbstraction<'tcx> =
     AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstraction<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstraction<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.edge
             .label_lifetime_projection(projection, label, repacker)

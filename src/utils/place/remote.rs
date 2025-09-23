@@ -5,8 +5,10 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt, validity::HasValidityCheck,
+        self, CompilerCtxt, HasCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        validity::HasValidityCheck,
     },
 };
 
@@ -22,14 +24,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Remote
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RemotePlace {
-    fn to_json(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemotePlace {
+    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RemotePlace {
-    fn to_short_string(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
+    fn to_short_string(&self, _repacker: Ctxt) -> String {
         format!("Remote({:?})", self.local)
     }
 }

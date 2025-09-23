@@ -31,8 +31,8 @@ use crate::{
     pcg::PcgNode,
     rustc_interface,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::DisplayWithCompilerCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },
@@ -46,18 +46,10 @@ pub struct BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<
-    'a,
-    'tcx,
-    'graph,
-    EdgeKind: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
+impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.conditions.conditional_string(self.kind, ctxt)
     }
 }
@@ -109,12 +101,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgEdge<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.value.label_lifetime_projection(predicate, label, ctxt)
     }
@@ -434,13 +426,10 @@ edgedata_enum!(
     Coupled(PcgCoupledEdgeKind<'tcx>),
 );
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for &BorrowPcgEdgeKind<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         (*self).to_short_string(ctxt)
     }
 }
