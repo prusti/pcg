@@ -20,16 +20,14 @@ use crate::{
         index::{Idx, IndexVec},
         middle::{
             mir::{
-                self, BasicBlock, Body, START_BLOCK,
-                visit::{MutatingUseContext, PlaceContext},
+                self, visit::{MutatingUseContext, PlaceContext}, BasicBlock, Body, START_BLOCK
             },
             ty,
         },
-        mir_dataflow::{Forward, JoinSemiLattice, fmt::DebugWithContext},
+        mir_dataflow::{fmt::DebugWithContext, Forward, JoinSemiLattice},
     },
     utils::{
-        CompilerCtxt, Place, data_structures::HashMap, display::DisplayWithCompilerCtxt,
-        visitor::FallableVisitor,
+        data_structures::HashMap, display::DisplayWithCompilerCtxt, visitor::FallableVisitor, CompilerCtxt, HasCompilerCtxt, Place
     },
     validity_checks_enabled,
 };
@@ -214,8 +212,8 @@ pub(crate) struct PlaceUsage<'tcx> {
     pub(crate) usage: PlaceUsageType,
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for PlaceUsage<'tcx> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a> DisplayWithCompilerCtxt<'a, 'tcx> for PlaceUsage<'tcx> {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         format!("{}: {:?}", self.place.to_short_string(ctxt), self.usage)
     }
 }
@@ -223,8 +221,8 @@ impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for PlaceUsage<'tcx> {
 #[derive(Clone, Debug, Deref, PartialEq, Eq, Default)]
 pub struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for PlaceUsages<'tcx> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a> DisplayWithCompilerCtxt<'a, 'tcx> for PlaceUsages<'tcx> {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         self.0
             .iter()
             .map(|(p, usage)| format!("{}: {:?}", p.to_short_string(ctxt), usage))

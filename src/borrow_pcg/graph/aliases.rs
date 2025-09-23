@@ -40,7 +40,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
         result
     }
-    pub(crate) fn aliases<BC: Copy>(
+    pub(crate) fn aliases<BC: crate::utils::CtxtExtra>(
         &self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
@@ -60,7 +60,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn aliases_all_projections<BC: Copy>(
+    pub(crate) fn aliases_all_projections<BC: crate::utils::CtxtExtra>(
         &self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
@@ -115,7 +115,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     #[tracing::instrument(skip(self, repacker, seen, direct))]
-    fn direct_aliases<BC: Copy>(
+    fn direct_aliases<BC: crate::utils::CtxtExtra>(
         &self,
         node: LocalNode<'tcx>,
         repacker: CompilerCtxt<'_, 'tcx, BC>,

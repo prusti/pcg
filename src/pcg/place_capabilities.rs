@@ -105,7 +105,7 @@ impl<'tcx, T: Copy> PlaceCapabilitiesReader<'tcx, T> for PlaceCapabilities<'tcx,
     }
 }
 
-impl<'tcx, C: Copy> PlaceCapabilitiesInterface<'tcx, C> for PlaceCapabilities<'tcx, C> {
+impl<'tcx, C: crate::utils::CtxtExtra> PlaceCapabilitiesInterface<'tcx, C> for PlaceCapabilities<'tcx, C> {
     fn insert<Ctxt>(&mut self, place: Place<'tcx>, capability: impl Into<C>, _ctxt: Ctxt) -> bool {
         self.0.insert(place, capability.into()).is_some()
     }
@@ -399,7 +399,7 @@ impl<C: CapabilityLike> PlaceCapabilities<'_, C> {
     }
 }
 
-impl<'tcx, C: Copy + PartialEq> PlaceCapabilities<'tcx, C> {
+impl<'tcx, C: crate::utils::CtxtExtra + PartialEq> PlaceCapabilities<'tcx, C> {
     pub(crate) fn uniform_capability<'a>(
         &self,
         mut places: impl Iterator<Item = Place<'tcx>>,

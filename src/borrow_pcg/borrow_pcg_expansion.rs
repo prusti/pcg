@@ -24,21 +24,14 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
-        obtain::ObtainType,
-        place_capabilities::{BlockType, PlaceCapabilitiesReader},
+        obtain::ObtainType, place_capabilities::{BlockType, PlaceCapabilitiesReader}, CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability
     },
     pcg_validity_assert,
     rustc_interface::{
-        FieldIdx,
-        middle::{mir::PlaceElem, ty},
+        middle::{mir::PlaceElem, ty}, FieldIdx
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
-        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
-        validity::HasValidityCheck,
+        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace}, validity::HasValidityCheck, CompilerCtxt, CtxtExtra, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place
     },
 };
 
@@ -182,12 +175,15 @@ pub struct BorrowPcgExpansion<'tcx, P = LocalNode<'tcx>> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
-    fn label_blocked_places(
+    fn label_blocked_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         tracing::debug!(
             "label blocked places: {} with {:?}",
             self.to_short_string(ctxt),
@@ -200,12 +196,15 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
         result
     }
 
-    fn label_blocked_by_places(
+    fn label_blocked_by_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         let mut changed = false;
         for p in &mut self.expansion {
             changed |= p.label_place_with_context(
@@ -236,14 +235,10 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'a, 'tcx>> DisplayWithCompilerCtxt<'a, 'tcx>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         format!(
             "{{{}}} -> {{{}}}",
             self.base.to_short_string(ctxt),
@@ -280,7 +275,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowPcgExpansion<'tcx> {
         self.base.to_pcg_node(repacker) == node
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
         &self,
         _ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -290,7 +285,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowPcgExpansion<'tcx> {
         Box::new(std::iter::once(self.base.into()))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra>(
         &'slf self,
         _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
@@ -319,7 +314,7 @@ impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
-    pub(crate) fn is_deref<C: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
+    pub(crate) fn is_deref<C: crate::utils::CtxtExtra>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
         if let BlockingNode::Place(p) = self.base {
             p.place().is_ref(repacker)
         } else {
@@ -358,7 +353,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
+impl<'a, 'tcx, P: PcgNodeLike<'tcx> + HasPlace<'a, 'tcx> + Into<BlockingNode<'tcx>>>
     BorrowPcgExpansion<'tcx, P>
 {
     pub fn base(&self) -> P {
@@ -369,14 +364,14 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         &self.expansion
     }
 
-    pub(crate) fn new<'a>(
+    pub(crate) fn new(
         base: P,
         expansion: PlaceExpansion<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
-        P: Ord + HasPlace<'tcx>,
+        P: Ord
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -392,17 +387,17 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
             expansion: expansion
                 .elems()
                 .into_iter()
-                .map(|elem| base.project_deeper(elem, ctxt.ctxt()))
+                .map(|elem| base.project_deeper(elem, ctxt.bc_ctxt()))
                 .collect::<Result<Vec<_>, _>>()?,
             _marker: PhantomData,
         };
-        result.assert_validity(ctxt.bc_ctxt());
+        result.assert_validity(ctxt);
         Ok(result)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for BorrowPcgExpansion<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for BorrowPcgExpansion<'tcx> {
+    fn to_json(&self, repacker: CompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
         json!({
             "base": self.base.to_json(repacker),
             "expansion": self.expansion.iter().map(|p| p.to_json(repacker)).collect::<Vec<_>>(),

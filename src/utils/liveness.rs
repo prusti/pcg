@@ -138,7 +138,7 @@ pub(crate) struct PlaceLiveness<'mir, 'tcx> {
 impl DebugWithContext<AnalysisEngine<PlaceLivenessAnalysis>> for PlaceLivenessDomain<'_> {}
 
 impl<'mir, 'tcx> PlaceLiveness<'mir, 'tcx> {
-    pub(crate) fn new<BC: Copy>(ctxt: CompilerCtxt<'mir, 'tcx, BC>) -> Self {
+    pub(crate) fn new<BC: crate::utils::CtxtExtra>(ctxt: CompilerCtxt<'mir, 'tcx, BC>) -> Self {
         Self {
             cursor: Rc::new(RefCell::new(
                 compute_fixpoint(

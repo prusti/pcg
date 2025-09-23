@@ -16,13 +16,8 @@ use super::BorrowPcgActionKind;
 #[derive(Clone, Deref, DerefMut, Debug, Default)]
 pub struct BorrowPcgActions<'tcx>(pub(crate) Vec<BorrowPcgAction<'tcx>>);
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowPcgActions<'tcx>
-{
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+impl<'a, 'tcx> ToJsonWithCompilerCtxt<'a, 'tcx> for BorrowPcgActions<'tcx> {
+    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
         self.0
             .iter()
             .map(|a| a.to_json(ctxt))

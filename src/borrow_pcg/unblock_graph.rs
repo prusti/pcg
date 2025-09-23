@@ -45,12 +45,12 @@ impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx>
     for BorrowPcgUnblockAction<'tcx>
 {
     fn to_json(
         &self,
-        _repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+        _repacker: CompilerCtxt<'a, 'tcx>,
     ) -> serde_json::Value {
         serde_json::json!({
             "edge": format!("{:?}", self.edge)

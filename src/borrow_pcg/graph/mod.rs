@@ -448,7 +448,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'tcx: 'a,
     {
         self.edges()
-            .filter(move |edge| edge.blocks_node(node, ctxt.bc_ctxt()))
+            .filter(move |edge| edge.blocks_node(node, ctxt.ctxt().with_extra(())))
     }
 
     pub(crate) fn edges_blocking_set<'slf, 'a: 'slf, 'bc: 'slf>(
@@ -483,13 +483,10 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
     pub(crate) value: T,
 }
 
-impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for Conditioned<T>
+impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'a, 'tcx>> DisplayWithCompilerCtxt<'a, 'tcx>
+    for Conditioned<T>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         self.conditions.conditional_string(&self.value, ctxt)
     }
 }
@@ -504,10 +501,10 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'tcx, T: ToJsonWithCompilerCtxt<'tcx, BC>, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC>
-    for Conditioned<T>
+impl<'a, 'tcx, T: ToJsonWithCompilerCtxt<'a, 'tcx, BC>, BC: crate::utils::CtxtExtra>
+    ToJsonWithCompilerCtxt<'a, 'tcx, BC> for Conditioned<T>
 {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+    fn to_json(&self, repacker: CompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
         json!({
             "conditions": self.conditions.to_json(repacker),
             "value": self.value.to_json(repacker)

@@ -8,7 +8,7 @@ use crate::{
         domain::LoopAbstractionOutput,
         edge::{
             abstraction::{
-                AbstractionEdge, LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata,
+                function::AbstractionBlockEdgeWithMetadata, AbstractionEdge, LoopAbstractionInput
             },
             kind::BorrowPcgEdgeKind,
         },
@@ -22,7 +22,9 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{
+        display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt, CtxtExtra, HasBorrowCheckerCtxt, HasCompilerCtxt
+    },
 };
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
@@ -37,13 +39,8 @@ impl LoopAbstractionEdgeMetadata {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LoopAbstractionEdgeMetadata
-{
-    fn to_short_string(
-        &self,
-        _ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for LoopAbstractionEdgeMetadata {
+    fn to_short_string(&self, _ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         format!("Loop({:?})", self.0)
     }
 }
@@ -66,7 +63,7 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
         self.edge.blocks_node(node, repacker)
     }
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
         &'slf self,
         repacker: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -76,7 +73,7 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
         self.edge.blocked_nodes(repacker)
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra + 'slf>(
         &'slf self,
         repacker: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
@@ -88,21 +85,27 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
-    fn label_blocked_places(
+    fn label_blocked_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
-    fn label_blocked_by_places(
+    fn label_blocked_by_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }

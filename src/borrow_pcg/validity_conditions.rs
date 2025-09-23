@@ -1,4 +1,5 @@
 //! Data structures for validity conditions.
+use crate::utils::HasCompilerCtxt;
 use crate::{rustc_interface::middle::mir, utils::display::DisplayWithCompilerCtxt};
 use bit_set::BitSet;
 use itertools::Itertools;
@@ -110,8 +111,8 @@ impl BranchChoices {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for BranchChoices {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for BranchChoices {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         let successors = effective_successors(self.from, ctxt.body());
         if self.chosen.len() == 1 {
             format!(
@@ -151,10 +152,10 @@ pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
 pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
 
 impl ValidityConditions {
-    pub(crate) fn conditional_string<'a, 'tcx, BC: Copy>(
+    pub(crate) fn conditional_string<'a, 'tcx, BC: crate::utils::CtxtExtra>(
         &self,
-        content: &impl DisplayWithCompilerCtxt<'tcx, BC>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        content: &impl DisplayWithCompilerCtxt<'a, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx, BC>,
     ) -> String {
         if self.is_empty() {
             content.to_short_string(ctxt)
@@ -174,14 +175,14 @@ impl Default for ValidityConditions {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for ValidityConditions {
+impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for ValidityConditions {
     fn to_json(&self, _ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for ValidityConditions {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for ValidityConditions {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         self.all_branch_choices()
             .map(|bc| bc.to_short_string(ctxt))
             .collect::<Vec<_>>()

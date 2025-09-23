@@ -13,7 +13,7 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
+        display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt
     },
 };
 
@@ -25,22 +25,28 @@ pub struct BorrowFlowEdge<'tcx> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
-    fn label_blocked_places(
+    fn label_blocked_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.long
             .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
     }
 
-    fn label_blocked_by_places(
+    fn label_blocked_by_places<'a>(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.short
             .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
     }
@@ -69,13 +75,8 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowFlowEdge<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for BorrowFlowEdge<'tcx> {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         format!(
             "{} -> {}",
             self.long.to_short_string(ctxt),
@@ -89,7 +90,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
         self.long.to_pcg_node(repacker) == node
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
         &'slf self,
         _ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -99,7 +100,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
         Box::new(std::iter::once(self.long.into()))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra>(
         &'slf self,
         _repacker: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>

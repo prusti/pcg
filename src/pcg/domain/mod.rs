@@ -5,7 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    cell::RefCell, fmt::{Debug, Formatter}, path::Path, rc::Rc
+    cell::RefCell,
+    fmt::{Debug, Formatter},
+    path::Path,
+    rc::Rc,
 };
 
 use derive_more::From;
@@ -241,19 +244,11 @@ mod private {
         }
     }
 
-    impl<'a, 'tcx: 'a> HasBorrowCheckerCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
-        fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+    impl<'a, 'tcx: 'a> HasCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+        for ResultsCtxt<'a, 'tcx>
+    {
+        fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
             self.ctxt
-        }
-
-        fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
-            self.ctxt.bc()
-        }
-    }
-
-    impl<'a, 'tcx: 'a> HasCompilerCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
-        fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
-            self.ctxt.ctxt()
         }
     }
 }

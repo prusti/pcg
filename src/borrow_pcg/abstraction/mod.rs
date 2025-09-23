@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
+        edge::abstraction::{function::FunctionDataShapeDataSource, AbstractionBlockEdge},
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
@@ -19,7 +19,7 @@ use crate::{
         span::def_id::{DefId, LocalDefId},
     },
     utils::{
-        self, CompilerCtxt, HasTyCtxt, display::DisplayWithCompilerCtxt,
+        self, display::DisplayWithCompilerCtxt, BorrowCheckerCtxt, CompilerCtxt, HasCompilerCtxt, HasTyCtxt
     },
 };
 
@@ -62,19 +62,19 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
 }
 
 impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
-    type Ctxt = CompilerCtxt<'a, 'tcx>;
-    fn input_tys(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+    type Ctxt = BorrowCheckerCtxt<'a, 'tcx>;
+    fn input_tys(&self, ctxt: BorrowCheckerCtxt<'a, 'tcx>) -> Vec<ty::Ty<'tcx>> {
         self.inputs
             .iter()
             .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
             .collect()
     }
 
-    fn output_ty(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
+    fn output_ty(&self, ctxt: BorrowCheckerCtxt<'a, 'tcx>) -> ty::Ty<'tcx> {
         self.output.ty(ctxt).ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: BorrowCheckerCtxt<'a, 'tcx>) -> bool {
         ctxt.bc.outlives(sup, sub, self.location)
     }
 }
@@ -253,8 +253,8 @@ impl std::fmt::Display for ArgIdxOrResult {
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>> for FunctionShape {
-    fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+impl<'a,'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for FunctionShape {
+    fn to_short_string(&self, _ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         self.0
             .iter()
             .map(|edge| format!("{edge}"))

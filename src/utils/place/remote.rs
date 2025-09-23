@@ -15,35 +15,32 @@ pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
 
-impl<'tcx> HasTy<'tcx> for RemotePlace {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         let place: utils::Place<'tcx> = self.local.into();
         place.rust_ty(ctxt)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RemotePlace {
+impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for RemotePlace {
     fn to_json(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RemotePlace {
+impl<'a, 'tcx, BC: crate::utils::CtxtExtra> DisplayWithCompilerCtxt<'a, 'tcx, BC> for RemotePlace {
     fn to_short_string(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         format!("Remote({:?})", self.local)
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for RemotePlace {
-    fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
+impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for RemotePlace {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         PlaceOrConst::Place((*self).into())
     }

@@ -5,15 +5,14 @@ use serde_json::Map;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        action::{BorrowPcgActionKind, actions::BorrowPcgActions},
+        action::{actions::BorrowPcgActions, BorrowPcgActionKind},
         edge::kind::BorrowPcgEdgeKind,
         unblock_graph::BorrowPcgUnblockAction,
     },
     owned_pcg::RepackOp,
     pcg::capabilities::CapabilityKind,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
+        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, CompilerCtxt, CtxtExtra, HasCompilerCtxt, Place
     },
 };
 
@@ -22,13 +21,8 @@ use crate::{
 #[derive(Clone, PartialEq, Eq, Debug, From, Default, Deref, DerefMut)]
 pub struct PcgActions<'tcx>(pub(crate) Vec<PcgAction<'tcx>>);
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for PcgActions<'tcx>
-{
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgActions<'tcx> {
+    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
         self.0.iter().map(|a| a.to_json(ctxt)).collect()
     }
 }
@@ -113,18 +107,18 @@ impl<T> ActionKindWithDebugCtxt<T> {
         }
     }
 
-    pub(crate) fn debug_line<'tcx, BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String
+    pub(crate) fn debug_line<'a, 'tcx>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String
     where
-        T: DisplayWithCompilerCtxt<'tcx, BC>,
+        T: DisplayWithCompilerCtxt<'a, 'tcx>,
     {
         self.kind.to_short_string(ctxt)
     }
 }
 
-impl<'tcx, BC: Copy, T: DisplayWithCompilerCtxt<'tcx, BC>> ToJsonWithCompilerCtxt<'tcx, BC>
-    for ActionKindWithDebugCtxt<T>
+impl<'a, 'tcx, BC: crate::utils::CtxtExtra, T: DisplayWithCompilerCtxt<'a, 'tcx, BC>>
+    ToJsonWithCompilerCtxt<'a, 'tcx, BC> for ActionKindWithDebugCtxt<T>
 {
-    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
         let mut map = Map::new();
         map.insert("kind".to_string(), self.kind.to_short_string(ctxt).into());
         if let Some(debug_context) = &self.debug_context {
@@ -186,13 +180,8 @@ impl<'tcx> PcgAction<'tcx> {
     }
 }
 
-impl<'tcx: 'a, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for PcgAction<'tcx>
-{
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+impl<'tcx: 'a, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgAction<'tcx> {
+    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
         match self {
             PcgAction::Borrow(action) => action.to_json(ctxt),
             PcgAction::Owned(action) => action.to_json(ctxt),

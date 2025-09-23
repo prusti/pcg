@@ -6,7 +6,7 @@ use crate::{
     borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
     pcg::{MaybeHasLocation, PcgNodeLike},
     utils::{
-        CompilerCtxt, FilterMutResult, HasPlace, Place, SnapshotLocation,
+        CompilerCtxt, FilterMutResult, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
         display::DisplayWithCompilerCtxt, place::maybe_old::MaybeLabelledPlace,
     },
 };
@@ -29,13 +29,8 @@ pub enum LabelLifetimeProjectionPredicate<'tcx> {
     AllFuturePostfixes(Place<'tcx>),
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for LabelLifetimeProjectionPredicate<'tcx>
-{
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for LabelLifetimeProjectionPredicate<'tcx> {
+    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
         match self {
             LabelLifetimeProjectionPredicate::Postfix(region_projection) => {
                 format!("postfixes of {}", region_projection.to_short_string(ctxt))
