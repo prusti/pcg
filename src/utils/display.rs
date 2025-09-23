@@ -46,6 +46,10 @@ impl PlaceDisplay<'_> {
     }
 }
 
+pub trait DisplayWithCtxt<Ctxt> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String;
+}
+
 pub trait DisplayWithCompilerCtxt<'tcx, BC: Copy> {
     fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String;
 }

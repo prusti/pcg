@@ -1,5 +1,10 @@
 use std::{
-    collections::BTreeSet, fmt::Display, fs::File, io::Write, path::Path, process::{Command, Stdio}
+    collections::BTreeSet,
+    fmt::Display,
+    fs::File,
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
 };
 
 type NodeId = String;

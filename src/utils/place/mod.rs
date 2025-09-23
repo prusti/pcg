@@ -58,11 +58,8 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
-impl<'tcx> HasTy<'tcx> for Place<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
     }
 }
@@ -122,15 +119,14 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     }
 }
 
-pub (crate) trait PlaceProjectable<'tcx>: Sized {
-    fn project_deeper<'a>(
+pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
+    fn project_deeper(
         &self,
         elem: PlaceElem<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgError>
-    where
-        'tcx: 'a;
+        ctxt: Ctxt,
+    ) -> std::result::Result<Self, PcgError>;
 
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
 /// A trait for PCG nodes that contain a single place.
@@ -140,11 +136,22 @@ pub trait HasPlace<'tcx>: Sized {
     fn place(&self) -> Place<'tcx>;
 
     fn place_mut(&mut self) -> &mut Place<'tcx>;
+}
 
-    fn iter_projections<C: Copy>(
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt> for Place<'tcx> {
+    fn project_deeper(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Vec<(Self, PlaceElem<'tcx>)>;
+        elem: PlaceElem<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Self, PcgError> {
+        Ok(self.0.project_deeper(&[elem], ctxt.tcx()).into())
+    }
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+        self.0
+            .iter_projections()
+            .map(|(place, elem)| (place.into(), elem))
+            .collect()
+    }
 }
 
 impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
@@ -153,16 +160,6 @@ impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
     }
     fn place_mut(&mut self) -> &mut Place<'tcx> {
         self
-    }
-
-    fn iter_projections<C: Copy>(
-        &self,
-        _repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Vec<(Self, PlaceElem<'tcx>)> {
-        self.0
-            .iter_projections()
-            .map(|(place, elem)| (place.into(), elem))
-            .collect()
     }
 
     fn is_place(&self) -> bool {

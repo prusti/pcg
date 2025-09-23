@@ -168,7 +168,7 @@ impl<'a, 'tcx, T: HasValidityCheck<'a, 'tcx>, U: PcgLifetimeProjectionBaseLike<'
     fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         match self {
             PcgNode::Place(p) => p.check_validity(ctxt),
-            PcgNode::LifetimeProjection(rp) => rp.check_validity(ctxt),
+            PcgNode::LifetimeProjection(rp) => todo!(),
         }
     }
 }

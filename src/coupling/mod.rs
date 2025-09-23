@@ -4,26 +4,39 @@ use itertools::Itertools;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdge, domain::{
+        AbstractionInputTarget, AbstractionOutputTarget, MakeFunctionShapeError,
+        borrow_pcg_edge::BorrowPcgEdge,
+        domain::{
             FunctionCallAbstractionInput, FunctionCallAbstractionOutput, LoopAbstractionInput,
             LoopAbstractionOutput,
-        }, edge::{
+        },
+        edge::{
             abstraction::{
+                AbstractionBlockEdge, AbstractionEdge, FunctionCallOrLoop,
                 function::{
                     FunctionCallAbstraction, FunctionCallAbstractionEdge,
                     FunctionCallAbstractionEdgeMetadata,
-                }, r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata}, AbstractionBlockEdge, AbstractionEdge, FunctionCallOrLoop
+                },
+                r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata},
             },
             kind::BorrowPcgEdgeKind,
-        }, edge_data::{EdgeData, LabelEdgePlaces}, graph::{BorrowsGraph, Conditioned}, has_pcs_elem::{
+        },
+        edge_data::{EdgeData, LabelEdgePlaces},
+        graph::{BorrowsGraph, Conditioned},
+        has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext,
-        }, region_projection::LifetimeProjectionLabel, validity_conditions::ValidityConditions, AbstractionInputTarget, AbstractionOutputTarget, MakeFunctionShapeError
+        },
+        region_projection::LifetimeProjectionLabel,
+        validity_conditions::ValidityConditions,
     },
     pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
-        data_structures::{HashMap, HashSet}, display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt
+        CompilerCtxt,
+        data_structures::{HashMap, HashSet},
+        display::DisplayWithCompilerCtxt,
+        validity::HasValidityCheck,
     },
 };
 use std::hash::Hash;

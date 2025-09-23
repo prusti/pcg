@@ -5,7 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    cell::RefCell, fmt::{Debug, Formatter}, path::Path, rc::Rc
+    cell::RefCell,
+    fmt::{Debug, Formatter},
+    path::Path,
+    rc::Rc,
 };
 
 use derive_more::From;

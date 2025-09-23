@@ -15,11 +15,8 @@ pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
 
-impl<'tcx> HasTy<'tcx> for RemotePlace {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         let place: utils::Place<'tcx> = self.local.into();
         place.rust_ty(ctxt)
     }

@@ -91,11 +91,8 @@ impl<'tcx> PcgNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'tcx> HasTy<'tcx> for MaybeRemotePlace<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.ty(ctxt).ty,
             MaybeRemotePlace::Remote(rp) => rp.rust_ty(ctxt),

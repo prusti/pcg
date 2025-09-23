@@ -11,10 +11,16 @@ use crate::{
     error::PcgError,
     pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
     rustc_interface::{
-        middle::{mir::{self, PlaceElem}, ty}, PlaceTy
+        PlaceTy,
+        middle::{
+            mir::{self, PlaceElem},
+            ty,
+        },
     },
     utils::{
-        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, maybe_remote::MaybeRemotePlace, validity::HasValidityCheck, CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable, SnapshotLocation
+        CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
+        SnapshotLocation, display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt,
+        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
     },
 };
 use derive_more::{From, TryInto};
@@ -147,12 +153,10 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'tcx> PlaceProjectable<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn project_deeper<'a>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         Ok(match self {
             MaybeLabelledPlace::Current(place) => {
                 MaybeLabelledPlace::Current(place.project_deeper(elem, ctxt)?)
@@ -161,6 +165,22 @@ impl<'tcx> PlaceProjectable<'tcx> for MaybeLabelledPlace<'tcx> {
                 MaybeLabelledPlace::Labelled(old_place.project_deeper(elem, ctxt)?)
             }
         })
+    }
+
+    fn iter_projections(&self, repacker: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+        match self {
+            MaybeLabelledPlace::Current(place) => place
+                .iter_projections(repacker)
+                .into_iter()
+                .map(|(p, e)| (p.into(), e))
+                .collect(),
+            MaybeLabelledPlace::Labelled(old_place) => old_place
+                .place
+                .iter_projections(repacker)
+                .into_iter()
+                .map(|(p, e)| (p.into(), e))
+                .collect(),
+        }
     }
 }
 
@@ -175,25 +195,6 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
         match self {
             MaybeLabelledPlace::Current(place) => place,
             MaybeLabelledPlace::Labelled(old_place) => &mut old_place.place,
-        }
-    }
-
-    fn iter_projections<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Vec<(Self, PlaceElem<'tcx>)> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place
-                .iter_projections(repacker)
-                .into_iter()
-                .map(|(p, e)| (p.into(), e))
-                .collect(),
-            MaybeLabelledPlace::Labelled(old_place) => old_place
-                .place
-                .iter_projections(repacker)
-                .into_iter()
-                .map(|(p, e)| (p.into(), e))
-                .collect(),
         }
     }
 

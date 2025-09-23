@@ -6,7 +6,7 @@ use crate::{
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{data_structures::HashSet, CompilerCtxt, HasPlace, PlaceProjectable},
+    utils::{CompilerCtxt, HasPlace, PlaceProjectable, data_structures::HashSet},
 };
 
 use super::BorrowsGraph;

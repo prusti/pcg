@@ -13,7 +13,7 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::{HasCompilerCtxt, PlaceProjectable, json::ToJsonWithCompilerCtxt},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -147,8 +147,7 @@ pub struct LabelledPlace<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>
-    {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.place.ty(ctxt).ty
     }
 }
@@ -164,6 +163,22 @@ impl std::fmt::Display for SnapshotLocation {
             }
             SnapshotLocation::Before(eval_stmt_phase) => write!(f, "before {eval_stmt_phase}"),
         }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
+    for LabelledPlace<'tcx>
+{
+    fn project_deeper(
+        &self,
+        elem: mir::PlaceElem<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Self, crate::error::PcgError> {
+        todo!()
+    }
+
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
+        todo!()
     }
 }
 

@@ -20,7 +20,7 @@ use crate::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{edgedata_enum, LabelEdgePlaces, LabelPlacePredicate},
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
         },
@@ -31,7 +31,10 @@ use crate::{
     pcg::PcgNode,
     rustc_interface,
     utils::{
-        display::DisplayWithCompilerCtxt, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, validity::HasValidityCheck, CompilerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable
+        CompilerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        display::DisplayWithCompilerCtxt,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
+        validity::HasValidityCheck,
     },
 };
 
@@ -215,11 +218,21 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
             LocalNode::LifetimeProjection(rp) => rp.place_mut().place_mut(),
         }
     }
+}
 
-    fn iter_projections<C: Copy>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Vec<(Self, PlaceElem<'tcx>)> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
+    for LocalNode<'tcx>
+{
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
+        Ok(match self {
+            LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, ctxt)?),
+            LocalNode::LifetimeProjection(rp) => {
+                LocalNode::LifetimeProjection(rp.project_deeper(elem, ctxt)?)
+            }
+        })
+    }
+
+    fn iter_projections(&self, repacker: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         match self {
             LocalNode::Place(p) => p
                 .iter_projections(repacker)
@@ -232,22 +245,6 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
                 .map(|(p, e)| (LocalNode::LifetimeProjection(p), e))
                 .collect(),
         }
-    }
-
-}
-
-impl<'tcx> PlaceProjectable<'tcx> for LocalNode<'tcx> {
-    fn project_deeper<'a>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError> {
-        Ok(match self {
-            LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, ctxt)?),
-            LocalNode::LifetimeProjection(rp) => {
-                LocalNode::LifetimeProjection(rp.project_deeper(elem, ctxt)?)
-            }
-        })
     }
 }
 

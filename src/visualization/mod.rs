@@ -25,7 +25,8 @@ use crate::{
 use std::{
     collections::HashSet,
     fs::File,
-    io::{self}, path::Path,
+    io::{self},
+    path::Path,
 };
 
 use dot::escape_html;

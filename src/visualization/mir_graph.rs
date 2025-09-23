@@ -5,7 +5,8 @@ use crate::{
 use serde_derive::Serialize;
 use std::{
     fs::File,
-    io::{self}, path::Path,
+    io::{self},
+    path::Path,
 };
 
 use rustc_interface::middle::mir::{

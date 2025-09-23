@@ -1,15 +1,24 @@
 #[cfg(feature = "visualization")]
 use std::path::Path;
 use std::{
-    cell::RefCell, collections::{BTreeMap, BTreeSet}, io::Write
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
 };
 
 use derive_more::From;
 
 use crate::{
+    PcgCtxtCreator, PcgOutput,
     borrow_checker::{
-        r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker}, InScopeBorrows, RustBorrowCheckerInterface
-    }, borrow_pcg::region_projection::{PcgRegion, RegionIdx}, pcg::{self, BodyWithBorrowckFacts}, results::PcgAnalysisResults, run_pcg, rustc_interface::{
+        InScopeBorrows, RustBorrowCheckerInterface,
+        r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
+    },
+    borrow_pcg::region_projection::{PcgRegion, RegionIdx},
+    pcg::{self, BodyWithBorrowckFacts},
+    results::PcgAnalysisResults,
+    run_pcg,
+    rustc_interface::{
         borrowck::{
             self, BorrowIndex, BorrowSet, LocationTable, PoloniusInput, PoloniusOutput,
             RegionInferenceContext, RichLocation,
@@ -18,18 +27,20 @@ use crate::{
             fx::{FxHashMap, FxHashSet},
             graph::is_cyclic,
         },
-        driver::{self, init_rustc_env_logger, Compilation},
+        driver::{self, Compilation, init_rustc_env_logger},
         hir::{def::DefKind, def_id::LocalDefId},
-        interface::{interface::Compiler, Config},
+        interface::{Config, interface::Compiler},
         middle::{
             mir::{Body, Local, Location},
             query::queries::mir_borrowck::ProvidedValue as MirBorrowck,
             ty::{RegionVid, TyCtxt},
             util::Providers,
         },
-        session::{config::ErrorOutputType, EarlyDiagCtxt, Session},
+        session::{EarlyDiagCtxt, Session, config::ErrorOutputType},
         span::SpanSnippetError,
-    }, utils::{DEBUG_BLOCK, GLOBAL_SETTINGS}, validity_checks_enabled, PcgCtxtCreator, PcgOutput
+    },
+    utils::{DEBUG_BLOCK, GLOBAL_SETTINGS},
+    validity_checks_enabled,
 };
 
 #[cfg(feature = "visualization")]
@@ -527,19 +538,19 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
                     statement_index: stmt_index,
                 };
                 let start_dot_graph = subset_at_location(location, true, ctxt);
-                let start_file_path =
-                    dir_path.join(format!("bc_facts_graph_{block_index:?}_{stmt_index}_start.dot"));
-                start_dot_graph
-                    .write_to_file(&start_file_path)
-                    .unwrap();
+                let start_file_path = dir_path.join(format!(
+                    "bc_facts_graph_{block_index:?}_{stmt_index}_start.dot"
+                ));
+                start_dot_graph.write_to_file(&start_file_path).unwrap();
                 let mid_dot_graph = subset_at_location(location, false, ctxt);
-                let mid_file_path =
-                    dir_path.join(format!("bc_facts_graph_{block_index:?}_{stmt_index}_mid.dot"));
+                let mid_file_path = dir_path.join(format!(
+                    "bc_facts_graph_{block_index:?}_{stmt_index}_mid.dot"
+                ));
                 mid_dot_graph.write_to_file(&mid_file_path).unwrap();
 
-                let mut bc_facts_file = std::fs::File::create(dir_path.join(format!(
-                    "bc_facts_{block_index:?}_{stmt_index}.txt"
-                )))
+                let mut bc_facts_file = std::fs::File::create(
+                    dir_path.join(format!("bc_facts_{block_index:?}_{stmt_index}.txt")),
+                )
                 .unwrap();
 
                 fn write_loans(

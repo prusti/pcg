@@ -24,14 +24,21 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        obtain::ObtainType, place_capabilities::{BlockType, PlaceCapabilitiesReader}, CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
+        obtain::ObtainType,
+        place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
     pcg_validity_assert,
     rustc_interface::{
-        middle::{mir::PlaceElem, ty}, FieldIdx
+        FieldIdx,
+        middle::{mir::PlaceElem, ty},
     },
     utils::{
-        display::DisplayWithCompilerCtxt, json::ToJsonWithCompilerCtxt, place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace}, validity::HasValidityCheck, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        display::DisplayWithCompilerCtxt,
+        json::ToJsonWithCompilerCtxt,
+        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
+        validity::HasValidityCheck,
     },
 };
 
@@ -362,14 +369,14 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         &self.expansion
     }
 
-    pub(crate) fn new<'a, Ctxt>(
+    pub(crate) fn new<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         base: P,
         expansion: PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
-        P: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx>,
+        P: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx, Ctxt>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -385,7 +392,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
             expansion: expansion
                 .elems()
                 .into_iter()
-                .map(|elem| base.project_deeper(elem, ctxt.ctxt()))
+                .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
             _marker: PhantomData,
         };

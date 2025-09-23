@@ -81,7 +81,6 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 }
 
 impl<'tcx> FunctionData<'tcx> {
-
     pub fn instantiated_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, self.substs);
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)

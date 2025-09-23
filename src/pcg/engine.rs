@@ -4,7 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{cell::RefCell, fs::create_dir_all, path::{Path, PathBuf}, rc::Rc};
+use std::{
+    cell::RefCell,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use bit_set::BitSet;
 use derive_more::From;
@@ -14,22 +19,31 @@ use super::{
     domain::PcgDomain, visitor::PcgVisitor,
 };
 use crate::{
-    error::PcgError, r#loop::{LoopAnalysis, PlaceUsages}, pcg::{
-        ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock, triple::TripleWalker, BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData, SymbolicCapabilityCtxt
-    }, pcg_validity_assert, rustc_interface::{
+    BodyAndBorrows,
+    error::PcgError,
+    r#loop::{LoopAnalysis, PlaceUsages},
+    pcg::{
+        BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
+        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
+        triple::TripleWalker,
+    },
+    pcg_validity_assert,
+    rustc_interface::{
         borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
         dataflow::Analysis,
         index::IndexVec,
         middle::{
             mir::{
-                self, BasicBlock, Body, Location, Promoted, Statement, Terminator, TerminatorEdges, START_BLOCK
+                self, BasicBlock, Body, Location, Promoted, START_BLOCK, Statement, Terminator,
+                TerminatorEdges,
             },
             ty::{self, GenericArgsRef},
         },
-        mir_dataflow::{move_paths::MoveData, Forward},
-    }, utils::{
-        arena::PcgArenaRef, visitor::FallableVisitor, AnalysisLocation, CompilerCtxt, DataflowCtxt
-    }, BodyAndBorrows
+        mir_dataflow::{Forward, move_paths::MoveData},
+    },
+    utils::{
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, arena::PcgArenaRef, visitor::FallableVisitor,
+    },
 };
 
 #[derive(Clone)]
@@ -176,7 +190,9 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
     }
 
     pub fn loop_place_usages(&self, block: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
-        self.body_analysis.loop_place_usage_analysis.get_used_places(block)
+        self.body_analysis
+            .loop_place_usage_analysis
+            .get_used_places(block)
     }
 
     fn dot_graphs(&self, block: BasicBlock) -> Option<PcgBlockDebugVisualizationGraphs<'a>> {

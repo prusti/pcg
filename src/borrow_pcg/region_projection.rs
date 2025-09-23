@@ -532,13 +532,17 @@ pub(crate) fn region_is_invariant_in_type<'tcx>(
 }
 
 impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
-    pub(crate) fn is_invariant_in_type<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> bool
+    pub(crate) fn is_invariant_in_type<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+        &self,
+        ctxt: Ctxt,
+    ) -> bool
     where
         'tcx: 'a,
+        T: HasTy<'tcx, Ctxt>,
     {
         region_is_invariant_in_type(
             ctxt.ctxt().tcx(),
-            self.region(ctxt.ctxt()),
+            self.region(ctxt),
             self.base.to_pcg_lifetime_projection_base().base_ty(ctxt),
         )
     }
@@ -642,6 +646,7 @@ pub trait HasTy<'tcx, Ctxt> {
         ctxt: Ctxt,
     ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
     where
+        'tcx: 'a,
         Self: Sized + Copy + std::fmt::Debug,
         Ctxt: HasCompilerCtxt<'a, 'tcx>,
     {
@@ -688,12 +693,13 @@ impl<
             Some(LifetimeProjectionLabel::Future) => " FUTURE".to_string(),
             _ => "".to_string(),
         };
-        format!(
-            "{}↓{}{}",
-            self.base.to_short_string(ctxt),
-            self.region(ctxt).to_short_string(ctxt),
-            label_part
-        )
+        todo!()
+        // format!(
+        //     "{}↓{}{}",
+        //     self.base.to_short_string(ctxt),
+        //     self.region(ctxt).to_short_string(ctxt),
+        //     label_part
+        // )
     }
 }
 
@@ -709,10 +715,11 @@ impl<
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> serde_json::Value {
-        json!({
-            "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).to_string(Some(ctxt)),
-        })
+        todo!()
+        // json!({
+        //     "place": self.base.to_json(ctxt),
+        //     "region": self.region(ctxt).to_string(Some(ctxt)),
+        // })
     }
 }
 
@@ -779,14 +786,17 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>>
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + PlaceProjectable<'tcx>> PlaceProjectable<'tcx>
-    for LifetimeProjection<'tcx, T>
+impl<
+    'a,
+    'tcx: 'a,
+    Ctxt: HasCompilerCtxt<'a, 'tcx>,
+    T: HasPlace<'tcx>
+        + PcgLifetimeProjectionBaseLike<'tcx>
+        + PlaceProjectable<'tcx, Ctxt>
+        + HasTy<'tcx, Ctxt>,
+> PlaceProjectable<'tcx, Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn project_deeper<'a>(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError> {
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         LifetimeProjection::new(
             self.region(ctxt),
             self.base.project_deeper(elem, ctxt)?,
@@ -795,23 +805,8 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + PlaceProjectable<'tcx>> Plac
         )
         .map_err(|e| e.into())
     }
-}
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
-    for LifetimeProjection<'tcx, T>
-{
-    fn place(&self) -> Place<'tcx> {
-        self.base.place()
-    }
-
-    fn place_mut(&mut self) -> &mut Place<'tcx> {
-        self.base.place_mut()
-    }
-
-    fn iter_projections<C: Copy>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         self.base
             .iter_projections(ctxt)
             .into_iter()
@@ -831,16 +826,28 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
             })
             .collect()
     }
+}
+
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
+    for LifetimeProjection<'tcx, T>
+{
+    fn place(&self) -> Place<'tcx> {
+        self.base.place()
+    }
+
+    fn place_mut(&mut self) -> &mut Place<'tcx> {
+        self.base.place_mut()
+    }
 
     fn is_place(&self) -> bool {
         false
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'_, 'tcx>
-    for LifetimeProjection<'tcx, T>
+impl<'a, 'tcx: 'a, T: HasTy<'tcx, CompilerCtxt<'a, 'tcx>> + PcgLifetimeProjectionBaseLike<'tcx>>
+    HasValidityCheck<'a, 'tcx> for LifetimeProjection<'tcx, T>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
         if self.region_idx.index() >= num_regions.len() {
             Err(format!(
@@ -902,10 +909,10 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub(crate) fn region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PcgRegion
+    pub(crate) fn region<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(&self, ctxt: Ctxt) -> PcgRegion
     where
         'tcx: 'a,
-        T: HasTy<'tcx>,
+        T: HasTy<'tcx, Ctxt>,
     {
         let regions = self.base.regions(ctxt);
         if self.region_idx.index() >= regions.len() {

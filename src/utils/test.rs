@@ -3,15 +3,16 @@ use std::{borrow::Cow, fs, io, path::Path, sync::Arc};
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::driver::run_compiler;
 use crate::{
+    PcgCtxtCreator,
     results::PcgAnalysisResults,
     rustc_interface::{
         driver::{self, Compilation},
         hir::def::DefKind,
-        interface::{interface::Compiler, Config},
+        interface::{Config, interface::Compiler},
         middle::ty::TyCtxt,
         span::source_map::FileLoader,
     },
-    utils::{callbacks::set_mir_borrowck, PcgSettings}, PcgCtxtCreator,
+    utils::{PcgSettings, callbacks::set_mir_borrowck},
 };
 
 use super::callbacks::{in_cargo_crate, run_pcg_on_fn, take_stored_body};
@@ -53,12 +54,7 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
     // SAFETY: bodies come from the same `tcx`
     let body = unsafe { take_stored_body(tcx, def_id) };
     let mut ctxt_creator = PcgCtxtCreator::new(tcx);
-    run_pcg_on_fn(
-        &body,
-        &mut ctxt_creator,
-        false,
-        Some(&callback),
-    );
+    run_pcg_on_fn(&body, &mut ctxt_creator, false, Some(&callback));
 }
 
 #[rustversion::since(2025-05-24)]

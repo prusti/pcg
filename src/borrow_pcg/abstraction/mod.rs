@@ -18,9 +18,7 @@ use crate::{
         },
         span::def_id::{DefId, LocalDefId},
     },
-    utils::{
-        self, CompilerCtxt, HasTyCtxt, display::DisplayWithCompilerCtxt,
-    },
+    utils::{self, CompilerCtxt, HasTyCtxt, display::DisplayWithCompilerCtxt},
 };
 
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
@@ -229,8 +227,7 @@ impl<'tcx> FunctionData<'tcx> {
     pub fn coupled_edges(
         self,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError>
-    {
+    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError> {
         let shape = self
             .shape(tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
