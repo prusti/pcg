@@ -41,12 +41,12 @@ impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx>
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for PcgSuccessor<'a, 'tcx>
 {
     fn to_json(
         &self,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> serde_json::Value {
         json!({
             "block": self.block().index(),

@@ -1,16 +1,13 @@
-use crate::{
-    borrow_checker::BorrowCheckerInterface,
-    utils::{CompilerCtxt, CtxtExtra, HasCompilerCtxt},
-};
+use crate::utils::CompilerCtxt;
 
-pub trait ToJsonWithCompilerCtxt<'a, 'tcx, BC = ()> {
-    fn to_json(&self, repacker: impl HasCompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value;
+pub trait ToJsonWithCompilerCtxt<'tcx, BC> {
+    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value;
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra, T: ToJsonWithCompilerCtxt<'a, 'tcx, BC>>
-    ToJsonWithCompilerCtxt<'a, 'tcx, BC> for Vec<T>
+impl<'tcx, BC: Copy, T: ToJsonWithCompilerCtxt<'tcx, BC>> ToJsonWithCompilerCtxt<'tcx, BC>
+    for Vec<T>
 {
-    fn to_json(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
+    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         self.iter()
             .map(|a| a.to_json(ctxt))
             .collect::<Vec<_>>()

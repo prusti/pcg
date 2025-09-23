@@ -15,10 +15,7 @@ use crate::{
             ty::{self, RegionVid},
         },
     },
-    utils::{
-        CompilerCtxt, HasCompilerCtxt, callbacks::RustBorrowCheckerImpl,
-        display::DisplayWithCompilerCtxt,
-    },
+    utils::{CompilerCtxt, callbacks::RustBorrowCheckerImpl, display::DisplayWithCompilerCtxt},
 };
 
 use super::{
@@ -26,8 +23,13 @@ use super::{
     node::IdLookup,
 };
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for PoloniusRegionVid {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for PoloniusRegionVid
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         let region: RegionVid = (*self).into();
         region.to_short_string(ctxt)
     }
@@ -37,7 +39,7 @@ fn get_id<
     'a,
     'tcx: 'a,
     'bc: 'a,
-    T: Clone + Eq + DisplayWithCompilerCtxt<'a, 'tcx, &'a BC>,
+    T: Clone + Eq + DisplayWithCompilerCtxt<'tcx, &'a BC>,
     BC: BorrowCheckerInterface<'tcx> + ?Sized + 'a,
 >(
     elem: &T,

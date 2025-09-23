@@ -75,15 +75,12 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for LocalBorrow<'tcx> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for LocalBorrow<'tcx> {
-    fn label_blocked_places<'a>(
+    fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         self.blocked_place.label_place_with_context(
             predicate,
             labeller,
@@ -92,15 +89,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LocalBorrow<'tcx> {
         )
     }
 
-    fn label_blocked_by_places<'a>(
+    fn label_blocked_by_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         // Technically, `assigned_ref` does not block this node, but this place
         // is used to compute `assigned_region_projection` which *does* block this node
         // So we should label it
@@ -147,21 +141,21 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for RemoteBorrow<'tcx> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for RemoteBorrow<'tcx> {
-    fn label_blocked_places<'a>(
+    fn label_blocked_places(
         &mut self,
         _predicate: &LabelPlacePredicate<'tcx>,
         _labeller: &impl PlaceLabeller<'tcx>,
-        _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool where 'tcx: 'a {
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         false
     }
 
-    fn label_blocked_by_places<'a>(
+    fn label_blocked_by_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool where 'tcx: 'a {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         self.assigned_ref.label_place_with_context(
             predicate,
             labeller,
@@ -204,8 +198,13 @@ impl<'tcx> RemoteBorrow<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for RemoteBorrow<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for RemoteBorrow<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         format!(
             "{} -> {}",
             self.blocked_place().to_short_string(ctxt),
@@ -235,7 +234,7 @@ impl<'tcx> EdgeData<'tcx> for RemoteBorrow<'tcx> {
         }
     }
 
-    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         _ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -245,7 +244,7 @@ impl<'tcx> EdgeData<'tcx> for RemoteBorrow<'tcx> {
         Box::new(std::iter::once(self.blocked_place().into()))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
         repacker: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
@@ -358,10 +357,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx>
-    for LocalBorrow<'tcx>
-{
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LocalBorrow<'tcx> {
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
             format!(" <{rp}>")
         } else {
@@ -402,7 +399,7 @@ impl<'tcx> EdgeData<'tcx> for LocalBorrow<'tcx> {
         }
     }
 
-    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         _ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = BlockedNode<'tcx>> + 'slf>
@@ -412,7 +409,7 @@ impl<'tcx> EdgeData<'tcx> for LocalBorrow<'tcx> {
         Box::new(std::iter::once(self.blocked_place.into()))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
         repacker: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>

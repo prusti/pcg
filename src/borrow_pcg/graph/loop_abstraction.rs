@@ -6,9 +6,9 @@ use crate::{
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
-        edge::abstraction::{r#loop::LoopAbstraction, AbstractionBlockEdge},
+        edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
         edge_data::EdgeData,
-        graph::{join::JoinBorrowsArgs, BorrowsGraph},
+        graph::{BorrowsGraph, join::JoinBorrowsArgs},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
@@ -17,14 +17,23 @@ use crate::{
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
     pcg::{
-        ctxt::AnalysisCtxt, obtain::{
-            expand::PlaceExpander, ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph
-        }, place_capabilities::PlaceCapabilities, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
+        ctxt::AnalysisCtxt,
+        obtain::{
+            ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
+            expand::PlaceExpander,
+        },
+        place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        data_structures::{HashMap, HashSet}, display::DisplayWithCompilerCtxt, logging::{self, LogPredicate}, maybe_old::MaybeLabelledPlace, remote::RemotePlace, CompilerCtxt, DebugImgcat, HasCompilerCtxt, Place, SnapshotLocation
+        CompilerCtxt, DebugImgcat, Place, SnapshotLocation,
+        data_structures::{HashMap, HashSet},
+        display::DisplayWithCompilerCtxt,
+        logging::{self, LogPredicate},
+        maybe_old::MaybeLabelledPlace,
+        remote::RemotePlace,
     },
 };
 
@@ -54,12 +63,12 @@ pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Remote(RemotePlace),
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx>
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for MaybeRemoteCurrentPlace<'tcx>
 {
     fn to_short_string(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place.to_short_string(ctxt),

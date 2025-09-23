@@ -30,8 +30,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, Place,
-        SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+        VALIDITY_CHECKS_WARN_ONLY,
         display::DisplayWithCompilerCtxt,
         json::ToJsonWithCompilerCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
@@ -58,8 +58,11 @@ pub enum PcgRegionInternalError {
     RegionIndexOutOfBounds(RegionIdx),
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for RegionVid {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>> for RegionVid {
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         if let Some(string) = ctxt.bc.override_region_debug_string(*self) {
             string.to_string()
         } else {
@@ -146,8 +149,11 @@ impl PcgRegion {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for PcgRegion {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PcgRegion {
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         self.to_string(Some(ctxt))
     }
 }
@@ -197,10 +203,11 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt>
-    for PlaceOrConst<'tcx, T>
-{
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+impl<'tcx, T: HasTy<'tcx>> HasTy<'tcx> for PlaceOrConst<'tcx, T> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
         match self {
             PlaceOrConst::Place(p) => p.rust_ty(ctxt),
             PlaceOrConst::Const(c) => c.ty(),
@@ -208,10 +215,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasTy<'tcx, Ctxt>> HasTy<
     }
 }
 
-impl<'tcx, 'a, T: DisplayWithCompilerCtxt<'a, 'tcx>> DisplayWithCompilerCtxt<'a, 'tcx>
-    for PlaceOrConst<'tcx, T>
+impl<'tcx, 'a, T: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PlaceOrConst<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         match self {
             PlaceOrConst::Place(p) => p.to_short_string(ctxt),
             PlaceOrConst::Const(c) => format!("Const({c:?})"),
@@ -321,8 +331,13 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
-    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for PcgLifetimeProjectionBase<'tcx>
+{
+    fn to_json(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> serde_json::Value {
         match self {
             PlaceOrConst::Place(p) => p.to_json(ctxt),
             PlaceOrConst::Const(_) => todo!(),
@@ -330,16 +345,16 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgLifetimeProjectionBase<'t
     }
 }
 
-impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         *self
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> PcgNodeLike<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
     for LifetimeProjection<'tcx, T>
 {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.with_base(self.base.to_pcg_lifetime_projection_base())
             .into()
     }
@@ -434,9 +449,9 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
     }
 }
 
-impl<'a, 'tcx: 'a, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
+impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
 where
-    P: PcgLifetimeProjectionBaseLike<'a, 'tcx>,
+    P: PcgLifetimeProjectionBaseLike<'tcx>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -519,23 +534,22 @@ pub(crate) fn region_is_invariant_in_type<'tcx>(
     visitor.found
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> LifetimeProjection<'tcx, T> {
-    pub(crate) fn is_invariant_in_type<Ctxt: HasCompilerCtxt<'a, 'tcx>>(&self, ctxt: Ctxt) -> bool
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
+    pub(crate) fn is_invariant_in_type<'a>(&self, ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
     {
         region_is_invariant_in_type(
-            ctxt.tcx(),
-            self.region(ctxt),
+            ctxt.ctxt().tcx(),
+            self.region(ctxt.ctxt()),
             self.base.to_pcg_lifetime_projection_base().base_ty(ctxt),
         )
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> LifetimeProjection<'tcx, T> {
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
     #[must_use]
-    pub(crate) fn with_placeholder_label(
+    pub(crate) fn with_placeholder_label<'a>(
         self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> LifetimeProjection<'tcx, T>
@@ -546,7 +560,7 @@ impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> LifetimeProjectio
     }
 
     #[must_use]
-    pub(crate) fn with_label(
+    pub(crate) fn with_label<'a>(
         self,
         label: Option<LifetimeProjectionLabel>,
         _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -608,27 +622,36 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, Place<'tcx>> {
-    fn to_local_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self.with_base(MaybeLabelledPlace::Current(self.base)))
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
-    fn to_local_node<C: crate::utils::CtxtExtra>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self)
     }
 }
 
-pub trait HasTy<'tcx, Ctxt: Copy> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
+pub trait HasTy<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a;
 
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+    fn regions<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> IndexVec<RegionIdx, PcgRegion>
+    where
+        'tcx: 'a,
+    {
         extract_regions(self.rust_ty(ctxt))
     }
 
-    fn lifetime_projections(self, ctxt: Ctxt) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
+    fn lifetime_projections<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
     where
         Self: Sized + Copy + std::fmt::Debug,
+        'tcx: 'a,
     {
         self.regions(ctxt)
             .into_iter()
@@ -638,36 +661,36 @@ pub trait HasTy<'tcx, Ctxt: Copy> {
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
-pub trait PcgLifetimeProjectionBaseLike<'a, 'tcx: 'a>:
-    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
+pub trait PcgLifetimeProjectionBaseLike<'tcx>:
+    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq + HasTy<'tcx>
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx>;
 }
 
-impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for LocalLifetimeProjectionBase<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LocalLifetimeProjectionBase<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         PlaceOrConst::Place((*self).into())
     }
 }
 
-impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx>
-    for PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>
-{
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         self.map_place(Into::into)
     }
 }
 
 impl<
-    'tcx: 'a,
+    'tcx,
     'a,
-    BC: crate::utils::CtxtExtra,
-    T: PcgLifetimeProjectionBaseLike<'a, 'tcx>
-        + DisplayWithCompilerCtxt<'a, 'tcx, BC>
-        + HasTy<'tcx, CompilerCtxt<'a, 'tcx, BC>>,
-> DisplayWithCompilerCtxt<'a, 'tcx, BC> for LifetimeProjection<'tcx, T>
+    T: PcgLifetimeProjectionBaseLike<'tcx>
+        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LifetimeProjection<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx, BC>) -> String {
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         let label_part = match self.label {
             Some(LifetimeProjectionLabel::Location(location)) => format!(" {location}"),
             Some(LifetimeProjectionLabel::Future) => " FUTURE".to_string(),
@@ -682,10 +705,18 @@ impl<
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx> + ToJsonWithCompilerCtxt<'a, 'tcx>>
-    ToJsonWithCompilerCtxt<'a, 'tcx> for LifetimeProjection<'tcx, T>
+impl<
+    'tcx,
+    'a,
+    T: PcgLifetimeProjectionBaseLike<'tcx>
+        + ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LifetimeProjection<'tcx, T>
 {
-    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
+    fn to_json(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> serde_json::Value {
         json!({
             "place": self.base.to_json(ctxt),
             "region": self.region(ctxt).to_string(Some(ctxt)),
@@ -756,8 +787,8 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>>
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx> + HasPlace<'a, 'tcx>>
-    HasPlace<'a, 'tcx> for LifetimeProjection<'tcx, T>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tcx>
+    for LifetimeProjection<'tcx, T>
 {
     fn place(&self) -> Place<'tcx> {
         self.base.place()
@@ -767,12 +798,13 @@ impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx> + HasPlace<'a, 'tc
         self.base.place_mut()
     }
 
-    fn project_deeper<C: crate::utils::CtxtExtra>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
         repacker: CompilerCtxt<'a, 'tcx, C>,
     ) -> Result<Self, PcgError>
     where
+        'tcx: 'a,
         Self: Clone + HasValidityCheck<'a, 'tcx>,
     {
         LifetimeProjection::new(
@@ -784,9 +816,9 @@ impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx> + HasPlace<'a, 'tc
         .map_err(|e| e.into())
     }
 
-    fn iter_projections<C: crate::utils::CtxtExtra>(
+    fn iter_projections<C: Copy>(
         &self,
-        ctxt: CompilerCtxt<'a, 'tcx, C>,
+        ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> Vec<(Self, PlaceElem<'tcx>)> {
         self.base
             .iter_projections(ctxt)
@@ -813,10 +845,10 @@ impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx> + HasPlace<'a, 'tc
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> HasValidityCheck<'a, 'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'_, 'tcx>
     for LifetimeProjection<'tcx, T>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
         if self.region_idx.index() >= num_regions.len() {
             Err(format!(
@@ -843,7 +875,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
-    pub(crate) fn new<'a, Ctxt: Copy>(
+    pub(crate) fn new<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         region: PcgRegion,
         base: T,
         label: Option<LifetimeProjectionLabel>,
@@ -851,7 +883,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     ) -> Result<Self, PcgInternalError>
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
+        T: HasTy<'tcx>,
     {
         let region_idx = base
             .regions(ctxt)
@@ -878,10 +910,10 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub(crate) fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion
+    pub(crate) fn region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PcgRegion
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
+        T: HasTy<'tcx>,
     {
         let regions = self.base.regions(ctxt);
         if self.region_idx.index() >= regions.len() {
@@ -909,12 +941,11 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         &mut self.base
     }
 
-    pub(crate) fn rebase<'a, U: PcgLifetimeProjectionBaseLike<'a, 'tcx> + From<T>>(
+    pub(crate) fn rebase<U: PcgLifetimeProjectionBaseLike<'tcx> + From<T>>(
         self,
     ) -> LifetimeProjection<'tcx, U>
     where
         T: Copy,
-        'tcx: 'a,
     {
         self.with_base(self.base.into())
     }

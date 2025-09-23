@@ -7,7 +7,7 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::Location,
-    utils::{CompilerCtxt, CtxtExtra},
+    utils::CompilerCtxt,
 };
 
 impl<'tcx> AbstractionEdge<'tcx> {
@@ -18,18 +18,18 @@ impl<'tcx> AbstractionEdge<'tcx> {
         }
     }
 
-    pub fn input<C: crate::utils::CtxtExtra>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> AbstractionInputTarget<'tcx> {
+    pub fn input<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> AbstractionInputTarget<'tcx> {
         self.edge(ctxt).input()
     }
 
-    pub fn output<C: crate::utils::CtxtExtra>(
+    pub fn output<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> AbstractionOutputTarget<'tcx> {
         self.edge(ctxt).output()
     }
 
-    pub fn edge<C: crate::utils::CtxtExtra>(
+    pub fn edge<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> AbstractionBlockEdge<'tcx, AbstractionInputTarget<'tcx>, AbstractionOutputTarget<'tcx>>

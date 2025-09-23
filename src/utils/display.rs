@@ -21,11 +21,7 @@ use rustc_interface::{
     span::Span,
 };
 
-use crate::{
-    borrow_checker::BorrowCheckerInterface,
-    rustc_interface,
-    utils::{CtxtExtra, HasCompilerCtxt},
-};
+use crate::rustc_interface;
 
 use super::{CompilerCtxt, Place};
 
@@ -50,14 +46,14 @@ impl PlaceDisplay<'_> {
     }
 }
 
-pub trait DisplayWithCompilerCtxt<'a, 'tcx, T = ()> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx, T>) -> String;
+pub trait DisplayWithCompilerCtxt<'tcx, BC: Copy> {
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String;
 }
 
-impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'a, 'tcx, BC>, BC: crate::utils::CtxtExtra>
-    DisplayWithCompilerCtxt<'a, 'tcx, BC> for Vec<T>
+impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC>
+    for Vec<T>
 {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx, BC>) -> String {
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let comma_sep = self
             .iter()
             .map(|t| t.to_short_string(ctxt))
@@ -67,10 +63,10 @@ impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'a, 'tcx, BC>, BC: crate::utils::CtxtE
     }
 }
 
-impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'a, 'tcx, BC>, BC: crate::utils::CtxtExtra>
-    DisplayWithCompilerCtxt<'a, 'tcx, BC> for FxHashSet<T>
+impl<'tcx, T: DisplayWithCompilerCtxt<'tcx, BC>, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC>
+    for FxHashSet<T>
 {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx, BC>) -> String {
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let comma_sep = self
             .iter()
             .map(|t| t.to_short_string(ctxt))
@@ -80,8 +76,8 @@ impl<'a, 'tcx, T: DisplayWithCompilerCtxt<'a, 'tcx, BC>, BC: crate::utils::CtxtE
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for Place<'tcx> {
-    fn to_short_string(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for Place<'tcx> {
+    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         match self.to_string(repacker) {
             PlaceDisplay::Temporary(p) => format!("{p:?}"),
             PlaceDisplay::User(_p, s) => s,
@@ -90,17 +86,11 @@ impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for Place<'tcx> {
 }
 
 impl<'tcx> Place<'tcx> {
-    pub(crate) fn to_json<BC: crate::utils::CtxtExtra>(
-        self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> serde_json::Value {
+    pub(crate) fn to_json<BC: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         serde_json::Value::String(self.to_short_string(ctxt))
     }
 
-    pub fn to_string<BC: crate::utils::CtxtExtra>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> PlaceDisplay<'tcx> {
+    pub fn to_string<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> PlaceDisplay<'tcx> {
         // Get the local's debug name from the Body's VarDebugInfo
         let local_name = if self.local == RETURN_PLACE {
             Cow::Borrowed("RETURN")

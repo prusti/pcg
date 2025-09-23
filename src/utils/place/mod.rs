@@ -58,8 +58,11 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+impl<'tcx> HasTy<'tcx> for Place<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
     }
 }
@@ -95,51 +98,53 @@ impl Ord for Place<'_> {
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for Place<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for Place<'tcx> {
+    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         serde_json::Value::String(self.to_short_string(repacker))
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
-    fn to_local_node<C: crate::utils::CtxtExtra>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }
 
-impl<'a, 'tcx> PcgLifetimeProjectionBaseLike<'a, 'tcx> for Place<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         (*self).into()
     }
 }
 
 /// A trait for PCG nodes that contain a single place.
-pub trait HasPlace<'a, 'tcx>: Sized {
+pub trait HasPlace<'tcx>: Sized {
     fn is_place(&self) -> bool;
 
     fn place(&self) -> Place<'tcx>;
 
     fn place_mut(&mut self) -> &mut Place<'tcx>;
 
-    fn project_deeper<C: crate::utils::CtxtExtra>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx, C>,
-    ) -> std::result::Result<Self, PcgError>;
+    ) -> std::result::Result<Self, PcgError>
+    where
+        'tcx: 'a;
 
-    fn iter_projections<C: crate::utils::CtxtExtra>(
+    fn iter_projections<C: Copy>(
         &self,
-        ctxt: CompilerCtxt<'a, 'tcx, C>,
+        ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
-impl<'a, 'tcx> HasPlace<'a, 'tcx> for Place<'tcx> {
+impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
     fn place(&self) -> Place<'tcx> {
         *self
     }
@@ -147,15 +152,21 @@ impl<'a, 'tcx> HasPlace<'a, 'tcx> for Place<'tcx> {
         self
     }
 
-    fn project_deeper(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgError> {
+        repacker: CompilerCtxt<'a, 'tcx, C>,
+    ) -> std::result::Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
         Place::project_deeper(*self, elem, repacker).map_err(PcgError::unsupported)
     }
 
-    fn iter_projections(&self, _repacker: CompilerCtxt<'a, 'tcx>) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections<C: Copy>(
+        &self,
+        _repacker: CompilerCtxt<'_, 'tcx, C>,
+    ) -> Vec<(Self, PlaceElem<'tcx>)> {
         self.0
             .iter_projections()
             .map(|(place, elem)| (place.into(), elem))

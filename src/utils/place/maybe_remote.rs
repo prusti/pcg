@@ -83,7 +83,7 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_node(repacker),
             MaybeRemotePlace::Remote(rp) => rp.to_pcg_node(repacker),
@@ -91,8 +91,8 @@ impl<'tcx> PcgNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>
+impl<'tcx> HasTy<'tcx> for MaybeRemotePlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
     where
         'tcx: 'a,
     {
@@ -103,7 +103,7 @@ impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemot
     }
 }
 
-impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for MaybeRemotePlace<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_lifetime_projection_base(),
@@ -112,7 +112,7 @@ impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for MaybeRemotePlace<
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> DisplayWithCompilerCtxt<'a, 'tcx, BC> for MaybeRemotePlace<'tcx> {
+impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for MaybeRemotePlace<'tcx> {
     fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         match self {
             MaybeRemotePlace::Local(p) => p.to_short_string(repacker),
@@ -121,7 +121,7 @@ impl<'a, 'tcx, BC: crate::utils::CtxtExtra> DisplayWithCompilerCtxt<'a, 'tcx, BC
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for MaybeRemotePlace<'tcx> {
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for MaybeRemotePlace<'tcx> {
     fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(repacker),
@@ -151,7 +151,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         }
     }
 
-    pub(crate) fn regions<C: crate::utils::CtxtExtra>(
+    pub(crate) fn regions<C: Copy>(
         &self,
         repacker: CompilerCtxt<'_, 'tcx, C>,
     ) -> IndexVec<RegionIdx, PcgRegion> {

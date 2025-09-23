@@ -1,10 +1,17 @@
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
-        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError}, borrow_pcg_edge::{BlockedNode, LocalNode}, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::AbstractionBlockEdge, edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate}, has_pcs_elem::{
+        FunctionData,
+        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError},
+        borrow_pcg_edge::{BlockedNode, LocalNode},
+        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
+        edge::abstraction::AbstractionBlockEdge,
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
-        }, region_projection::{LifetimeProjectionLabel, PcgRegion}, FunctionData
+        },
+        region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNode,
@@ -15,10 +22,10 @@ use crate::{
             mir::Location,
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
-        span::{def_id::LocalDefId, Span},
+        span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::{display::DisplayWithCompilerCtxt, validity::HasValidityCheck, CompilerCtxt, CtxtExtra, HasBorrowCheckerCtxt, HasCompilerCtxt},
+    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
 use crate::coupling::HyperEdge;
@@ -174,12 +181,12 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) function_data: Option<FunctionData<'tcx>>,
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx>
+impl<'a, 'tcx> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for FunctionCallAbstractionEdgeMetadata<'tcx>
 {
     fn to_short_string(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         format!(
             "call{} at {:?}",
@@ -238,21 +245,21 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstraction<'tcx> {
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
-    fn label_blocked_places<'a>(
+    fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool where 'tcx: 'a {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
-    fn label_blocked_by_places<'a>(
+    fn label_blocked_by_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool where 'tcx: 'a {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
@@ -262,7 +269,7 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
         self.edge.blocks_node(node, repacker)
     }
 
-    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -272,7 +279,7 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
         self.edge.blocked_nodes(ctxt)
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra + 'slf>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         repacker: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
@@ -292,14 +299,14 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
 impl<
     'tcx,
     'a,
-    Metadata: DisplayWithCompilerCtxt<'a, 'tcx>,
-    Edge: DisplayWithCompilerCtxt<'a, 'tcx>,
-> DisplayWithCompilerCtxt<'a, 'tcx>
+    Metadata: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    Edge: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
     fn to_short_string(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         format!(
             "{}: {}",

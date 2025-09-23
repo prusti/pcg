@@ -10,7 +10,8 @@ use crate::{
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
-            places_conflict, BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput, PoloniusOutput, RegionInferenceContext
+            BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
+            PoloniusOutput, RegionInferenceContext, places_conflict,
         },
         data_structures::fx::{FxIndexMap, FxIndexSet},
         middle::{
@@ -18,7 +19,7 @@ use crate::{
             ty::RegionVid,
         },
     },
-    utils::{display::DisplayWithCompilerCtxt, CompilerCtxt, CtxtExtra, Place},
+    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
 pub mod r#impl;

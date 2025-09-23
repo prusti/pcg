@@ -4,10 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, path::{Path, PathBuf}};
 
 use serde_derive::Serialize;
 
@@ -163,22 +160,16 @@ impl ProjectionKind {
     }
 }
 
-pub trait HasCompilerCtxt<'a, 'tcx, T = ()>: Copy {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, T>;
-
+pub trait HasCompilerCtxt<'a, 'tcx>: Copy {
+    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(&self) -> &'a Body<'tcx> {
         self.ctxt().body()
     }
-
     fn tcx(&self) -> TyCtxt<'tcx>
     where
         'tcx: 'a,
     {
         self.ctxt().tcx()
-    }
-
-    fn bc(&self) -> T {
-        self.ctxt().bc()
     }
 }
 
@@ -235,13 +226,16 @@ impl StmtGraphs {
     }
 }
 
-pub(crate) trait HasBorrowCheckerCtxt<'a, 'tcx: 'a> =
-    HasCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>;
-
 pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
 {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
+}
+pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
+    HasCompilerCtxt<'a, 'tcx>
+{
+    fn bc(&self) -> BC;
+    fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;
 }
 
 impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> {
@@ -255,6 +249,16 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
 
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
+    }
+}
+
+impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T> {
+    fn bc(&self) -> T {
+        self.bc
+    }
+
+    fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, T> {
+        *self
     }
 }
 
@@ -278,54 +282,26 @@ impl<'tcx> HasTyCtxt<'tcx> for TyCtxt<'tcx> {
     }
 }
 
-pub trait CtxtExtra: Copy {
-    fn debug_region_vid(&self, region_vid: ty::RegionVid) -> String {
-        format!("{region_vid:?}")
-    }
-}
-
-impl<'a, T: CtxtExtra> CtxtExtra for &'a T {
-    fn debug_region_vid(&self, region_vid: ty::RegionVid) -> String {
-        (*self).debug_region_vid(region_vid)
-    }
-}
-
-impl<'a, 'tcx> CtxtExtra for &'a dyn BorrowCheckerInterface<'tcx> {
-    fn debug_region_vid(&self, region_vid: ty::RegionVid) -> String {
-        self.override_region_debug_string(region_vid)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{region_vid:?}"))
-    }
-}
-
-impl CtxtExtra for () {
-    fn debug_region_vid(&self, region_vid: ty::RegionVid) -> String {
-        format!("{region_vid:?}")
-    }
-}
-
 #[derive(Copy, Clone)]
-pub struct CompilerCtxt<'a, 'tcx, T = ()> {
+pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) bc: T,
 }
 
-impl<'a, 'tcx, T> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
+impl<'a, 'tcx> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
 }
 
-pub type BorrowCheckerCtxt<'a, 'tcx> = CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>;
-
-impl<T: CtxtExtra> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
+impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "CompilerCtxt",)
     }
 }
 
-impl<'a, 'tcx, T: CtxtExtra + BorrowCheckerInterface<'tcx> + ?Sized> CompilerCtxt<'a, 'tcx, &'a T> {
+impl<'a, 'tcx, T: BorrowCheckerInterface<'tcx> + ?Sized> CompilerCtxt<'a, 'tcx, &'a T> {
     pub fn as_dyn(self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
         CompilerCtxt {
             mir: self.mir,
@@ -338,14 +314,6 @@ impl<'a, 'tcx, T: CtxtExtra + BorrowCheckerInterface<'tcx> + ?Sized> CompilerCtx
 impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
     pub fn new(mir: &'a Body<'tcx>, tcx: TyCtxt<'tcx>, bc: T) -> Self {
         Self { mir, tcx, bc }
-    }
-
-    pub(crate) fn with_extra(self, extra: T) -> CompilerCtxt<'a, 'tcx, T> {
-        CompilerCtxt {
-            mir: self.mir,
-            tcx: self.tcx,
-            bc: extra,
-        }
     }
 
     pub fn body(self) -> &'a Body<'tcx> {

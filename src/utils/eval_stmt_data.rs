@@ -25,10 +25,10 @@ impl<T> EvalStmtData<T> {
     }
 }
 
-impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra, T: ToJsonWithCompilerCtxt<'a, 'tcx, BC>> ToJsonWithCompilerCtxt<'a, 'tcx, BC>
+impl<'tcx, BC: Copy, T: ToJsonWithCompilerCtxt<'tcx, BC>> ToJsonWithCompilerCtxt<'tcx, BC>
     for EvalStmtData<T>
 {
-    fn to_json(&self, ctxt: CompilerCtxt<'a, 'tcx, BC>) -> serde_json::Value {
+    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
             "pre_operands": self.pre_operands.to_json(ctxt),
             "post_operands": self.post_operands.to_json(ctxt),

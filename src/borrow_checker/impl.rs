@@ -86,14 +86,6 @@ pub struct PoloniusBorrowChecker<'mir, 'tcx: 'mir> {
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
 }
 
-impl<'a, 'mir, 'tcx: 'mir> crate::utils::CtxtExtra for &'a PoloniusBorrowChecker<'mir, 'tcx> {
-    fn debug_region_vid(&self, region_vid: ty::RegionVid) -> String {
-        self.borrow_checker_data.pretty_printer.lookup(region_vid)
-            .map(|s| s.as_str().to_string())
-            .unwrap_or_else(|| format!("{region_vid:?}"))
-    }
-}
-
 impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
     fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &Self> {
         CompilerCtxt::new(

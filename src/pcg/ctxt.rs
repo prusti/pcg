@@ -231,10 +231,12 @@ impl<'a, 'tcx> HasCompilerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx> HasCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for AnalysisCtxt<'a, 'tcx>
-{
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+impl<'a, 'tcx> HasBorrowCheckerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
+    fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
+        self.ctxt.bc()
+    }
+
+    fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
         self.ctxt
     }
 }

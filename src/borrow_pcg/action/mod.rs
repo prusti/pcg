@@ -173,8 +173,13 @@ pub struct LabelPlaceAction<'tcx> {
     pub(crate) reason: LabelPlaceReason,
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for LabelPlaceAction<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LabelPlaceAction<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         format!(
             "Make {} an old place ({:?})",
             self.place.to_short_string(ctxt),
@@ -205,12 +210,13 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     },
 }
 
-impl<'a, 'tcx, EdgeKind: DisplayWithCompilerCtxt<'a, 'tcx>> DisplayWithCompilerCtxt<'a, 'tcx>
+impl<'tcx, 'a, EdgeKind: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
+    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for BorrowPcgActionKind<'tcx, EdgeKind>
 {
     fn to_short_string(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
     ) -> String {
         match self {
             BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {

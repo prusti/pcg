@@ -32,8 +32,11 @@ pub enum MaybeLabelledPlace<'tcx> {
     Labelled(LabelledPlace<'tcx>),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+impl<'tcx> HasTy<'tcx> for MaybeLabelledPlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
         self.place().ty(ctxt).ty
     }
 }
@@ -57,7 +60,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_local_node<C: crate::utils::CtxtExtra>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_local_node(repacker),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_local_node(repacker),
@@ -66,7 +69,7 @@ impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_pcg_node(repacker),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(repacker),
@@ -96,7 +99,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for MaybeLabelledPlace<'tcx> {
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for MaybeLabelledPlace<'tcx> {
     fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_json(repacker),
@@ -150,7 +153,7 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'a, 'tcx: 'a> HasPlace<'a, 'tcx> for MaybeLabelledPlace<'tcx> {
+impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
     fn place(&self) -> Place<'tcx> {
         match self {
             MaybeLabelledPlace::Current(place) => *place,
@@ -164,11 +167,13 @@ impl<'a, 'tcx: 'a> HasPlace<'a, 'tcx> for MaybeLabelledPlace<'tcx> {
         }
     }
 
-    fn project_deeper<C: crate::utils::CtxtExtra>(
+    fn project_deeper<'a, C: Copy>(
         &self,
         elem: PlaceElem<'tcx>,
         repacker: CompilerCtxt<'a, 'tcx, C>,
     ) -> Result<Self, PcgError>
+    where
+        'tcx: 'a,
     {
         let mut cloned = *self;
         *cloned.place_mut() = self
@@ -178,7 +183,7 @@ impl<'a, 'tcx: 'a> HasPlace<'a, 'tcx> for MaybeLabelledPlace<'tcx> {
         Ok(cloned)
     }
 
-    fn iter_projections<C: crate::utils::CtxtExtra>(
+    fn iter_projections<C: Copy>(
         &self,
         repacker: CompilerCtxt<'_, 'tcx, C>,
     ) -> Vec<(Self, PlaceElem<'tcx>)> {
@@ -202,7 +207,7 @@ impl<'a, 'tcx: 'a> HasPlace<'a, 'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> DisplayWithCompilerCtxt<'a, 'tcx, BC> for MaybeLabelledPlace<'tcx> {
+impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for MaybeLabelledPlace<'tcx> {
     fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let p = self.place().to_short_string(repacker);
         format!(
@@ -234,7 +239,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().projection
     }
 
-    pub(crate) fn deref_to_rp<C: crate::utils::CtxtExtra>(
+    pub(crate) fn deref_to_rp<C: Copy>(
         &self,
         repacker: CompilerCtxt<'_, 'tcx, C>,
     ) -> Option<LifetimeProjection<'tcx, Self>> {
@@ -257,7 +262,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
             .map(|rp| rp.with_base(*self))
     }
 
-    pub(crate) fn is_owned<C: crate::utils::CtxtExtra>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
+    pub(crate) fn is_owned<C: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
         self.place().is_owned(repacker)
     }
 
@@ -325,7 +330,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().ty(ctxt)
     }
 
-    pub(crate) fn project_deref<BC: crate::utils::CtxtExtra>(
+    pub(crate) fn project_deref<BC: Copy>(
         &self,
         repacker: CompilerCtxt<'_, 'tcx, BC>,
     ) -> MaybeLabelledPlace<'tcx> {
@@ -336,7 +341,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         matches!(self, MaybeLabelledPlace::Current { .. })
     }
 
-    pub fn to_json<BC: crate::utils::CtxtExtra>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+    pub fn to_json<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
             "place": self.place().to_json(repacker),
             "at": self.location().map(|loc| format!("{loc:?}")),

@@ -146,8 +146,11 @@ pub struct LabelledPlace<'tcx> {
     pub(crate) at: SnapshotLocation,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+impl<'tcx> HasTy<'tcx> for LabelledPlace<'tcx> {
+    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
+    where
+        'tcx: 'a,
+    {
         self.place.ty(ctxt).ty
     }
 }
@@ -166,20 +169,20 @@ impl std::fmt::Display for SnapshotLocation {
     }
 }
 
-impl<'a, 'tcx: 'a> PcgLifetimeProjectionBaseLike<'a, 'tcx> for LabelledPlace<'tcx> {
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         PlaceOrConst::Place((*self).into())
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.to_local_node(repacker).into()
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_local_node<C: crate::utils::CtxtExtra>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
@@ -196,13 +199,13 @@ impl std::fmt::Display for LabelledPlace<'_> {
     }
 }
 
-impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra> DisplayWithCompilerCtxt<'a, 'tcx, BC> for LabelledPlace<'tcx> {
+impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
     fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         format!("{} at {:?}", self.place.to_short_string(repacker), self.at)
     }
 }
 
-impl<'a, 'tcx, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC> for LabelledPlace<'tcx> {
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
     fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
             "place": self.place.to_json(repacker),

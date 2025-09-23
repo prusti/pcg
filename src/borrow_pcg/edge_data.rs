@@ -3,9 +3,7 @@ use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
     rustc_interface::middle::mir::ProjectionElem,
-    utils::{
-        display::DisplayWithCompilerCtxt, CompilerCtxt, CtxtExtra, HasBorrowCheckerCtxt, HasCompilerCtxt, Place
-    },
+    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
@@ -14,7 +12,7 @@ use super::borrow_pcg_edge::{BlockedNode, LocalNode};
 pub trait EdgeData<'tcx> {
     /// For an edge A -> B, this returns the set of nodes A. In general, the capabilities
     /// of nodes B are obtained from these nodes.
-    fn blocked_nodes<'slf, BC: crate::utils::CtxtExtra>(
+    fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -23,7 +21,7 @@ pub trait EdgeData<'tcx> {
 
     /// For an edge A -> B, this returns the set of nodes B. In general, these nodes
     /// obtain their capabilities from the nodes A.
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra + 'slf>(
+    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
@@ -38,7 +36,7 @@ pub trait EdgeData<'tcx> {
         self.blocked_by_nodes(ctxt).any(|n| n == node)
     }
 
-    fn nodes<'slf, 'mir: 'slf, BC: crate::utils::CtxtExtra + 'slf>(
+    fn nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -88,8 +86,13 @@ pub enum EdgePredicate {
     BorrowEdges,
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'a, 'tcx> for LabelPlacePredicate<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for LabelPlacePredicate<'tcx>
+{
+    fn to_short_string(
+        &self,
+        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> String {
         match self {
             LabelPlacePredicate::Postfix { place, .. } => {
                 place.to_short_string(ctxt) // As a hack for now so debug output doesn't change
@@ -169,23 +172,19 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
 }
 
 pub trait LabelEdgePlaces<'tcx> {
-    fn label_blocked_places<'a>(
+    fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a;
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool;
 
-    fn label_blocked_by_places<'a>(
+    fn label_blocked_by_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a;
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool;
 }
 
 macro_rules! edgedata_enum {
@@ -194,7 +193,7 @@ macro_rules! edgedata_enum {
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
         impl<$tcx> $crate::borrow_pcg::edge_data::EdgeData<$tcx> for $enum_name<$tcx> {
-            fn blocked_nodes<'slf, BC: $crate::utils::CtxtExtra>(
+            fn blocked_nodes<'slf, BC: Copy>(
                 &'slf self,
                 repacker: CompilerCtxt<'_, $tcx, BC>,
             ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
@@ -208,7 +207,7 @@ macro_rules! edgedata_enum {
                 }
             }
 
-            fn blocked_by_nodes<'slf, 'mir: 'slf, BC: $crate::utils::CtxtExtra + 'slf>(
+            fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
                 &'slf self,
                 repacker: CompilerCtxt<'mir, $tcx, BC>,
             ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf>
@@ -248,12 +247,12 @@ macro_rules! edgedata_enum {
         }
 
         impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgePlaces<$tcx> for $enum_name<$tcx> {
-            fn label_blocked_places<'a>(
+            fn label_blocked_places(
                 &mut self,
                 predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-                ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-            ) -> bool where 'tcx: 'a {
+                ctxt: CompilerCtxt<'_, 'tcx>,
+            ) -> bool {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.label_blocked_places(predicate, labeller, ctxt),
@@ -261,12 +260,12 @@ macro_rules! edgedata_enum {
                 }
             }
 
-            fn label_blocked_by_places<'a>(
+            fn label_blocked_by_places(
                 &mut self,
                 predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-                ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-            ) -> bool where 'tcx: 'a {
+                ctxt: CompilerCtxt<'_, 'tcx>,
+            ) -> bool {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.label_blocked_by_places(predicate, labeller, ctxt),
@@ -308,8 +307,8 @@ macro_rules! edgedata_enum {
             }
         }
 
-        impl<'a,$tcx> DisplayWithCompilerCtxt<'a, $tcx> for $enum_name<$tcx> {
-            fn to_short_string(&self, ctxt: impl $crate::utils::HasCompilerCtxt<'a, 'tcx>) -> String {
+        impl<$tcx, 'a> DisplayWithCompilerCtxt<$tcx, &'a dyn $crate::borrow_checker::BorrowCheckerInterface<'tcx>> for $enum_name<$tcx> {
+            fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, &'a dyn $crate::borrow_checker::BorrowCheckerInterface<'tcx>>) -> String {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.to_short_string(ctxt),

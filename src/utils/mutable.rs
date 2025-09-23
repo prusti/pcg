@@ -31,7 +31,7 @@ pub enum LocalMutationIsAllowed {
     No,
 }
 
-impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra> CompilerCtxt<'a, 'tcx, BC> {
+impl<'a, 'tcx: 'a, BC: Copy> CompilerCtxt<'a, 'tcx, BC> {
     #[allow(unreachable_patterns)]
     fn upvars(self) -> Vec<Upvar<'tcx>> {
         let def = self.body().source.def_id().expect_local();

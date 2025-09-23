@@ -8,7 +8,6 @@
 may already be stabilized */
 
 #![allow(stable_features)]
-#![feature(trait_alias)]
 #![feature(associated_type_defaults)]
 #![feature(rustc_private)]
 #![feature(box_patterns)]
@@ -77,10 +76,7 @@ pub struct Weaken<'tcx> {
 }
 
 impl<'tcx> Weaken<'tcx> {
-    pub(crate) fn debug_line<BC: crate::utils::CtxtExtra>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> String {
+    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let to_str = match self.to {
             Some(to) => format!("{to:?}"),
             None => "None".to_string(),
@@ -138,9 +134,7 @@ pub struct RestoreCapability<'tcx> {
     capability: CapabilityKind,
 }
 
-impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC>
-    for RestoreCapability<'tcx>
-{
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RestoreCapability<'tcx> {
     fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
             "place": self.place.to_json(ctxt),
@@ -149,10 +143,7 @@ impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx,
     }
 }
 impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn debug_line<BC: crate::utils::CtxtExtra>(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> String {
+    pub(crate) fn debug_line<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         format!(
             "Restore {} to {:?}",
             self.place.to_short_string(repacker),
@@ -173,9 +164,7 @@ impl<'tcx> RestoreCapability<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, BC: crate::utils::CtxtExtra> ToJsonWithCompilerCtxt<'a, 'tcx, BC>
-    for Weaken<'tcx>
-{
+impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for Weaken<'tcx> {
     fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
             "place": self.place.to_json(repacker),
@@ -213,7 +202,9 @@ impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationDat
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgSuccessorVisualizationData<'a, 'tcx> {
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for PcgSuccessorVisualizationData<'a, 'tcx>
+{
     fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
         json!({
             "actions": self.actions.iter().map(|a| a.to_json(repacker)).collect::<Vec<_>>(),
@@ -221,8 +212,13 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PcgSuccessorVisualizationDat
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'a, 'tcx> for PCGStmtVisualizationData<'a, 'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'a, 'tcx>) -> serde_json::Value {
+impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for PCGStmtVisualizationData<'a, 'tcx>
+{
+    fn to_json(
+        &self,
+        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
+    ) -> serde_json::Value {
         json!({
             "actions": self.actions.to_json(repacker),
         })
@@ -334,10 +330,11 @@ pub struct PcgCtxt<'a, 'tcx> {
     pub(crate) arena: bumpalo::Bump,
 }
 
-impl<'a, 'mir: 'a, 'tcx: 'mir> HasCompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'mir: 'a, 'tcx: 'mir>
+    HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for &'a PcgCtxt<'mir, 'tcx>
 {
-    fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
         self.compiler_ctxt
     }
 
@@ -387,7 +384,12 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     }
 
     pub fn update_debug_visualization_metadata(&self) {
+        eprintln!("Updating debug visualization metadata");
         if let Some(identifier) = self.visualization_output_identifier() {
+            eprintln!(
+                "Writing new debug visualization metadata for {}",
+                identifier
+            );
             self.settings
                 .write_new_debug_visualization_metadata(&identifier);
         }

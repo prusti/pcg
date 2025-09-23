@@ -18,7 +18,8 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        display::DisplayWithCompilerCtxt, maybe_remote::MaybeRemotePlace, place::maybe_old::MaybeLabelledPlace, validity::HasValidityCheck, CompilerCtxt, CtxtExtra, HasCompilerCtxt, Place
+        CompilerCtxt, Place, display::DisplayWithCompilerCtxt, maybe_remote::MaybeRemotePlace,
+        place::maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -52,7 +53,7 @@ impl<'tcx> LabelLifetimeProjection<'tcx>
     }
 }
 
-impl<'a, 'tcx: 'a, T: PcgLifetimeProjectionBaseLike<'a, 'tcx>> PcgLifetimeProjectionLike<'tcx>
+impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgLifetimeProjectionLike<'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx> {
@@ -72,7 +73,7 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> 
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.to_pcg_node(ctxt)
     }
 }
@@ -83,8 +84,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionInput<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+    for FunctionCallAbstractionInput<'tcx>
+{
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -146,14 +149,16 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for LoopAbstractionInput<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+    for LoopAbstractionInput<'tcx>
+{
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0.to_short_string(ctxt)
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionInput<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
     }
 }
@@ -205,14 +210,16 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionOutput<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for LoopAbstractionOutput<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+    for LoopAbstractionOutput<'tcx>
+{
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0.to_short_string(ctxt)
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
     }
 }
@@ -259,7 +266,7 @@ impl<'tcx> TryFrom<LoopAbstractionOutput<'tcx>> for LifetimeProjection<'tcx> {
 pub struct AbstractionInputTarget<'tcx>(pub(crate) PcgNode<'tcx>);
 
 impl<'tcx> PcgNodeLike<'tcx> for AbstractionInputTarget<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
     }
 }
@@ -302,8 +309,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for AbstractionOutputTarget<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+    for AbstractionOutputTarget<'tcx>
+{
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0.to_short_string(ctxt)
     }
 }
@@ -317,14 +326,16 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for FunctionCallAbstracti
     }
 }
 
-impl<'a, 'tcx> DisplayWithCompilerCtxt<'a, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
-    fn to_short_string(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
+impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
+    for FunctionCallAbstractionOutput<'tcx>
+{
+    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
         self.0.to_short_string(ctxt)
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionOutput<'tcx> {
-    fn to_pcg_node<C: crate::utils::CtxtExtra>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
     }
 }
