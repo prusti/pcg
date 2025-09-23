@@ -5,9 +5,7 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
         validity::HasValidityCheck,
     },
 };

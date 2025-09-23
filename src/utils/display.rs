@@ -21,7 +21,7 @@ use rustc_interface::{
     span::Span,
 };
 
-use crate::{borrow_checker::BorrowCheckerInterface, rustc_interface, utils::HasCompilerCtxt};
+use crate::{rustc_interface, utils::HasCompilerCtxt};
 
 use super::{CompilerCtxt, Place};
 

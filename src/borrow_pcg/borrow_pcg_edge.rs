@@ -1,8 +1,8 @@
 //! Definitions of edges in the Borrow PCG.
 use std::marker::PhantomData;
 
+use crate::rustc_interface::middle::mir::{self, BasicBlock, PlaceElem};
 use itertools::Itertools;
-use rustc_interface::middle::mir::{self, BasicBlock, PlaceElem};
 
 use super::{
     borrow_pcg_expansion::BorrowPcgExpansion,
@@ -14,7 +14,6 @@ use super::{
     validity_conditions::ValidityConditions,
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
@@ -29,10 +28,9 @@ use crate::{
     coupling::PcgCoupledEdgeKind,
     error::PcgError,
     pcg::PcgNode,
-    rustc_interface,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::DisplayWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },

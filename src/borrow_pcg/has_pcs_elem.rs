@@ -2,13 +2,11 @@ use derive_more::From;
 
 use super::region_projection::{LifetimeProjection, LifetimeProjectionLabel};
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
     pcg::{MaybeHasLocation, PcgNodeLike},
     utils::{
         CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        place::maybe_old::MaybeLabelledPlace,
+        display::DisplayWithCtxt, place::maybe_old::MaybeLabelledPlace,
     },
 };
 

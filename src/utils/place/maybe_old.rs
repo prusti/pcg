@@ -19,11 +19,8 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-        maybe_remote::MaybeRemotePlace,
-        validity::HasValidityCheck,
+        SnapshotLocation, display::DisplayWithCtxt, json::ToJsonWithCtxt,
+        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
     },
 };
 use derive_more::{From, TryInto};

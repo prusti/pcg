@@ -1,6 +1,5 @@
 use crate::{
     HasCompilerCtxt,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{
@@ -12,10 +11,8 @@ use crate::{
     pcg::{LocalNodeLike, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 

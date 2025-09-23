@@ -12,7 +12,6 @@ use super::{
     region_projection::LifetimeProjectionLabel,
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::{LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{
@@ -35,8 +34,8 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        display::DisplayWithCtxt,
+        json::ToJsonWithCtxt,
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
     },

@@ -1,10 +1,6 @@
 use crate::{
     pcg::EvalStmtPhase,
-    utils::{
-        CompilerCtxt, HasCompilerCtxt,
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-        validity::HasValidityCheck,
-    },
+    utils::{HasCompilerCtxt, json::ToJsonWithCtxt, validity::HasValidityCheck},
 };
 use serde_json::json;
 

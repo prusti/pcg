@@ -4,7 +4,6 @@ use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
     RestoreCapability, Weaken,
     action::BorrowPcgAction,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgePlaces, LabelPlacePredicate},
@@ -13,8 +12,7 @@ use crate::{
     },
     pcg::CapabilityKind,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
         maybe_old::MaybeLabelledPlace,
     },
 };

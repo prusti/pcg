@@ -305,7 +305,7 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
         }
     }
     let pcg_ctxt = ctxt_creator.new_ctxt(body, &bc);
-    let mut output = run_pcg(&pcg_ctxt);
+    let mut output = run_pcg(pcg_ctxt);
     let ctxt = CompilerCtxt::new(&body.body, tcx, &bc);
 
     #[cfg(feature = "visualization")]
@@ -602,11 +602,11 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
             }
         }
         let dot_graph = subset_anywhere(ctxt);
-        let file_path = dir_path.join(format!("bc_facts_graph_anywhere.dot"));
+        let file_path = dir_path.join("bc_facts_graph_anywhere.dot");
         dot_graph.write_to_file(&file_path).unwrap();
     }
 
     let region_inference_dot_graph = region_inference_outlives(ctxt);
-    let file_path = dir_path.join(format!("region_inference_outlives.dot"));
+    let file_path = dir_path.join("region_inference_outlives.dot");
     std::fs::write(file_path, region_inference_dot_graph).unwrap();
 }

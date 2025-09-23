@@ -4,7 +4,6 @@ use derive_more::{Deref, From};
 use itertools::Itertools;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
@@ -18,10 +17,7 @@ use crate::{
         },
         span::def_id::{DefId, LocalDefId},
     },
-    utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, HasTyCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-    },
+    utils::{self, CompilerCtxt, HasTyCtxt, display::DisplayWithCtxt},
 };
 
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
@@ -55,11 +51,21 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckOutlivesError {
+    CannotCompareRegions { sup: PcgRegion, sub: PcgRegion },
+}
+
 pub(crate) trait FunctionShapeDataSource<'tcx> {
     type Ctxt: HasTyCtxt<'tcx> + Copy;
     fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>>;
     fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: Self::Ctxt) -> bool;
+    fn outlives(
+        &self,
+        sup: PcgRegion,
+        sub: PcgRegion,
+        ctxt: Self::Ctxt,
+    ) -> Result<bool, CheckOutlivesError>;
 }
 
 impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
@@ -75,8 +81,13 @@ impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
         self.output.ty(ctxt).ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        ctxt.bc.outlives(sup, sub, self.location)
+    fn outlives(
+        &self,
+        sup: PcgRegion,
+        sub: PcgRegion,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<bool, CheckOutlivesError> {
+        Ok(ctxt.bc.outlives(sup, sub, self.location))
     }
 }
 
@@ -169,7 +180,8 @@ impl FunctionShape {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         let data = FunctionData::new(def_id, substs, caller_def_id);
-        Ok(Self::new(&data.shape_data_source(tcx)?, tcx))
+        Self::new(&data.shape_data_source(tcx)?, tcx)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
@@ -185,6 +197,7 @@ pub enum MakeFunctionShapeError {
     ContainsAliasType,
     UnsupportedRustVersion,
     NoFunctionData,
+    CheckOutlivesError(CheckOutlivesError),
 }
 
 impl<'tcx> FunctionData<'tcx> {
@@ -224,7 +237,8 @@ impl<'tcx> FunctionData<'tcx> {
     }
 
     pub fn shape(self, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError> {
-        Ok(FunctionShape::new(&self.shape_data_source(tcx)?, tcx))
+        FunctionShape::new(&self.shape_data_source(tcx)?, tcx)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 
     pub fn coupled_edges(
@@ -283,7 +297,7 @@ impl FunctionShape {
     pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
         shape_data: &ShapeData,
         ctxt: ShapeData::Ctxt,
-    ) -> Self {
+    ) -> Result<Self, CheckOutlivesError> {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,
         > = BTreeSet::default();
@@ -298,21 +312,21 @@ impl FunctionShape {
         for input in arg_projections.iter().copied() {
             for output in arg_projections.iter().copied() {
                 if ctxt.region_is_invariant_in_type(output.region, output.ty)
-                    && shape_data.outlives(input.region, output.region, ctxt)
+                    && shape_data.outlives(input.region, output.region, ctxt)?
                 {
                     tracing::debug!("{} outlives {}", input, output);
                     shape.insert(AbstractionBlockEdge::new(input.into(), output.into()));
                 }
             }
             for rp in result_projections.iter().copied() {
-                if shape_data.outlives(input.region, rp.region, ctxt) {
+                if shape_data.outlives(input.region, rp.region, ctxt)? {
                     tracing::debug!("{} outlives {}", input, rp);
                     shape.insert(AbstractionBlockEdge::new(input.into(), rp.into()));
                 }
             }
         }
 
-        FunctionShape(shape)
+        Ok(FunctionShape(shape))
     }
 
     pub fn coupled(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {

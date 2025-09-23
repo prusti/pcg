@@ -2,7 +2,6 @@ use derive_more::From;
 
 use crate::{
     action::PcgAction,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},

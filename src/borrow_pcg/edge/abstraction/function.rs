@@ -1,8 +1,9 @@
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         FunctionData,
-        abstraction::{FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError},
+        abstraction::{
+            CheckOutlivesError, FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
+        },
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
@@ -26,9 +27,7 @@ use crate::{
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck,
     },
 };
 
@@ -100,22 +99,27 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
         self.output_ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: ty::TyCtxt<'tcx>) -> bool {
+    fn outlives(
+        &self,
+        sup: PcgRegion,
+        sub: PcgRegion,
+        ctxt: ty::TyCtxt<'tcx>,
+    ) -> Result<bool, CheckOutlivesError> {
         if sup.is_static() || sup == sub {
-            return true;
+            return Ok(true);
         }
         tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                todo!()
+                Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
             }
-            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => false,
-            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => true,
-            _ => self.outlives.free_region_map().sub_free_regions(
+            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
+            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
+            _ => Ok(self.outlives.free_region_map().sub_free_regions(
                 ctxt,
                 sup.rust_region(ctxt),
                 sub.rust_region(ctxt),
-            ),
+            )),
         }
     }
 }
@@ -147,7 +151,7 @@ impl<'tcx> FunctionCallData<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError> {
         let data = FunctionDataShapeDataSource::new(self.function_data, ctxt.tcx)?;
-        Ok(FunctionShape::new(&data, ctxt.tcx))
+        FunctionShape::new(&data, ctxt.tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
@@ -220,10 +224,8 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
             .function_data
             .as_ref()
             .ok_or(MakeFunctionShapeError::NoFunctionData)?;
-        Ok(FunctionShape::new(
-            &function_data.shape_data_source(ctxt.tcx)?,
-            ctxt.tcx,
-        ))
+        FunctionShape::new(&function_data.shape_data_source(ctxt.tcx)?, ctxt.tcx)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 

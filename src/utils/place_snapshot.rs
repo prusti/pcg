@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
+use super::{CompilerCtxt, Place, validity::HasValidityCheck};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -13,11 +13,7 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{
-        HasCompilerCtxt, PlaceProjectable,
-        display::DisplayWithCtxt,
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-    },
+    utils::{HasCompilerCtxt, PlaceProjectable, display::DisplayWithCtxt, json::ToJsonWithCtxt},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -175,13 +171,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
 {
     fn project_deeper(
         &self,
-        elem: mir::PlaceElem<'tcx>,
-        ctxt: Ctxt,
+        _elem: mir::PlaceElem<'tcx>,
+        _ctxt: Ctxt,
     ) -> std::result::Result<Self, crate::error::PcgError> {
         todo!()
     }
 
-    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
+    fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
         todo!()
     }
 }

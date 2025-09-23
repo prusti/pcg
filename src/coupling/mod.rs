@@ -2,7 +2,6 @@ use derive_more::{Deref, From, IntoIterator};
 use itertools::Itertools;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         AbstractionInputTarget, AbstractionOutputTarget, MakeFunctionShapeError,
         borrow_pcg_edge::BorrowPcgEdge,
@@ -33,9 +32,9 @@ use crate::{
     pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt,
         data_structures::{HashMap, HashSet},
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::DisplayWithCtxt,
         validity::HasValidityCheck,
     },
 };

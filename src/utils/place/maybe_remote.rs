@@ -18,8 +18,8 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasPlace, LabelledPlace, Place,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        display::DisplayWithCtxt,
+        json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
     },
 };

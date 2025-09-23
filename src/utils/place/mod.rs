@@ -43,7 +43,6 @@ use crate::{
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
-    utils::json::ToJsonWithCompilerCtxt,
 };
 
 pub mod corrected;
@@ -146,7 +145,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     ) -> std::result::Result<Self, PcgError> {
         Ok(self.0.project_deeper(&[elem], ctxt.tcx()).into())
     }
-    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         self.0
             .iter_projections()
             .map(|(place, elem)| (place.into(), elem))

@@ -26,7 +26,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, ProjectionKind,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
@@ -58,7 +58,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError> {
         for (base, _) in place.iter_projections() {
-            let base: utils::Place = base.into();
+            let base: crate::utils::Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
             if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {

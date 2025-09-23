@@ -2,14 +2,10 @@ use derive_more::{Deref, DerefMut};
 
 use crate::{
     Weaken,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt,
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-    },
+    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
 };
 
 use super::BorrowPcgActionKind;

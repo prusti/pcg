@@ -1,14 +1,14 @@
 //! Data structures for validity conditions.
+use crate::rustc_interface::middle::mir;
 use crate::utils::HasCompilerCtxt;
 use crate::utils::display::DisplayWithCtxt;
-use crate::{rustc_interface::middle::mir, utils::display::DisplayWithCompilerCtxt};
 use bit_set::BitSet;
 use itertools::Itertools;
 use smallvec::SmallVec;
 
-use crate::{rustc_interface::middle::mir::BasicBlock, utils::CompilerCtxt};
+use crate::rustc_interface::middle::mir::BasicBlock;
 
-use crate::utils::json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt};
+use crate::utils::json::ToJsonWithCtxt;
 
 /// Represents transfer of control flow from the block `from` to the block `to`.
 #[derive(Copy, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]

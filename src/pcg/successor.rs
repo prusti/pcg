@@ -5,13 +5,9 @@ use serde_json::json;
 use crate::{
     DebugLines,
     action::PcgActions,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
     rustc_interface::middle::mir::BasicBlock,
-    utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt,
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-    },
+    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
 };
 
 #[derive(Debug)]

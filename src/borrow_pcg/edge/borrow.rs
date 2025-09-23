@@ -1,6 +1,5 @@
 //! Borrow edges
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
@@ -32,7 +31,6 @@ use crate::{
     },
     utils::{
         CompilerCtxt,
-        display::DisplayWithCompilerCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },

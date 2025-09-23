@@ -9,7 +9,6 @@ mod mutate;
 use std::marker::PhantomData;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
@@ -43,7 +42,7 @@ use super::{
 };
 use crate::{
     borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::CompilerCtxt,
 };
 
 use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};

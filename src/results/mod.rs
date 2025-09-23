@@ -17,8 +17,8 @@ use crate::{
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, CapabilityLike, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor,
-        ctxt::HasSettings, place_capabilities::PlaceCapabilitiesReader, successor_blocks,
+        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
+        place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
         data_structures::fx::FxHashSet,

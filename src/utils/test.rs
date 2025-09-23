@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fs, io, path::Path, sync::Arc};
+use std::{fs, io, path::Path, sync::Arc};
 
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::driver::run_compiler;
@@ -12,7 +12,7 @@ use crate::{
         middle::ty::TyCtxt,
         span::source_map::FileLoader,
     },
-    utils::{PcgSettings, callbacks::set_mir_borrowck},
+    utils::callbacks::set_mir_borrowck,
 };
 
 use super::callbacks::{in_cargo_crate, run_pcg_on_fn, take_stored_body};

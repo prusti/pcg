@@ -386,10 +386,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     pub fn update_debug_visualization_metadata(&self) {
         eprintln!("Updating debug visualization metadata");
         if let Some(identifier) = self.visualization_output_identifier() {
-            eprintln!(
-                "Writing new debug visualization metadata for {}",
-                identifier
-            );
+            eprintln!("Writing new debug visualization metadata for {identifier}");
             self.settings
                 .write_new_debug_visualization_metadata(&identifier);
         }

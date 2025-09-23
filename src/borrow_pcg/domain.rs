@@ -2,7 +2,6 @@ use derive_more::{Deref, DerefMut, From};
 
 use super::region_projection::LifetimeProjection;
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         edge_data::LabelPlacePredicate,
@@ -18,10 +17,8 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        maybe_remote::MaybeRemotePlace,
-        place::maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt,
+        maybe_remote::MaybeRemotePlace, place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };

@@ -243,11 +243,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             //     call_shape.to_short_string(self.ctxt.bc_ctxt()),
             //     sig_shape.diff(&call_shape).to_short_string(self.ctxt.bc_ctxt())
             // );
-            sig_shape.unwrap_or(call_shape)
+            sig_shape.or_else(|err| {
+                tracing::warn!("Error getting signature shape: {:?}", err);
+                call_shape
+            })
         } else {
             call_shape
         };
-        self.create_edges_for_shape(shape, &call, function_data)?;
+        self.create_edges_for_shape(shape.unwrap(), &call, function_data)?;
 
         Ok(())
     }

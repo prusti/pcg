@@ -8,7 +8,6 @@ use super::{
     borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::LabelPlacePredicate,
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
@@ -33,7 +32,7 @@ use crate::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,

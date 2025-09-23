@@ -1,6 +1,5 @@
 //! Borrow-flow edges
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},

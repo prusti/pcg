@@ -2,7 +2,6 @@ use derive_more::From;
 
 use super::AbstractionBlockEdge;
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge},
         domain::LoopAbstractionOutput,
@@ -22,11 +21,7 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::{
-        CompilerCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        validity::HasValidityCheck,
-    },
+    utils::{CompilerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck},
 };
 
 pub(crate) type LoopAbstractionEdge<'tcx> =

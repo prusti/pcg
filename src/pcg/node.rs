@@ -1,5 +1,4 @@
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         domain::LoopAbstractionInput,
@@ -16,13 +15,9 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
-        maybe_old::MaybeLabelledPlace,
-        place::maybe_remote::MaybeRemotePlace,
-        remote::RemotePlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
+        json::ToJsonWithCtxt, maybe_old::MaybeLabelledPlace, place::maybe_remote::MaybeRemotePlace,
+        remote::RemotePlace, validity::HasValidityCheck,
     },
 };
 
@@ -168,11 +163,13 @@ impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNode
 
 impl<'a, 'tcx, T: HasValidityCheck<'a, 'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>>
     HasValidityCheck<'a, 'tcx> for PcgNode<'tcx, T, U>
+where
+    LifetimeProjection<'tcx, U>: HasValidityCheck<'a, 'tcx>,
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         match self {
             PcgNode::Place(p) => p.check_validity(ctxt),
-            PcgNode::LifetimeProjection(rp) => todo!(),
+            PcgNode::LifetimeProjection(rp) => rp.check_validity(ctxt),
         }
     }
 }
@@ -195,7 +192,7 @@ where
 }
 
 impl<'tcx, T, U, Ctxt> ToJsonWithCtxt<Ctxt> for PcgNode<'tcx, T, U> {
-    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
 }

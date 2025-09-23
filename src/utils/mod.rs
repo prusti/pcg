@@ -101,6 +101,7 @@ pub struct PcgSettings {
 }
 
 impl PcgSettings {
+    #[allow(unused)]
     pub(crate) fn create_visualization_data_directory(path: &Path, erase_contents: bool) {
         if erase_contents {
             std::fs::remove_dir_all(path)
@@ -137,7 +138,7 @@ impl PcgSettings {
             .iter()
             .map(|name| (name.clone(), name.clone()))
             .collect::<std::collections::HashMap<_, _>>();
-        self.write_functions_json(&functions_map);
+        self.write_functions_json(functions_map);
     }
 
     pub(crate) fn read_functions_json(&self) -> HashMap<String, String> {

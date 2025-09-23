@@ -1,12 +1,8 @@
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
     rustc_interface::middle::mir::ProjectionElem,
-    utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-    },
+    utils::{CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt},
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};

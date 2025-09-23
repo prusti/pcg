@@ -3,7 +3,6 @@ use derive_more::{Deref, DerefMut, From};
 use serde_json::Map;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::{BorrowPcgActionKind, actions::BorrowPcgActions},
         edge::kind::BorrowPcgEdgeKind,
@@ -12,9 +11,8 @@ use crate::{
     owned_pcg::RepackOp,
     pcg::capabilities::CapabilityKind,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::{ToJsonWithCompilerCtxt, ToJsonWithCtxt},
+        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DisplayWithCtxt,
+        json::ToJsonWithCtxt,
     },
 };
 

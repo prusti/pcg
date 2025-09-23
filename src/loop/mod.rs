@@ -28,9 +28,7 @@ use crate::{
         mir_dataflow::{Forward, JoinSemiLattice, fmt::DebugWithContext},
     },
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place,
-        data_structures::HashMap,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        HasCompilerCtxt, Place, data_structures::HashMap, display::DisplayWithCtxt,
         visitor::FallableVisitor,
     },
     validity_checks_enabled,

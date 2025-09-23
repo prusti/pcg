@@ -386,7 +386,7 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
     let drawer = GraphDrawer::new(File::create(file_path).unwrap_or_else(|e| {
-        panic!("Failed to create file at path: {:?}: {e}", file_path);
+        panic!("Failed to create file at path: {file_path:?}: {e}");
     }));
     drawer.draw(graph)
 }
