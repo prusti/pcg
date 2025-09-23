@@ -46,7 +46,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _data: FunctionData<'tcx>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        _ctxt: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
     }

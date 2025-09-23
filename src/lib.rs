@@ -27,7 +27,7 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, cell::RefCell, path::PathBuf};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
@@ -272,7 +272,7 @@ pub struct PcgCtxtCreator<'tcx> {
     tcx: TyCtxt<'tcx>,
     arena: bumpalo::Bump,
     settings: PcgSettings,
-    debug_visualization_identifiers: Vec<String>,
+    debug_visualization_identifiers: RefCell<Vec<String>>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -280,7 +280,7 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         Self {
             tcx,
             arena: bumpalo::Bump::new(),
-            debug_visualization_identifiers: vec![],
+            debug_visualization_identifiers: RefCell::new(vec![]),
             settings: PcgSettings::new(),
         }
     }
@@ -290,35 +290,40 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     }
 
     pub fn new_ctxt<'slf: 'a, 'a>(
-        &'slf mut self,
+        &'slf self,
         body: &'a impl BodyAndBorrows<'tcx>,
         bc: &'a impl BorrowCheckerInterface<'tcx>,
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let pcg_ctxt: PcgCtxt<'a, 'tcx> =
             PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
         if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
-            self.debug_visualization_identifiers.push(identifier);
+            self.debug_visualization_identifiers
+                .borrow_mut()
+                .push(identifier);
         }
         self.alloc(pcg_ctxt)
     }
 
     pub fn new_nll_ctxt<'slf: 'a, 'a>(
-        &'slf mut self,
+        &'slf self,
         body: &'a impl BodyAndBorrows<'tcx>,
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
-        let pcg_ctxt: PcgCtxt<'a, 'tcx> =
-            PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
-        if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
-            self.debug_visualization_identifiers.push(identifier);
-        }
-        self.alloc(pcg_ctxt)
+        self.new_ctxt(body, bc)
+        // let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
+        // let pcg_ctxt: PcgCtxt<'a, 'tcx> =
+        //     PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        // if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
+        //     self.debug_visualization_identifiers.borrow_mut().push(identifier);
+        // }
+        // self.alloc(pcg_ctxt)
     }
 
     pub(crate) fn write_debug_visualization_metadata(self) {
-        if !self.debug_visualization_identifiers.is_empty() {
+        let identifiers = self.debug_visualization_identifiers.take();
+        if !identifiers.is_empty() {
             self.settings
-                .write_debug_visualization_metadata(&self.debug_visualization_identifiers);
+                .write_debug_visualization_metadata(&identifiers);
         }
     }
 }
