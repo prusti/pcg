@@ -161,11 +161,11 @@ impl ProjectionKind {
 }
 
 pub trait HasCompilerCtxt<'a, 'tcx>: Copy {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()>;
-    fn body(&self) -> &'a Body<'tcx> {
+    fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
+    fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
     }
-    fn tcx(&self) -> TyCtxt<'tcx>
+    fn tcx(self) -> TyCtxt<'tcx>
     where
         'tcx: 'a,
     {
@@ -239,15 +239,15 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
 }
 
 impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
+    fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()> {
         CompilerCtxt::new(self.mir, self.tcx, ())
     }
 
-    fn body(&self) -> &'a Body<'tcx> {
+    fn body(self) -> &'a Body<'tcx> {
         self.mir
     }
 
-    fn tcx(&self) -> TyCtxt<'tcx> {
+    fn tcx(self) -> TyCtxt<'tcx> {
         self.tcx
     }
 }
@@ -635,6 +635,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
+        tracing::info!("ty({self:?}");
         (*self).ty(ctxt.body(), ctxt.tcx())
     }
 

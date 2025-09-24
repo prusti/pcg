@@ -226,7 +226,7 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> HasCompilerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
+    fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()> {
         self.ctxt.ctxt()
     }
 }

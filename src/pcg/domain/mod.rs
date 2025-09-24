@@ -255,7 +255,7 @@ mod private {
     }
 
     impl<'a, 'tcx: 'a> HasCompilerCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
-        fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
+        fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()> {
             self.ctxt.ctxt()
         }
     }

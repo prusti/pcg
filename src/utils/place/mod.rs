@@ -143,7 +143,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
     ) -> std::result::Result<Self, PcgError> {
-        Ok(self.0.project_deeper(&[elem], ctxt.tcx()).into())
+        Place::project_deeper(*self, elem, ctxt).map_err(PcgError::unsupported)
     }
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         self.0

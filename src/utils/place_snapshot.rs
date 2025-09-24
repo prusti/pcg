@@ -171,10 +171,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
 {
     fn project_deeper(
         &self,
-        _elem: mir::PlaceElem<'tcx>,
-        _ctxt: Ctxt,
+        elem: mir::PlaceElem<'tcx>,
+        ctxt: Ctxt,
     ) -> std::result::Result<Self, crate::error::PcgError> {
-        todo!()
+        Ok(LabelledPlace {
+            place: self.place.project_deeper(elem, ctxt)?,
+            at: self.at,
+        })
     }
 
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
