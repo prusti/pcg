@@ -1,23 +1,31 @@
+use std::collections::BTreeSet;
+
 use derive_more::{Deref, From};
 use itertools::Itertools;
 
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
-    rustc_interface::middle::{mir, ty},
-    utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+    coupling::CoupleAbstractionError,
+    rustc_interface::{
+        middle::{
+            mir,
+            ty::{self, GenericArgsRef},
+        },
+        span::def_id::{DefId, LocalDefId},
     },
+    utils::{self, CompilerCtxt, HasTyCtxt, display::DisplayWithCtxt},
 };
 
-#[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq)]
+use crate::coupling::{CoupleInputError, CoupledEdgesData};
+
+#[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
 
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub enum ArgIdxOrResult {
     Argument(ArgIdx),
     Result,
@@ -43,13 +51,25 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
     }
 }
 
-pub(crate) trait FunctionShapeDataSource<'tcx> {
-    fn input_tys(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>>;
-    fn output_ty(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx>;
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckOutlivesError {
+    CannotCompareRegions { sup: PcgRegion, sub: PcgRegion },
 }
 
-impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'_, 'tcx> {
+pub(crate) trait FunctionShapeDataSource<'tcx> {
+    type Ctxt: HasTyCtxt<'tcx> + Copy;
+    fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>>;
+    fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
+    fn outlives(
+        &self,
+        sup: PcgRegion,
+        sub: PcgRegion,
+        ctxt: Self::Ctxt,
+    ) -> Result<bool, CheckOutlivesError>;
+}
+
+impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
+    type Ctxt = CompilerCtxt<'a, 'tcx>;
     fn input_tys(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
         self.inputs
             .iter()
@@ -61,8 +81,13 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'_, 'tcx> {
         self.output.ty(ctxt).ty
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        ctxt.bc.outlives(sup, sub, self.location)
+    fn outlives(
+        &self,
+        sup: PcgRegion,
+        sub: PcgRegion,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<bool, CheckOutlivesError> {
+        Ok(ctxt.bc.outlives(sup, sub, self.location))
     }
 }
 
@@ -100,26 +125,132 @@ impl<T: std::fmt::Display> std::fmt::Display for ProjectionData<'_, T> {
 }
 
 impl<'tcx, T: Copy + std::fmt::Debug> From<ProjectionData<'tcx, T>>
-    for LifetimeProjection<'tcx, T>
+    for LifetimeProjection<'static, T>
 {
     fn from(data: ProjectionData<'tcx, T>) -> Self {
         LifetimeProjection::from_index(data.base, data.region_idx)
     }
 }
 
-impl<'tcx> From<ProjectionData<'tcx, ArgIdx>> for LifetimeProjection<'tcx, ArgIdxOrResult> {
+impl<'tcx> From<ProjectionData<'tcx, ArgIdx>> for LifetimeProjection<'static, ArgIdxOrResult> {
     fn from(data: ProjectionData<'tcx, ArgIdx>) -> Self {
         LifetimeProjection::from_index(ArgIdxOrResult::Argument(data.base), data.region_idx)
     }
 }
 
-#[derive(Deref, PartialEq, Eq, Clone, Debug)]
-pub struct FunctionShape<'tcx>(
-    HashSet<(
-        LifetimeProjection<'tcx, ArgIdx>,
-        LifetimeProjection<'tcx, ArgIdxOrResult>,
-    )>,
+pub type FunctionShapeInput = LifetimeProjection<'static, ArgIdx>;
+
+impl FunctionShapeInput {
+    pub fn to_function_shape_node(self) -> FunctionShapeNode {
+        self.with_base(ArgIdxOrResult::Argument(self.base))
+    }
+}
+
+pub type FunctionShapeOutput = LifetimeProjection<'static, ArgIdxOrResult>;
+
+/// Either an input or output in the shape of the function.
+pub type FunctionShapeNode = LifetimeProjection<'static, ArgIdxOrResult>;
+
+impl FunctionShapeNode {
+    pub fn mir_local(self) -> mir::Local {
+        match self.base {
+            ArgIdxOrResult::Argument(arg) => (*arg + 1).into(),
+            ArgIdxOrResult::Result => mir::RETURN_PLACE,
+        }
+    }
+
+    pub fn ty(self, sig: ty::FnSig<'_>) -> ty::Ty<'_> {
+        match self.base {
+            ArgIdxOrResult::Argument(arg) => sig.inputs()[*arg],
+            ArgIdxOrResult::Result => sig.output(),
+        }
+    }
+}
+
+#[derive(Deref, PartialEq, Eq, Clone, Debug, Hash)]
+pub struct FunctionShape(
+    BTreeSet<AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>,
 );
+
+impl FunctionShape {
+    pub fn for_fn<'tcx>(
+        def_id: DefId,
+        substs: GenericArgsRef<'tcx>,
+        caller_def_id: Option<LocalDefId>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError> {
+        let data = FunctionData::new(def_id, substs, caller_def_id);
+        Self::new(&data.shape_data_source(tcx)?, tcx)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+pub struct FunctionData<'tcx> {
+    pub(crate) def_id: DefId,
+    pub(crate) substs: GenericArgsRef<'tcx>,
+    pub(crate) caller_def_id: Option<LocalDefId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MakeFunctionShapeError {
+    ContainsAliasType,
+    UnsupportedRustVersion,
+    NoFunctionData,
+    CheckOutlivesError(CheckOutlivesError),
+}
+
+impl<'tcx> FunctionData<'tcx> {
+    pub fn new(
+        def_id: DefId,
+        substs: GenericArgsRef<'tcx>,
+        caller_def_id: Option<LocalDefId>,
+    ) -> Self {
+        Self {
+            def_id,
+            substs,
+            caller_def_id,
+        }
+    }
+
+    pub fn param_env(self, tcx: ty::TyCtxt<'tcx>) -> ty::ParamEnv<'tcx> {
+        let def_id = self
+            .caller_def_id
+            .map(|local_def_id| local_def_id.to_def_id())
+            .unwrap_or(self.def_id);
+        tcx.param_env(def_id)
+    }
+
+    pub fn substs(self) -> GenericArgsRef<'tcx> {
+        self.substs
+    }
+
+    pub fn def_id(self) -> DefId {
+        self.def_id
+    }
+
+    pub(crate) fn shape_data_source(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError> {
+        FunctionDataShapeDataSource::new(self, tcx)
+    }
+
+    pub fn shape(self, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError> {
+        FunctionShape::new(&self.shape_data_source(tcx)?, tcx)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
+    }
+
+    pub fn coupled_edges(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError> {
+        let shape = self
+            .shape(tcx)
+            .map_err(CoupleAbstractionError::MakeFunctionShape)?;
+        shape.coupled().map_err(CoupleAbstractionError::CoupleInput)
+    }
+}
 
 impl std::fmt::Display for ArgIdx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -136,20 +267,18 @@ impl std::fmt::Display for ArgIdxOrResult {
     }
 }
 
-impl<'tcx> DisplayWithCompilerCtxt<'tcx, &dyn BorrowCheckerInterface<'tcx>>
-    for FunctionShape<'tcx>
-{
-    fn to_short_string(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
+    fn to_short_string(&self, _ctxt: Ctxt) -> String {
         self.0
             .iter()
-            .map(|(input, output)| format!("{input} -> {output}"))
+            .map(|edge| format!("{edge}"))
             .sorted()
             .collect::<Vec<_>>()
             .join("\n, ")
     }
 }
 
-impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
+impl FunctionShape {
     #[allow(unused)]
     pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
         self.0.is_subset(&other.0)
@@ -157,15 +286,21 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
 
     #[allow(unused)]
     pub(crate) fn diff(&self, other: &Self) -> Self {
-        let diff = self.0.difference(&other.0).copied().collect::<HashSet<_>>();
+        let diff = self
+            .0
+            .difference(&other.0)
+            .copied()
+            .collect::<BTreeSet<_>>();
         Self(diff)
     }
 
-    pub(crate) fn new<ShapeData: FunctionShapeDataSource<'tcx>>(
+    pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
         shape_data: &ShapeData,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Self {
-        let mut shape = HashSet::default();
+        ctxt: ShapeData::Ctxt,
+    ) -> Result<Self, CheckOutlivesError> {
+        let mut shape: BTreeSet<
+            AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,
+        > = BTreeSet::default();
         let input_tys = shape_data.input_tys(ctxt);
         let output_ty = shape_data.output_ty(ctxt);
         let arg_projections = input_tys
@@ -176,23 +311,27 @@ impl<'a, 'tcx: 'a> FunctionShape<'tcx> {
         let result_projections = ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, output_ty);
         for input in arg_projections.iter().copied() {
             for output in arg_projections.iter().copied() {
-                if ctxt
-                    .bc_ctxt()
-                    .region_is_invariant_in_type(output.region, output.ty)
-                    && shape_data.outlives(input.region, output.region, ctxt)
+                if ctxt.region_is_invariant_in_type(output.region, output.ty)
+                    && shape_data.outlives(input.region, output.region, ctxt)?
                 {
                     tracing::debug!("{} outlives {}", input, output);
-                    shape.insert((input.into(), output.into()));
+                    shape.insert(AbstractionBlockEdge::new(input.into(), output.into()));
                 }
             }
             for rp in result_projections.iter().copied() {
-                if shape_data.outlives(input.region, rp.region, ctxt) {
+                if shape_data.outlives(input.region, rp.region, ctxt)? {
                     tracing::debug!("{} outlives {}", input, rp);
-                    shape.insert((input.into(), rp.into()));
+                    shape.insert(AbstractionBlockEdge::new(input.into(), rp.into()));
                 }
             }
         }
 
-        FunctionShape(shape)
+        Ok(FunctionShape(shape))
+    }
+
+    pub fn coupled(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
+        CoupledEdgesData::new(self.0.iter().copied())
     }
 }
+
+pub type FunctionShapeCoupledEdges = CoupledEdgesData<FunctionShapeInput, FunctionShapeOutput>;

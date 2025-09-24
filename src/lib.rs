@@ -8,6 +8,7 @@
 may already be stabilized */
 
 #![allow(stable_features)]
+#![feature(trait_alias)]
 #![feature(associated_type_defaults)]
 #![feature(rustc_private)]
 #![feature(box_patterns)]
@@ -22,9 +23,12 @@ may already be stabilized */
 pub mod action;
 pub mod borrow_checker;
 pub mod borrow_pcg;
+pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
+use std::{borrow::Cow, cell::RefCell, path::PathBuf};
+
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
 pub mod pcg;
@@ -46,6 +50,7 @@ use rustc_interface::{
         ty::{self, TyCtxt},
     },
     mir_dataflow::move_paths::MoveData,
+    span::def_id::LocalDefId,
 };
 use serde_json::json;
 use utils::{
@@ -130,10 +135,12 @@ pub struct RestoreCapability<'tcx> {
     capability: CapabilityKind,
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RestoreCapability<'tcx> {
-    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
+    for RestoreCapability<'tcx>
+{
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(ctxt),
+            "place": self.place.to_json(ctxt.ctxt()),
             "capability": format!("{:?}", self.capability),
         })
     }
@@ -160,10 +167,10 @@ impl<'tcx> RestoreCapability<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for Weaken<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker),
+            "place": self.place.to_json(repacker.ctxt()),
             "old": format!("{:?}", self.from),
             "new": format!("{:?}", self.to),
         })
@@ -190,31 +197,28 @@ struct PcgSuccessorVisualizationData<'a, 'tcx> {
     actions: &'a PcgActions<'tcx>,
 }
 
-impl<'tcx, 'a> From<&'a PcgSuccessor<'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
-    fn from(successor: &'a PcgSuccessor<'tcx>) -> Self {
+impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
+    fn from(successor: &'a PcgSuccessor<'a, 'tcx>) -> Self {
         Self {
             actions: &successor.actions,
         }
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for PcgSuccessorVisualizationData<'a, 'tcx>
 {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "actions": self.actions.iter().map(|a| a.to_json(repacker)).collect::<Vec<_>>(),
         })
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for PCGStmtVisualizationData<'a, 'tcx>
 {
-    fn to_json(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "actions": self.actions.to_json(repacker),
         })
@@ -222,7 +226,7 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>
 }
 
 impl<'a, 'tcx> PCGStmtVisualizationData<'a, 'tcx> {
-    fn new<'mir>(location: &'a PcgLocation<'tcx>) -> Self
+    fn new<'mir>(location: &'a PcgLocation<'a, 'tcx>) -> Self
     where
         'tcx: 'mir,
     {
@@ -264,27 +268,160 @@ impl<'tcx> BodyAndBorrows<'tcx> for borrowck::BodyWithBorrowckFacts<'tcx> {
     }
 }
 
-pub struct PcgCtxt<'mir, 'tcx> {
-    compiler_ctxt: CompilerCtxt<'mir, 'tcx>,
+pub struct PcgCtxtCreator<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    arena: bumpalo::Bump,
+    settings: PcgSettings,
+    debug_visualization_identifiers: RefCell<Vec<String>>,
+}
+
+impl<'tcx> PcgCtxtCreator<'tcx> {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self {
+            tcx,
+            arena: bumpalo::Bump::new(),
+            debug_visualization_identifiers: RefCell::new(vec![]),
+            settings: PcgSettings::new(),
+        }
+    }
+
+    fn alloc<'a, T: 'a>(&'a self, val: T) -> &'a T {
+        self.arena.alloc(val)
+    }
+
+    pub fn new_ctxt<'slf: 'a, 'a>(
+        &'slf self,
+        body: &'a impl BodyAndBorrows<'tcx>,
+        bc: &'a impl BorrowCheckerInterface<'tcx>,
+    ) -> &'a PcgCtxt<'a, 'tcx> {
+        let pcg_ctxt: PcgCtxt<'a, 'tcx> =
+            PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
+            self.debug_visualization_identifiers
+                .borrow_mut()
+                .push(identifier);
+        }
+        self.alloc(pcg_ctxt)
+    }
+
+    pub fn new_nll_ctxt<'slf: 'a, 'a>(
+        &'slf self,
+        body: &'a impl BodyAndBorrows<'tcx>,
+    ) -> &'a PcgCtxt<'a, 'tcx> {
+        let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
+        self.new_ctxt(body, bc)
+        // let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
+        // let pcg_ctxt: PcgCtxt<'a, 'tcx> =
+        //     PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        // if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
+        //     self.debug_visualization_identifiers.borrow_mut().push(identifier);
+        // }
+        // self.alloc(pcg_ctxt)
+    }
+
+    pub(crate) fn write_debug_visualization_metadata(self) {
+        let identifiers = self.debug_visualization_identifiers.take();
+        if !identifiers.is_empty() {
+            self.settings
+                .write_debug_visualization_metadata(&identifiers);
+        }
+    }
+}
+
+pub struct PcgCtxt<'a, 'tcx> {
+    compiler_ctxt: CompilerCtxt<'a, 'tcx>,
     move_data: MoveData<'tcx>,
+    settings: Cow<'a, PcgSettings>,
     pub(crate) arena: bumpalo::Bump,
+}
+
+impl<'a, 'mir: 'a, 'tcx: 'mir>
+    HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+    for &'a PcgCtxt<'mir, 'tcx>
+{
+    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
+        self.compiler_ctxt
+    }
+
+    fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
+        self.compiler_ctxt.bc()
+    }
+}
+
+impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
+    fn ctxt(self) -> CompilerCtxt<'mir, 'tcx, ()> {
+        CompilerCtxt::new(self.compiler_ctxt.mir, self.compiler_ctxt.tcx, ())
+    }
+}
+
+impl<'a, 'mir, 'tcx> HasSettings<'a> for &'a PcgCtxt<'mir, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        &self.settings
+    }
 }
 
 fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
     MoveData::gather_moves(body, tcx, |_| true)
 }
 
-impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
+impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     pub fn new<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
-        body: &'mir Body<'tcx>,
+        body: &'a Body<'tcx>,
         tcx: TyCtxt<'tcx>,
-        bc: &'mir BC,
+        bc: &'a BC,
+    ) -> Self {
+        Self::with_settings(body, tcx, bc, Cow::Owned(PcgSettings::new()))
+    }
+
+    pub fn with_settings<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
+        body: &'a Body<'tcx>,
+        tcx: TyCtxt<'tcx>,
+        bc: &'a BC,
+        settings: Cow<'a, PcgSettings>,
     ) -> Self {
         let ctxt = CompilerCtxt::new(body, tcx, bc.as_dyn());
         Self {
             compiler_ctxt: ctxt,
             move_data: gather_moves(ctxt.body(), ctxt.tcx()),
+            settings,
             arena: bumpalo::Bump::new(),
+        }
+    }
+
+    pub fn update_debug_visualization_metadata(&self) {
+        eprintln!("Updating debug visualization metadata");
+        if let Some(identifier) = self.visualization_output_identifier() {
+            eprintln!("Writing new debug visualization metadata for {identifier}");
+            self.settings
+                .write_new_debug_visualization_metadata(&identifier);
+        }
+    }
+
+    pub fn body_def_id(&self) -> LocalDefId {
+        self.compiler_ctxt.def_id()
+    }
+
+    pub(crate) fn visualization_output_identifier(&self) -> Option<String> {
+        if self.settings.visualization {
+            Some(
+                self.compiler_ctxt
+                    .tcx()
+                    .def_path_str(self.compiler_ctxt.def_id()),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn visualization_output_path(&self) -> Option<PathBuf> {
+        if self.settings.visualization {
+            Some(
+                self.settings
+                    .visualization_data_dir
+                    .join(self.visualization_output_identifier()?),
+            )
+        } else {
+            None
         }
     }
 }
@@ -294,16 +431,12 @@ impl<'mir, 'tcx> PcgCtxt<'mir, 'tcx> {
 /// # Arguments
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
-/// * `visualization_output_path` - If provided, the analysis will output debug visualization files to this path.
-pub fn run_pcg<'a, 'tcx>(
-    pcg_ctxt: &'a PcgCtxt<'_, 'tcx>,
-    visualization_output_path: Option<&str>,
-) -> PcgOutput<'a, 'tcx> {
+pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
     let engine = PcgEngine::new(
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
         &pcg_ctxt.arena,
-        visualization_output_path,
+        pcg_ctxt.visualization_output_path(),
     );
     let body = pcg_ctxt.compiler_ctxt.body();
     let tcx = pcg_ctxt.compiler_ctxt.tcx();
@@ -314,14 +447,14 @@ pub fn run_pcg<'a, 'tcx>(
         let state = analysis.entry_state_for_block_mut(block);
         state.complete(ctxt);
     }
-    if let Some(dir_path) = &visualization_output_path {
+    if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
         for block in body.basic_blocks.indices() {
             let state = analysis.entry_set_for_block(block);
             if state.is_bottom() {
                 continue;
             }
             let block_iterations_json_file =
-                format!("{}/block_{}_iterations.json", dir_path, block.index());
+                dir_path.join(format!("block_{}_iterations.json", block.index()));
             let ctxt = analysis.get_analysis().analysis_ctxt(block);
             if let Some(graphs) = ctxt.graphs {
                 graphs
@@ -350,24 +483,24 @@ pub fn run_pcg<'a, 'tcx>(
                         block,
                         statement_index,
                     },
-                    pcg_ctxt.compiler_ctxt,
+                    pcg_ctxt,
                 );
             }
         }
     }
 
     #[cfg(feature = "visualization")]
-    if let Some(dir_path) = visualization_output_path {
-        let edge_legend_file_path = format!("{dir_path}/edge_legend.dot");
+    if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
+        let edge_legend_file_path = dir_path.join("edge_legend.dot");
         let edge_legend_graph = crate::visualization::legend::generate_edge_legend().unwrap();
         std::fs::write(&edge_legend_file_path, edge_legend_graph)
             .expect("Failed to write edge legend");
 
-        let node_legend_file_path = format!("{dir_path}/node_legend.dot");
+        let node_legend_file_path = dir_path.join("node_legend.dot");
         let node_legend_graph = crate::visualization::legend::generate_node_legend().unwrap();
         std::fs::write(&node_legend_file_path, node_legend_graph)
             .expect("Failed to write node legend");
-        generate_json_from_mir(&format!("{dir_path}/mir.json"), pcg_ctxt.compiler_ctxt)
+        generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
             .expect("Failed to generate JSON from MIR");
 
         // Iterate over each statement in the MIR
@@ -383,24 +516,22 @@ pub fn run_pcg<'a, 'tcx>(
             let pcs_block = pcs_block_option.unwrap();
             for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
                 let data = PCGStmtVisualizationData::new(statement);
-                let pcg_data_file_path = format!(
-                    "{}/block_{}_stmt_{}_pcg_data.json",
-                    &dir_path,
+                let pcg_data_file_path = dir_path.join(format!(
+                    "block_{}_stmt_{}_pcg_data.json",
                     block.index(),
                     statement_index
-                );
+                ));
                 let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");
             }
             for succ in pcs_block.terminator.succs {
                 let data = PcgSuccessorVisualizationData::from(&succ);
-                let pcg_data_file_path = format!(
-                    "{}/block_{}_term_block_{}_pcg_data.json",
-                    &dir_path,
+                let pcg_data_file_path = dir_path.join(format!(
+                    "block_{}_term_block_{}_pcg_data.json",
                     block.index(),
                     succ.block().index()
-                );
+                ));
                 let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");
@@ -566,7 +697,12 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
-use crate::{results::PcgLocation, utils::HasCompilerCtxt};
+use crate::{
+    borrow_checker::r#impl::NllBorrowCheckerImpl,
+    pcg::ctxt::HasSettings,
+    results::PcgLocation,
+    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
+};
 
 pub(crate) fn validity_checks_enabled() -> bool {
     *VALIDITY_CHECKS

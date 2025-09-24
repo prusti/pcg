@@ -3,6 +3,7 @@ use std::{fs, io, path::Path, sync::Arc};
 #[rustversion::since(2025-05-24)]
 use crate::rustc_interface::driver::run_compiler;
 use crate::{
+    PcgCtxtCreator,
     results::PcgAnalysisResults,
     rustc_interface::{
         driver::{self, Compilation},
@@ -52,7 +53,8 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
         .unwrap();
     // SAFETY: bodies come from the same `tcx`
     let body = unsafe { take_stored_body(tcx, def_id) };
-    run_pcg_on_fn(def_id, &body, tcx, false, None, Some(&callback));
+    let mut ctxt_creator = PcgCtxtCreator::new(tcx);
+    run_pcg_on_fn(&body, &mut ctxt_creator, false, Some(&callback));
 }
 
 #[rustversion::since(2025-05-24)]

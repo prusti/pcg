@@ -4,20 +4,43 @@ use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
     RestoreCapability, Weaken,
     action::BorrowPcgAction,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
+        edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     pcg::CapabilityKind,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
 pub mod actions;
+
+impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
+    pub(crate) fn add_edge(
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        context: impl Into<String>,
+        _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
+    ) -> Self {
+        BorrowPcgAction {
+            kind: BorrowPcgActionKind::AddEdge { edge },
+            debug_context: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn remove_edge(
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        context: impl Into<String>,
+    ) -> Self {
+        BorrowPcgAction {
+            kind: BorrowPcgActionKind::RemoveEdge(edge),
+            debug_context: Some(context.into()),
+        }
+    }
+}
 
 impl<'tcx> BorrowPcgAction<'tcx> {
     pub(crate) fn restore_capability(
@@ -43,24 +66,6 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Weaken(Weaken::new(place, from, to, ctxt)),
-            debug_context: Some(context.into()),
-        }
-    }
-
-    pub(crate) fn remove_edge(edge: BorrowPcgEdge<'tcx>, context: impl Into<String>) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::RemoveEdge(edge),
-            debug_context: Some(context.into()),
-        }
-    }
-
-    pub(crate) fn add_edge(
-        edge: BorrowPcgEdge<'tcx>,
-        context: impl Into<String>,
-        _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::AddEdge { edge },
             debug_context: Some(context.into()),
         }
     }
@@ -131,7 +136,7 @@ impl LabelPlaceReason {
     pub(crate) fn apply_to_edge<'a, 'tcx: 'a>(
         self,
         place: Place<'tcx>,
-        edge: &mut BorrowPcgEdge<'tcx>,
+        edge: &mut impl LabelEdgePlaces<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool {
@@ -167,13 +172,10 @@ pub struct LabelPlaceAction<'tcx> {
     pub(crate) reason: LabelPlaceReason,
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlaceAction<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "Make {} an old place ({:?})",
             self.place.to_short_string(ctxt),
@@ -183,7 +185,7 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BorrowPcgActionKind<'tcx> {
+pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     LabelLifetimeProjection(
         LabelLifetimeProjectionPredicate<'tcx>,
         Option<LifetimeProjectionLabel>,
@@ -198,19 +200,16 @@ pub enum BorrowPcgActionKind<'tcx> {
     /// symbolic-execution based Prusti purification already performs some
     /// filtering on edges based on validity conditions and might want to ignore
     /// removal actions for edges that it already ignored.
-    RemoveEdge(BorrowPcgEdge<'tcx>),
+    RemoveEdge(BorrowPcgEdge<'tcx, EdgeKind>),
     AddEdge {
-        edge: BorrowPcgEdge<'tcx>,
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
     },
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for BorrowPcgActionKind<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
                 format!(
@@ -219,8 +218,10 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
                     label
                 )
             }
-            BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt),
-            BorrowPcgActionKind::Restore(restore_capability) => restore_capability.debug_line(ctxt),
+            BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt.ctxt()),
+            BorrowPcgActionKind::Restore(restore_capability) => {
+                restore_capability.debug_line(ctxt.ctxt())
+            }
             BorrowPcgActionKind::MakePlaceOld(action) => action.to_short_string(ctxt),
             BorrowPcgActionKind::RemoveEdge(borrow_pcgedge) => {
                 format!("Remove Edge {}", borrow_pcgedge.to_short_string(ctxt))

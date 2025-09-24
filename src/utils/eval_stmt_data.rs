@@ -1,6 +1,6 @@
 use crate::{
     pcg::EvalStmtPhase,
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt, validity::HasValidityCheck},
+    utils::{HasCompilerCtxt, json::ToJsonWithCtxt, validity::HasValidityCheck},
 };
 use serde_json::json;
 
@@ -23,10 +23,8 @@ impl<T> EvalStmtData<T> {
     }
 }
 
-impl<'tcx, BC: Copy, T: ToJsonWithCompilerCtxt<'tcx, BC>> ToJsonWithCompilerCtxt<'tcx, BC>
-    for EvalStmtData<T>
-{
-    fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for EvalStmtData<T> {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
             "pre_operands": self.pre_operands.to_json(ctxt),
             "post_operands": self.post_operands.to_json(ctxt),
@@ -47,8 +45,10 @@ impl<T: Default> Default for EvalStmtData<T> {
     }
 }
 
-impl<'tcx, T: HasValidityCheck<'tcx>> HasValidityCheck<'tcx> for EvalStmtData<T> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<'a, 'tcx, Ctxt>>
+    HasValidityCheck<'a, 'tcx, Ctxt> for EvalStmtData<T>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // self.pre_operands.check_validity(ctxt)?;
         // self.post_operands.check_validity(ctxt)?;
         // self.pre_main.check_validity(ctxt)?;

@@ -6,7 +6,7 @@ use crate::{
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{CompilerCtxt, HasPlace, data_structures::HashSet},
+    utils::{CompilerCtxt, PlaceProjectable, data_structures::HashSet},
 };
 
 use super::BorrowsGraph;
@@ -193,6 +193,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         );
                     }
                 },
+                BorrowPcgEdgeKind::Coupled(edges) => {
+                    for input in edges.inputs(repacker) {
+                        extend(input.0, seen, &mut result, false);
+                    }
+                }
             }
         }
         result
@@ -221,7 +226,7 @@ fn test_aliases() {
     fn check_all_statements<'mir, 'tcx>(
         body: &'mir mir::Body<'tcx>,
         analysis: &mut PcgOutput<'mir, 'tcx>,
-        f: impl Fn(mir::Location, &PcgLocation<'tcx>),
+        f: impl Fn(mir::Location, &PcgLocation<'_, 'tcx>),
     ) {
         for block in body.basic_blocks.indices() {
             let stmts_option = analysis.get_all_for_bb(block).unwrap();

@@ -1,7 +1,7 @@
 #![feature(rustc_private)]
 use chrono::Local;
 use derive_more::Deref;
-use pcg::utils::TEST_CRATES_START_FROM;
+use pcg::utils::GLOBAL_SETTINGS;
 use rayon::prelude::*;
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -40,7 +40,7 @@ pub fn top_crates_parallel(n: usize, date: Option<&str>, parallelism: usize) {
         .panic_fuse()
         .enumerate()
         .for_each(|(i, krate)| {
-            if let Some(start_from) = *TEST_CRATES_START_FROM
+            if let Some(start_from) = GLOBAL_SETTINGS.test_crates_start_from
                 && i < start_from
             {
                 println!("Skipping: {i} ({})", krate.name);

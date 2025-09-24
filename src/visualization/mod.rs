@@ -26,6 +26,7 @@ use std::{
     collections::HashSet,
     fs::File,
     io::{self},
+    path::Path,
 };
 
 use dot::escape_html;
@@ -202,6 +203,10 @@ pub(crate) enum GraphEdge {
         target: NodeId,
         kind: BorrowFlowEdgeKind,
     },
+    Coupled {
+        source: NodeId,
+        target: NodeId,
+    },
 }
 
 impl GraphEdge {
@@ -293,6 +298,13 @@ impl GraphEdge {
                     options,
                 }
             }
+            GraphEdge::Coupled { source, target } => DotEdge {
+                from: source.to_string(),
+                to: target.to_string(),
+                options: EdgeOptions::directed(EdgeDirection::Forward)
+                    .with_color("red".to_string())
+                    .with_style("dashed".to_string()),
+            },
         }
     }
 }
@@ -369,12 +381,12 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     pcg: PcgRef<'_, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
-    file_path: &str,
+    file_path: &Path,
 ) -> io::Result<()> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
     let drawer = GraphDrawer::new(File::create(file_path).unwrap_or_else(|e| {
-        panic!("Failed to create file at path: {file_path}: {e}");
+        panic!("Failed to create file at path: {file_path:?}: {e}");
     }));
     drawer.draw(graph)
 }

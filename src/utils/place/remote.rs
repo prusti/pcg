@@ -5,8 +5,8 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt, validity::HasValidityCheck,
+        self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
+        validity::HasValidityCheck,
     },
 };
 
@@ -15,24 +15,21 @@ pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
 
-impl<'tcx> HasTy<'tcx> for RemotePlace {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         let place: utils::Place<'tcx> = self.local.into();
         place.rust_ty(ctxt)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for RemotePlace {
-    fn to_json(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemotePlace {
+    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for RemotePlace {
-    fn to_short_string(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
+    fn to_short_string(&self, _repacker: Ctxt) -> String {
         format!("Remote({:?})", self.local)
     }
 }
@@ -49,7 +46,7 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for RemotePlace {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for RemotePlace {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }

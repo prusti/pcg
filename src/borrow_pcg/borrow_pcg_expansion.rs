@@ -12,7 +12,6 @@ use super::{
     region_projection::LifetimeProjectionLabel,
 };
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::{LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{
@@ -34,9 +33,9 @@ use crate::{
         middle::{mir::PlaceElem, ty},
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
-        display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        display::DisplayWithCtxt,
+        json::ToJsonWithCtxt,
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
     },
@@ -66,7 +65,7 @@ pub enum PlaceExpansion<'tcx> {
     Guided(RepackGuide),
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for PlaceExpansion<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceExpansion<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
@@ -220,12 +219,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgExpansion<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = self.base.label_lifetime_projection(predicate, label, ctxt);
         for p in &mut self.expansion {
@@ -236,14 +235,10 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>>
-    DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{{{}}} -> {{{}}}",
             self.base.to_short_string(ctxt),
@@ -255,7 +250,7 @@ impl<'tcx, 'a, P: DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'tcx> for BorrowPcgExpansion<'tcx, P> {
+impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansion<'tcx, P> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
             return Err(format!("expansion contains base: {self:?}"));
@@ -369,14 +364,14 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         &self.expansion
     }
 
-    pub(crate) fn new<'a>(
+    pub(crate) fn new<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         base: P,
         expansion: PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
-        P: Ord + HasPlace<'tcx>,
+        P: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx, Ctxt>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -392,17 +387,17 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
             expansion: expansion
                 .elems()
                 .into_iter()
-                .map(|elem| base.project_deeper(elem, ctxt.ctxt()))
+                .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
             _marker: PhantomData,
         };
-        result.assert_validity(ctxt);
+        result.assert_validity(ctxt.bc_ctxt());
         Ok(result)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for BorrowPcgExpansion<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for BorrowPcgExpansion<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "base": self.base.to_json(repacker),
             "expansion": self.expansion.iter().map(|p| p.to_json(repacker)).collect::<Vec<_>>(),

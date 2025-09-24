@@ -15,7 +15,11 @@ use crate::{
             ty::{self, RegionVid},
         },
     },
-    utils::{CompilerCtxt, callbacks::RustBorrowCheckerImpl, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt,
+        callbacks::RustBorrowCheckerImpl,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use super::{
@@ -23,13 +27,10 @@ use super::{
     node::IdLookup,
 };
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PoloniusRegionVid
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let region: RegionVid = (*self).into();
         region.to_short_string(ctxt)
     }
@@ -38,14 +39,13 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
 fn get_id<
     'a,
     'tcx: 'a,
-    'bc: 'a,
-    T: Clone + Eq + DisplayWithCompilerCtxt<'tcx, &'a BC>,
+    T: Clone + Eq + DisplayWithCompilerCtxt<'a, 'tcx, &'a BC>,
     BC: BorrowCheckerInterface<'tcx> + ?Sized + 'a,
 >(
     elem: &T,
     nodes: &mut IdLookup<T>,
     graph_nodes: &mut Vec<DotNode>,
-    ctxt: CompilerCtxt<'a, 'tcx, &'bc BC>,
+    ctxt: CompilerCtxt<'a, 'tcx, &'a BC>,
 ) -> String {
     if let Some(id) = nodes.existing_id(elem) {
         id.to_string()

@@ -100,7 +100,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             return id;
         }
         let id = self.region_projection_nodes.node_id(&projection);
-        let base_ty = match projection.place() {
+        let base_ty = match projection.base() {
             PlaceOrConst::Place(p) => {
                 format!("{:?}", p.related_local_place().ty(self.ctxt).ty)
             }

@@ -7,6 +7,7 @@
 use std::{
     cell::RefCell,
     fmt::{Debug, Formatter},
+    path::Path,
     rc::Rc,
 };
 
@@ -18,7 +19,8 @@ use crate::{
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
-        ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
+        ctxt::{AnalysisCtxt, HasSettings},
+        dot_graphs::PcgDotGraphsForBlock,
         place_capabilities::SymbolicPlaceCapabilities,
     },
     pcg_validity_assert,
@@ -27,7 +29,8 @@ use crate::{
         mir_dataflow::{JoinSemiLattice, fmt::DebugWithContext, move_paths::MoveData},
     },
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, Place, ToGraph,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
+        ToGraph,
         arena::PcgArenaRef,
         domain_data::{DomainData, DomainDataIndex},
         eval_stmt_data::EvalStmtData,
@@ -55,14 +58,14 @@ pub struct DataflowIterationDebugInfo {
 pub(crate) struct PcgBlockDebugVisualizationGraphs<'a> {
     #[allow(dead_code)]
     block: BasicBlock,
-    pub(crate) dot_output_dir: &'a str,
+    pub(crate) dot_output_dir: &'a Path,
     pub(crate) dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
 }
 
 impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
     pub(crate) fn new(
         block: BasicBlock,
-        dot_output_dir: &'a str,
+        dot_output_dir: &'a Path,
         dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
     ) -> Self {
         Self {
@@ -75,7 +78,7 @@ impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
 
 #[derive(Clone, Eq, Debug)]
 pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
-    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'tcx, Capabilities>>>,
+    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
     pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
 }
 
@@ -88,7 +91,7 @@ impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
         let mut entry_state = (*other.data.pcg.states.0.post_main).clone();
         entry_state
             .borrow
-            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt.ctxt);
+            .add_cfg_edge(other.ctxt.block, self_block, other.ctxt);
         let domain_data = DomainData::new(Rc::new_in(entry_state, other.ctxt.arena));
         Self {
             pcg: domain_data,
@@ -115,7 +118,8 @@ impl<Capabilities: PartialEq> PartialEq for PcgDomainData<'_, '_, Capabilities> 
 pub(crate) struct BodyAnalysis<'a, 'tcx> {
     pub(crate) definitely_initialized: DefinitelyInitialized<'a, 'tcx>,
     pub(crate) place_liveness: PlaceLiveness<'a, 'tcx>,
-    pub(crate) loop_analysis: LoopPlaceUsageAnalysis<'tcx>,
+    pub(crate) loop_place_usage_analysis: LoopPlaceUsageAnalysis<'tcx>,
+    pub(crate) loop_analysis: LoopAnalysis,
 }
 
 impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
@@ -123,24 +127,25 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         let definitely_initialized = DefinitelyInitialized::new(ctxt.tcx(), ctxt.body(), move_data);
         let place_liveness = PlaceLiveness::new(ctxt);
         let loop_analysis = LoopAnalysis::find_loops(ctxt.body());
-        let loop_place_analysis =
+        let loop_place_usage_analysis =
             LoopPlaceUsageAnalysis::new(ctxt.tcx(), ctxt.body(), &loop_analysis);
         Self {
             definitely_initialized,
             place_liveness,
-            loop_analysis: loop_place_analysis,
+            loop_analysis,
+            loop_place_usage_analysis,
         }
     }
 
     pub(crate) fn is_loop_head(&self, block: BasicBlock) -> bool {
-        self.loop_analysis.is_loop_head(block)
+        self.loop_place_usage_analysis.is_loop_head(block)
     }
 
     pub(crate) fn get_places_used_in_loop(
         &self,
         loop_head: BasicBlock,
     ) -> Option<&PlaceUsages<'tcx>> {
-        self.loop_analysis.get_used_places(loop_head)
+        self.loop_place_usage_analysis.get_used_places(loop_head)
     }
 
     pub(crate) fn is_live_and_initialized_at(
@@ -183,7 +188,7 @@ mod private {
     use crate::{
         borrow_checker::BorrowCheckerInterface,
         pcg::DomainDataWithCtxt,
-        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt},
+        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
     };
 
     #[derive(Clone, From, Eq)]
@@ -230,11 +235,12 @@ mod private {
     #[derive(Clone, Copy, Debug)]
     pub struct ResultsCtxt<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
+        pub(crate) settings: &'a PcgSettings,
     }
 
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
-        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>) -> Self {
-            Self { ctxt }
+        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {
+            Self { ctxt, settings }
         }
     }
 
@@ -249,7 +255,7 @@ mod private {
     }
 
     impl<'a, 'tcx: 'a> HasCompilerCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
-        fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
+        fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()> {
             self.ctxt.ctxt()
         }
     }
@@ -387,7 +393,10 @@ impl<'a, 'tcx: 'a, T> HasPcgDomainData<'a, 'tcx> for DomainDataWithCtxt<'a, 'tcx
 
 impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     fn into_results(self) -> DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
-        DomainDataWithCtxt::new(self.data, ResultsCtxt::new(self.ctxt.bc_ctxt()))
+        DomainDataWithCtxt::new(
+            self.data,
+            ResultsCtxt::new(self.ctxt.bc_ctxt(), self.ctxt.settings),
+        )
     }
 }
 
@@ -470,10 +479,16 @@ impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
     }
 }
 
+impl<'a, 'tcx: 'a> HasSettings<'a> for ResultsCtxt<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
 pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
     fn data(&self) -> &PcgDomainData<'a, 'tcx>;
 
-    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'tcx>
+    fn pcg<'slf>(&'slf self, phase: impl Into<DomainDataIndex>) -> &'slf Pcg<'a, 'tcx>
     where
         'a: 'slf,
     {

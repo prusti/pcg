@@ -4,15 +4,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use serde_derive::Serialize;
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::TyVarianceVisitor},
     owned_pcg::RepackGuide,
-    pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
+    pcg::{
+        DataflowStmtPhase, EvalStmtPhase,
+        ctxt::{AnalysisCtxt, HasSettings},
+    },
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
@@ -23,9 +26,10 @@ use crate::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
                 PlaceElem, ProjectionElem, VarDebugInfoContents,
             },
-            ty::{TyCtxt, TyKind},
+            ty::{self, TyCtxt, TyKind, TypeVisitable},
         },
     },
+    utils::validity::HasValidityCheck,
     validity_checks_enabled,
 };
 
@@ -157,11 +161,11 @@ impl ProjectionKind {
 }
 
 pub trait HasCompilerCtxt<'a, 'tcx>: Copy {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()>;
-    fn body(&self) -> &'a Body<'tcx> {
+    fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
+    fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
     }
-    fn tcx(&self) -> TyCtxt<'tcx>
+    fn tcx(self) -> TyCtxt<'tcx>
     where
         'tcx: 'a,
     {
@@ -177,13 +181,13 @@ pub(crate) enum ToGraph {
 
 #[derive(Clone, Serialize, Default, Debug)]
 pub(crate) struct StmtGraphs {
-    at_phase: Vec<(DataflowStmtPhase, String)>,
-    actions: BTreeMap<EvalStmtPhase, Vec<String>>,
+    at_phase: Vec<(DataflowStmtPhase, PathBuf)>,
+    actions: BTreeMap<EvalStmtPhase, Vec<PathBuf>>,
 }
 
 impl StmtGraphs {
-    pub(crate) fn relative_filename(location: mir::Location, to_graph: ToGraph) -> String {
-        match to_graph {
+    pub(crate) fn relative_filename(location: mir::Location, to_graph: ToGraph) -> PathBuf {
+        let path_str = match to_graph {
             ToGraph::Phase(phase) => {
                 format!(
                     "{:?}_stmt_{}_{}.dot",
@@ -198,10 +202,11 @@ impl StmtGraphs {
                     location.block, location.statement_index, phase, action_idx,
                 )
             }
-        }
+        };
+        PathBuf::from(path_str)
     }
 
-    pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: String) {
+    pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: PathBuf) {
         self.at_phase.push((phase, filename));
     }
 
@@ -209,7 +214,7 @@ impl StmtGraphs {
         &mut self,
         phase: EvalStmtPhase,
         action_idx: usize,
-        filename: String,
+        filename: PathBuf,
     ) {
         let within_phase = self.actions.entry(phase).or_default();
         assert_eq!(
@@ -221,7 +226,9 @@ impl StmtGraphs {
     }
 }
 
-pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>: HasBorrowCheckerCtxt<'a, 'tcx> {
+pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
+    HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
+{
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
@@ -232,15 +239,15 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
 }
 
 impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> {
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx, ()> {
+    fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()> {
         CompilerCtxt::new(self.mir, self.tcx, ())
     }
 
-    fn body(&self) -> &'a Body<'tcx> {
+    fn body(self) -> &'a Body<'tcx> {
         self.mir
     }
 
-    fn tcx(&self) -> TyCtxt<'tcx> {
+    fn tcx(self) -> TyCtxt<'tcx> {
         self.tcx
     }
 }
@@ -255,11 +262,37 @@ impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, '
     }
 }
 
+pub(crate) trait HasTyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx>;
+
+    fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
+        let mut visitor = TyVarianceVisitor {
+            tcx: self.tcx(),
+            target: region,
+            found: false,
+        };
+        ty.visit_with(&mut visitor);
+        visitor.found
+    }
+}
+
+impl<'tcx> HasTyCtxt<'tcx> for TyCtxt<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        *self
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
-    pub(super) mir: &'a Body<'tcx>,
-    pub(super) tcx: TyCtxt<'tcx>,
+    pub(crate) mir: &'a Body<'tcx>,
+    pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) bc: T,
+}
+
+impl<'a, 'tcx> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
+    }
 }
 
 impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
@@ -296,6 +329,10 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         T: Copy,
     {
         self.bc
+    }
+
+    pub(crate) fn body_def_path_str(&self) -> String {
+        self.tcx.def_path_str(self.def_id())
     }
 
     pub fn local_place(&self, var_name: &str) -> Option<Place<'tcx>> {
@@ -586,28 +623,20 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
+impl<'tcx> HasValidityCheck<'_, 'tcx> for Place<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        self.local.check_validity(ctxt)?;
+        Ok(())
+    }
+}
+
 impl<'tcx> Place<'tcx> {
     pub fn ty<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> PlaceTy<'tcx>
     where
         'tcx: 'a,
     {
-        debug_assert!(
-            ctxt.body().local_decls().len() > self.local.as_usize(),
-            "Place {:?} has local {:?}, but the provided MIR at {:?} only has {} local declarations",
-            self,
-            self.local,
-            ctxt.body().span,
-            ctxt.body().local_decls().len()
-        );
+        tracing::info!("ty({self:?}");
         (*self).ty(ctxt.body(), ctxt.tcx())
-    }
-
-    #[allow(unused)]
-    pub(crate) fn get_ref_region(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
-        match self.ty(repacker).ty.kind() {
-            TyKind::Ref(region, ..) => Some((*region).into()),
-            _ => None,
-        }
     }
 
     pub(crate) fn projects_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool

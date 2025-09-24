@@ -5,20 +5,19 @@ use serde_json::json;
 use crate::{
     DebugLines,
     action::PcgActions,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
 };
 
 #[derive(Debug)]
-pub struct PcgSuccessor<'tcx> {
+pub struct PcgSuccessor<'a, 'tcx> {
     block: BasicBlock,
     pub(crate) actions: PcgActions<'tcx>,
-    entry_state: Rc<BorrowsState<'tcx>>,
+    entry_state: Rc<BorrowsState<'a, 'tcx>>,
 }
 
-impl<'tcx> PcgSuccessor<'tcx> {
+impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
     pub fn actions(&self) -> &PcgActions<'tcx> {
         &self.actions
     }
@@ -31,7 +30,7 @@ impl<'tcx> PcgSuccessor<'tcx> {
     pub(crate) fn new(
         block: BasicBlock,
         actions: PcgActions<'tcx>,
-        entry_state: Rc<BorrowsState<'tcx>>,
+        entry_state: Rc<BorrowsState<'a, 'tcx>>,
     ) -> Self {
         Self {
             block,
@@ -41,13 +40,10 @@ impl<'tcx> PcgSuccessor<'tcx> {
     }
 }
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for PcgSuccessor<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
+    for PcgSuccessor<'a, 'tcx>
 {
-    fn to_json(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "block": self.block().index(),
             "actions": self.actions.to_json(repacker),
@@ -55,7 +51,7 @@ impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for PcgSuccessor<'tcx> {
+impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for PcgSuccessor<'_, 'tcx> {
     fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
         result.push(format!("Block: {}", self.block().index()));

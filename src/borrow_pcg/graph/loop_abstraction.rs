@@ -2,7 +2,6 @@ use derive_more::From;
 
 use crate::{
     action::PcgAction,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
@@ -10,9 +9,9 @@ use crate::{
         edge_data::EdgeData,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        path_condition::ValidityConditions,
         region_projection::{HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
+        validity_conditions::ValidityConditions,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
@@ -28,9 +27,9 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        CompilerCtxt, DebugImgcat, Place, SnapshotLocation,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
-        display::DisplayWithCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
         logging::{self, LogPredicate},
         maybe_old::MaybeLabelledPlace,
         remote::RemotePlace,
@@ -63,13 +62,10 @@ pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Remote(RemotePlace),
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeRemoteCurrentPlace<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place.to_short_string(ctxt),
             MaybeRemoteCurrentPlace::Remote(place) => place.to_short_string(ctxt),
@@ -589,7 +585,7 @@ fn add_block_edge<'tcx, 'mir>(
     short: LocalNode<'tcx>,
     ctxt: CompilerCtxt<'mir, 'tcx>,
 ) {
-    let long_edge = AbstractionBlockEdge::new(long.into(), short.into(), ctxt);
+    let long_edge = AbstractionBlockEdge::new_checked(long.into(), short.into(), ctxt);
     let loop_edge = LoopAbstraction::new(long_edge, expander.loop_head_block);
     expander.graph.insert(
         loop_edge.to_borrow_pcg_edge(expander.validity_conditions.clone()),

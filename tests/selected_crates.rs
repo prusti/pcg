@@ -4,11 +4,6 @@ use rayon::prelude::*;
 
 mod common;
 
-#[allow(unused)]
-fn pcg_max_nodes(n: usize) -> Vec<(String, String)> {
-    vec![("PCG_MAX_NODES".to_string(), n.to_string())]
-}
-
 #[derive(Debug)]
 struct TestCrateFunction {
     function_name: String,

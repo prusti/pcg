@@ -1,6 +1,5 @@
 //! Borrow edges
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
@@ -18,7 +17,10 @@ use crate::{
             ty::{self},
         },
     },
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, remote::RemotePlace},
+    utils::{
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, display::DisplayWithCtxt,
+        remote::RemotePlace,
+    },
 };
 
 use crate::{
@@ -29,7 +31,6 @@ use crate::{
     },
     utils::{
         CompilerCtxt,
-        display::DisplayWithCompilerCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },
@@ -55,12 +56,12 @@ pub struct LocalBorrow<'tcx> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for LocalBorrow<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LocalBorrow<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
         if predicate.matches(
@@ -121,12 +122,12 @@ pub struct RemoteBorrow<'tcx> {
     rp_snapshot_location: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for RemoteBorrow<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for RemoteBorrow<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if predicate.matches(
             self.assigned_lifetime_projection(repacker).rebase(),
@@ -198,13 +199,10 @@ impl<'tcx> RemoteBorrow<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for RemoteBorrow<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
             self.blocked_place().to_short_string(ctxt),
@@ -214,8 +212,9 @@ impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for RemoteBorrow<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for RemoteBorrow<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+        self.local.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)
     }
 }
@@ -348,7 +347,7 @@ impl<'tcx> BorrowEdge<'tcx> {
         }
     }
 }
-impl<'tcx> HasValidityCheck<'tcx> for LocalBorrow<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)?;
@@ -356,8 +355,8 @@ impl<'tcx> HasValidityCheck<'tcx> for LocalBorrow<'tcx> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LocalBorrow<'tcx> {
-    fn to_short_string(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LocalBorrow<'tcx> {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
             format!(" <{rp}>")
         } else {
@@ -433,7 +432,7 @@ impl<'tcx> LocalBorrow<'tcx> {
         'tcx: 'a,
     {
         assert!(assigned_place.ty(ctxt).ty.ref_mutability().is_some());
-        Self {
+        let borrow = Self {
             blocked_place,
             assigned_ref: assigned_place,
             kind,
@@ -441,7 +440,9 @@ impl<'tcx> LocalBorrow<'tcx> {
             region,
             assigned_lifetime_projection_label: None,
             borrow_index: ctxt.bc().region_to_borrow_index(region.into()),
-        }
+        };
+        borrow.assert_validity(ctxt.bc_ctxt());
+        borrow
     }
 
     pub(crate) fn reserve_location(&self) -> Location {

@@ -1,8 +1,10 @@
-use crate::utils::PANIC_ON_ERROR;
+use derive_more::From;
+
+use crate::{coupling::CoupleInputError, utils::PANIC_ON_ERROR};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PcgError {
-    pub(crate) kind: PCGErrorKind,
+    pub(crate) kind: PcgErrorKind,
     pub(crate) context: Vec<String>,
 }
 
@@ -11,12 +13,12 @@ pub type PCGError = PcgError;
 
 impl From<PcgUnsupportedError> for PcgError {
     fn from(e: PcgUnsupportedError) -> Self {
-        Self::new(PCGErrorKind::Unsupported(e), vec![])
+        Self::new(PcgErrorKind::Unsupported(e), vec![])
     }
 }
 
 impl PcgError {
-    pub(crate) fn new(kind: PCGErrorKind, context: Vec<String>) -> Self {
+    pub(crate) fn new(kind: PcgErrorKind, context: Vec<String>) -> Self {
         if *PANIC_ON_ERROR {
             panic!("PCG Error: {:?} ({})", kind, context.join(", "));
         }
@@ -25,7 +27,7 @@ impl PcgError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PCGErrorKind {
+pub enum PcgErrorKind {
     Unsupported(PcgUnsupportedError),
     Internal(PcgInternalError),
 }
@@ -34,14 +36,14 @@ impl PcgError {
     #[allow(dead_code)]
     pub(crate) fn internal(msg: String) -> Self {
         Self {
-            kind: PCGErrorKind::Internal(PcgInternalError::new(msg)),
+            kind: PcgErrorKind::Internal(PcgInternalError::new(msg)),
             context: vec![],
         }
     }
 
     pub(crate) fn unsupported(err: PcgUnsupportedError) -> Self {
         Self {
-            kind: PCGErrorKind::Unsupported(err),
+            kind: PcgErrorKind::Unsupported(err),
             context: vec![],
         }
     }
@@ -58,11 +60,11 @@ impl PcgInternalError {
 
 impl From<PcgInternalError> for PcgError {
     fn from(e: PcgInternalError) -> Self {
-        PcgError::new(PCGErrorKind::Internal(e), vec![])
+        PcgError::new(PcgErrorKind::Internal(e), vec![])
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum PcgUnsupportedError {
     AssignBorrowToNonReferenceType,
     DerefUnsafePtr,
@@ -72,4 +74,5 @@ pub enum PcgUnsupportedError {
     IndexingNonIndexableType,
     InlineAssembly,
     MaxNodesExceeded,
+    Coupling(CoupleInputError),
 }

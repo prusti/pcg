@@ -1,7 +1,14 @@
 //! The data structure representing the state of the Borrow PCG.
 
+use std::marker::PhantomData;
+
 use crate::{
-    borrow_pcg::graph::join::JoinBorrowsArgs,
+    borrow_pcg::{
+        edge_data::LabelEdgePlaces,
+        graph::join::JoinBorrowsArgs,
+        has_pcs_elem::LabelLifetimeProjection,
+        validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
+    },
     pcg::{
         SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
@@ -13,7 +20,7 @@ use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, ToBorrowsEdge},
     edge::borrow::RemoteBorrow,
     graph::BorrowsGraph,
-    path_condition::{PathCondition, ValidityConditions},
+    validity_conditions::{PathCondition, ValidityConditions},
     visitor::extract_regions,
 };
 use crate::{
@@ -51,29 +58,53 @@ use crate::{
 
 /// The state of the Borrow PCG, including the Borrow PCG graph and the validity
 /// conditions associated with the current basic block.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct BorrowsState<'tcx> {
-    pub(crate) graph: BorrowsGraph<'tcx>,
-    pub(crate) validity_conditions: ValidityConditions,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BorrowsState<
+    'a,
+    'tcx,
+    EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>,
+> {
+    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
+    pub(crate) validity_conditions: &'a ValidityConditions,
+    _marker: PhantomData<&'tcx ()>,
 }
 
-pub(crate) struct BorrowStateMutRef<'pcg, 'tcx> {
-    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx>,
+impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default
+    for BorrowsState<'a, 'tcx, EdgeKind>
+{
+    fn default() -> Self {
+        Self {
+            graph: BorrowsGraph::default(),
+            validity_conditions: EMPTY_VALIDITY_CONDITIONS_REF,
+            _marker: PhantomData,
+        }
+    }
+}
+
+pub(crate) struct BorrowStateMutRef<'pcg, 'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
     pub(crate) validity_conditions: &'pcg ValidityConditions,
 }
 
-#[allow(unused)]
-#[derive(Clone, Copy)]
-pub(crate) struct BorrowStateRef<'pcg, 'tcx> {
-    pub(crate) graph: &'pcg BorrowsGraph<'tcx>,
+pub(crate) struct BorrowStateRef<'pcg, 'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
+    #[allow(unused)]
     pub(crate) path_conditions: &'pcg ValidityConditions,
 }
 
-pub(crate) trait BorrowsStateLike<'tcx> {
-    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx>;
-    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx>;
+impl<'pcg, 'tcx, EdgeKind> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
-    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx> {
+impl<'pcg, 'tcx, EdgeKind> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind> {}
+
+pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind>;
+    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind>;
+
+    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind> {
         self.as_mut_ref().graph
     }
     fn graph(&self) -> &BorrowsGraph<'tcx>;
@@ -88,6 +119,7 @@ pub(crate) trait BorrowsStateLike<'tcx> {
     ) -> bool
     where
         'tcx: 'a,
+        EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash,
     {
         let state = self.as_mut_ref();
         state.graph.label_place(place, reason, labeller, ctxt);
@@ -108,6 +140,7 @@ pub(crate) trait BorrowsStateLike<'tcx> {
     ) -> bool
     where
         'tcx: 'a,
+        EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash,
     {
         self.graph_mut()
             .label_region_projection(predicate, label, ctxt)
@@ -115,12 +148,13 @@ pub(crate) trait BorrowsStateLike<'tcx> {
 
     fn remove<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
-        edge: &BorrowPcgEdgeKind<'tcx>,
+        edge: &EdgeKind,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
         ctxt: Ctxt,
     ) -> bool
     where
         'tcx: 'a,
+        EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash,
     {
         let state = self.as_mut_ref();
         let removed = state.graph.remove(edge).is_some();
@@ -138,12 +172,17 @@ pub(crate) trait BorrowsStateLike<'tcx> {
 
     fn apply_action<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
-        action: BorrowPcgAction<'tcx>,
+        action: BorrowPcgAction<'tcx, EdgeKind>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
         ctxt: Ctxt,
     ) -> Result<bool, PcgError>
     where
         'tcx: 'a,
+        EdgeKind: EdgeData<'tcx>
+            + LabelEdgePlaces<'tcx>
+            + LabelLifetimeProjection<'a, 'tcx>
+            + Eq
+            + std::hash::Hash,
     {
         let result = match action.kind {
             BorrowPcgActionKind::Restore(restore) => {
@@ -197,7 +236,7 @@ pub(crate) trait BorrowsStateLike<'tcx> {
                     capabilities,
                     ctxt,
                 ),
-            BorrowPcgActionKind::RemoveEdge(edge) => self.remove(&edge.kind, capabilities, ctxt),
+            BorrowPcgActionKind::RemoveEdge(edge) => self.remove(&edge.value, capabilities, ctxt),
             BorrowPcgActionKind::AddEdge { edge } => self.graph_mut().insert(edge, ctxt.bc_ctxt()),
             BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
                 self.label_region_projection(&rp, label, ctxt.bc_ctxt())
@@ -227,11 +266,11 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 }
 
-impl<'tcx> BorrowsStateLike<'tcx> for BorrowsState<'tcx> {
+impl<'a, 'tcx> BorrowsStateLike<'tcx> for BorrowsState<'a, 'tcx> {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx> {
         BorrowStateMutRef {
             graph: &mut self.graph,
-            validity_conditions: &self.validity_conditions,
+            validity_conditions: self.validity_conditions,
         }
     }
 
@@ -242,21 +281,21 @@ impl<'tcx> BorrowsStateLike<'tcx> for BorrowsState<'tcx> {
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx> {
         BorrowStateRef {
             graph: &self.graph,
-            path_conditions: &self.validity_conditions,
+            path_conditions: self.validity_conditions,
         }
     }
 }
 
-impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'tcx>> for BorrowStateMutRef<'pcg, 'tcx> {
-    fn from(borrows_state: &'pcg mut BorrowsState<'tcx>) -> Self {
+impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'pcg, 'tcx> {
+    fn from(borrows_state: &'pcg mut BorrowsState<'_, 'tcx>) -> Self {
         Self {
             graph: &mut borrows_state.graph,
-            validity_conditions: &borrows_state.validity_conditions,
+            validity_conditions: borrows_state.validity_conditions,
         }
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'tcx> {
+impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'_, 'tcx> {
     fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut lines = Vec::new();
         lines.extend(self.graph.debug_lines(repacker));
@@ -264,21 +303,21 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowStateRef<'_, 'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateRef<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.graph.check_validity(ctxt)?;
         Ok(())
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowStateMutRef<'_, 'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateMutRef<'_, 'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.as_ref().check_validity(ctxt)
     }
 }
 
-impl<'tcx> BorrowsState<'tcx> {
-    fn introduce_initial_borrows<'a>(
+impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
+    fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
         capabilities: &mut PlaceCapabilities<'tcx, SymbolicCapability>,
@@ -336,7 +375,7 @@ impl<'tcx> BorrowsState<'tcx> {
         }
     }
 
-    pub(crate) fn start_block<'a>(
+    pub(crate) fn start_block(
         capabilities: &mut PlaceCapabilities<'tcx, SymbolicCapability>,
         analysis_ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Self {
@@ -351,33 +390,21 @@ impl<'tcx> BorrowsState<'tcx> {
         &self.graph
     }
 
-    pub(crate) fn join<'a>(
+    pub(crate) fn join(
         &mut self,
         other: &Self,
         args: JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError> {
         self.graph
-            .join(&other.graph, &self.validity_conditions, args, ctxt)?;
-        self.validity_conditions
-            .join(&other.validity_conditions, ctxt.body());
+            .join(&other.graph, self.validity_conditions, args, ctxt)?;
+        if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self
+            .validity_conditions
+            .join_result(other.validity_conditions, ctxt.body())
+        {
+            self.validity_conditions = ctxt.arena.alloc(new_validity_conditions);
+        }
         Ok(())
-    }
-
-    pub(crate) fn add_cfg_edge(
-        &mut self,
-        from: BasicBlock,
-        to: BasicBlock,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        pcg_validity_assert!(
-            !ctxt.is_back_edge(from, to),
-            [ctxt],
-            "Adding CFG edge from {from:?} to {to:?} is a back edge"
-        );
-        let pc = PathCondition::new(from, to);
-        self.validity_conditions.insert(pc, ctxt.body());
-        self.graph.add_path_condition(pc, ctxt)
     }
 
     /// Remove all edges that are not valid for `path`, based on their validity
@@ -425,7 +452,7 @@ impl<'tcx> BorrowsState<'tcx> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_borrow<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         blocked_place: Place<'tcx>,
         assigned_place: Place<'tcx>,
@@ -487,5 +514,25 @@ impl<'tcx> BorrowsState<'tcx> {
                 }
             }
         }
+    }
+}
+
+impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> {
+    pub(crate) fn add_cfg_edge(
+        &mut self,
+        from: BasicBlock,
+        to: BasicBlock,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) -> bool {
+        pcg_validity_assert!(
+            !ctxt.ctxt.is_back_edge(from, to),
+            [ctxt],
+            "Adding CFG edge from {from:?} to {to:?} is a back edge"
+        );
+        let pc = PathCondition::new(from, to);
+        let mut validity_conditions = self.validity_conditions.clone();
+        validity_conditions.insert(pc, ctxt.body());
+        self.validity_conditions = ctxt.arena.alloc(validity_conditions);
+        self.graph.add_path_condition(pc, ctxt.ctxt)
     }
 }

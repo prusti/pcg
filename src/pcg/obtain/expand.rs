@@ -11,8 +11,8 @@ use crate::{
         },
         graph::BorrowsGraph,
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
-        path_condition::ValidityConditions,
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        validity_conditions::ValidityConditions,
     },
     error::PcgError,
     owned_pcg::{ExpandedPlace, RepackOp},
@@ -26,7 +26,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, ProjectionKind,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
@@ -57,7 +57,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError> {
-        for (base, _) in place.iter_projections(ctxt.ctxt()) {
+        for (base, _) in place.iter_projections() {
+            let base: crate::utils::Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
             if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {

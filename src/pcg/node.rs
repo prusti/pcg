@@ -1,5 +1,4 @@
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         domain::LoopAbstractionInput,
@@ -16,9 +15,9 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCompilerCtxt,
-        json::ToJsonWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        place::maybe_remote::MaybeRemotePlace, remote::RemotePlace, validity::HasValidityCheck,
+        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
+        json::ToJsonWithCtxt, maybe_old::MaybeLabelledPlace, place::maybe_remote::MaybeRemotePlace,
+        remote::RemotePlace, validity::HasValidityCheck,
     },
 };
 
@@ -108,7 +107,7 @@ impl<'tcx> From<LoopAbstractionInput<'tcx>> for PcgNode<'tcx> {
     }
 }
 
-impl<'tcx, T, U: Copy + PcgLifetimeProjectionBaseLike<'tcx>> LabelLifetimeProjection<'tcx>
+impl<'a, 'tcx, T, U: Copy + PcgLifetimeProjectionBaseLike<'tcx>> LabelLifetimeProjection<'a, 'tcx>
     for PcgNode<'tcx, T, U>
 where
     PcgLifetimeProjectionBase<'tcx>: From<U>,
@@ -117,7 +116,7 @@ where
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        repacker: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if let PcgNode::LifetimeProjection(this_projection) = self {
             this_projection.label_lifetime_projection(predicate, label, repacker)
@@ -162,10 +161,12 @@ impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNode
     }
 }
 
-impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> HasValidityCheck<'tcx>
-    for PcgNode<'tcx, T, U>
+impl<'a, 'tcx, T: HasValidityCheck<'a, 'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>>
+    HasValidityCheck<'a, 'tcx> for PcgNode<'tcx, T, U>
+where
+    LifetimeProjection<'tcx, U>: HasValidityCheck<'a, 'tcx>,
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         match self {
             PcgNode::Place(p) => p.check_validity(ctxt),
             PcgNode::LifetimeProjection(rp) => rp.check_validity(ctxt),
@@ -175,31 +176,23 @@ impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> HasVali
 
 impl<
     'tcx,
-    'a,
-    T: PcgNodeLike<'tcx> + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    U: PcgLifetimeProjectionBaseLike<'tcx>
-        + DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>> for PcgNode<'tcx, T, U>
+    Ctxt,
+    T: PcgNodeLike<'tcx> + DisplayWithCtxt<Ctxt>,
+    U: PcgLifetimeProjectionBaseLike<'tcx> + DisplayWithCtxt<Ctxt>,
+> DisplayWithCtxt<Ctxt> for PcgNode<'tcx, T, U>
+where
+    LifetimeProjection<'tcx, U>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(
-        &self,
-        repacker: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         match self {
-            PcgNode::Place(p) => p.to_short_string(repacker),
-            PcgNode::LifetimeProjection(rp) => rp.to_short_string(repacker),
+            PcgNode::Place(p) => p.to_short_string(ctxt),
+            PcgNode::LifetimeProjection(rp) => rp.to_short_string(ctxt),
         }
     }
 }
 
-impl<
-    'tcx,
-    BC: Copy,
-    T: PcgNodeLike<'tcx> + ToJsonWithCompilerCtxt<'tcx, BC>,
-    U: PcgLifetimeProjectionBaseLike<'tcx> + ToJsonWithCompilerCtxt<'tcx, BC>,
-> ToJsonWithCompilerCtxt<'tcx, BC> for PcgNode<'tcx, T, U>
-{
-    fn to_json(&self, _repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'tcx, T, U, Ctxt> ToJsonWithCtxt<Ctxt> for PcgNode<'tcx, T, U> {
+    fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
@@ -220,7 +213,7 @@ impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHa
 }
 
 pub trait PcgNodeLike<'tcx>:
-    Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash + HasValidityCheck<'tcx>
+    Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash
 {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx>;
 

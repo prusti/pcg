@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
     fs::File,
     io::Write,
+    path::Path,
     process::{Command, Stdio},
 };
 
@@ -15,7 +16,7 @@ pub struct DotGraph {
 }
 
 impl DotGraph {
-    pub fn write_to_file(self, path: &str) -> Result<(), std::io::Error> {
+    pub fn write_to_file(self, path: &Path) -> Result<(), std::io::Error> {
         let mut file = File::create(path)?;
         file.write_all(self.to_string().as_bytes())?;
         Ok(())

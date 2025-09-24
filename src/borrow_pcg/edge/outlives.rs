@@ -1,6 +1,5 @@
 //! Borrow-flow edges
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
@@ -13,7 +12,9 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        validity::HasValidityCheck,
     },
 };
 
@@ -46,12 +47,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowFlowEdge<'tcx> {
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
@@ -69,13 +70,10 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx, 'a> DisplayWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
-    fn to_short_string(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> String {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
             self.long.to_short_string(ctxt),
@@ -110,7 +108,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowFlowEdge<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.long.check_validity(ctxt)?;
         self.short.check_validity(ctxt)?;

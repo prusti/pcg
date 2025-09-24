@@ -2,11 +2,10 @@ use derive_more::{Deref, DerefMut};
 
 use crate::{
     Weaken,
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
 };
 
 use super::BorrowPcgActionKind;
@@ -16,13 +15,10 @@ use super::BorrowPcgActionKind;
 #[derive(Clone, Deref, DerefMut, Debug, Default)]
 pub struct BorrowPcgActions<'tcx>(pub(crate) Vec<BorrowPcgAction<'tcx>>);
 
-impl<'tcx, 'a> ToJsonWithCompilerCtxt<'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for BorrowPcgActions<'tcx>
 {
-    fn to_json(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    ) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         self.0
             .iter()
             .map(|a| a.to_json(ctxt))
@@ -51,7 +47,9 @@ impl<'tcx> BorrowPcgActions<'tcx> {
         self.0
             .iter()
             .filter_map(|action| match action.kind() {
-                BorrowPcgActionKind::RemoveEdge(edge) => Some(edge.clone().into()),
+                BorrowPcgActionKind::RemoveEdge(edge) => {
+                    Some(BorrowPcgUnblockAction::new(edge.clone()))
+                }
                 _ => None,
             })
             .collect()

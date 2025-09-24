@@ -2,22 +2,26 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
+        FunctionData,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
-            function::{FunctionCallAbstraction, FunctionCallData, FunctionData},
+            function::{
+                FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
+            },
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasTy, LifetimeProjection},
     },
+    coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::display::DisplayWithCompilerCtxt,
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -37,6 +41,7 @@ fn get_function_call_data<'a, 'tcx: 'a>(
             *def_id,
             substs,
             operand_tys,
+            ctxt.ctxt().def_id(),
             call_span,
         )),
         ty::TyKind::FnPtr(..) => None,
@@ -45,6 +50,10 @@ fn get_function_call_data<'a, 'tcx: 'a>(
 }
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
+    pub(crate) fn settings(&self) -> &'a PcgSettings {
+        self.ctxt.settings()
+    }
+
     fn node_for_input(
         &self,
         call: &FunctionCall<'_, 'tcx>,
@@ -82,31 +91,64 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     fn create_edges_for_shape(
         &mut self,
-        shape: FunctionShape<'tcx>,
+        shape: FunctionShape,
         call: &FunctionCall<'_, 'tcx>,
         function_data: Option<FunctionData<'tcx>>,
     ) -> Result<(), PcgError> {
-        for (input, output) in shape.iter().copied() {
-            self.record_and_apply_action(
-                BorrowPcgAction::add_edge(
-                    BorrowPcgEdge::new(
-                        AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
-                            call.location,
-                            function_data,
-                            AbstractionBlockEdge::new(
-                                self.node_for_input(call, input),
-                                self.node_for_output(call, output),
-                                self.ctxt,
-                            ),
-                        ))
-                        .into(),
-                        self.pcg.borrow.validity_conditions.clone(),
-                    ),
-                    "Function call",
+        let metadata = FunctionCallAbstractionEdgeMetadata {
+            location: call.location,
+            function_data,
+        };
+        let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
+            .iter()
+            .copied()
+            .map(|AbstractionBlockEdge { input, output, .. }| {
+                AbstractionBlockEdge::new_checked(
+                    self.node_for_input(call, input),
+                    self.node_for_output(call, output),
                     self.ctxt,
                 )
-                .into(),
-            )?;
+            })
+            .collect();
+        if self.settings().coupling
+            && let Ok(coupled_edges) = CoupledEdgesData::new(abstraction_edges.iter().copied())
+        {
+            if !coupled_edges.is_empty() {
+                tracing::info!("Coupled edges: {:?}", coupled_edges);
+            }
+            for edge in coupled_edges {
+                let pcg_coupled_edge = PcgCoupledEdgeKind::function_call(
+                    FunctionCallCoupledEdgeKind::new(metadata, edge),
+                );
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            pcg_coupled_edge.into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        "Function call",
+                        self.ctxt,
+                    )
+                    .into(),
+                )?;
+            }
+        } else {
+            for edge in abstraction_edges {
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            AbstractionEdge::FunctionCall(FunctionCallAbstraction::new(
+                                metadata, edge,
+                            ))
+                            .into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        "Function call",
+                        self.ctxt,
+                    )
+                    .into(),
+                )?;
+            }
         }
         Ok(())
     }
@@ -201,11 +243,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             //     call_shape.to_short_string(self.ctxt.bc_ctxt()),
             //     sig_shape.diff(&call_shape).to_short_string(self.ctxt.bc_ctxt())
             // );
-            sig_shape.unwrap_or(call_shape)
+            sig_shape.or_else(|err| {
+                tracing::warn!("Error getting signature shape: {:?}", err);
+                call_shape
+            })
         } else {
             call_shape
         };
-        self.create_edges_for_shape(shape, &call, function_data)?;
+        self.create_edges_for_shape(shape.unwrap(), &call, function_data)?;
 
         Ok(())
     }

@@ -1,29 +1,31 @@
 //! Defines the Borrow PCG Graph
 pub(crate) mod aliases;
-#[cfg(feature = "coupling")]
-pub mod coupling;
 pub(crate) mod frozen;
 pub(crate) mod join;
 pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
 mod mutate;
 
+use std::marker::PhantomData;
+
 use crate::{
     borrow_pcg::{
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::LifetimeProjectionLabel,
     },
+    coupling::PcgCoupledEdgeKind,
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
-        data_structures::fx::{FxHashMap, FxHashSet},
+        data_structures::fx::FxHashSet,
         middle::mir::{self},
     },
     utils::{
         DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
-        data_structures::HashSet,
-        display::{DebugLines, DisplayWithCompilerCtxt},
+        data_structures::{HashMap, HashSet},
+        display::{DebugLines, DisplayWithCompilerCtxt, DisplayWithCtxt},
+        json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -36,17 +38,29 @@ use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
     edge::borrow::LocalBorrow,
     edge_data::EdgeData,
-    path_condition::ValidityConditions,
+    validity_conditions::ValidityConditions,
 };
 use crate::{
     borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
-    utils::{CompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::CompilerCtxt,
 };
 
+use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
+
 /// The Borrow PCG Graph.
-#[derive(Clone, Debug, Default)]
-pub struct BorrowsGraph<'tcx> {
-    edges: FxHashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions>,
+#[derive(Clone, Debug)]
+pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+    pub(crate) edges: HashMap<EdgeKind, ValidityConditions>,
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
+    fn default() -> Self {
+        Self {
+            edges: HashMap::default(),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
@@ -58,7 +72,7 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
         for node in nodes.iter() {
@@ -96,9 +110,9 @@ impl<'tcx> HasValidityCheck<'tcx> for BorrowsGraph<'tcx> {
     }
 }
 
-impl Eq for BorrowsGraph<'_> {}
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> Eq for BorrowsGraph<'tcx, Kind> {}
 
-impl PartialEq for BorrowsGraph<'_> {
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> PartialEq for BorrowsGraph<'tcx, Kind> {
     fn eq(&self, other: &Self) -> bool {
         self.edges == other.edges
     }
@@ -121,6 +135,62 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub fn coupled_edges(&self) -> HashSet<Conditioned<PcgCoupledEdgeKind<'tcx>>> {
+        self.edges
+            .iter()
+            .filter_map(|(kind, conditions)| match kind {
+                BorrowPcgEdgeKind::Coupled(coupled) => {
+                    Some(Conditioned::new(coupled.clone(), conditions.clone()))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+    pub fn into_coupled(
+        mut self,
+    ) -> BorrowsGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>> {
+        let coupled = PcgCoupledEdges::extract_from_data_source(&mut self);
+        let mut edges: HashMap<
+            MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>,
+            ValidityConditions,
+        > = self
+            .edges
+            .into_iter()
+            .map(|(kind, conditions)| (MaybeCoupledEdgeKind::NotCoupled(kind), conditions))
+            .collect();
+        edges.extend(
+            coupled
+                .into_maybe_coupled_edges()
+                .into_iter()
+                .flat_map(|edge| match edge {
+                    MaybeCoupledEdges::Coupled(coupled) => coupled
+                        .edges()
+                        .into_iter()
+                        .map(|edge| {
+                            (
+                                MaybeCoupledEdgeKind::Coupled(edge),
+                                coupled.conditions().clone(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
+                        .into_iter()
+                        .map(|edge| {
+                            let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
+                            (
+                                MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.value),
+                                borrow_pcg_edge.conditions,
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                }),
+        );
+        BorrowsGraph {
+            edges,
+            _marker: PhantomData,
+        }
+    }
+
     pub(crate) fn places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
@@ -132,21 +202,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 _ => None,
             })
             .collect()
-    }
-
-    pub(crate) fn label_region_projection<'a>(
-        &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.filter_mut_edges(|edge| {
-            edge.label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
-                .to_filter_mut_result()
-        })
     }
 
     pub(crate) fn leaf_places<'a>(
@@ -226,38 +281,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         None
     }
 
-    pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
-        &self,
-        node: T,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        let node = node.into();
-        self.edges().any(|edge| {
-            edge.blocks_node(node, repacker.bc_ctxt())
-                || node
-                    .as_blocking_node()
-                    .map(|blocking| {
-                        edge.blocked_by_nodes(repacker.bc_ctxt())
-                            .contains(&blocking)
-                    })
-                    .unwrap_or(false)
-        })
-    }
-
-    #[allow(unused)]
     pub(crate) fn into_edges(self) -> impl Iterator<Item = BorrowPcgEdge<'tcx>> {
         self.edges
             .into_iter()
-            .map(|(kind, conditions)| BorrowPcgEdge { kind, conditions })
-    }
-
-    pub fn edges<'slf>(&'slf self) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf>> + 'slf {
-        self.edges
-            .iter()
-            .map(|(kind, conditions)| BorrowPcgEdgeRef { kind, conditions })
+            .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
     }
 
     pub fn frozen_graph(&self) -> FrozenGraphRef<'_, 'tcx> {
@@ -412,22 +439,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         false
     }
 
-    pub(crate) fn insert<'a>(
-        &mut self,
-        edge: BorrowPcgEdge<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        if let Some(conditions) = self.edges.get_mut(edge.kind()) {
-            conditions.join(&edge.conditions, ctxt.body())
-        } else {
-            self.edges.insert(edge.kind, edge.conditions);
-            true
-        }
-    }
-
     pub(crate) fn edges_blocking<'slf, 'a: 'slf, 'bc: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
@@ -450,31 +461,110 @@ impl<'tcx> BorrowsGraph<'tcx> {
     {
         self.edges_blocking(node, ctxt).collect()
     }
+}
 
-    pub(crate) fn remove(&mut self, edge: &BorrowPcgEdgeKind<'tcx>) -> Option<ValidityConditions> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+    pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<ValidityConditions> {
         self.edges.remove(edge)
+    }
+
+    pub fn edges<'slf>(
+        &'slf self,
+    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind>> + 'slf {
+        self.edges
+            .iter()
+            .map(|(kind, conditions)| BorrowPcgEdgeRef::new(kind, conditions))
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct Conditioned<T> {
-    pub(crate) conditions: ValidityConditions,
+pub struct Conditioned<T, Conditions = ValidityConditions> {
+    pub(crate) conditions: Conditions,
     pub(crate) value: T,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for Conditioned<T>
+{
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        self.conditions.conditional_string(&self.value, ctxt)
+    }
 }
 
 impl<T> Conditioned<T> {
     pub(crate) fn new(value: T, conditions: ValidityConditions) -> Self {
         Self { conditions, value }
     }
+
+    pub fn value(&self) -> &T {
+        &self.value
+    }
 }
 
-impl<'tcx, T: ToJsonWithCompilerCtxt<'tcx, BC>, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC>
-    for Conditioned<T>
-{
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for Conditioned<T> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
             "conditions": self.conditions.to_json(repacker),
             "value": self.value.to_json(repacker)
+        })
+    }
+}
+
+impl<'a, 'tcx, EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash>
+    BorrowsGraph<'tcx, EdgeKind>
+{
+    pub(crate) fn label_region_projection(
+        &mut self,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        self.filter_mut_edges(|edge| {
+            edge.value
+                .label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
+                .to_filter_mut_result()
+        })
+    }
+}
+impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+    pub(crate) fn insert<'a>(
+        &mut self,
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        if let Some(conditions) = self.edges.get_mut(&edge.value) {
+            conditions.join(&edge.conditions, ctxt.body())
+        } else {
+            self.edges.insert(edge.value, edge.conditions);
+            true
+        }
+    }
+
+    pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
+        &self,
+        node: T,
+        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        let node = node.into();
+        self.edges().any(|edge| {
+            edge.kind.blocks_node(node, repacker.bc_ctxt())
+                || node
+                    .as_blocking_node()
+                    .map(|blocking| {
+                        edge.kind
+                            .blocked_by_nodes(repacker.bc_ctxt())
+                            .contains(&blocking)
+                    })
+                    .unwrap_or(false)
         })
     }
 }

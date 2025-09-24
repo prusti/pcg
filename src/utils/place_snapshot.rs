@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, validity::HasValidityCheck};
+use super::{CompilerCtxt, Place, validity::HasValidityCheck};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -13,7 +13,7 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{HasCompilerCtxt, json::ToJsonWithCompilerCtxt},
+    utils::{HasCompilerCtxt, PlaceProjectable, display::DisplayWithCtxt, json::ToJsonWithCtxt},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -146,11 +146,8 @@ pub struct LabelledPlace<'tcx> {
     pub(crate) at: SnapshotLocation,
 }
 
-impl<'tcx> HasTy<'tcx> for LabelledPlace<'tcx> {
-    fn rust_ty<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx>
-    where
-        'tcx: 'a,
-    {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.place.ty(ctxt).ty
     }
 }
@@ -166,6 +163,25 @@ impl std::fmt::Display for SnapshotLocation {
             }
             SnapshotLocation::Before(eval_stmt_phase) => write!(f, "before {eval_stmt_phase}"),
         }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
+    for LabelledPlace<'tcx>
+{
+    fn project_deeper(
+        &self,
+        elem: mir::PlaceElem<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Self, crate::error::PcgError> {
+        Ok(LabelledPlace {
+            place: self.place.project_deeper(elem, ctxt)?,
+            at: self.at,
+        })
+    }
+
+    fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
+        todo!()
     }
 }
 
@@ -187,7 +203,7 @@ impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'tcx> for LabelledPlace<'tcx> {
+impl<'tcx> HasValidityCheck<'_, 'tcx> for LabelledPlace<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.place.check_validity(ctxt)
     }
@@ -199,16 +215,16 @@ impl std::fmt::Display for LabelledPlace<'_> {
     }
 }
 
-impl<'tcx, BC: Copy> DisplayWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
-    fn to_short_string(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
+    fn to_short_string(&self, repacker: Ctxt) -> String {
         format!("{} at {:?}", self.place.to_short_string(repacker), self.at)
     }
 }
 
-impl<'tcx, BC: Copy> ToJsonWithCompilerCtxt<'tcx, BC> for LabelledPlace<'tcx> {
-    fn to_json(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for LabelledPlace<'tcx> {
+    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker),
+            "place": self.place.to_json(repacker.ctxt()),
             "at": self.at.to_json(),
         })
     }
