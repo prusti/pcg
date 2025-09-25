@@ -170,6 +170,10 @@ impl FunctionShapeInput {
     pub fn to_function_shape_node(self) -> FunctionShapeNode {
         self.with_base(ArgIdxOrResult::Argument(self.base))
     }
+
+    pub fn mir_local(self) -> mir::Local {
+        self.to_function_shape_node().mir_local()
+    }
 }
 
 pub type FunctionShapeOutput = LifetimeProjection<'static, ArgIdxOrResult>;
