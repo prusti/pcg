@@ -207,7 +207,10 @@ pub struct FunctionShape {
 }
 
 impl FunctionShape {
-    pub fn edges(&self) -> impl Iterator<Item = AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>> {
+    pub fn edges(
+        &self,
+    ) -> impl Iterator<Item = AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>
+    {
         self.edges.iter().copied()
     }
 
@@ -290,7 +293,9 @@ impl<'tcx> FunctionData<'tcx> {
         let shape = self
             .shape(tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
-        shape.coupled_edges().map_err(CoupleAbstractionError::CoupleInput)
+        shape
+            .coupled_edges()
+            .map_err(CoupleAbstractionError::CoupleInput)
     }
 }
 
@@ -359,7 +364,9 @@ impl FunctionShape {
         })
     }
 
-    pub fn coupled_edges(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
+    pub fn coupled_edges(
+        &self,
+    ) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
         CoupledEdgesData::new(self.edges.iter().copied())
     }
 }
