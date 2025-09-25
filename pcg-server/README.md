@@ -1,11 +1,11 @@
 # PCG Viewer Server
 
-A web server for visualizing PCG (Program Control Graph) outputs. This server allows users to upload Rust files and view their PCG visualizations through a web interface.
+A web server for visualizing PCG outputs. This server allows users to upload Rust files and view their PCG visualizations through a web interface.
 
 ## Prerequisites
 
 - Rust and Cargo installed
-- Access to the parent PCS project with `pcg_bin` and visualization files
+- Access to the parent PCG project with `pcg_bin` and visualization files
 
 ## Setup
 
