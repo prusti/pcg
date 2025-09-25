@@ -321,7 +321,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         let place = self.with_inherent_region(ctxt);
         extract_regions(place.ty(ctxt).ty)
             .iter()
-            .map(|region| LifetimeProjection::new(*region, place, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
     }
 

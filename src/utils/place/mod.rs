@@ -21,12 +21,16 @@ use crate::{
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     rustc_interface::{
-        ast::Mutability, data_structures::fx::FxHasher, index::IndexVec, middle::{
+        VariantIdx,
+        ast::Mutability,
+        data_structures::fx::FxHasher,
+        index::IndexVec,
+        middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
-        }, VariantIdx
+        },
     },
-    utils::{data_structures::HashSet, json::ToJsonWithCtxt, HasCompilerCtxt},
+    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
@@ -322,7 +326,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.ty_region(ctxt)
-            .map(|region| LifetimeProjection::new(region, self, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(self, region, None, ctxt.ctxt()).unwrap())
     }
 
     pub fn projection(&self) -> &'tcx [PlaceElem<'tcx>] {
@@ -491,7 +495,7 @@ impl<'tcx> Place<'tcx> {
         let place = self.with_inherent_region(ctxt);
         extract_regions(place.ty(ctxt).ty)
             .iter()
-            .map(|region| LifetimeProjection::new(*region, place, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
     }
 

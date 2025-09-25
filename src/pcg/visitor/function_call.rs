@@ -2,19 +2,26 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
-        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape}, borrow_pcg_edge::BorrowPcgEdge, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::{
+        FunctionData,
+        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
+        borrow_pcg_edge::BorrowPcgEdge,
+        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
+        edge::abstraction::{
+            AbstractionBlockEdge, AbstractionEdge,
             function::{
                 FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
-            }, AbstractionBlockEdge, AbstractionEdge
-        }, has_pcs_elem::LabelLifetimeProjectionPredicate, region_projection::{HasRegions, HasTy, LifetimeProjection}, FunctionData
+            },
+        },
+        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        region_projection::{HasRegions, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
-    pcg::obtain::{expand::PlaceExpander, HasSnapshotLocation},
+    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt, PcgSettings},
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -93,8 +100,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             function_data,
         };
         let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
-            .iter()
-            .copied()
+            .edges()
             .map(|AbstractionBlockEdge { input, output, .. }| {
                 AbstractionBlockEdge::new_checked(
                     self.node_for_input(call, input),

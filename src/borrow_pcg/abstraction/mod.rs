@@ -66,6 +66,32 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
         sub: PcgRegion,
         ctxt: Self::Ctxt,
     ) -> Result<bool, CheckOutlivesError>;
+
+    fn input_arg_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
+        self.input_tys(ctxt)
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, ty)| ProjectionData::nodes_for_ty(i.into(), ty))
+            .collect()
+    }
+
+    fn result_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
+        ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.output_ty(ctxt))
+    }
+
+    fn inputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeInput> {
+        self.input_arg_projections(ctxt)
+            .into_iter()
+            .map(|p| p.into())
+            .collect()
+    }
+
+    fn outputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeOutput> {
+        self.result_projections(ctxt)
+            .into_iter()
+            .map(|p| p.into())
+            .collect()
+    }
 }
 
 impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
@@ -92,7 +118,7 @@ impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, Debug, Hash)]
-struct ProjectionData<'tcx, T> {
+pub(crate) struct ProjectionData<'tcx, T> {
     base: T,
     ty: ty::Ty<'tcx>,
     region_idx: RegionIdx,
@@ -151,6 +177,12 @@ pub type FunctionShapeOutput = LifetimeProjection<'static, ArgIdxOrResult>;
 /// Either an input or output in the shape of the function.
 pub type FunctionShapeNode = LifetimeProjection<'static, ArgIdxOrResult>;
 
+impl From<FunctionShapeInput> for FunctionShapeNode {
+    fn from(value: FunctionShapeInput) -> Self {
+        value.to_function_shape_node()
+    }
+}
+
 impl FunctionShapeNode {
     pub fn mir_local(self) -> mir::Local {
         match self.base {
@@ -167,12 +199,22 @@ impl FunctionShapeNode {
     }
 }
 
-#[derive(Deref, PartialEq, Eq, Clone, Debug, Hash)]
-pub struct FunctionShape(
-    BTreeSet<AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>,
-);
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub struct FunctionShape {
+    inputs: Vec<FunctionShapeInput>,
+    outputs: Vec<FunctionShapeOutput>,
+    edges: BTreeSet<AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>,
+}
 
 impl FunctionShape {
+    pub fn edges(&self) -> impl Iterator<Item = AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>> {
+        self.edges.iter().copied()
+    }
+
+    pub fn take_inputs_and_outputs(self) -> (Vec<FunctionShapeInput>, Vec<FunctionShapeOutput>) {
+        (self.inputs, self.outputs)
+    }
+
     pub fn for_fn<'tcx>(
         def_id: DefId,
         substs: GenericArgsRef<'tcx>,
@@ -248,7 +290,7 @@ impl<'tcx> FunctionData<'tcx> {
         let shape = self
             .shape(tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
-        shape.coupled().map_err(CoupleAbstractionError::CoupleInput)
+        shape.coupled_edges().map_err(CoupleAbstractionError::CoupleInput)
     }
 }
 
@@ -269,7 +311,7 @@ impl std::fmt::Display for ArgIdxOrResult {
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
     fn to_short_string(&self, _ctxt: Ctxt) -> String {
-        self.0
+        self.edges
             .iter()
             .map(|edge| format!("{edge}"))
             .sorted()
@@ -281,17 +323,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
 impl FunctionShape {
     #[allow(unused)]
     pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
-        self.0.is_subset(&other.0)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn diff(&self, other: &Self) -> Self {
-        let diff = self
-            .0
-            .difference(&other.0)
-            .copied()
-            .collect::<BTreeSet<_>>();
-        Self(diff)
+        self.edges.is_subset(&other.edges)
     }
 
     pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
@@ -301,14 +333,8 @@ impl FunctionShape {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,
         > = BTreeSet::default();
-        let input_tys = shape_data.input_tys(ctxt);
-        let output_ty = shape_data.output_ty(ctxt);
-        let arg_projections = input_tys
-            .into_iter()
-            .enumerate()
-            .flat_map(|(i, ty)| ProjectionData::nodes_for_ty(i.into(), ty))
-            .collect::<Vec<ProjectionData<'tcx, ArgIdx>>>();
-        let result_projections = ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, output_ty);
+        let arg_projections = shape_data.input_arg_projections(ctxt);
+        let result_projections = shape_data.result_projections(ctxt);
         for input in arg_projections.iter().copied() {
             for output in arg_projections.iter().copied() {
                 if ctxt.region_is_invariant_in_type(output.region, output.ty)
@@ -326,11 +352,15 @@ impl FunctionShape {
             }
         }
 
-        Ok(FunctionShape(shape))
+        Ok(FunctionShape {
+            inputs: shape_data.inputs(ctxt),
+            outputs: shape_data.outputs(ctxt),
+            edges: shape,
+        })
     }
 
-    pub fn coupled(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
-        CoupledEdgesData::new(self.0.iter().copied())
+    pub fn coupled_edges(&self) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
+        CoupledEdgesData::new(self.edges.iter().copied())
     }
 }
 

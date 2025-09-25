@@ -338,23 +338,23 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         }
         for region in extract_regions(local_decl.ty) {
             let region_projection =
-                LifetimeProjection::new(region, arg_place.into(), None, ctxt.ctxt).unwrap();
+                LifetimeProjection::new(arg_place.into(), region, None, ctxt.ctxt).unwrap();
             assert!(
                 self.apply_action(
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
                                 LifetimeProjection::new(
-                                    region,
                                     RemotePlace::new(local).into(),
+                                    region,
                                     None,
                                     ctxt.ctxt,
                                 )
-                                .unwrap_or_else(|e| {
+                                .unwrap_or_else(|| {
                                     panic!(
                                         "Failed to create region for remote place (for {local:?}).
-                                    Local ty: {:?}. Error: {:?}",
-                                        local_decl.ty, e
+                                    Local ty: {:?} does not have region {:?}",
+                                        local_decl.ty, region
                                     );
                                 }),
                                 region_projection,

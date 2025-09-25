@@ -16,7 +16,7 @@ use crate::{
             LabelPlaceWithContext, PlaceLabeller,
         },
     },
-    error::{PcgError, PcgInternalError},
+    error::PcgError,
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::{
         index::{Idx, IndexVec},
@@ -91,7 +91,7 @@ impl PcgRegion {
             PcgRegion::ReBound(debruijn_index, region) => {
                 format!("ReBound({debruijn_index:?}, {region:?})")
             }
-            PcgRegion::ReLateParam(_) => todo!(),
+            PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
             PcgRegion::PcgInternalError(pcg_region_internal_error) => {
                 format!("{pcg_region_internal_error:?}")
             }
@@ -641,7 +641,7 @@ pub trait HasRegions<'tcx, Ctxt> {
     {
         self.regions(ctxt)
             .into_iter()
-            .map(|region| LifetimeProjection::new(region, self, None, ctxt).unwrap())
+            .map(|region| LifetimeProjection::new(self, region, None, ctxt).unwrap())
             .collect()
     }
 }
@@ -788,12 +788,18 @@ impl<
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         LifetimeProjection::new(
-            self.region(ctxt),
             self.base.project_deeper(elem, ctxt)?,
+            self.region(ctxt),
             self.label,
             ctxt,
         )
-        .map_err(|e| e.into())
+        .ok_or_else(|| {
+            PcgError::internal(format!(
+                "Region {region} not found in place {base:?}",
+                region = self.region(ctxt),
+                base = self.base,
+            ))
+        })
     }
 
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
@@ -802,13 +808,13 @@ impl<
             .into_iter()
             .map(move |(base, elem)| {
                 (
-                    LifetimeProjection::new(self.region(ctxt), base, self.label, ctxt)
-                        .unwrap_or_else(|e| {
+                    LifetimeProjection::new(self.base, self.region(ctxt), self.label, ctxt)
+                        .unwrap_or_else(|| {
                             panic!(
-                                "Error iter projections for {:?}: {:?}. Place ty: {:?}",
+                               "Error iter projections for {:?}: Place ty {:?} does not have region {:?}",
                                 self,
-                                e,
                                 base.place().ty(ctxt),
+                                self.region(ctxt),
                             );
                         }),
                     elem,
@@ -870,11 +876,11 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     pub fn new<'a, Ctxt>(
-        region: PcgRegion,
         base: T,
+        region: PcgRegion,
         label: Option<LifetimeProjectionLabel>,
         ctxt: Ctxt,
-    ) -> Result<Self, PcgInternalError>
+    ) -> Option<Self>
     where
         'tcx: 'a,
         T: HasRegions<'tcx, Ctxt>,
@@ -882,16 +888,8 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
         let region_idx = base
             .regions(ctxt)
             .into_iter_enumerated()
-            .find(|(_, r)| *r == region)
-            .map(|(idx, _)| idx);
-        let region_idx = match region_idx {
-            Some(region_idx) => region_idx,
-            None => {
-                return Err(PcgInternalError::new(format!(
-                    "Region {region} not found in place {base:?}"
-                )));
-            }
-        };
+            .find(|(_, r)| *r == region)?
+            .0;
 
         let result = Self {
             base,
@@ -899,7 +897,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
             label,
             phantom: PhantomData,
         };
-        Ok(result)
+        Some(result)
     }
 }
 

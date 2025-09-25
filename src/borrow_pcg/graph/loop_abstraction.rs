@@ -5,25 +5,34 @@ use crate::{
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
-        edge::abstraction::{r#loop::LoopAbstraction, AbstractionBlockEdge},
+        edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
         edge_data::EdgeData,
-        graph::{join::JoinBorrowsArgs, BorrowsGraph},
+        graph::{BorrowsGraph, join::JoinBorrowsArgs},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasRegions, HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
+        region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
     pcg::{
-        ctxt::AnalysisCtxt, obtain::{
-            expand::PlaceExpander, ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph
-        }, place_capabilities::PlaceCapabilities, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
+        ctxt::AnalysisCtxt,
+        obtain::{
+            ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
+            expand::PlaceExpander,
+        },
+        place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        data_structures::{HashMap, HashSet}, display::{DisplayWithCompilerCtxt, DisplayWithCtxt}, logging::{self, LogPredicate}, maybe_old::MaybeLabelledPlace, remote::RemotePlace, CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        data_structures::{HashMap, HashSet},
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        logging::{self, LogPredicate},
+        maybe_old::MaybeLabelledPlace,
+        remote::RemotePlace,
     },
 };
 
