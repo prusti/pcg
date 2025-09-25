@@ -635,7 +635,6 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        tracing::info!("ty({self:?}");
         (*self).ty(ctxt.body(), ctxt.tcx())
     }
 
