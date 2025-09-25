@@ -205,6 +205,12 @@ impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, 
     }
 }
 
+impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasRegions<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        extract_regions(self.rust_ty(ctxt))
+    }
+}
+
 impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
 where
     T: DisplayWithCtxt<Ctxt>,
@@ -526,7 +532,7 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
     ) -> bool
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
+        T: HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
     {
         region_is_invariant_in_type(
             ctxt.ctxt().tcx(),
@@ -622,13 +628,8 @@ impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'
     }
 }
 
-pub trait HasTy<'tcx, Ctxt> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
-
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(self.rust_ty(ctxt))
-    }
-
+pub trait HasRegions<'tcx, Ctxt> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion>;
     fn lifetime_projections<'a>(
         self,
         ctxt: Ctxt,
@@ -643,6 +644,10 @@ pub trait HasTy<'tcx, Ctxt> {
             .map(|region| LifetimeProjection::new(region, self, None, ctxt).unwrap())
             .collect()
     }
+}
+
+pub trait HasTy<'tcx, Ctxt> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
@@ -668,7 +673,10 @@ impl<
     'a,
     'tcx: 'a,
     Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
-    T: PcgLifetimeProjectionBaseLike<'tcx> + DisplayWithCtxt<Ctxt> + HasTy<'tcx, Ctxt>,
+    T: PcgLifetimeProjectionBaseLike<'tcx>
+        + DisplayWithCtxt<Ctxt>
+        + HasTy<'tcx, Ctxt>
+        + HasRegions<'tcx, Ctxt>,
 > DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
     fn to_short_string(&self, ctxt: Ctxt) -> String {
@@ -690,7 +698,10 @@ impl<
     'a,
     'tcx: 'a,
     Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
-    T: HasTy<'tcx, Ctxt> + PcgLifetimeProjectionBaseLike<'tcx> + ToJsonWithCtxt<Ctxt>,
+    T: HasTy<'tcx, Ctxt>
+        + HasRegions<'tcx, Ctxt>
+        + PcgLifetimeProjectionBaseLike<'tcx>
+        + ToJsonWithCtxt<Ctxt>,
 > ToJsonWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
@@ -771,7 +782,8 @@ impl<
     T: HasPlace<'tcx>
         + PcgLifetimeProjectionBaseLike<'tcx>
         + PlaceProjectable<'tcx, Ctxt>
-        + HasTy<'tcx, Ctxt>,
+        + HasTy<'tcx, Ctxt>
+        + HasRegions<'tcx, Ctxt>,
 > PlaceProjectable<'tcx, Ctxt> for LifetimeProjection<'tcx, T>
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
@@ -822,8 +834,13 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx> + HasPlace<'tcx>> HasPlace<'tc
     }
 }
 
-impl<'a, 'tcx: 'a, T: HasTy<'tcx, CompilerCtxt<'a, 'tcx>> + PcgLifetimeProjectionBaseLike<'tcx>>
-    HasValidityCheck<'a, 'tcx> for LifetimeProjection<'tcx, T>
+impl<
+    'a,
+    'tcx: 'a,
+    T: HasTy<'tcx, CompilerCtxt<'a, 'tcx>>
+        + HasRegions<'tcx, CompilerCtxt<'a, 'tcx>>
+        + PcgLifetimeProjectionBaseLike<'tcx>,
+> HasValidityCheck<'a, 'tcx> for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
@@ -852,7 +869,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
-    pub(crate) fn new<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
+    pub fn new<'a, Ctxt>(
         region: PcgRegion,
         base: T,
         label: Option<LifetimeProjectionLabel>,
@@ -860,7 +877,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     ) -> Result<Self, PcgInternalError>
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
+        T: HasRegions<'tcx, Ctxt>,
     {
         let region_idx = base
             .regions(ctxt)
@@ -887,10 +904,10 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub(crate) fn region<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(&self, ctxt: Ctxt) -> PcgRegion
+    pub fn region<'a, Ctxt>(&self, ctxt: Ctxt) -> PcgRegion
     where
         'tcx: 'a,
-        T: HasTy<'tcx, Ctxt>,
+        T: HasRegions<'tcx, Ctxt>,
     {
         let regions = self.base.regions(ctxt);
         if self.region_idx.index() >= regions.len() {

@@ -5,34 +5,25 @@ use crate::{
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
-        edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
+        edge::abstraction::{r#loop::LoopAbstraction, AbstractionBlockEdge},
         edge_data::EdgeData,
-        graph::{BorrowsGraph, join::JoinBorrowsArgs},
+        graph::{join::JoinBorrowsArgs, BorrowsGraph},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
+        region_projection::{HasRegions, HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     owned_pcg::RepackOp,
     pcg::{
-        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
-        ctxt::AnalysisCtxt,
-        obtain::{
-            ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
-            expand::PlaceExpander,
-        },
-        place_capabilities::PlaceCapabilities,
+        ctxt::AnalysisCtxt, obtain::{
+            expand::PlaceExpander, ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph
+        }, place_capabilities::PlaceCapabilities, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike
     },
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        data_structures::{HashMap, HashSet},
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        logging::{self, LogPredicate},
-        maybe_old::MaybeLabelledPlace,
-        remote::RemotePlace,
+        data_structures::{HashMap, HashSet}, display::{DisplayWithCompilerCtxt, DisplayWithCtxt}, logging::{self, LogPredicate}, maybe_old::MaybeLabelledPlace, remote::RemotePlace, CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation
     },
 };
 

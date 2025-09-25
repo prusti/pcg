@@ -16,21 +16,17 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasTy, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     rustc_interface::{
-        VariantIdx,
-        ast::Mutability,
-        data_structures::fx::FxHasher,
-        index::IndexVec,
-        middle::{
+        ast::Mutability, data_structures::fx::FxHasher, index::IndexVec, middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
-        },
+        }, VariantIdx
     },
-    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
+    utils::{data_structures::HashSet, json::ToJsonWithCtxt, HasCompilerCtxt},
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
@@ -60,6 +56,12 @@ pub struct Place<'tcx>(
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for Place<'tcx> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        extract_regions(self.rust_ty(ctxt))
     }
 }
 

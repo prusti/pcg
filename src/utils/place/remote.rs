@@ -1,9 +1,13 @@
 use crate::{
     borrow_pcg::region_projection::{
-        HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
+        HasRegions, HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion,
+        PlaceOrConst, RegionIdx,
     },
     pcg::{PcgNode, PcgNodeLike},
-    rustc_interface::middle::{mir, ty},
+    rustc_interface::{
+        index::IndexVec,
+        middle::{mir, ty},
+    },
     utils::{
         self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
         validity::HasValidityCheck,
@@ -19,6 +23,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Remote
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         let place: utils::Place<'tcx> = self.local.into();
         place.rust_ty(ctxt)
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for RemotePlace {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        let place: utils::Place<'tcx> = self.local.into();
+        place.regions(ctxt)
     }
 }
 

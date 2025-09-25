@@ -4,7 +4,8 @@ use crate::{
         edge_data::LabelPlacePredicate,
         has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
         region_projection::{
-            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
+            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
+            PlaceOrConst, RegionIdx,
         },
         visitor::extract_regions,
     },
@@ -12,6 +13,7 @@ use crate::{
     pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
     rustc_interface::{
         PlaceTy,
+        index::IndexVec,
         middle::{
             mir::{self, PlaceElem},
             ty,
@@ -33,6 +35,14 @@ pub type MaybeOldPlace<'tcx> = MaybeLabelledPlace<'tcx>;
 pub enum MaybeLabelledPlace<'tcx> {
     Current(Place<'tcx>),
     Labelled(LabelledPlace<'tcx>),
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        self.place().regions(ctxt)
+    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
