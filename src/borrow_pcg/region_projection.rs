@@ -808,7 +808,7 @@ impl<
             .into_iter()
             .map(move |(base, elem)| {
                 (
-                    LifetimeProjection::new(self.base, self.region(ctxt), self.label, ctxt)
+                    LifetimeProjection::new(base, self.region(ctxt), self.label, ctxt)
                         .unwrap_or_else(|| {
                             panic!(
                                "Error iter projections for {:?}: Place ty {:?} does not have region {:?}",
