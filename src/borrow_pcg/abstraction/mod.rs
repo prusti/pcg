@@ -203,6 +203,8 @@ impl FunctionShapeNode {
     }
 }
 
+/// A bipartite graph describing the shape of a function. Note that *outputs*
+/// include lifetime projections of nested lifetimes in the function arguments.
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionShape {
     inputs: Vec<FunctionShapeInput>,
