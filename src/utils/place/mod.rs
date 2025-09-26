@@ -16,7 +16,7 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasTy, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -60,6 +60,12 @@ pub struct Place<'tcx>(
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for Place<'tcx> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        extract_regions(self.rust_ty(ctxt))
     }
 }
 
@@ -320,7 +326,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.ty_region(ctxt)
-            .map(|region| LifetimeProjection::new(region, self, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(self, region, None, ctxt.ctxt()).unwrap())
     }
 
     pub fn projection(&self) -> &'tcx [PlaceElem<'tcx>] {
@@ -489,7 +495,7 @@ impl<'tcx> Place<'tcx> {
         let place = self.with_inherent_region(ctxt);
         extract_regions(place.ty(ctxt).ty)
             .iter()
-            .map(|region| LifetimeProjection::new(*region, place, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
     }
 

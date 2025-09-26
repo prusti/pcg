@@ -13,7 +13,7 @@ use crate::{
             },
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasTy, LifetimeProjection},
+        region_projection::{HasRegions, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
@@ -100,8 +100,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             function_data,
         };
         let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
-            .iter()
-            .copied()
+            .edges()
             .map(|AbstractionBlockEdge { input, output, .. }| {
                 AbstractionBlockEdge::new_checked(
                     self.node_for_input(call, input),

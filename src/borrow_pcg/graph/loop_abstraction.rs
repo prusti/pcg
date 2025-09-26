@@ -9,7 +9,7 @@ use crate::{
         edge_data::EdgeData,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{HasTy, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
+        region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },

@@ -112,15 +112,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             BorrowPcgEdge::new(
                                 BorrowFlowEdge::new(
                                     LifetimeProjection::new(
-                                        (*const_region).into(),
                                         PlaceOrConst::Const(c.const_),
+                                        (*const_region).into(),
                                         None,
                                         self.ctxt.ctxt(),
                                     )
                                     .unwrap(),
                                     LifetimeProjection::new(
-                                        (*target_region).into(),
                                         target,
+                                        (*target_region).into(),
                                         None,
                                         self.ctxt.ctxt(),
                                     )

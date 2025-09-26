@@ -471,8 +471,8 @@ impl<'tcx> LocalBorrow<'tcx> {
     {
         match self.assigned_ref.ty(repacker).ty.kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
-                (*region).into(),
                 self.assigned_ref,
+                (*region).into(),
                 self.assigned_lifetime_projection_label,
                 repacker.ctxt(),
             )
