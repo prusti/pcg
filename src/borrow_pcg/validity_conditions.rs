@@ -1,7 +1,8 @@
 //! Data structures for validity conditions.
-use crate::rustc_interface::middle::mir;
-use crate::utils::HasCompilerCtxt;
-use crate::utils::display::DisplayWithCtxt;
+use crate::{
+    rustc_interface::middle::mir,
+    utils::{HasCompilerCtxt, display::DisplayWithCtxt},
+};
 use bit_set::BitSet;
 use itertools::Itertools;
 use smallvec::SmallVec;
@@ -85,6 +86,9 @@ impl BranchChoices {
 
     pub fn successors(&self, body: &mir::Body<'_>) -> Vec<BasicBlock> {
         effective_successors(self.from, body)
+            .into_iter()
+            .filter(|s| self.includes_successor(*s, body))
+            .collect()
     }
 
     fn includes_successor(&self, successor: BasicBlock, body: &mir::Body<'_>) -> bool {
