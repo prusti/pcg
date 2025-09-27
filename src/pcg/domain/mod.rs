@@ -281,7 +281,7 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
             )?;
         }
         for other in rest {
-            if !ctxt.ctxt.is_back_edge(other.ctxt.block, ctxt.block) {
+            if ctxt.should_join_from(other.ctxt.block) {
                 curr.join(
                     &other.data.pcg.states.0.post_main,
                     ctxt.block,
