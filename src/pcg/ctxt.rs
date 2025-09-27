@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{
     borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::validity_conditions::effective_successors,
     pcg::{
         BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
         CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
@@ -222,6 +223,11 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
 
     pub(crate) fn require(&self, constraint: CapabilityConstraint<'a>) {
         self.symbolic_capability_ctxt.require(constraint);
+    }
+
+    pub(crate) fn should_join_from(&self, other: mir::BasicBlock) -> bool {
+        effective_successors(other, self.body()).contains(&self.block)
+            && !self.ctxt.is_back_edge(other, self.block)
     }
 }
 
