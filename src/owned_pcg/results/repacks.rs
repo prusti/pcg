@@ -118,6 +118,12 @@ impl<'tcx> RepackCollapse<'tcx> {
         Self { to, capability }
     }
 
+    pub fn guide(&self) -> Option<RepackGuide> {
+        self.to
+            .last_projection()
+            .map(|(_, elem)| elem.try_into().unwrap())
+    }
+
     pub fn box_deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<Place<'tcx>> {
         if self.to.ty(ctxt).ty.is_box() {
             self.to.project_deeper(PlaceElem::Deref, ctxt).ok()
