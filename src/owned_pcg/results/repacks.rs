@@ -111,17 +111,24 @@ impl<'tcx> RepackExpand<'tcx> {
 pub struct RepackCollapse<'tcx> {
     pub(crate) to: Place<'tcx>,
     pub(crate) capability: CapabilityKind,
+    pub(crate) guide: Option<RepackGuide>,
 }
 
 impl<'tcx> RepackCollapse<'tcx> {
-    pub(crate) fn new(to: Place<'tcx>, capability: CapabilityKind) -> Self {
-        Self { to, capability }
+    pub(crate) fn new(
+        to: Place<'tcx>,
+        capability: CapabilityKind,
+        guide: Option<RepackGuide>,
+    ) -> Self {
+        Self {
+            to,
+            capability,
+            guide,
+        }
     }
 
-    pub fn guide(&self) -> Option<RepackGuide> {
-        self.to
-            .last_projection()
-            .map(|(_, elem)| elem.try_into().unwrap())
+    pub fn guide(self) -> Option<RepackGuide> {
+        self.guide
     }
 
     pub fn box_deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<Place<'tcx>> {

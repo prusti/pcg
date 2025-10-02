@@ -11,7 +11,7 @@ use std::fmt::{Debug, Formatter, Result};
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgUnsupportedError,
-    owned_pcg::{RepackCollapse, RepackGuide},
+    owned_pcg::RepackGuide,
     pcg::place_capabilities::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
     },
@@ -267,14 +267,16 @@ impl<'tcx> LocalExpansions<'tcx> {
         let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
         let ops: Vec<RepackOp<'tcx>> = places_to_collapse
             .into_iter()
-            .map(|place| {
-                let retained_cap = self
-                    .get_retained_capability_of_children(place, capabilities, ctxt)
-                    .unwrap();
-                let action = RepackCollapse::new(place, retained_cap.expect_concrete());
-                self.perform_collapse_action(action, capabilities, ctxt)
-                    .unwrap();
-                RepackOp::Collapse(action)
+            .flat_map(|place| {
+                let actions = self.collapse_actions_for(place, capabilities, ctxt);
+                actions
+                    .into_iter()
+                    .map(|action| {
+                        self.perform_collapse_action(action, capabilities, ctxt)
+                            .unwrap();
+                        RepackOp::Collapse(action)
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect();
         Ok(ops)

@@ -339,11 +339,11 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .expansions_from(place)
                 .cloned()
                 .collect::<Vec<_>>();
-            self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                RepackOp::Collapse(RepackCollapse::new(place, capability)),
-                Some(context.clone()),
-            )))?;
             for pe in expansions {
+                self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
+                    RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
+                    Some(context.clone()),
+                )))?;
                 for rp in place.lifetime_projections(ctxt) {
                     let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
                         .expansion_places(&pe.expansion, ctxt)
