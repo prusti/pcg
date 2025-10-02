@@ -7,11 +7,15 @@
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgError,
-    owned_pcg::{ExpandedPlace, RepackCollapse, RepackExpand, RepackOp, join::data::JoinOwnedData},
+    owned_pcg::{
+        ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
+        join::data::JoinOwnedData,
+    },
     pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, data_structures::HashSet,
+        CompilerCtxt, HasCompilerCtxt, Place,
+        data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -172,29 +176,28 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn get_retained_capability_of_children<
-        'a,
-        Ctxt: HasCompilerCtxt<'a, 'tcx>,
-        C: CapabilityLike,
-    >(
+    pub(crate) fn collapse_actions_for<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, C: CapabilityLike>(
         &self,
         place: Place<'tcx>,
         capabilities: &impl PlaceCapabilitiesInterface<'tcx, C>,
         ctxt: Ctxt,
-    ) -> Option<C>
+    ) -> Vec<RepackCollapse<'tcx>>
     where
         'tcx: 'a,
     {
         let children = self.all_children_of(place, ctxt);
-        let mut current_cap: C = CapabilityKind::Exclusive.into();
+        let mut collapses_by_guide: HashMap<Option<RepackGuide>, CapabilityKind> =
+            HashMap::default();
         for child in children {
-            let child_cap = capabilities.get(child, ctxt)?;
-            current_cap = current_cap
-                .expect_concrete()
-                .minimum(child_cap.expect_concrete())?
-                .into();
+            let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
+            let child_cap = capabilities.get(child, ctxt).unwrap().expect_concrete();
+            let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
+            *entry = entry.minimum(child_cap).unwrap();
         }
-        Some(current_cap)
+        collapses_by_guide
+            .into_iter()
+            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
+            .collect()
     }
 
     pub(crate) fn perform_collapse_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, C: CapabilityLike>(
