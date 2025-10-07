@@ -55,10 +55,32 @@ pub fn cargo_clean_in_dir(dir: &Path) {
     );
 }
 
+fn find_workspace_base_dir(target: &str) -> PathBuf {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
+
+    if let Some(parent) = manifest_dir.parent() {
+        let parent_exe = parent.join("target").join(target).join("pcg_bin");
+        if parent_exe.exists() {
+            return parent.to_path_buf();
+        }
+    }
+
+    manifest_dir
+}
+
 #[allow(dead_code)]
 #[must_use]
 pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
-    let cwd = std::env::current_dir().unwrap();
+    let target = if matches!(options.target(), Target::Release) {
+        "release"
+    } else {
+        "debug"
+    };
+
+    let base_dir = find_workspace_base_dir(target);
+
     let build_args = match options.target() {
         Target::Release => vec!["--release"],
         Target::Debug => vec![],
@@ -70,17 +92,12 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         .arg("--bin")
         .arg("pcg_bin")
         .args(build_args)
-        .current_dir(&cwd)
+        .current_dir(&base_dir)
         .status()
         .expect("Failed to build pcg_bin");
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let target = if matches!(options.target(), Target::Release) {
-        "release"
-    } else {
-        "debug"
-    };
-    let pcs_exe = cwd.join(["target", target, "pcg_bin"].iter().collect::<PathBuf>());
+    let pcs_exe = base_dir.join(["target", target, "pcg_bin"].iter().collect::<PathBuf>());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -112,11 +129,11 @@ pub fn is_polonius_test_file(file: &Path) -> bool {
 
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
-    let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let pcs_exe = workspace_dir.join("target/debug/pcg_bin");
+    let base_dir = find_workspace_base_dir("debug");
+    let pcg_exe = base_dir.join("target/debug/pcg_bin");
     println!("Running PCG on file: {}", file.display());
 
-    let status = Command::new(&pcs_exe)
+    let status = Command::new(&pcg_exe)
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
         .env(
