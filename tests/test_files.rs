@@ -6,6 +6,9 @@ mod common;
 
 #[test]
 fn check_test_files() {
+    // Build the debug binary first
+    common::build_pcg_bin(common::Target::Debug);
+
     // Get the workspace directory from CARGO_MANIFEST_DIR
     let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 

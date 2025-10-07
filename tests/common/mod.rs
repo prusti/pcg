@@ -248,6 +248,30 @@ pub enum Target {
 }
 
 #[allow(dead_code)]
+pub fn build_pcg_bin(target: Target) {
+    let args = match target {
+        Target::Debug => vec!["build", "--bin", "pcg_bin"],
+        Target::Release => vec!["build", "--release", "--bin", "pcg_bin"],
+    };
+    
+    let target_name = match target {
+        Target::Debug => "debug",
+        Target::Release => "release",
+    };
+    
+    let status = Command::new("cargo")
+        .args(&args)
+        .status()
+        .unwrap_or_else(|_| panic!("Failed to build {} binary", target_name));
+
+    assert!(
+        status.success(),
+        "Failed to build {} binary",
+        target_name
+    );
+}
+
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum RunOnCrateOptions {
     TypecheckOnly {
