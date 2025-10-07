@@ -65,6 +65,10 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     };
     let cargo_build = Command::new("cargo")
         .arg("build")
+        .arg("-p")
+        .arg("pcg")
+        .arg("--bin")
+        .arg("pcg_bin")
         .args(build_args)
         .current_dir(&cwd)
         .status()
