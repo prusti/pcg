@@ -113,7 +113,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             && let Ok(coupled_edges) = CoupledEdgesData::new(abstraction_edges.iter().copied())
         {
             if !coupled_edges.is_empty() {
-                tracing::info!("Coupled edges: {:?}", coupled_edges);
+                tracing::debug!("Coupled edges: {:?}", coupled_edges);
             }
             for edge in coupled_edges {
                 let pcg_coupled_edge = PcgCoupledEdgeKind::function_call(
