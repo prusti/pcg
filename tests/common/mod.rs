@@ -207,6 +207,9 @@ pub fn is_supported_crate(name: &str, version: &str) -> Result<(), String> {
         ("Inflector", _) => {
             Err("Skipping Inflector; it doesn't compile (probably too old).".to_string())
         }
+        ("cc", "1.2.16") => {
+            Err("Skipping cc 1.2.16; it doesn't compile on Windows due to mismatched_lifetime_syntaxes lint.".to_string())
+        }
         _ => Ok(()),
     }
 }
