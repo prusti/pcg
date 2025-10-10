@@ -55,13 +55,21 @@ pub fn cargo_clean_in_dir(dir: &Path) {
     );
 }
 
+fn pcg_bin_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pcg_bin.exe"
+    } else {
+        "pcg_bin"
+    }
+}
+
 fn find_workspace_base_dir(target: &str) -> PathBuf {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap());
 
     if let Some(parent) = manifest_dir.parent() {
-        let parent_exe = parent.join("target").join(target).join("pcg_bin");
+        let parent_exe = parent.join("target").join(target).join(pcg_bin_name());
         if parent_exe.exists() {
             return parent.to_path_buf();
         }
@@ -97,7 +105,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         .expect("Failed to build pcg_bin");
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let pcs_exe = base_dir.join(["target", target, "pcg_bin"].iter().collect::<PathBuf>());
+    let pcs_exe = base_dir.join("target").join(target).join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -130,7 +138,7 @@ pub fn is_polonius_test_file(file: &Path) -> bool {
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
     let base_dir = find_workspace_base_dir("debug");
-    let pcg_exe = base_dir.join("target/debug/pcg_bin");
+    let pcg_exe = base_dir.join("target").join("debug").join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());
 
     let status = Command::new(&pcg_exe)
