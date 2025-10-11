@@ -309,7 +309,7 @@ impl GraphEdge {
     }
 }
 
-pub(crate) struct Graph {
+pub struct Graph {
     nodes: Vec<GraphNode>,
     edges: HashSet<GraphEdge>,
 }
@@ -321,7 +321,7 @@ impl Graph {
 
     #[allow(unused)]
     #[cfg(test)]
-    pub(crate) fn edge_between_labelled_nodes(
+    pub fn edge_between_labelled_nodes(
         &self,
         label1: &str,
         label2: &str,

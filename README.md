@@ -21,14 +21,6 @@ on the compiler version. If you find that the library fails to compile for a
 particular nightly release, please [file an
 issue](https://github.com/prusti/pcg/issues/new).
 
-### Example Project
-
-This repository includes [`pcg-bin`](./pcg-bin), a standalone binary that
-demonstrates how to use the PCG library. This binary can run the PCG analysis on
-all functions within a Rust source file and optionally produce visualizations of
-the analysis outputs. See the [`pcg-bin/src/main.rs`](./pcg-bin/src/main.rs)
-file to see how the library is integrated into a Rust compiler plugin.
-
 ## Testing and Generating Debug Visualizations
 
 The `pcg-bin` binary can be used to run the PCG analysis on all functions within

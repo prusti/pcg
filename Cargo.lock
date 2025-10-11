@@ -1067,7 +1067,6 @@ dependencies = [
 name = "pcg"
 version = "0.1.0"
 dependencies = [
- "axum",
  "bit-set",
  "bumpalo",
  "chrono",
@@ -1087,7 +1086,6 @@ dependencies = [
  "serde_json",
  "shell-escape",
  "smallvec",
- "tokio",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -1117,6 +1115,7 @@ dependencies = [
  "pcg",
  "rustversion",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

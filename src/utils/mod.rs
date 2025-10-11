@@ -61,6 +61,12 @@ pub struct GlobalPcgSettings {
     pub test_crates_start_from: Option<usize>,
 }
 
+impl Default for GlobalPcgSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GlobalPcgSettings {
     pub fn new() -> Self {
         Self::new_returning_vars().0
