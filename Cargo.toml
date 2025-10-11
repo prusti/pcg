@@ -1,3 +1,8 @@
+[workspace]
+members = ["pcg-bin", "pcg-server"]
+default-members = ["pcg-bin"]
+resolver = "2"
+
 [package]
 name = "pcg"
 version = "0.1.0"
@@ -5,7 +10,6 @@ authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
 edition = "2024"
 
 [features]
-memory_profiling = []
 custom-rust-toolchain = []
 visualization = []
 debug_info = []
@@ -40,10 +44,8 @@ shell-escape = "0.1.5"
 smallvec = { version = "^1.11", features = ["union", "const_new"] }
 tracing = "0.1"
 tracing-subscriber = "0.3.20"
-tikv-jemallocator = { version = "0.6", features = ["profiling", "unprefixed_malloc_on_supported_platforms"], optional = true }
 axum = { version = "0.7", features = ["multipart"], optional = true }
 tokio = { version = "1.44.2", features = ["full", "rt-multi-thread"], optional = true }
-jemalloc_pprof = { version = "0.6", optional = true }
 openssl = "0.10.72"
 
 [dev-dependencies]
@@ -55,11 +57,6 @@ chrono = "0.4"
 [package.metadata.rust-analyzer]
 # This crate uses #[feature(rustc_private)]
 rustc_private = true
-
-[[bin]]
-name = "pcg_bin"
-path = "src/main.rs"
-required-features = ["visualization"]
 
 [lints.clippy]
 uninlined_format_args = "deny"

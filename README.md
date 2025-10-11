@@ -4,7 +4,7 @@ This repository contains the Rust implementation of the PCG Analysis.
 
 For more information about the PCG model, please checkout our [OOPSLA 2025 paper](https://arxiv.org/pdf/2503.21691).
 
-## Usage
+## Usage as a Library
 
 The PCG analysis can be easily included in Rust projects as a Cargo dependency.
 The analysis is not available on crates.io (yet); the easiest way to include it
@@ -21,12 +21,19 @@ on the compiler version. If you find that the library fails to compile for a
 particular nightly release, please [file an
 issue](https://github.com/prusti/pcg/issues/new).
 
+### Example Project
+
+This repository includes [`pcg-bin`](./pcg-bin), a standalone binary that
+demonstrates how to use the PCG library. This binary can run the PCG analysis on
+all functions within a Rust source file and optionally produce visualizations of
+the analysis outputs. See the [`pcg-bin/src/main.rs`](./pcg-bin/src/main.rs)
+file to see how the library is integrated into a Rust compiler plugin.
+
 ## Testing and Generating Debug Visualizations
 
-This repository also includes a standalone binary that can be used to run the
-PCG analysis on all functions within a Rust source file. The binary can also
-(optionally) produce visualizations of the outputs produced by its analysis that
-can be viewed via a web interface.
+The `pcg-bin` binary can be used to run the PCG analysis on all functions within
+a Rust source file and (optionally) produce visualizations of the analysis
+outputs that can be viewed via a web interface.
 
 To run the binary on all functions in a Rust source file:
 
@@ -47,5 +54,5 @@ Then, you can view the output graphs via the web interface at
 `http://localhost:8080`.
 
 Once the server is running, you can keep it running and analyze other files
-(e.g. `PCG_VISUALIZATION=true cargo run [FILENAME2].rs`). Just refresh the page
-to see updated results.
+(e.g. `PCG_VISUALIZATION=true cargo run [FILENAME2].rs`). Just
+refresh the page to see updated results.

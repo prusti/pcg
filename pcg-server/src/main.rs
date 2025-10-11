@@ -5,13 +5,7 @@ use axum::{
     Router,
 };
 use hyper::StatusCode;
-use std::{
-    backtrace::Backtrace,
-    fs,
-    net::SocketAddr,
-    path::PathBuf,
-    process::Command,
-};
+use std::{backtrace::Backtrace, fs, net::SocketAddr, path::PathBuf, process::Command};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, Level};
@@ -58,6 +52,7 @@ fn find_pcg_bin() -> Result<PathBuf, String> {
     let to_try = vec![
         PathBuf::from("pcg_bin"),
         PathBuf::from("../target/debug/pcg_bin"),
+        PathBuf::from("../pcg-bin/target/debug/pcg_bin"),
     ];
 
     for path in to_try {
