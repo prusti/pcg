@@ -5,7 +5,6 @@ use std::{
 };
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
-use pcg::results::PcgAnalysisResults;
 use pcg::utils::PcgSettings;
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
@@ -47,10 +46,8 @@ impl driver::Callbacks for PcgCallbacks {
     }
 
     fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
-        // SAFETY: `config()` overrides the borrowck query to save the bodies
-        // from `tcx` in `BODIES`
         unsafe {
-            run_pcg_on_all_fns(tcx, *pcg::utils::POLONIUS);
+            run_pcg_on_all_fns(tcx);
         }
         if in_cargo_crate() {
             Compilation::Continue
@@ -89,10 +86,7 @@ fn cargo_crate_name() -> Option<String> {
     std::env::var("CARGO_CRATE_NAME").ok()
 }
 
-/// # Safety
-///
-/// Functions bodies stored in `BODIES` must come from the same `tcx`.
-pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
+unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
     let global_settings = GlobalPcgSettings::new();
     let mut ctxt_creator = PcgCtxtCreator::new(tcx);
     let settings = ctxt_creator.settings().clone();
@@ -160,18 +154,14 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, polonius: bool) {
         tracing::info!("Path: {:?}", body.body.span);
         tracing::debug!("Number of basic blocks: {}", body.body.basic_blocks.len());
         tracing::debug!("Number of locals: {}", body.body.local_decls.len());
-        run_pcg_on_fn(&body, &mut ctxt_creator, polonius, None);
+        run_pcg_on_fn(&body, &mut ctxt_creator);
     }
     ctxt_creator.write_debug_visualization_metadata();
 }
 
-type PcgCallback<'tcx> = dyn for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + 'static;
-
 pub(crate) fn run_pcg_on_fn<'tcx>(
     body: &BodyWithBorrowckFacts<'tcx>,
     ctxt_creator: &mut PcgCtxtCreator<'tcx>,
-    polonius: bool,
-    callback: Option<&PcgCallback<'tcx>>,
 ) {
     let tcx = ctxt_creator.tcx;
     let region_debug_name_overrides = if let Ok(lines) = source_lines(tcx, &body.body) {
@@ -183,7 +173,7 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
     } else {
         BTreeMap::new()
     };
-    let mut bc = if polonius {
+    let mut bc = if ctxt_creator.settings().polonius {
         RustBorrowCheckerImpl::Polonius(PoloniusBorrowChecker::new(tcx, body))
     } else {
         RustBorrowCheckerImpl::Nll(NllBorrowCheckerImpl::new(tcx, body))
@@ -207,9 +197,6 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
         pcg_ctxt.settings(),
         &mut output,
     );
-    if let Some(callback) = callback {
-        callback(output);
-    }
 }
 
 fn emit_and_check_annotations(

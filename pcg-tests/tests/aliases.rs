@@ -1,3 +1,5 @@
+#![feature(rustc_private)]
+
 use pcg::{
     PcgOutput,
     results::PcgLocation,

@@ -63,8 +63,6 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    #[allow(unused)]
-    #[cfg(test)]
     fn label(&self) -> String {
         self.node_type.label()
     }
@@ -159,7 +157,6 @@ enum NodeType {
 }
 
 impl NodeType {
-    #[cfg(test)]
     pub(crate) fn label(&self) -> String {
         match self {
             NodeType::PlaceNode { label, .. } => label.clone(),
@@ -319,35 +316,27 @@ impl Graph {
         Self { nodes, edges }
     }
 
-    #[allow(unused)]
-    #[cfg(test)]
-    pub fn edge_between_labelled_nodes(
-        &self,
-        label1: &str,
-        label2: &str,
-    ) -> Result<&GraphEdge, String> {
-        let label_1_id = self
+    pub fn has_edge_between_labelled_nodes(&self, label1: &str, label2: &str) -> bool {
+        let Some(label_1_id) = self
             .nodes
             .iter()
             .find(|n| n.label() == label1)
             .map(|n| n.id)
-            .ok_or(format!("No node with label: {}", label1))?;
-        let label_2_id = self
+        else {
+            return false;
+        };
+        let Some(label_2_id) = self
             .nodes
             .iter()
             .find(|n| n.label() == label2)
             .map(|n| n.id)
-            .ok_or(format!("No node with label: {}", label2))?;
-        self.edges
-            .iter()
-            .find(|edge| {
-                let dot_edge = edge.to_dot_edge();
-                dot_edge.from == label_1_id.to_string() && dot_edge.to == label_2_id.to_string()
-            })
-            .ok_or(format!(
-                "Edges exists, no edge between {} and {}",
-                label1, label2
-            ))
+        else {
+            return false;
+        };
+        self.edges.iter().any(|edge| {
+            let dot_edge = edge.to_dot_edge();
+            dot_edge.from == label_1_id.to_string() && dot_edge.to == label_2_id.to_string()
+        })
     }
 }
 
