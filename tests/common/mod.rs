@@ -55,28 +55,57 @@ pub fn cargo_clean_in_dir(dir: &Path) {
     );
 }
 
+fn pcg_bin_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "pcg_bin.exe"
+    } else {
+        "pcg_bin"
+    }
+}
+
+fn find_workspace_base_dir(target: &str) -> PathBuf {
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
+
+    if let Some(parent) = manifest_dir.parent() {
+        let parent_exe = parent.join("target").join(target).join(pcg_bin_name());
+        if parent_exe.exists() {
+            return parent.to_path_buf();
+        }
+    }
+
+    manifest_dir
+}
+
 #[allow(dead_code)]
 #[must_use]
 pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
-    let cwd = std::env::current_dir().unwrap();
+    let target = if matches!(options.target(), Target::Release) {
+        "release"
+    } else {
+        "debug"
+    };
+
+    let base_dir = find_workspace_base_dir(target);
+
     let build_args = match options.target() {
         Target::Release => vec!["--release"],
         Target::Debug => vec![],
     };
     let cargo_build = Command::new("cargo")
         .arg("build")
+        .arg("-p")
+        .arg("pcg")
+        .arg("--bin")
+        .arg("pcg_bin")
         .args(build_args)
-        .current_dir(&cwd)
+        .current_dir(&base_dir)
         .status()
         .expect("Failed to build pcg_bin");
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let target = if matches!(options.target(), Target::Release) {
-        "release"
-    } else {
-        "debug"
-    };
-    let pcs_exe = cwd.join(["target", target, "pcg_bin"].iter().collect::<PathBuf>());
+    let pcs_exe = base_dir.join("target").join(target).join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -108,11 +137,11 @@ pub fn is_polonius_test_file(file: &Path) -> bool {
 
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
-    let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let pcs_exe = workspace_dir.join("target/debug/pcg_bin");
+    let base_dir = find_workspace_base_dir("debug");
+    let pcg_exe = base_dir.join("target").join("debug").join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());
 
-    let status = Command::new(&pcs_exe)
+    let status = Command::new(&pcg_exe)
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
         .env(
@@ -178,6 +207,9 @@ pub fn is_supported_crate(name: &str, version: &str) -> Result<(), String> {
         ("Inflector", _) => {
             Err("Skipping Inflector; it doesn't compile (probably too old).".to_string())
         }
+        ("cc", "1.2.16") => {
+            Err("Skipping cc 1.2.16; it doesn't compile on Windows due to mismatched_lifetime_syntaxes lint.".to_string())
+        }
         _ => Ok(()),
     }
 }
@@ -224,6 +256,26 @@ pub fn download_crate(name: &str, version: &str, date: Option<&str>) -> PathBuf 
 pub enum Target {
     Debug,
     Release,
+}
+
+#[allow(dead_code)]
+pub fn build_pcg_bin(target: Target) {
+    let args = match target {
+        Target::Debug => vec!["build", "--bin", "pcg_bin"],
+        Target::Release => vec!["build", "--release", "--bin", "pcg_bin"],
+    };
+
+    let target_name = match target {
+        Target::Debug => "debug",
+        Target::Release => "release",
+    };
+
+    let status = Command::new("cargo")
+        .args(&args)
+        .status()
+        .unwrap_or_else(|_| panic!("Failed to build {} binary", target_name));
+
+    assert!(status.success(), "Failed to build {} binary", target_name);
 }
 
 #[allow(dead_code)]

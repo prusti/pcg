@@ -9,15 +9,6 @@ mod common;
 
 const REGRESSION_THRESHOLD: f64 = 1.1;
 
-fn build_release() {
-    let status = Command::new("cargo")
-        .args(["build", "--release"])
-        .status()
-        .expect("Failed to build release binary");
-
-    assert!(status.success(), "Failed to build release binary");
-}
-
 fn extract_i_refs(output: &str) -> u64 {
     // Example line we're looking for: "==3770436== I refs:        58,812,310"
     for line in output.lines() {
@@ -87,7 +78,7 @@ fn format_results(results: &[(String, u64)]) -> String {
 #[ignore]
 fn benchmark_test_files() {
     // First build in release mode
-    build_release();
+    common::build_pcg_bin(common::Target::Release);
 
     // Get the workspace directory and setup paths
     let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
