@@ -1,3 +1,4 @@
+#![feature(rustc_private)]
 use pcg::visualization::graph_constructor::PcgGraphConstructor;
 use pcg_tests::run_pcg_on_str;
 
