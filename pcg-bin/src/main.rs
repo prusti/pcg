@@ -6,9 +6,12 @@ may already be stabilized */
 #![feature(proc_macro_hygiene)]
 #![feature(let_chains)]
 
+mod callbacks;
+
+use callbacks::PcgCallbacks;
 use pcg::utils::{
     DUMP_MIR_DATAFLOW, POLONIUS,
-    callbacks::{PcgCallbacks, in_cargo, in_cargo_crate},
+    callbacks::{in_cargo, in_cargo_crate},
 };
 
 #[rustversion::since(2025-03-02)]

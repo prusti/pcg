@@ -40,7 +40,7 @@ impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
     }
 }
 
-pub(crate) trait HasSettings<'a> {
+pub trait HasSettings<'a> {
     fn settings(&self) -> &'a PcgSettings;
 }
 

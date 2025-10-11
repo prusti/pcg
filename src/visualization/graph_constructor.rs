@@ -431,9 +431,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
 #[rustversion::since(2025-05-24)]
 #[cfg(test)]
 mod tests {
-    use crate::{
-        utils::test::run_pcg_on_str, visualization::graph_constructor::PcgGraphConstructor,
-    };
+    use crate::visualization::graph_constructor::PcgGraphConstructor;
+    use pcg_tests::run_pcg_on_str;
 
     // 26_ref_in_struct.rs
     #[test]

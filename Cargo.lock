@@ -169,6 +169,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c8214115b7bf84099f1309324e63141d4c5d7cc26862f97a0a857dbefe165bd"
 
 [[package]]
+name = "borrowck-body-storage"
+version = "0.1.0"
+dependencies = [
+ "pcg",
+ "rustversion",
+ "tracing",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1067,6 +1076,7 @@ dependencies = [
  "itertools",
  "lazy_static",
  "openssl",
+ "pcg-tests",
  "petgraph",
  "rayon",
  "regex",
@@ -1100,9 +1110,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pcg-tests"
+version = "0.1.0"
+dependencies = [
+ "borrowck-body-storage",
+ "pcg",
+ "rustversion",
+ "tracing",
+]
+
+[[package]]
 name = "pcg_bin"
 version = "0.1.0"
 dependencies = [
+ "borrowck-body-storage",
  "pcg",
  "rustversion",
  "shell-escape",

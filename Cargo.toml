@@ -1,5 +1,5 @@
 [workspace]
-members = ["pcg-bin", "pcg-server"]
+members = ["pcg-bin", "pcg-server", "borrowck-body-storage", "pcg-tests"]
 default-members = ["pcg-bin"]
 resolver = "2"
 
@@ -53,6 +53,7 @@ reqwest = { version = "^0.11", features = ["blocking"] }
 toml = "0.7"
 rayon = "1.8"
 chrono = "0.4"
+pcg-tests = { path = "pcg-tests" }
 
 [package.metadata.rust-analyzer]
 # This crate uses #[feature(rustc_private)]

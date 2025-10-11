@@ -221,7 +221,8 @@ fn test_aliases() {
         .with_writer(std::io::stderr)
         .init();
 
-    use crate::{PcgOutput, utils::test::run_pcg_on_str};
+    use crate::PcgOutput;
+    use pcg_tests::run_pcg_on_str;
 
     fn check_all_statements<'mir, 'tcx>(
         body: &'mir mir::Body<'tcx>,

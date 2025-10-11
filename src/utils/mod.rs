@@ -62,7 +62,10 @@ pub struct GlobalPcgSettings {
 }
 
 impl GlobalPcgSettings {
-    pub(crate) fn new() -> (Self, HashSet<String>) {
+    pub fn new() -> Self {
+        Self::new_returning_vars().0
+    }
+    pub(crate) fn new_returning_vars() -> (Self, HashSet<String>) {
         let mut processed_vars = HashSet::new();
         let skip_bodies_with_loops =
             PcgSettings::process_bool_var(&mut processed_vars, "PCG_SKIP_BODIES_WITH_LOOPS", false);
@@ -158,7 +161,7 @@ impl PcgSettings {
 
     pub(crate) fn new() -> Self {
         // Hack just to ensure that we dont raise an error when seeing a global var
-        let mut processed_vars = GlobalPcgSettings::new().1;
+        let mut processed_vars = GlobalPcgSettings::new_returning_vars().1;
 
         // Process all known settings
         let check_cycles = Self::process_bool_var(&mut processed_vars, "PCG_CHECK_CYCLES", false);
@@ -309,7 +312,7 @@ impl PcgSettings {
 
 lazy_static! {
     pub static ref SETTINGS: PcgSettings = PcgSettings::new();
-    pub static ref GLOBAL_SETTINGS: GlobalPcgSettings = GlobalPcgSettings::new().0;
+    pub static ref GLOBAL_SETTINGS: GlobalPcgSettings = GlobalPcgSettings::new_returning_vars().0;
     pub static ref VALIDITY_CHECKS: bool = SETTINGS.validity_checks;
     pub static ref DEBUG_BLOCK: Option<BasicBlock> = SETTINGS.debug_block;
     pub static ref DEBUG_IMGCAT: &'static [DebugImgcat] = &SETTINGS.debug_imgcat;

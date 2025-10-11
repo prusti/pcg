@@ -16,7 +16,7 @@ use crate::{
         dataflow::compute_fixpoint,
         middle::{
             mir::{self, Location, RETURN_PLACE},
-            ty,
+            ty::{self, RegionVid},
         },
         mir_dataflow::ResultsCursor,
     },
@@ -93,6 +93,10 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
             self.borrow_checker_data.tcx,
             self,
         )
+    }
+
+    pub fn region_of_borrow(&self, index: BorrowIndex) -> RegionVid {
+        self.borrow_checker_data.borrows[index].region()
     }
 
     pub fn new<T: BodyAndBorrows<'tcx>>(tcx: ty::TyCtxt<'tcx>, body: &'mir T) -> Self {
