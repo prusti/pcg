@@ -28,6 +28,12 @@ pub enum DomainDataIndex {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DomainDataStates<T>(pub(crate) EvalStmtData<T>);
 
+impl<T> DomainDataStates<T> {
+    pub fn eval_stmt_data(&self) -> &EvalStmtData<T> {
+        &self.0
+    }
+}
+
 impl<'a, T: Clone> DomainDataStates<PcgArenaRef<'a, T>> {
     pub(crate) fn new(entry_state: PcgArenaRef<'a, T>) -> Self {
         Self(EvalStmtData::new(

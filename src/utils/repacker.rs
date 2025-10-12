@@ -331,7 +331,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.bc
     }
 
-    pub(crate) fn body_def_path_str(&self) -> String {
+    pub fn body_def_path_str(&self) -> String {
         self.tcx.def_path_str(self.def_id())
     }
 

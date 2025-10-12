@@ -48,7 +48,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct PcgRef<'pcg, 'tcx> {
+pub struct PcgRef<'pcg, 'tcx> {
     pub(crate) owned: &'pcg OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowStateRef<'pcg, 'tcx>,
     pub(crate) capabilities: &'pcg SymbolicPlaceCapabilities<'tcx>,

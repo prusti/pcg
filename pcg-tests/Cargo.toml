@@ -1,0 +1,16 @@
+[package]
+name = "pcg-tests"
+version = "0.1.0"
+authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
+edition = "2024"
+
+[dependencies]
+pcg = { path = "..", features = ["visualization", "coupling"] }
+borrowck-body-storage = { path = "../borrowck-body-storage" }
+rustversion = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3.20"
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+

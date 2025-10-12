@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y \
 RUN go install github.com/google/pprof@latest
 
 # Build a debug version
+WORKDIR /usr/src/app/pcg-bin
 RUN cargo build
 
 # Set up Rust environment variables
@@ -31,6 +32,7 @@ ENV CARGO_HOME="/usr/local/cargo"
 FROM rust-deps as rust-pcg-server-builder
 
 # Build PCG binary
+WORKDIR /usr/src/app/pcg-bin
 RUN cargo build --release
 
 # Build pcg-server
@@ -64,12 +66,12 @@ WORKDIR /usr/src/app
 RUN mkdir tmp && chmod 777 tmp
 
 # Copy built artifacts from previous stages
-COPY --from=rust-builder /usr/src/app/target/release/pcg_bin ./
-COPY --from=rust-builder /usr/src/app/pcg-server/target/release/pcg-server ./
-COPY --from=rust-builder /usr/src/app/pcg-server/templates ./templates
+COPY --from=rust-pcg-server-builder /usr/src/app/pcg-bin/target/release/pcg_bin ./
+COPY --from=rust-pcg-server-builder /usr/src/app/pcg-server/target/release/pcg-server ./
+COPY --from=rust-pcg-server-builder /usr/src/app/pcg-server/templates ./templates
 # Copy Rust runtime libraries
-COPY --from=rust-builder /usr/local/rustup /usr/local/rustup
-COPY --from=rust-builder /usr/local/cargo /usr/local/cargo
+COPY --from=rust-pcg-server-builder /usr/local/rustup /usr/local/rustup
+COPY --from=rust-pcg-server-builder /usr/local/cargo /usr/local/cargo
 ENV PATH="/usr/local/cargo/bin:${PATH}"
 ENV RUSTUP_HOME="/usr/local/rustup"
 ENV CARGO_HOME="/usr/local/cargo"
@@ -92,7 +94,8 @@ CMD ["./pcg-server"]
 
 FROM rust-deps as rust-artifact
 
+WORKDIR /usr/src/app/pcg-bin
 RUN cargo build
 
-COPY --from=node-builder /usr/src/app/visualization/dist ./visualization/dist/
-COPY --from=node-builder /usr/src/app/visualization/index.html ./visualization/
+COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualization/dist/
+COPY --from=node-builder /usr/src/app/visualization/index.html /usr/src/app/visualization/

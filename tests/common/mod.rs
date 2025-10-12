@@ -96,8 +96,6 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     let cargo_build = Command::new("cargo")
         .arg("build")
         .arg("-p")
-        .arg("pcg")
-        .arg("--bin")
         .arg("pcg_bin")
         .args(build_args)
         .current_dir(&base_dir)
@@ -261,8 +259,8 @@ pub enum Target {
 #[allow(dead_code)]
 pub fn build_pcg_bin(target: Target) {
     let args = match target {
-        Target::Debug => vec!["build", "--bin", "pcg_bin"],
-        Target::Release => vec!["build", "--release", "--bin", "pcg_bin"],
+        Target::Debug => vec!["build", "-p", "pcg_bin"],
+        Target::Release => vec!["build", "--release", "-p", "pcg_bin"],
     };
 
     let target_name = match target {

@@ -100,7 +100,7 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
         }
     }
 
-    pub(crate) fn insert(&mut self, region: RegionVid, string: String) {
+    pub fn insert(&mut self, region: RegionVid, string: String) {
         assert!(self.region_to_string.insert(region, string).is_none());
         self.sccs.borrow_mut().take();
     }

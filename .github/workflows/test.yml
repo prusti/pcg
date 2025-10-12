@@ -48,7 +48,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Run tests on files
-      run: cargo test --test test_files
+      run: cargo test -p pcg --test test_files
 
   build_2025_07_21:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
@@ -58,22 +58,21 @@ jobs:
     - name: Build using Rust Nightly 2025-07-21
       run: cp rust-toolchain-2025-07-21 rust-toolchain && cargo build --no-default-features
 
-  # bench_test_files:
-  #   runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-  #   steps:
-  #   - uses: actions/checkout@v4
-  #   - name: Install valgrind
-  #     run: sudo apt-get update && sudo apt-get install -y valgrind
-  #   - name: Run benchmark tests
-  #     run: cargo test --test bench_test_files -- --nocapture --show-output
-
   test_crates:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
     - name: Run tests on selected crates
-      run: cargo test --test selected_crates
+      run: cargo test -p pcg --test selected_crates
+
+  pcg_tests:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run PCG tests
+      run: cargo test -p pcg-tests
 
   unit_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
@@ -81,7 +80,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Run unit tests
-      run: cargo test --lib
+      run: cargo test -p pcg --lib
 
   doc_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
@@ -89,7 +88,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Run unit tests
-      run: cargo test --doc
+      run: cargo test -p pcg --doc
 
   prusti_purification_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}

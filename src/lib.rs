@@ -59,6 +59,8 @@ use utils::{
     validity::HasValidityCheck,
 };
 
+pub use pcg::ctxt::HasSettings;
+
 #[cfg(feature = "visualization")]
 use visualization::mir_graph::generate_json_from_mir;
 
@@ -269,13 +271,17 @@ impl<'tcx> BodyAndBorrows<'tcx> for borrowck::BodyWithBorrowckFacts<'tcx> {
 }
 
 pub struct PcgCtxtCreator<'tcx> {
-    tcx: TyCtxt<'tcx>,
+    pub tcx: TyCtxt<'tcx>,
     arena: bumpalo::Bump,
     settings: PcgSettings,
     debug_visualization_identifiers: RefCell<Vec<String>>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
+    pub fn settings(&self) -> &PcgSettings {
+        &self.settings
+    }
+
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
             tcx,
@@ -310,16 +316,9 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
         self.new_ctxt(body, bc)
-        // let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
-        // let pcg_ctxt: PcgCtxt<'a, 'tcx> =
-        //     PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
-        // if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
-        //     self.debug_visualization_identifiers.borrow_mut().push(identifier);
-        // }
-        // self.alloc(pcg_ctxt)
     }
 
-    pub(crate) fn write_debug_visualization_metadata(self) {
+    pub fn write_debug_visualization_metadata(self) {
         let identifiers = self.debug_visualization_identifiers.take();
         if !identifiers.is_empty() {
             self.settings
@@ -411,7 +410,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
         }
     }
 
-    pub(crate) fn visualization_output_path(&self) -> Option<PathBuf> {
+    pub fn visualization_output_path(&self) -> Option<PathBuf> {
         if self.settings.visualization {
             Some(
                 self.settings
@@ -697,7 +696,6 @@ pub(crate) use pcg_validity_expect_some;
 
 use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
-    pcg::ctxt::HasSettings,
     results::PcgLocation,
     utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
 };

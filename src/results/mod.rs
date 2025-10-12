@@ -204,7 +204,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &self.cursor.analysis().0
     }
 
-    pub(crate) fn first_error(&self) -> Option<PcgError> {
+    pub fn first_error(&self) -> Option<PcgError> {
         self.analysis().first_error.error().cloned()
     }
 

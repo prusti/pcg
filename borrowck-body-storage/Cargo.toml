@@ -1,0 +1,14 @@
+[package]
+name = "borrowck-body-storage"
+version = "0.1.0"
+authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
+edition = "2024"
+
+[dependencies]
+pcg = { path = ".." }
+rustversion = "1.0"
+tracing = "0.1"
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
