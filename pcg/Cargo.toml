@@ -1,0 +1,43 @@
+[package]
+name = "pcg"
+version = "0.1.0"
+authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
+edition = "2024"
+
+[features]
+custom-rust-toolchain = []
+visualization = []
+debug_info = []
+coupling = []
+default = ["visualization", "coupling"]
+
+[package.metadata.rust-analyzer]
+# This crate uses #[feature(rustc_private)]
+rustc_private = true
+
+[dependencies]
+bit-set = "0.8.0"
+bumpalo = {version = "3.16.0", features = ["allocator_api"]}
+derive_more = { version = "2.0.1", features = ["full"] }
+dot = "0.1"
+itertools = "0.12.0"
+lazy_static = "1.4.0"
+petgraph = "0.6.5"
+rustversion = "1.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+smallvec = { version = "^1.11", features = ["union", "const_new"] }
+tracing = "0.1"
+tracing-subscriber = "0.3.20"
+
+[dev-dependencies]
+reqwest = { version = "^0.11", features = ["blocking"] }
+toml = "0.7"
+rayon = "1.8"
+chrono = "0.4"
+pcg-tests = { path = "../pcg-tests" }
+
+[lints.clippy]
+uninlined_format_args = "deny"
+derivable_impls = "deny"
