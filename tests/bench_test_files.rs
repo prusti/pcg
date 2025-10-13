@@ -26,10 +26,24 @@ fn extract_i_refs(output: &str) -> u64 {
 }
 
 fn run_cachegrind(file_path: &Path) -> u64 {
+    let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let pcg_bin_path = workspace_dir
+        .join("pcg-bin")
+        .join("target")
+        .join("release")
+        .join(if cfg!(target_os = "windows") {
+            "pcg_bin.exe"
+        } else {
+            "pcg_bin"
+        });
+
     let output = Command::new("valgrind")
         .args([
             "--tool=cachegrind",
-            "target/release/pcg_bin",
+            pcg_bin_path.to_str().unwrap(),
             file_path.to_str().unwrap(),
         ])
         .env(
