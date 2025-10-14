@@ -23,9 +23,9 @@ issue](https://github.com/prusti/pcg/issues/new).
 
 ## Testing and Generating Debug Visualizations
 
-The `pcg-bin` binary can be used to run the PCG analysis on all functions within
-a Rust source file and (optionally) produce visualizations of the analysis
-outputs that can be viewed via a web interface.
+The `pcg-bin` folder contains a binary can be used to run the PCG analysis on
+all functions within a Rust source file and (optionally) produce visualizations
+of the analysis outputs that can be viewed via a web interface.
 
 To run the binary on all functions in a Rust source file:
 
@@ -38,7 +38,7 @@ variable to `true` when running the tool, e.g.:
 
 `PCG_VISUALIZATION=true cargo run [FILENAME.rs]`
 
-To view the output, you need to run the visulization server, by running:
+To view the output, you need to run the visualization server, by running:
 
 `cd visualization && ./serve`
 
