@@ -88,6 +88,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     };
 
     let base_dir = find_workspace_base_dir(target);
+    let pcg_bin_dir = base_dir.join("pcg-bin");
 
     let build_args = match options.target() {
         Target::Release => vec!["--release"],
@@ -95,15 +96,13 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     };
     let cargo_build = Command::new("cargo")
         .arg("build")
-        .arg("-p")
-        .arg("pcg_bin")
         .args(build_args)
-        .current_dir(&base_dir)
+        .current_dir(&pcg_bin_dir)
         .status()
         .expect("Failed to build pcg_bin");
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let pcs_exe = base_dir.join("target").join(target).join(pcg_bin_name());
+    let pcs_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -136,7 +135,11 @@ pub fn is_polonius_test_file(file: &Path) -> bool {
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
     let base_dir = find_workspace_base_dir("debug");
-    let pcg_exe = base_dir.join("target").join("debug").join(pcg_bin_name());
+    let pcg_bin_dir = base_dir.join("pcg-bin");
+    let pcg_exe = pcg_bin_dir
+        .join("target")
+        .join("debug")
+        .join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());
 
     let status = Command::new(&pcg_exe)
@@ -259,8 +262,8 @@ pub enum Target {
 #[allow(dead_code)]
 pub fn build_pcg_bin(target: Target) {
     let args = match target {
-        Target::Debug => vec!["build", "-p", "pcg_bin"],
-        Target::Release => vec!["build", "--release", "-p", "pcg_bin"],
+        Target::Debug => vec!["build"],
+        Target::Release => vec!["build", "--release"],
     };
 
     let target_name = match target {
@@ -268,8 +271,12 @@ pub fn build_pcg_bin(target: Target) {
         Target::Release => "release",
     };
 
+    let base_dir = find_workspace_base_dir(target_name);
+    let pcg_bin_dir = base_dir.join("pcg-bin");
+
     let status = Command::new("cargo")
         .args(&args)
+        .current_dir(&pcg_bin_dir)
         .status()
         .unwrap_or_else(|_| panic!("Failed to build {} binary", target_name));
 

@@ -31,10 +31,6 @@ pub(crate) mod domain_data;
 pub(crate) mod repacker;
 use crate::rustc_interface::middle::mir::BasicBlock;
 
-#[cfg(test)]
-#[rustversion::since(2025-05-24)]
-pub(crate) mod test;
-
 use lazy_static::lazy_static;
 use std::{
     collections::{HashMap, HashSet},
