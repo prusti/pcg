@@ -42,10 +42,11 @@ impl FileLoader for StringLoader {
     }
 }
 
+type TestCallback = dyn for<'a, 'tcx> Fn(PcgAnalysisResults<'a, 'tcx>) + Send + Sync + 'static;
+
 struct TestCallbacks {
     input: String,
-    callback:
-        Option<Box<dyn for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static>>,
+    callback: Option<Box<TestCallback>>,
 }
 
 #[rustversion::since(2025-05-24)]
@@ -95,7 +96,7 @@ pub fn run_pcg_on_str(
     callback: impl for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     run_compiler(
-        &vec![
+        &[
             "rustc".to_string(),
             "dummy.rs".to_string(),
             "--crate-type".to_string(),
