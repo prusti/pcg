@@ -42,13 +42,13 @@ jobs:
     - name: Check code formatting
       run: cargo fmt --all -- --check
 
-  test_files:
+  pcg_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
     - name: Run tests on files
-      run: cargo test -p pcg --test test_files
+      run: cd pcg-tests && cargo test
 
   build_2025_07_21:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
@@ -57,22 +57,6 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build using Rust Nightly 2025-07-21
       run: cp rust-toolchain-2025-07-21 rust-toolchain && cargo build --no-default-features
-
-  test_crates:
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - uses: actions/checkout@v4
-    - name: Run tests on selected crates
-      run: cargo test -p pcg --test selected_crates
-
-  pcg_tests:
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - uses: actions/checkout@v4
-    - name: Run PCG tests
-      run: cargo test -p pcg-tests
 
   unit_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
