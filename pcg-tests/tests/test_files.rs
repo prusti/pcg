@@ -13,7 +13,7 @@ fn check_test_files() {
     let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
     // Find all numbered test files
-    let test_dir = workspace_dir.join("test-files");
+    let test_dir = workspace_dir.parent().unwrap().join("test-files");
 
     let mut test_files = common::get_test_files(&test_dir);
 
