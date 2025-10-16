@@ -29,7 +29,7 @@ pub fn get_rust_toolchain_channel() -> String {
         components: Option<Vec<String>>,
     }
 
-    let content = include_str!("../../rust-toolchain");
+    let content = include_str!("../../../rust-toolchain");
     // Be ready to accept TOML format
     // See: https://github.com/rust-lang/rustup/pull/2438
     if content.starts_with("[toolchain]") {
@@ -67,15 +67,7 @@ fn find_workspace_base_dir(target: &str) -> PathBuf {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap());
-
-    if let Some(parent) = manifest_dir.parent() {
-        let parent_exe = parent.join("target").join(target).join(pcg_bin_name());
-        if parent_exe.exists() {
-            return parent.to_path_buf();
-        }
-    }
-
-    manifest_dir
+    manifest_dir.parent().unwrap().to_path_buf()
 }
 
 #[allow(dead_code)]
@@ -99,7 +91,10 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         .args(build_args)
         .current_dir(&pcg_bin_dir)
         .status()
-        .expect("Failed to build pcg_bin");
+        .expect(&format!(
+            "Failed to build pcg_bin in directory {}",
+            pcg_bin_dir.display(),
+        ));
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
     let pcs_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());

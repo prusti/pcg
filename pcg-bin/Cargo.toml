@@ -1,3 +1,7 @@
+[workspace]
+# Fixes issues when PCG is included as a submodule
+# See: https://github.com/rust-lang/cargo/issues/5418
+
 [package]
 name = "pcg_bin"
 version = "0.1.0"
