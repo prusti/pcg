@@ -1,8 +1,12 @@
 use crate::{
-    rustc_interface,
+    rustc_interface::{
+        self,
+        middle::ty::TyCtxt,
+        span::{BytePos, Span},
+    },
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
-use serde_derive::Serialize;
+use serde_derive::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{self},
@@ -25,9 +29,33 @@ struct MirGraph {
     edges: Vec<MirEdge>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct SourcePos {
+    line: usize,
+    column: usize,
+}
+
+impl SourcePos {
+    pub(crate) fn new(pos: BytePos, tcx: TyCtxt<'_>) -> Self {
+        let source_map = tcx.sess.source_map();
+        let loc = source_map.lookup_char_pos(pos);
+        Self {
+            line: loc.line,
+            column: loc.col_display,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct MirStmtSpan {
+    low: SourcePos,
+    high: SourcePos,
+}
+
 #[derive(Serialize)]
 struct MirStmt {
     stmt: String,
+    span: MirStmtSpan,
     loans_invalidated_start: Vec<String>,
     loans_invalidated_mid: Vec<String>,
     borrows_in_scope_start: Vec<String>,
@@ -251,7 +279,12 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -
     }
 }
 
-fn mk_mir_stmt(stmt: String, location: mir::Location, ctxt: CompilerCtxt<'_, '_>) -> MirStmt {
+fn mk_mir_stmt(
+    stmt: String,
+    span: Span,
+    location: mir::Location,
+    ctxt: CompilerCtxt<'_, '_>,
+) -> MirStmt {
     let bc = ctxt.bc.rust_borrow_checker().unwrap();
     let location_table = ctxt.bc.rust_borrow_checker().unwrap().location_table();
     let invalidated_at = &bc.input_facts().loan_invalidated_at;
@@ -287,8 +320,14 @@ fn mk_mir_stmt(stmt: String, location: mir::Location, ctxt: CompilerCtxt<'_, '_>
         .iter()
         .map(|bi| format!("{bi:?}"))
         .collect::<Vec<_>>();
+    let source_pos_low = SourcePos::new(span.lo(), ctxt.tcx());
+    let source_pos_high = SourcePos::new(span.hi(), ctxt.tcx());
     MirStmt {
         stmt,
+        span: MirStmtSpan {
+            low: source_pos_low,
+            high: source_pos_high,
+        },
         loans_invalidated_start,
         loans_invalidated_mid,
         borrows_in_scope_start,
@@ -307,7 +346,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 block: bb,
                 statement_index: idx,
             };
-            mk_mir_stmt(stmt_text, location, ctxt)
+            mk_mir_stmt(stmt_text, stmt.source_info.span, location, ctxt)
         });
 
         let terminator_text = format_terminator(&data.terminator().kind, ctxt);
@@ -315,7 +354,12 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             block: bb,
             statement_index: data.statements.len(),
         };
-        let terminator = mk_mir_stmt(terminator_text, terminator_location, ctxt);
+        let terminator = mk_mir_stmt(
+            terminator_text,
+            data.terminator().source_info.span,
+            terminator_location,
+            ctxt,
+        );
 
         nodes.push(MirNode {
             id: format!("{bb:?}"),

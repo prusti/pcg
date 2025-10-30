@@ -153,3 +153,23 @@ jobs:
     - name: Run flowistry tests
       working-directory: flowistry/crates/flowistry
       run: cargo test
+
+  build_visualization:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: pcg-bin/visualization/package-lock.json
+
+    - name: Install web visualization dependencies
+      working-directory: pcg-bin/visualization
+      run: npm ci
+
+    - name: Build web visualization
+      working-directory: pcg-bin/visualization
+      run: npm run build

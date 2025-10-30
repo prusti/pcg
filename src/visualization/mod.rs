@@ -6,6 +6,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod bc_facts_graph;
+pub(crate) mod ctxt;
 pub mod dot_graph;
 pub mod drawer;
 pub(crate) mod functions_metadata;

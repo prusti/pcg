@@ -17,6 +17,7 @@ import {
   PathData,
   PcgProgramPointData,
   SelectedAction,
+  SourcePos,
 } from "../types";
 import SymbolicHeap from "./SymbolicHeap";
 import PathConditions from "./PathConditions";
@@ -25,6 +26,7 @@ import Assertions, { Assertion } from "./Assertions";
 import {
   MirGraphEdge,
   MirGraphNode,
+  MirStmt,
   getGraphData,
   getPcgProgramPointData,
   getPaths,
@@ -46,6 +48,7 @@ import {
   reloadIterations,
 } from "../effects";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
+import SourceCodeViewer from "./SourceCodeViewer";
 
 const getActionGraphFilename = (
   selectedFunction: string,
@@ -270,6 +273,17 @@ export const App: React.FC<AppProps> = ({
     [paths, selectedPath]
   );
 
+  const highlightSpan = useMemo(() => {
+    const selectedStmt = getSelectedStmt(nodes, currentPoint);
+    if (!selectedStmt) {
+      return null;
+    }
+    return calculateRelativeSpan(
+      selectedStmt,
+      functions[selectedFunction].start
+    );
+  }, [nodes, currentPoint, selectedFunction, functions]);
+
   const pcgGraphSelector =
     showPCGSelector &&
     currentPoint.type === "stmt" &&
@@ -342,6 +356,10 @@ export const App: React.FC<AppProps> = ({
             functions={functions}
             selectedFunction={selectedFunction}
             onChange={setSelectedFunction}
+          />
+          <SourceCodeViewer
+            metadata={functions[selectedFunction]}
+            highlightSpan={highlightSpan}
           />
           <br />
           <PathSelector
@@ -477,4 +495,47 @@ function getIterationActions(
   }
   const stmt = dotGraphs[currentPoint.stmt];
   return stmt.actions;
+}
+
+function getSelectedStmt(
+  nodes: MirGraphNode[],
+  currentPoint: CurrentPoint
+): MirStmt | null {
+  if (currentPoint.type !== "stmt") {
+    return null;
+  }
+
+  const node = nodes.find((n) => n.block === currentPoint.block);
+  if (!node) {
+    return null;
+  }
+
+  if (currentPoint.stmt < node.stmts.length) {
+    return node.stmts[currentPoint.stmt];
+  } else if (currentPoint.stmt === node.stmts.length) {
+    return node.terminator;
+  }
+
+  return null;
+}
+
+type RelativeSpan = {
+  low: SourcePos;
+  high: SourcePos;
+};
+
+function calculateRelativeSpan(
+  stmt: MirStmt,
+  functionStart: SourcePos
+): RelativeSpan {
+  return {
+    low: {
+      line: stmt.span.low.line - functionStart.line,
+      column: stmt.span.low.column - functionStart.column,
+    },
+    high: {
+      line: stmt.span.high.line - functionStart.line,
+      column: stmt.span.high.column - functionStart.column,
+    },
+  };
 }

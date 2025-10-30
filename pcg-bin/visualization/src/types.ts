@@ -169,7 +169,13 @@ export type FunctionName = Branded<string, "FunctionName">;
 export type FunctionMetadata = {
   name: string;
   source: string;
+  start: SourcePos;
 };
+
+export type SourcePos = {
+  line: number;
+  column: number;
+}
 
 export type FunctionsMetadata = {
   [slug: FunctionSlug]: FunctionMetadata;

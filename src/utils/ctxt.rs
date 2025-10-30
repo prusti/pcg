@@ -7,10 +7,9 @@ use crate::{
             ty::TyCtxt,
         },
         mir_dataflow,
-        span::{SpanSnippetError, def_id::LocalDefId},
+        span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
     utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, Place},
-    visualization::functions_metadata::{FunctionMetadata, FunctionSlug},
 };
 
 #[derive(Copy, Clone)]
@@ -55,10 +54,13 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.tcx
     }
 
-    pub fn source(&self) -> Result<String, SpanSnippetError> {
+    pub fn source_of_span(&self, sp: Span) -> Result<String, SpanSnippetError> {
         let source_map = self.tcx.sess.source_map();
-        let span = self.mir.span;
-        source_map.span_to_snippet(span)
+        source_map.span_to_snippet(sp)
+    }
+
+    pub fn source(&self) -> Result<String, SpanSnippetError> {
+        self.source_of_span(self.mir.span)
     }
 
     pub fn source_lines(&self) -> Result<Vec<String>, SpanSnippetError> {
@@ -90,14 +92,6 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub(crate) fn def_id(&self) -> LocalDefId {
         self.mir.source.def_id().expect_local()
-    }
-
-    pub(crate) fn function_metadata_slug(&self) -> FunctionSlug {
-        FunctionSlug::new(self.def_id(), self.tcx)
-    }
-
-    pub(crate) fn function_metadata(&self) -> FunctionMetadata {
-        FunctionMetadata::new(self.body_def_path_str().into(), self.source().unwrap())
     }
 }
 

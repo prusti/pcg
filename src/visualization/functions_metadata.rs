@@ -2,6 +2,7 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::rustc_interface::{hir::def_id::LocalDefId, middle::ty::TyCtxt};
 use crate::utils::data_structures::HashMap;
+use crate::visualization::mir_graph::SourcePos;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Hash, PartialEq, Eq, Serialize)]
@@ -23,11 +24,16 @@ impl FunctionSlug {
 pub(crate) struct FunctionMetadata {
     name: String,
     source: String,
+    start: SourcePos,
 }
 
 impl FunctionMetadata {
-    pub fn new(name: String, source: String) -> Self {
-        Self { name, source }
+    pub fn new(name: String, source: String, start: SourcePos) -> Self {
+        Self {
+            name,
+            source,
+            start,
+        }
     }
 }
 

@@ -15,6 +15,7 @@
     "@types/d3": "^7.4.3",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "concurrently": "^8.2.2",
     "css-loader": "^7.1.2",
     "http-server": "^14.1.1",
@@ -32,6 +33,7 @@
     "d3": "^7.9.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-syntax-highlighter": "^15.5.0",
     "reactflow": "^11.11.4"
   }
 }

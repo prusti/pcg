@@ -6,10 +6,17 @@ import {
   FunctionsMetadata,
   PcgProgramPointData,
   PCGStmtVisualizationData,
+  SourcePos,
 } from "./types";
+
+type MirStmtSpan = {
+  low: SourcePos;
+  high: SourcePos;
+};
 
 export type MirStmt = {
   stmt: string;
+  span: MirStmtSpan;
   loans_invalidated_start: string[];
   loans_invalidated_mid: string[];
   borrows_in_scope_start: string[];
