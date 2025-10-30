@@ -60,8 +60,10 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
 
   return (
     <div
-      ref={containerRef}
       style={{
+        border: "1px solid #ccc",
+        borderRadius: "4px",
+        marginTop: "16px",
         maxHeight: "400px",
         overflow: "auto",
       }}
@@ -77,83 +79,84 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
       >
         {metadata.name}
       </h3>
-      <Highlight theme={themes.github} code={metadata.source} language="rust">
-        {({ className, style, tokens, getLineProps, getTokenProps }) => (
-          <pre
-            className={className}
-            style={{
-              ...style,
-              margin: 0,
-              padding: "12px",
-              fontSize: "12px",
-              borderRadius: "0 0 4px 4px",
-              overflow: "auto",
-            }}
-          >
-            {tokens.map((line, lineIndex) => {
-              let charIndex = 0;
-              return (
-                <div
-                  key={lineIndex}
-                  {...getLineProps({ line })}
-                  data-line={lineIndex + 1}
-                  style={{ display: "table-row" }}
-                >
-                  <span
-                    style={{
-                      display: "table-cell",
-                      textAlign: "right",
-                      paddingRight: "1em",
-                      userSelect: "none",
-                      opacity: 0.5,
-                    }}
+      <div ref={containerRef}>
+        <Highlight theme={themes.github} code={metadata.source} language="rust">
+          {({ className, style, tokens, getLineProps, getTokenProps }) => (
+            <pre
+              className={className}
+              style={{
+                ...style,
+                margin: 0,
+                padding: "12px",
+                fontSize: "12px",
+                borderRadius: "0 0 4px 4px",
+              }}
+            >
+              {tokens.map((line, lineIndex) => {
+                let charIndex = 0;
+                return (
+                  <div
+                    key={lineIndex}
+                    {...getLineProps({ line })}
+                    data-line={lineIndex + 1}
+                    style={{ display: "table-row" }}
                   >
-                    {lineIndex + 1}
-                  </span>
-                  <span style={{ display: "table-cell" }}>
-                    {line.map((token, tokenIndex) => {
-                      const tokenContent = token.content;
-                      const tokenLength =
-                        typeof tokenContent === "string"
-                          ? tokenContent.length
-                          : 0;
-                      const tokenStartChar = charIndex;
-                      charIndex += tokenLength;
+                    <span
+                      style={{
+                        display: "table-cell",
+                        textAlign: "right",
+                        paddingRight: "1em",
+                        userSelect: "none",
+                        opacity: 0.5,
+                      }}
+                    >
+                      {lineIndex + 1}
+                    </span>
+                    <span style={{ display: "table-cell" }}>
+                      {line.map((token, tokenIndex) => {
+                        const tokenContent = token.content;
+                        const tokenLength =
+                          typeof tokenContent === "string"
+                            ? tokenContent.length
+                            : 0;
+                        const tokenStartChar = charIndex;
+                        charIndex += tokenLength;
 
-                      const chars = [];
-                      for (let i = 0; i < tokenLength; i++) {
-                        const char = tokenContent[i];
-                        const highlight = shouldHighlight(
-                          lineIndex,
-                          tokenStartChar + i
-                        );
-                        chars.push(
-                          <span
-                            key={i}
-                            style={{
-                              backgroundColor: highlight
-                                ? "#ffff99"
-                                : "transparent",
-                            }}
-                          >
-                            {char}
+                        const chars = [];
+                        for (let i = 0; i < tokenLength; i++) {
+                          const char = tokenContent[i];
+                          const highlight = shouldHighlight(
+                            lineIndex,
+                            tokenStartChar + i
+                          );
+                          chars.push(
+                            <span
+                              key={i}
+                              style={{
+                                backgroundColor: highlight
+                                  ? "#ffff99"
+                                  : "transparent",
+                              }}
+                            >
+                              {char}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span key={tokenIndex} {...getTokenProps({ token })}>
+                            {chars.length > 0 ? chars : token.content}
                           </span>
                         );
-                      }
-
-                      return (
-                        <span key={tokenIndex} {...getTokenProps({ token })}>
-                          {chars.length > 0 ? chars : token.content}
-                        </span>
-                      );
-                    })}
-                  </span>
-                </div>
-              );
-            })}
-          </pre>
-        )}
-      </Highlight>
+                      })}
+                    </span>
+                  </div>
+                );
+              })}
+            </pre>
+          )}
+        </Highlight>
+      </div>
     </div>
   );
 };
