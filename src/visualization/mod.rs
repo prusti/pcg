@@ -15,6 +15,9 @@ mod grapher;
 pub mod legend;
 pub mod mir_graph;
 mod node;
+mod settings;
+pub(crate) use functions_metadata::*;
+pub(crate) use settings::*;
 
 use crate::{
     borrow_pcg::{edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph},

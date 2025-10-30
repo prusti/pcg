@@ -88,6 +88,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
         style={vs}
         customStyle={customStyle}
         showLineNumbers={true}
+        wrapLines={true}
         lineProps={lineProps}
       >
         {metadata.source}

@@ -274,7 +274,8 @@ pub struct PcgCtxtCreator<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     arena: bumpalo::Bump,
     settings: PcgSettings,
-    debug_function_metadata: RefCell<FunctionsMetadata>,
+    #[cfg(feature = "visualization")]
+    debug_function_metadata: RefCell<crate::visualization::FunctionsMetadata>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -286,8 +287,9 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         Self {
             tcx,
             arena: bumpalo::Bump::new(),
-            debug_function_metadata: RefCell::new(FunctionsMetadata::new()),
             settings: PcgSettings::new(),
+            #[cfg(feature = "visualization")]
+            debug_function_metadata: RefCell::new(visualization::FunctionsMetadata::new()),
         }
     }
 
@@ -302,6 +304,7 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let pcg_ctxt: PcgCtxt<'a, 'tcx> =
             PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
+        #[cfg(feature = "visualization")]
         if let Some(identifier) = pcg_ctxt.visualization_function_metadata() {
             self.debug_function_metadata
                 .borrow_mut()
@@ -316,13 +319,6 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
         self.new_ctxt(body, bc)
-    }
-
-    pub fn write_debug_visualization_metadata(self) {
-        let metadata = self.debug_function_metadata.take();
-        if !metadata.is_empty() {
-            self.settings.write_functions_json(&metadata);
-        }
     }
 }
 
@@ -386,37 +382,8 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn update_debug_visualization_metadata(&self) {
-        if let Some(metadata) = self.visualization_function_metadata() {
-            self.settings.write_new_debug_visualization_metadata(
-                self.compiler_ctxt.function_metadata_slug(),
-                &metadata,
-            );
-        }
-    }
-
     pub fn body_def_id(&self) -> LocalDefId {
         self.compiler_ctxt.def_id()
-    }
-
-    pub(crate) fn visualization_function_metadata(&self) -> Option<FunctionMetadata> {
-        if self.settings.visualization {
-            Some(self.compiler_ctxt.function_metadata())
-        } else {
-            None
-        }
-    }
-
-    pub fn visualization_output_path(&self) -> Option<PathBuf> {
-        if self.settings.visualization {
-            Some(
-                self.settings
-                    .visualization_data_dir
-                    .join(self.compiler_ctxt.function_metadata_slug().path()),
-            )
-        } else {
-            None
-        }
     }
 }
 
@@ -430,6 +397,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
         &pcg_ctxt.arena,
+        #[cfg(feature = "visualization")]
         pcg_ctxt.visualization_output_path(),
     );
     let body = pcg_ctxt.compiler_ctxt.body();
@@ -441,6 +409,8 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         let state = analysis.entry_state_for_block_mut(block);
         state.complete(ctxt);
     }
+
+    #[cfg(feature = "visualization")]
     if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
         for block in body.basic_blocks.indices() {
             let state = analysis.entry_set_for_block(block);
@@ -458,6 +428,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             }
         }
     }
+
     let mut analysis_results = results::PcgAnalysisResults::new(analysis.into_results_cursor(body));
 
     if validity_checks_enabled() {
@@ -695,7 +666,6 @@ use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     results::PcgLocation,
     utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
-    visualization::functions_metadata::{FunctionMetadata, FunctionsMetadata},
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {

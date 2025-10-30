@@ -31,10 +31,7 @@ pub use repacker::*;
 pub(crate) mod data_structures;
 pub(crate) mod domain_data;
 pub(crate) mod repacker;
-use crate::{
-    rustc_interface::middle::mir::BasicBlock,
-    visualization::functions_metadata::{FunctionMetadata, FunctionSlug, FunctionsMetadata},
-};
+use crate::rustc_interface::middle::mir::BasicBlock;
 
 use lazy_static::lazy_static;
 use std::{
@@ -132,34 +129,6 @@ impl PcgSettings {
 
     pub(crate) fn functions_json_path(&self) -> PathBuf {
         self.visualization_data_dir.join("functions.json")
-    }
-
-    pub(crate) fn write_functions_json(&self, metadata: &FunctionsMetadata) {
-        let file_path = self.functions_json_path();
-        let json_data =
-            serde_json::to_string(metadata).expect("Failed to serialize item names to JSON");
-        let mut file = std::fs::File::create(file_path).expect("Failed to create JSON file");
-        file.write_all(json_data.as_bytes())
-            .expect("Failed to write item names to JSON file");
-    }
-
-    pub(crate) fn read_functions_json(&self) -> FunctionsMetadata {
-        let file_path = self.functions_json_path();
-        if !file_path.exists() {
-            return FunctionsMetadata::new();
-        }
-        let json_data = std::fs::read_to_string(file_path).expect("Failed to read JSON file");
-        serde_json::from_str(&json_data).expect("Failed to deserialize item names from JSON")
-    }
-
-    pub(crate) fn write_new_debug_visualization_metadata(
-        &self,
-        slug: FunctionSlug,
-        new_metadata: &FunctionMetadata,
-    ) {
-        let mut functions_map = self.read_functions_json();
-        functions_map.insert(slug, new_metadata.clone());
-        self.write_functions_json(&functions_map);
     }
 
     pub(crate) fn new() -> Self {
