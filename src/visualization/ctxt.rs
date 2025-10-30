@@ -16,11 +16,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub(crate) fn function_metadata(&self) -> FunctionMetadata {
         let start = SourcePos::new(self.mir.span.lo(), self.tcx);
-        FunctionMetadata::new(
-            self.body_def_path_str().into(),
-            self.source().unwrap(),
-            start,
-        )
+        FunctionMetadata::new(self.body_def_path_str(), self.source().unwrap(), start)
     }
 }
 

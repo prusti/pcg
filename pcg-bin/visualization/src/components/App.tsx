@@ -357,10 +357,6 @@ export const App: React.FC<AppProps> = ({
             selectedFunction={selectedFunction}
             onChange={setSelectedFunction}
           />
-          <SourceCodeViewer
-            metadata={functions[selectedFunction]}
-            highlightSpan={highlightSpan}
-          />
           <br />
           <PathSelector
             paths={paths}
@@ -481,7 +477,38 @@ export const App: React.FC<AppProps> = ({
         ></div>
       </div>
 
-      <div id="pcg-graph" style={{ flex: 1, overflow: "auto" }}></div>
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          id="pcg-graph"
+          style={{
+            flex: 1,
+            overflow: "auto",
+          }}
+        ></div>
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            width: "100%",
+            backgroundColor: "white",
+            borderTop: "2px solid #ccc",
+            zIndex: 100,
+          }}
+        >
+          <SourceCodeViewer
+            metadata={functions[selectedFunction]}
+            highlightSpan={highlightSpan}
+          />
+        </div>
+      </div>
     </div>
   );
 };

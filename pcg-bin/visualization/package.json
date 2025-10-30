@@ -27,10 +27,11 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "brace-expansion": ">=1.1.12",
     "@dagrejs/dagre": "github:dagrejs/dagre",
     "@viz-js/viz": "^3.6.0",
+    "brace-expansion": ">=1.1.12",
     "d3": "^7.9.0",
+    "prism-react-renderer": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-syntax-highlighter": "^15.5.0",

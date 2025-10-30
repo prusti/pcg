@@ -36,7 +36,6 @@ use crate::rustc_interface::middle::mir::BasicBlock;
 use lazy_static::lazy_static;
 use std::{
     collections::HashSet,
-    io::Write,
     path::{Path, PathBuf},
 };
 

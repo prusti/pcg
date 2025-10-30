@@ -1,6 +1,5 @@
 import React, { useRef, useEffect } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { vs } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Highlight, themes } from "prism-react-renderer";
 import { FunctionMetadata, SourcePos } from "../types";
 
 type RelativeSpan = {
@@ -27,7 +26,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
     const startLine = highlightSpan.low.line + 1;
     const container = containerRef.current;
     const lineElement = container.querySelector(
-      `[data-line-number="${startLine}"]`
+      `[data-line="${startLine}"]`
     );
 
     if (lineElement) {
@@ -35,39 +34,34 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
     }
   }, [highlightSpan]);
 
-  const customStyle = {
-    margin: 0,
-    fontSize: "12px",
-    borderRadius: "0 0 4px 4px",
-  };
+  const shouldHighlight = (lineIndex: number, charIndex: number): boolean => {
+    if (!highlightSpan) return false;
 
-  const lineProps = (lineNumber: number) => {
-    const style: React.CSSProperties = {
-      display: "block",
-    };
+    const { low, high } = highlightSpan;
 
-    if (highlightSpan) {
-      const startLine = highlightSpan.low.line;
-      const endLine = highlightSpan.high.line;
-
-      if (lineNumber >= startLine + 1 && lineNumber <= endLine + 1) {
-        style.backgroundColor = "#ffff99";
-      }
+    if (lineIndex < low.line || lineIndex > high.line) {
+      return false;
     }
 
-    return {
-      style,
-      "data-line-number": lineNumber,
-    };
+    if (lineIndex === low.line && lineIndex === high.line) {
+      return charIndex >= low.column && charIndex < high.column;
+    }
+
+    if (lineIndex === low.line) {
+      return charIndex >= low.column;
+    }
+
+    if (lineIndex === high.line) {
+      return charIndex < high.column;
+    }
+
+    return true;
   };
 
   return (
     <div
       ref={containerRef}
       style={{
-        border: "1px solid #ccc",
-        borderRadius: "4px",
-        marginTop: "16px",
         maxHeight: "400px",
         overflow: "auto",
       }}
@@ -83,16 +77,83 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
       >
         {metadata.name}
       </h3>
-      <SyntaxHighlighter
-        language="rust"
-        style={vs}
-        customStyle={customStyle}
-        showLineNumbers={true}
-        wrapLines={true}
-        lineProps={lineProps}
-      >
-        {metadata.source}
-      </SyntaxHighlighter>
+      <Highlight theme={themes.github} code={metadata.source} language="rust">
+        {({ className, style, tokens, getLineProps, getTokenProps }) => (
+          <pre
+            className={className}
+            style={{
+              ...style,
+              margin: 0,
+              padding: "12px",
+              fontSize: "12px",
+              borderRadius: "0 0 4px 4px",
+              overflow: "auto",
+            }}
+          >
+            {tokens.map((line, lineIndex) => {
+              let charIndex = 0;
+              return (
+                <div
+                  key={lineIndex}
+                  {...getLineProps({ line })}
+                  data-line={lineIndex + 1}
+                  style={{ display: "table-row" }}
+                >
+                  <span
+                    style={{
+                      display: "table-cell",
+                      textAlign: "right",
+                      paddingRight: "1em",
+                      userSelect: "none",
+                      opacity: 0.5,
+                    }}
+                  >
+                    {lineIndex + 1}
+                  </span>
+                  <span style={{ display: "table-cell" }}>
+                    {line.map((token, tokenIndex) => {
+                      const tokenContent = token.content;
+                      const tokenLength =
+                        typeof tokenContent === "string"
+                          ? tokenContent.length
+                          : 0;
+                      const tokenStartChar = charIndex;
+                      charIndex += tokenLength;
+
+                      const chars = [];
+                      for (let i = 0; i < tokenLength; i++) {
+                        const char = tokenContent[i];
+                        const highlight = shouldHighlight(
+                          lineIndex,
+                          tokenStartChar + i
+                        );
+                        chars.push(
+                          <span
+                            key={i}
+                            style={{
+                              backgroundColor: highlight
+                                ? "#ffff99"
+                                : "transparent",
+                            }}
+                          >
+                            {char}
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <span key={tokenIndex} {...getTokenProps({ token })}>
+                          {chars.length > 0 ? chars : token.content}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </div>
+              );
+            })}
+          </pre>
+        )}
+      </Highlight>
     </div>
   );
 };
