@@ -77,9 +77,13 @@ fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> MirBorrowck<'tcx
         tcx.def_path_str(def_id.to_def_id())
     );
     for (def_id, body) in body_with_facts {
+        tracing::debug!("Saving body for {}", tcx.def_path_str(def_id.to_def_id()));
         save_body(tcx, def_id, body.into());
     }
-    original_mir_borrowck(tcx, def_id)
+    let result = original_mir_borrowck(tcx, def_id);
+    // This allows us to still generate PCGs even if there are borrowck errors
+    tcx.dcx().reset_err_count();
+    result
 }
 
 fn save_body(tcx: TyCtxt<'_>, def_id: LocalDefId, body: BodyWithBorrowckFacts<'_>) {

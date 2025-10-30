@@ -1,76 +1,15 @@
-#![allow(stable_features)]
-/* Depending on the client's rust version, some of the features below
-may already be stabilized */
 #![feature(rustc_private)]
 #![feature(stmt_expr_attributes)]
 #![feature(proc_macro_hygiene)]
-#![feature(let_chains)]
 
 mod callbacks;
 
-use callbacks::PcgCallbacks;
-use pcg::utils::{
-    DUMP_MIR_DATAFLOW, POLONIUS,
-    callbacks::{in_cargo, in_cargo_crate},
-};
+use borrowck_body_storage::set_mir_borrowck;
 
-#[rustversion::since(2025-03-02)]
-use pcg::rustc_interface::driver::run_compiler;
-
-#[rustversion::before(2025-03-02)]
-use pcg::rustc_interface::driver;
-
-use tracing::trace;
-
-#[rustversion::nightly(2024-12-14)]
-fn go(args: Vec<String>) {
-    driver::RunCompiler::new(&args, &mut PcgCallbacks).run()
-}
-
-#[rustversion::since(2025-03-02)]
-fn go(args: Vec<String>) {
-    run_compiler(&args, &mut PcgCallbacks)
-}
-
-fn setup_rustc_args() -> Vec<String> {
-    // This first argument is ultimately removed, actually
-    let mut rustc_args = vec!["rustc".to_string()];
-
-    if !std::env::args().any(|arg| arg.starts_with("--edition=")) {
-        rustc_args.push("--edition=2018".to_string());
-    }
-    // Avoid need for `main` function when running `pcg` directly
-    if !in_cargo() && !std::env::args().any(|arg| arg.starts_with("--crate-type=")) {
-        rustc_args.push("--crate-type=lib".into());
-    }
-    if *POLONIUS {
-        rustc_args.push("-Zpolonius".to_string());
-    }
-    if *DUMP_MIR_DATAFLOW {
-        rustc_args.push("-Zdump-mir=all".to_string());
-        rustc_args.push("-Zdump-mir-dataflow".to_string());
-    }
-    if !in_cargo_crate() {
-        rustc_args.push("-Zno-codegen".to_string());
-    }
-
-    // http crate for OOPSLA top crates eval on 2025-05-25.
-    // rustc_args.push("-Adangerous_implicit_autorefs".to_string());
-
-    rustc_args.extend(std::env::args().skip(1));
-
-    // let args = args::raw_args(&early_dcx);
-    // panic!("args: {:?}", args);
-
-    let args_str = rustc_args
-        .iter()
-        .map(|arg| shell_escape::escape(arg.into()))
-        .collect::<Vec<_>>()
-        .join(" ");
-    trace!("Running rustc with args: {}", args_str);
-
-    rustc_args
-}
+use pcg::rustc_interface::driver::{self, args};
+use pcg::rustc_interface::interface;
+use pcg::rustc_interface::session::config::{self, ErrorOutputType};
+use pcg::rustc_interface::session::EarlyDiagCtxt;
 
 fn init_tracing() {
     tracing_subscriber::fmt()
@@ -81,5 +20,51 @@ fn init_tracing() {
 
 fn main() {
     init_tracing();
-    go(setup_rustc_args());
+    let mut default_early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
+    let at_args = std::env::args().skip(1).collect::<Vec<_>>();
+    let args = args::arg_expand_all(&default_early_dcx, &at_args);
+    let Some(matches) = driver::handle_options(&default_early_dcx, &args) else {
+        return;
+    };
+    let sopts = config::build_session_options(&mut default_early_dcx, &matches);
+    assert!(matches.free.len() == 1, "Expected exactly one input file");
+    let input = config::Input::File(std::path::PathBuf::from(matches.free[0].clone()));
+    let config = interface::Config {
+        opts: sopts,
+        crate_cfg: vec![],
+        crate_check_cfg: vec![],
+        input,
+        output_file: None,
+        output_dir: None,
+        ice_file: None,
+        file_loader: None,
+        locale_resources: driver::DEFAULT_LOCALE_RESOURCES.to_vec(),
+        lint_caps: Default::default(),
+        psess_created: None,
+        hash_untracked_state: None,
+        register_lints: None,
+        override_queries: Some(set_mir_borrowck),
+        extra_symbols: vec![],
+        make_codegen_backend: None,
+        registry: driver::diagnostics_registry(),
+        using_internal_features: &driver::USING_INTERNAL_FEATURES,
+        expanded_args: args,
+    };
+    interface::run_compiler(config, |compiler| {
+        let sess = &compiler.sess;
+        let krate = interface::passes::parse(sess);
+        interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
+            // Make sure name resolution and macro expansion is run.
+            let _ = tcx.resolver_for_lowering();
+            eprintln!("Hi");
+            tcx.dcx().abort_if_errors();
+            let _ = tcx.analysis(());
+            // Safety: `config` has `override_queries` set to [`set_mir_borrowck`], and the `tcx`
+            // is the same `tcx` where the borrow-checking occurred.
+            unsafe {
+                eprintln!("Running PCG on all functions");
+                callbacks::run_pcg_on_all_fns(tcx);
+            }
+        })
+    })
 }
