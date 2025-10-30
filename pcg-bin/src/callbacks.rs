@@ -13,16 +13,15 @@ use pcg::{
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{
-        interface::{self, interface::Compiler},
-        driver::{self, Compilation, init_rustc_env_logger},
         borrowck::{BorrowIndex, RichLocation},
         data_structures::{fx::FxHashSet, graph::is_cyclic},
+        driver::{self, Compilation, init_rustc_env_logger},
         hir::{def::DefKind, def_id::LocalDefId},
+        interface::{self, interface::Compiler},
         middle::{
             mir::{Body, Local, Location},
             ty::{RegionVid, TyCtxt},
         },
-        span::SpanSnippetError,
         session::{EarlyDiagCtxt, config::ErrorOutputType},
     },
     utils::{
@@ -162,15 +161,16 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
     ctxt_creator: &mut PcgCtxtCreator<'tcx>,
 ) {
     let tcx = ctxt_creator.tcx;
-    let region_debug_name_overrides = if let Ok(lines) = source_lines(tcx, &body.body) {
-        lines
-            .iter()
-            .flat_map(|l| l.split("PCG_LIFETIME_DISPLAY: ").nth(1))
-            .map(|l| LifetimeRenderAnnotation::from(l).to_pair(tcx, &body.body))
-            .collect::<_>()
-    } else {
-        BTreeMap::new()
-    };
+    let region_debug_name_overrides =
+        if let Ok(lines) = CompilerCtxt::new(&body.body, tcx, ()).source_lines() {
+            lines
+                .iter()
+                .flat_map(|l| l.split("PCG_LIFETIME_DISPLAY: ").nth(1))
+                .map(|l| LifetimeRenderAnnotation::from(l).to_pair(tcx, &body.body))
+                .collect::<_>()
+        } else {
+            BTreeMap::new()
+        };
     let mut bc = if ctxt_creator.settings().polonius {
         RustBorrowCheckerImpl::Polonius(PoloniusBorrowChecker::new(tcx, body))
     } else {
@@ -226,7 +226,7 @@ fn emit_and_check_annotations(
             }
         }
         if check_pcg_annotations {
-            if let Ok(source) = source_lines(ctxt.tcx(), ctxt.body()) {
+            if let Ok(source) = ctxt.source_lines() {
                 let debug_lines_set: FxHashSet<_> = debug_lines.into_iter().collect();
                 let expected_annotations = source
                     .iter()
@@ -255,13 +255,6 @@ fn emit_and_check_annotations(
             }
         }
     }
-}
-
-fn source_lines(tcx: TyCtxt<'_>, mir: &Body<'_>) -> Result<Vec<String>, SpanSnippetError> {
-    let source_map = tcx.sess.source_map();
-    let span = mir.span;
-    let lines = source_map.span_to_snippet(span)?;
-    Ok(lines.lines().map(|l| l.to_string()).collect())
 }
 
 struct LifetimeRenderAnnotation {

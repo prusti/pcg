@@ -8,6 +8,7 @@
 pub mod bc_facts_graph;
 pub mod dot_graph;
 pub mod drawer;
+pub(crate) mod functions_metadata;
 pub mod graph_constructor;
 mod grapher;
 pub mod legend;

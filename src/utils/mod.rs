@@ -8,6 +8,7 @@
 
 pub mod arena;
 pub mod callbacks;
+mod ctxt;
 pub mod display;
 pub mod eval_stmt_data;
 pub(crate) mod initialized;
@@ -22,6 +23,7 @@ mod root_place;
 pub mod validity;
 pub mod visitor;
 
+pub use ctxt::*;
 pub use mutable::*;
 pub use place::*;
 pub use place_snapshot::*;
@@ -29,11 +31,14 @@ pub use repacker::*;
 pub(crate) mod data_structures;
 pub(crate) mod domain_data;
 pub(crate) mod repacker;
-use crate::rustc_interface::middle::mir::BasicBlock;
+use crate::{
+    rustc_interface::middle::mir::BasicBlock,
+    visualization::functions_metadata::{FunctionMetadata, FunctionSlug, FunctionsMetadata},
+};
 
 use lazy_static::lazy_static;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -129,38 +134,31 @@ impl PcgSettings {
         self.visualization_data_dir.join("functions.json")
     }
 
-    pub(crate) fn write_functions_json(&self, functions_map: &HashMap<String, String>) {
+    pub(crate) fn write_functions_json(&self, metadata: &FunctionsMetadata) {
         let file_path = self.functions_json_path();
         let json_data =
-            serde_json::to_string(functions_map).expect("Failed to serialize item names to JSON");
+            serde_json::to_string(metadata).expect("Failed to serialize item names to JSON");
         let mut file = std::fs::File::create(file_path).expect("Failed to create JSON file");
         file.write_all(json_data.as_bytes())
             .expect("Failed to write item names to JSON file");
     }
 
-    pub(crate) fn write_debug_visualization_metadata(
-        &self,
-        debug_visualization_identifiers: &[String],
-    ) {
-        let functions_map = &debug_visualization_identifiers
-            .iter()
-            .map(|name| (name.clone(), name.clone()))
-            .collect::<std::collections::HashMap<_, _>>();
-        self.write_functions_json(functions_map);
-    }
-
-    pub(crate) fn read_functions_json(&self) -> HashMap<String, String> {
+    pub(crate) fn read_functions_json(&self) -> FunctionsMetadata {
         let file_path = self.functions_json_path();
         if !file_path.exists() {
-            return HashMap::new();
+            return FunctionsMetadata::new();
         }
         let json_data = std::fs::read_to_string(file_path).expect("Failed to read JSON file");
         serde_json::from_str(&json_data).expect("Failed to deserialize item names from JSON")
     }
 
-    pub(crate) fn write_new_debug_visualization_metadata(&self, new_identifier: &str) {
+    pub(crate) fn write_new_debug_visualization_metadata(
+        &self,
+        slug: FunctionSlug,
+        new_metadata: &FunctionMetadata,
+    ) {
         let mut functions_map = self.read_functions_json();
-        functions_map.insert(new_identifier.to_string(), new_identifier.to_string());
+        functions_map.insert(slug, new_metadata.clone());
         self.write_functions_json(&functions_map);
     }
 

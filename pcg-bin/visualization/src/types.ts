@@ -159,3 +159,18 @@ type EvalStmtData<T> = {
   pre_main: T;
   post_main: T;
 };
+
+declare const tag: unique symbol;
+
+type Branded<T, B> = T & { [tag]: B };
+export type FunctionSlug = Branded<string, "FunctionSlug">;
+export type FunctionName = Branded<string, "FunctionName">;
+
+export type FunctionMetadata = {
+  name: string;
+  source: string;
+};
+
+export type FunctionsMetadata = {
+  [slug: FunctionSlug]: FunctionMetadata;
+}

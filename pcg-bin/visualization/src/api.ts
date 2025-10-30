@@ -1,6 +1,9 @@
 import { Assertion } from "./components/Assertions";
 import {
   CurrentPoint,
+  FunctionName,
+  FunctionSlug,
+  FunctionsMetadata,
   PcgProgramPointData,
   PCGStmtVisualizationData,
 } from "./types";
@@ -60,7 +63,7 @@ export async function getGraphData(func: string): Promise<MirGraph> {
   return await fetchJsonFile(graphFilePath);
 }
 
-export async function getFunctions(): Promise<Record<string, string>> {
+export async function getFunctions(): Promise<FunctionsMetadata> {
   return await fetchJsonFile("data/functions.json");
 }
 

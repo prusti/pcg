@@ -11,6 +11,9 @@ import { fetchDotFile, openDotGraphInNewWindow } from "../dot_graph";
 import PCGOps from "./PcgActionsDisplay";
 import {
   CurrentPoint,
+  FunctionName,
+  FunctionSlug,
+  FunctionsMetadata,
   PathData,
   PcgProgramPointData,
   SelectedAction,
@@ -27,7 +30,6 @@ import {
   getPaths,
   PcgBlockDotGraphs,
   StmtActions,
-  PcgStmt,
 } from "../api";
 import {
   filterNodesAndEdges,
@@ -88,10 +90,10 @@ function getPCGDotGraphFilename(
 }
 
 interface AppProps {
-  initialFunction: string;
+  initialFunction: FunctionSlug;
   initialPaths: number[][];
   initialAssertions: Assertion[];
-  functions: Record<string, string>;
+  functions: FunctionsMetadata;
   initialPath?: number;
 }
 
@@ -121,8 +123,8 @@ export const App: React.FC<AppProps> = ({
     selectedAction: null,
   });
 
-  const [selectedFunction, setSelectedFunction] = useState<string>(
-    initialFunction || Object.keys(functions)[0]
+  const [selectedFunction, setSelectedFunction] = useState<FunctionSlug>(
+    initialFunction || (Object.keys(functions)[0] as any)
   );
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
   const [paths, setPaths] = useState<number[][]>(initialPaths);

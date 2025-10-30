@@ -1,9 +1,10 @@
 import React from "react";
+import { FunctionName, FunctionSlug, FunctionsMetadata } from "../types";
 
 interface FunctionSelectorProps {
-  functions: Record<string, string>;
-  selectedFunction: string;
-  onChange: (selectedFunction: string) => void;
+  functions: FunctionsMetadata;
+  selectedFunction: FunctionSlug;
+  onChange: (selectedFunction: FunctionSlug) => void;
 }
 
 const FunctionSelector: React.FC<FunctionSelectorProps> = ({
@@ -18,14 +19,14 @@ const FunctionSelector: React.FC<FunctionSelectorProps> = ({
         id="function-select"
         value={selectedFunction}
         onChange={(e) => {
-          onChange(e.target.value);
+          onChange(e.target.value as FunctionSlug);
         }}
       >
         {Object.keys(functions)
-          .sort((a, b) => functions[a].localeCompare(functions[b]))
+          .sort((a, b) => functions[a as FunctionSlug].name.localeCompare(functions[b as FunctionSlug].name))
           .map((func) => (
             <option key={func} value={func}>
-              {functions[func]}
+              {functions[func as FunctionSlug].name}
             </option>
           ))}
       </select>
