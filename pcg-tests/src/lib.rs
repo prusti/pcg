@@ -23,7 +23,6 @@ use pcg::{
     utils::callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
 };
 
-#[rustversion::since(2025-05-24)]
 use pcg::rustc_interface::driver::run_compiler;
 
 pub struct StringLoader(pub String);
@@ -49,7 +48,6 @@ struct TestCallbacks {
     callback: Option<Box<TestCallback>>,
 }
 
-#[rustversion::since(2025-05-24)]
 impl driver::Callbacks for TestCallbacks {
     fn config(&mut self, config: &mut Config) {
         assert!(config.override_queries.is_none());
@@ -73,7 +71,6 @@ impl driver::Callbacks for TestCallbacks {
 /// # Safety
 ///
 /// Stored bodies must come from the same `tcx`.
-#[rustversion::since(2025-05-24)]
 unsafe fn run_pcg_on_first_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     callback: impl for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
@@ -90,7 +87,6 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
     callback(output);
 }
 
-#[rustversion::since(2025-05-24)]
 pub fn run_pcg_on_str(
     input: &str,
     callback: impl for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,

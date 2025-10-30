@@ -10,6 +10,9 @@ use pcg::rustc_interface::driver::{self, args};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::rustc_interface::session::EarlyDiagCtxt;
+use pcg::utils::{SETTINGS, GLOBAL_SETTINGS};
+
+use crate::callbacks::PcgAsRustcCallbacks;
 
 fn init_tracing() {
     tracing_subscriber::fmt()
@@ -20,9 +23,25 @@ fn init_tracing() {
 
 fn main() {
     init_tracing();
+    let mut rustc_args = std::env::args().skip(1).collect::<Vec<_>>();
+
+    if !rustc_args.iter().any(|arg| arg.starts_with("--edition")) {
+        rustc_args.push("--edition=2018".to_string());
+    }
+
+    if SETTINGS.polonius {
+        rustc_args.push("-Zpolonius".to_string());
+    }
+
+    if GLOBAL_SETTINGS.be_rustc {
+        // Behaves exactly like rustc, but also runs PCG on all functions
+        let mut args = vec!["rustc".to_string()];
+        args.extend(rustc_args);
+        driver::run_compiler(&args, &mut PcgAsRustcCallbacks);
+        return;
+    }
     let mut default_early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
-    let at_args = std::env::args().skip(1).collect::<Vec<_>>();
-    let args = args::arg_expand_all(&default_early_dcx, &at_args);
+    let args = args::arg_expand_all(&default_early_dcx, &rustc_args);
     let Some(matches) = driver::handle_options(&default_early_dcx, &args) else {
         return;
     };
@@ -56,9 +75,8 @@ fn main() {
         interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
             // Make sure name resolution and macro expansion is run.
             let _ = tcx.resolver_for_lowering();
-            eprintln!("Hi");
             tcx.dcx().abort_if_errors();
-            let _ = tcx.analysis(());
+            let _ = tcx.ensure_ok().analysis(());
             // Safety: `config` has `override_queries` set to [`set_mir_borrowck`], and the `tcx`
             // is the same `tcx` where the borrow-checking occurred.
             unsafe {

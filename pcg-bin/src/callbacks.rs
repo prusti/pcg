@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use borrowck_body_storage::take_stored_body;
+use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
 use pcg::utils::PcgSettings;
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
@@ -13,6 +13,8 @@ use pcg::{
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{
+        interface::{self, interface::Compiler},
+        driver::{self, Compilation, init_rustc_env_logger},
         borrowck::{BorrowIndex, RichLocation},
         data_structures::{fx::FxHashSet, graph::is_cyclic},
         hir::{def::DefKind, def_id::LocalDefId},
@@ -21,6 +23,7 @@ use pcg::{
             ty::{RegionVid, TyCtxt},
         },
         span::SpanSnippetError,
+        session::{EarlyDiagCtxt, config::ErrorOutputType},
     },
     utils::{
         CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt, Place,
@@ -52,6 +55,29 @@ fn should_check_body(settings: &GlobalPcgSettings, body: &Body<'_>) -> bool {
 
 fn cargo_crate_name() -> Option<String> {
     std::env::var("CARGO_CRATE_NAME").ok()
+}
+
+pub(crate) struct PcgAsRustcCallbacks;
+
+impl driver::Callbacks for PcgAsRustcCallbacks {
+    fn config(&mut self, config: &mut interface::Config) {
+        tracing::debug!("Setting mir_borrowck");
+        assert!(config.override_queries.is_none());
+        config.override_queries = Some(set_mir_borrowck);
+        let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
+        init_rustc_env_logger(&early_dcx);
+    }
+
+    fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
+        unsafe {
+            run_pcg_on_all_fns(tcx);
+        }
+        if in_cargo_crate() {
+            Compilation::Continue
+        } else {
+            Compilation::Stop
+        }
+    }
 }
 
 /// # Safety
