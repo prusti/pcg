@@ -38,6 +38,7 @@ pub struct PcgCallbacks;
 
 impl driver::Callbacks for PcgCallbacks {
     fn config(&mut self, config: &mut Config) {
+        eprintln!("Config");
         tracing::debug!("Setting mir_borrowck");
         assert!(config.override_queries.is_none());
         config.override_queries = Some(set_mir_borrowck);
@@ -46,6 +47,7 @@ impl driver::Callbacks for PcgCallbacks {
     }
 
     fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
+        eprintln!("After analysis");
         unsafe {
             run_pcg_on_all_fns(tcx);
         }

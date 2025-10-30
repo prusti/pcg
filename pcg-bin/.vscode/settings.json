@@ -1,0 +1,9 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "../Cargo.toml",
+        "./Cargo.toml"
+    ],
+    "rust-analyzer.rustc.source": "discover",
+    "rust-analyzer.cargo.sysroot": "discover"
+}
+
