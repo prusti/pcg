@@ -13,17 +13,17 @@ use pcg::{
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{
+        interface::{self, interface::Compiler},
+        driver::{self, Compilation, init_rustc_env_logger},
         borrowck::{BorrowIndex, RichLocation},
         data_structures::{fx::FxHashSet, graph::is_cyclic},
-        driver::{self, Compilation, init_rustc_env_logger},
         hir::{def::DefKind, def_id::LocalDefId},
-        interface::{Config, interface::Compiler},
         middle::{
             mir::{Body, Local, Location},
             ty::{RegionVid, TyCtxt},
         },
-        session::{EarlyDiagCtxt, config::ErrorOutputType},
         span::SpanSnippetError,
+        session::{EarlyDiagCtxt, config::ErrorOutputType},
     },
     utils::{
         CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt, Place,
@@ -34,35 +34,6 @@ use pcg::{
     },
 };
 
-pub struct PcgCallbacks;
-
-impl driver::Callbacks for PcgCallbacks {
-    fn config(&mut self, config: &mut Config) {
-        tracing::debug!("Setting mir_borrowck");
-        assert!(config.override_queries.is_none());
-        config.override_queries = Some(set_mir_borrowck);
-        let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
-        init_rustc_env_logger(&early_dcx);
-    }
-
-    fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
-        unsafe {
-            run_pcg_on_all_fns(tcx);
-        }
-        if in_cargo_crate() {
-            Compilation::Continue
-        } else {
-            Compilation::Stop
-        }
-    }
-}
-
-#[rustversion::before(2025-03-02)]
-fn hir_body_owners(tcx: TyCtxt<'_>) -> impl std::iter::Iterator<Item = LocalDefId> + '_ {
-    tcx.hir().body_owners()
-}
-
-#[rustversion::since(2025-03-02)]
 fn hir_body_owners(tcx: TyCtxt<'_>) -> impl std::iter::Iterator<Item = LocalDefId> + '_ {
     tcx.hir_body_owners()
 }
@@ -86,7 +57,33 @@ fn cargo_crate_name() -> Option<String> {
     std::env::var("CARGO_CRATE_NAME").ok()
 }
 
-unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
+pub(crate) struct PcgAsRustcCallbacks;
+
+impl driver::Callbacks for PcgAsRustcCallbacks {
+    fn config(&mut self, config: &mut interface::Config) {
+        tracing::debug!("Setting mir_borrowck");
+        assert!(config.override_queries.is_none());
+        config.override_queries = Some(set_mir_borrowck);
+        let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
+        init_rustc_env_logger(&early_dcx);
+    }
+
+    fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
+        unsafe {
+            run_pcg_on_all_fns(tcx);
+        }
+        if in_cargo_crate() {
+            Compilation::Continue
+        } else {
+            Compilation::Stop
+        }
+    }
+}
+
+/// # Safety
+/// 1. Should be called for the same `tcx` where the borrow-checking occurred.
+/// 2. The `config` for the compiler run should have had `override_queries` set to [`set_mir_borrowck`].
+pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
     let global_settings = GlobalPcgSettings::new();
     let mut ctxt_creator = PcgCtxtCreator::new(tcx);
     let settings = ctxt_creator.settings().clone();
@@ -138,6 +135,7 @@ unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
             );
             continue;
         }
+        // Safety: Is safe provided the preconditions to `run_pcg_on_all_fns` were met.
         let body = unsafe { take_stored_body(tcx, def_id) };
 
         if !should_check_body(&global_settings, &body.body) {

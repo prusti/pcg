@@ -97,7 +97,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         ));
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let pcs_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());
+    let pcg_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -109,7 +109,8 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
             "PCG_VALIDITY_CHECKS",
             format!("{}", options.validity_checks()),
         )
-        .env("RUSTC", &pcs_exe);
+        .env("PCG_BE_RUSTC", "true")
+        .env("RUSTC", &pcg_exe);
     for (key, value) in options.extra_env_vars() {
         command.env(key, value);
     }
