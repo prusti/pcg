@@ -9,6 +9,7 @@
 pub mod arena;
 pub mod callbacks;
 mod ctxt;
+mod debug;
 pub mod display;
 pub mod eval_stmt_data;
 pub(crate) mod initialized;
@@ -28,6 +29,7 @@ pub use mutable::*;
 pub use place::*;
 pub use place_snapshot::*;
 pub use repacker::*;
+pub(crate) use debug::*;
 pub(crate) mod data_structures;
 pub(crate) mod domain_data;
 pub(crate) mod repacker;

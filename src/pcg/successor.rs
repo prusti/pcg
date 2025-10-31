@@ -1,13 +1,11 @@
 use std::rc::Rc;
 
-use serde_json::json;
-
 use crate::{
     DebugLines,
     action::PcgActions,
     borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
+    utils::CompilerCtxt,
 };
 
 #[derive(Debug)]
@@ -37,17 +35,6 @@ impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
             actions,
             entry_state,
         }
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PcgSuccessor<'a, 'tcx>
-{
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "block": self.block().index(),
-            "actions": self.actions.to_json(repacker),
-        })
     }
 }
 

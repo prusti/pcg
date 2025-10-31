@@ -53,86 +53,7 @@ export type DagreNode<T> = {
   height: number;
 };
 
-export type Place = string;
-
-export type MaybeOldPlace =
-  | Place
-  | {
-      place: Place;
-      at?: string;
-    };
-
-export type Borrow = {
-  assigned_place: MaybeOldPlace;
-  borrowed_place: MaybeOldPlace;
-  is_mut: boolean;
-  kind: string;
-};
-
-export type Reborrow = {
-  blocked_place: MaybeOldPlace;
-  assigned_place: MaybeOldPlace;
-  is_mut: boolean;
-};
-
-export type BorrowAction = {
-  action: "AddBorrow" | "RemoveBorrow";
-  borrow: Borrow;
-};
-
-export type ReborrowAction =
-  | {
-      action: "AddReborrow" | "RemoveReborrow";
-      reborrow: Reborrow;
-    }
-  | {
-      action: "ExpandPlace";
-      place: MaybeOldPlace;
-    };
-
-export type Conditioned<T> = {
-  value: T;
-  conditions: any;
-};
-
-export type PlaceExpand = {
-  base: PCGNode<MaybeOldPlace>;
-  expansion: PCGNode<MaybeOldPlace>[];
-};
-
-export type Weaken = {
-  place: string;
-  old: string;
-  new: string;
-};
-
-export type MaybeRemotePlace = string | MaybeOldPlace;
-
-export type RegionProjection<T> = {
-  place: T;
-  region: string;
-};
-
-export type PCGNode<T> = RegionProjection<T> | T;
-export type LocalNode = PCGNode<MaybeOldPlace>;
-
-export type RegionProjectionMember = {
-  inputs: PCGNode<MaybeRemotePlace>[];
-  outputs: LocalNode[];
-};
-
-type BorrowPCGEdge = string;
-
-export type BorrowPCGUnblockAction = {
-  edge: BorrowPCGEdge;
-};
-
-export type PcgAction =
-  | string
-  | {
-      kind: string;
-      debug_context: string | null;
-    };
+export type PcgAction = ActionKindWithDebugCtxt<string>
 
 export type PcgActions = PcgAction[];
 
@@ -141,24 +62,9 @@ export type PathData = {
   pcs: string;
 };
 
-export type PCGStmtVisualizationData = {
-  actions: EvalStmtData<PcgActions>;
-};
-
-export type PcgSuccessorVisualizationData = {
-  actions: string[];
-};
-
 export type PcgProgramPointData =
-  | PCGStmtVisualizationData
+  | PcgStmtVisualizationData
   | PcgSuccessorVisualizationData;
-
-type EvalStmtData<T> = {
-  pre_operands: T;
-  post_operands: T;
-  pre_main: T;
-  post_main: T;
-};
 
 declare const tag: unique symbol;
 
@@ -166,17 +72,21 @@ type Branded<T, B> = T & { [tag]: B };
 export type FunctionSlug = Branded<string, "FunctionSlug">;
 export type FunctionName = Branded<string, "FunctionName">;
 
-export type FunctionMetadata = {
-  name: string;
-  source: string;
-  start: SourcePos;
+import type {
+  ActionKindWithDebugCtxt,
+  EvalStmtData,
+  FunctionMetadata,
+  PcgStmtVisualizationData,
+  PcgSuccessorVisualizationData,
+  SourcePos,
+} from "./generated/types";
+export type {
+  FunctionMetadata,
+  SourcePos,
+  PcgStmtVisualizationData,
+  PcgSuccessorVisualizationData,
 };
-
-export type SourcePos = {
-  line: number;
-  column: number;
-}
 
 export type FunctionsMetadata = {
   [slug: FunctionSlug]: FunctionMetadata;
-}
+};

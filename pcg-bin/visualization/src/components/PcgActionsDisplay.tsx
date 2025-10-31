@@ -4,7 +4,7 @@ import {
   PcgAction,
   PcgActions,
   PcgProgramPointData,
-  PCGStmtVisualizationData,
+  PcgStmtVisualizationData,
   PcgSuccessorVisualizationData,
   SelectedAction,
 } from "../types";
@@ -90,7 +90,7 @@ export default function PCGOps({
     // Check if data.actions is an object (PCGStmtVisualizationData) or array (PcgSuccessorVisualizationData)
     if (!Array.isArray(data.actions)) {
       // data is PCGStmtVisualizationData
-      const stmtData = data as PCGStmtVisualizationData;
+      const stmtData = data as PcgStmtVisualizationData;
       const phases = [
         "pre_operands",
         "post_operands",
@@ -198,7 +198,7 @@ export default function PCGOps({
   // Check if data.actions is an object (PCGStmtVisualizationData) or array (PcgSuccessorVisualizationData)
   if (!Array.isArray(data.actions)) {
     // data is PCGStmtVisualizationData
-    const stmtData = data as PCGStmtVisualizationData;
+    const stmtData = data as PcgStmtVisualizationData;
     content = (
       <>
         {[

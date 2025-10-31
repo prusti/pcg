@@ -18,6 +18,9 @@ mod node;
 mod settings;
 pub(crate) use functions_metadata::*;
 
+#[cfg(feature = "type-export")]
+pub use mir_graph::SourcePos;
+
 use crate::{
     borrow_pcg::{edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph},
     pcg::{

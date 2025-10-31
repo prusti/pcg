@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "serve": "http-server -c-1",
-    "watch": "nodemon --watch src --ext tsx --exec \"npm run build\"",
+    "watch": "nodemon",
     "build": "webpack --mode development",
     "dev": "concurrently \"npm run serve\" \"npm run watch\""
   },
@@ -34,7 +34,7 @@
     "prism-react-renderer": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-syntax-highlighter": "^15.5.0",
+    "react-syntax-highlighter": "^16.1.0",
     "reactflow": "^11.11.4"
   }
 }

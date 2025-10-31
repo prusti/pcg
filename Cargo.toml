@@ -9,6 +9,7 @@ custom-rust-toolchain = []
 visualization = []
 debug_info = []
 coupling = []
+type-export = ["specta"]
 default = ["visualization", "coupling"]
 
 [dependencies]
@@ -24,6 +25,7 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 smallvec = { version = "^1.11", features = ["union", "const_new"] }
+specta = { version = "1.0.5", optional = true, features = ["export"] }
 tracing = "0.1"
 tracing-subscriber = "0.3.20"
 

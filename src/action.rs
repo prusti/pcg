@@ -1,6 +1,6 @@
 //! Actions describing manipulations of the PCG.
 use derive_more::{Deref, DerefMut, From};
-use serde_json::Map;
+use serde_derive::Serialize;
 
 use crate::{
     borrow_pcg::{
@@ -11,8 +11,7 @@ use crate::{
     owned_pcg::RepackOp,
     pcg::capabilities::CapabilityKind,
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DisplayWithCtxt,
-        json::ToJsonWithCtxt,
+        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DisplayWithCtxt
     },
 };
 
@@ -21,9 +20,11 @@ use crate::{
 #[derive(Clone, PartialEq, Eq, Debug, From, Default, Deref, DerefMut)]
 pub struct PcgActions<'tcx>(pub(crate) Vec<PcgAction<'tcx>>);
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for PcgActions<'tcx> {
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        self.0.iter().map(|a| a.to_json(ctxt)).collect()
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgActions<'tcx> {
+    type Repr = Vec<ActionKindWithDebugCtxt<String>>;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        self.0.iter().map(|a| a.debug_repr(ctxt)).collect()
     }
 }
 
@@ -89,7 +90,8 @@ impl<'tcx> PcgActions<'tcx> {
 
 /// A pair of a PCG action and a debug context (indicating the source of the
 /// action).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct ActionKindWithDebugCtxt<T> {
     pub(crate) kind: T,
     pub(crate) debug_context: Option<String>,
@@ -115,19 +117,14 @@ impl<T> ActionKindWithDebugCtxt<T> {
     }
 }
 
-impl<Ctxt, T: DisplayWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for ActionKindWithDebugCtxt<T> {
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        let mut map = Map::new();
-        map.insert("kind".to_string(), self.kind.to_short_string(ctxt).into());
-        if let Some(debug_context) = &self.debug_context {
-            map.insert(
-                "debug_context".to_string(),
-                debug_context.to_string().into(),
-            );
-        } else {
-            map.insert("debug_context".to_string(), serde_json::Value::Null);
+impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugCtxt<T> {
+    type Repr = ActionKindWithDebugCtxt<T::Repr>;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        ActionKindWithDebugCtxt {
+            kind: self.kind.debug_repr(ctxt),
+            debug_context: self.debug_context.clone(),
         }
-        map.into()
     }
 }
 
@@ -181,11 +178,19 @@ impl<'tcx> PcgAction<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for PcgAction<'tcx> {
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
+    type Repr = ActionKindWithDebugCtxt<String>;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         match self {
-            PcgAction::Borrow(action) => action.to_json(ctxt),
-            PcgAction::Owned(action) => action.to_json(ctxt),
+            PcgAction::Borrow(action) => ActionKindWithDebugCtxt {
+                kind: action.kind.to_short_string(ctxt),
+                debug_context: action.debug_context.clone(),
+            },
+            PcgAction::Owned(action) => ActionKindWithDebugCtxt {
+                kind: action.kind.to_short_string(ctxt),
+                debug_context: action.debug_context.clone(),
+            },
         }
     }
 }

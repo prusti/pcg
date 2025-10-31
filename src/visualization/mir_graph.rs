@@ -30,9 +30,12 @@ struct MirGraph {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) struct SourcePos {
-    line: usize,
-    column: usize,
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct SourcePos {
+    #[cfg_attr(feature = "type-export", specta(type = u32))]
+    pub line: usize,
+    #[cfg_attr(feature = "type-export", specta(type = u32))]
+    pub column: usize,
 }
 
 impl SourcePos {

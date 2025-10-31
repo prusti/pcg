@@ -21,6 +21,7 @@ impl FunctionSlug {
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct FunctionMetadata {
     name: String,
     source: String,

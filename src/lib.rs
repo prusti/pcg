@@ -38,10 +38,9 @@ pub mod utils;
 #[cfg(feature = "visualization")]
 pub mod visualization;
 
-use action::PcgActions;
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::{CapabilityKind, PcgEngine, PcgSuccessor};
+use pcg::{CapabilityKind, PcgEngine};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -52,6 +51,7 @@ use rustc_interface::{
     mir_dataflow::move_paths::MoveData,
     span::def_id::LocalDefId,
 };
+use serde_derive::Serialize;
 use serde_json::json;
 use utils::{
     CompilerCtxt, Place, VALIDITY_CHECKS, VALIDITY_CHECKS_WARN_ONLY,
@@ -63,8 +63,6 @@ pub use pcg::ctxt::HasSettings;
 
 #[cfg(feature = "visualization")]
 use visualization::mir_graph::generate_json_from_mir;
-
-use utils::json::ToJsonWithCompilerCtxt;
 
 /// The result of the PCG analysis.
 pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
@@ -191,51 +189,18 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 use borrow_pcg::action::actions::BorrowPcgActions;
 use utils::eval_stmt_data::EvalStmtData;
 
-struct PCGStmtVisualizationData<'a, 'tcx> {
-    actions: &'a EvalStmtData<PcgActions<'tcx>>,
+type VisualizationActions = Vec<ActionKindWithDebugCtxt<String>>;
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgStmtVisualizationData {
+    actions: EvalStmtData<VisualizationActions>,
 }
 
-struct PcgSuccessorVisualizationData<'a, 'tcx> {
-    actions: &'a PcgActions<'tcx>,
-}
-
-impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
-    fn from(successor: &'a PcgSuccessor<'a, 'tcx>) -> Self {
-        Self {
-            actions: &successor.actions,
-        }
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PcgSuccessorVisualizationData<'a, 'tcx>
-{
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "actions": self.actions.iter().map(|a| a.to_json(repacker)).collect::<Vec<_>>(),
-        })
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PCGStmtVisualizationData<'a, 'tcx>
-{
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "actions": self.actions.to_json(repacker),
-        })
-    }
-}
-
-impl<'a, 'tcx> PCGStmtVisualizationData<'a, 'tcx> {
-    fn new<'mir>(location: &'a PcgLocation<'a, 'tcx>) -> Self
-    where
-        'tcx: 'mir,
-    {
-        Self {
-            actions: &location.actions,
-        }
-    }
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgSuccessorVisualizationData {
+    actions: VisualizationActions,
 }
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
@@ -480,24 +445,28 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             }
             let pcs_block = pcs_block_option.unwrap();
             for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
-                let data = PCGStmtVisualizationData::new(statement);
+                let data = PcgStmtVisualizationData {
+                    actions: statement.actions.debug_repr(pcg_ctxt.compiler_ctxt),
+                };
                 let pcg_data_file_path = dir_path.join(format!(
                     "block_{}_stmt_{}_pcg_data.json",
                     block.index(),
                     statement_index
                 ));
-                let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
+                let pcg_data_json = serde_json::to_string(&data).unwrap();
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");
             }
             for succ in pcs_block.terminator.succs {
-                let data = PcgSuccessorVisualizationData::from(&succ);
+                let data = PcgSuccessorVisualizationData {
+                    actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
+                };
                 let pcg_data_file_path = dir_path.join(format!(
                     "block_{}_term_block_{}_pcg_data.json",
                     block.index(),
                     succ.block().index()
                 ));
-                let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
+                let pcg_data_json = serde_json::to_string(&data).unwrap();
                 std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
                     .expect("Failed to write pcg data to JSON file");
             }
@@ -663,9 +632,9 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
+    action::ActionKindWithDebugCtxt,
     borrow_checker::r#impl::NllBorrowCheckerImpl,
-    results::PcgLocation,
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
+    utils::{DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {
