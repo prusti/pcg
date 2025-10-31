@@ -284,6 +284,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
                     place.to_short_string(ctxt),
                 )
             }
+            RepackOp::Expand(expand) => format!(
+                "unpack {} with capability {:?}",
+                expand.from.to_short_string(ctxt),
+                expand.capability
+            ),
             _ => format!("{self:?}"),
         }
     }
