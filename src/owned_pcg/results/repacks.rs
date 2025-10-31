@@ -4,20 +4,31 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::rustc_interface::middle::mir::{Local, PlaceElem};
+use crate::rustc_interface::middle::mir::{self, PlaceElem};
 
+use crate::utils::DebugRepr;
 use crate::{
     pcg::CapabilityKind,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place, display::DisplayWithCtxt},
 };
+use strum_macros::{Display, EnumDiscriminants, EnumIter, EnumString};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum RepackGuide {
+pub enum RepackGuide<Local = mir::Local> {
     Downcast(Option<Symbol>, VariantIdx),
     ConstantIndex(ConstantIndex),
     Index(Local),
     Subslice { from: u64, to: u64, from_end: bool },
+}
+
+impl <'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        match self {
+            RepackGuide::Index(local) => format!("index with local {}", (*local).to_short_string(ctxt)),
+            _ => format!("{self:?}"),
+        }
+    }
 }
 
 impl From<RepackGuide> for PlaceElem<'_> {
@@ -94,7 +105,7 @@ impl<'tcx> RepackExpand<'tcx> {
         self.guide
     }
 
-    pub(crate) fn local(&self) -> Local {
+    pub(crate) fn local(&self) -> mir::Local {
         self.from.local
     }
 
@@ -147,12 +158,14 @@ impl<'tcx> RepackCollapse<'tcx> {
         self.capability
     }
 
-    pub(crate) fn local(&self) -> Local {
+    pub(crate) fn local(&self) -> mir::Local {
         self.to.local
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, EnumDiscriminants)]
+#[strum_discriminants(name(RepackOpType))]
+#[strum_discriminants(derive(Display, EnumIter, EnumString, Hash))]
 pub enum RepackOp<'tcx> {
     /// Rust will sometimes join two BasicBlocks where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
@@ -167,13 +180,13 @@ pub enum RepackOp<'tcx> {
     /// This Op only appears for edges between basic blocks. It is often emitted for edges to panic
     /// handling blocks, but can also appear in regular code for example in the MIR of
     /// [this function](https://github.com/dtolnay/syn/blob/3da56a712abf7933b91954dbfb5708b452f88504/src/attr.rs#L623-L628).
-    StorageDead(Local),
+    StorageDead(mir::Local),
     /// This Op only appears within a BasicBlock and is attached to a
     /// [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
     /// statement. We emit it for any such statement where the local may already be dead. We
     /// guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
     /// safely ignore the statement this is attached to.
-    IgnoreStorageDead(Local),
+    IgnoreStorageDead(mir::Local),
     /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
     /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
     ///
