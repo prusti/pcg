@@ -8,7 +8,6 @@ import React, {
 import * as Viz from "@viz-js/viz";
 import { fetchDotFile, openDotGraphInNewWindow } from "../dot_graph";
 
-import PCGOps from "./PcgActionsDisplay";
 import {
   CurrentPoint,
   FunctionSlug,
@@ -16,6 +15,7 @@ import {
   MirStmt,
   PathData,
   PcgProgramPointData,
+  PcgStmtVisualizationData,
   SelectedAction,
   SourcePos,
 } from "../types";
@@ -34,8 +34,8 @@ import {
   layoutUnsizedNodes,
   toDagreEdges,
 } from "../mir_graph";
-import { Selection, PCGGraphSelector } from "./PCSGraphSelector";
 import FunctionSelector from "./FunctionSelector";
+import PCGNavigator from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
   addKeyDownListener,
@@ -111,7 +111,7 @@ export const App: React.FC<AppProps> = ({
   initialPath = 0,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [selected, setSelected] = useState<Selection>(999); // HACK - always show last iteration
+  const [selected, setSelected] = useState<number | null>(999); // HACK - always show last iteration
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
@@ -137,11 +137,8 @@ export const App: React.FC<AppProps> = ({
   const [showPCG, setShowPCG] = useState(
     localStorage.getItem("showPCG") !== "false"
   );
-  const [showPCGSelector, setShowPCGSelector] = useState(
-    localStorage.getItem("showPCGSelector") !== "false"
-  );
-  const [showPCGOps, setShowPCGOps] = useState(
-    localStorage.getItem("showPCGOps") !== "false"
+  const [showPCGNavigator, setShowPCGNavigator] = useState(
+    localStorage.getItem("showPCGNavigator") !== "false"
   );
   const [showSettings, setShowSettings] = useState(
     localStorage.getItem("showSettings") === "true"
@@ -266,8 +263,7 @@ export const App: React.FC<AppProps> = ({
   addLocalStorageCallback("selectedPath", selectedPath);
   addLocalStorageCallback("showPathBlocksOnly", showPathBlocksOnly);
   addLocalStorageCallback("showPCG", showPCG);
-  addLocalStorageCallback("showPCGSelector", showPCGSelector);
-  addLocalStorageCallback("showPCGOps", showPCGOps);
+  addLocalStorageCallback("showPCGNavigator", showPCGNavigator);
   addLocalStorageCallback("showSettings", showSettings);
   addLocalStorageCallback("isSourceCodeMinimized", isSourceCodeMinimized);
   addLocalStorageCallback("codeFontSize", codeFontSize);
@@ -291,24 +287,6 @@ export const App: React.FC<AppProps> = ({
       functions[selectedFunction].start
     );
   }, [nodes, currentPoint, selectedFunction, functions]);
-
-  const pcgGraphSelector =
-    showPCGSelector &&
-    currentPoint.type === "stmt" &&
-    iterations.length > currentPoint.stmt ? (
-      <PCGGraphSelector
-        iterations={iterations[currentPoint.stmt].at_phase}
-        // If there's a selected action, we're not currently associated with a phase
-        selected={getSelectedAction(currentPoint) === null ? selected : null}
-        onSelect={(newIdx) => {
-          setCurrentPoint({
-            ...currentPoint,
-            selectedAction: null,
-          });
-          setSelected(newIdx);
-        }}
-      />
-    ) : null;
 
   // Divider drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -530,18 +508,10 @@ export const App: React.FC<AppProps> = ({
               <label style={{ display: "block", marginBottom: "10px" }}>
                 <input
                   type="checkbox"
-                  checked={showPCGSelector}
-                  onChange={(e) => setShowPCGSelector(e.target.checked)}
+                  checked={showPCGNavigator}
+                  onChange={(e) => setShowPCGNavigator(e.target.checked)}
                 />
-                {" "}Show PCG selector
-              </label>
-              <label style={{ display: "block", marginBottom: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={showPCGOps}
-                  onChange={(e) => setShowPCGOps(e.target.checked)}
-                />
-                {" "}Show PCG operations
+                {" "}Show PCG Navigator
               </label>
             </div>
 
@@ -563,23 +533,37 @@ export const App: React.FC<AppProps> = ({
           height={layoutResult.height}
           isBlockOnSelectedPath={isBlockOnSelectedPath}
         />
-        {pcgProgramPointData && showPCGOps && (
-          <>
-            <PCGOps
-              data={pcgProgramPointData}
-              selectedFunction={selectedFunction}
+        {showPCGNavigator &&
+          currentPoint.type === "stmt" &&
+          iterations.length > currentPoint.stmt &&
+          pcgProgramPointData &&
+          !Array.isArray(pcgProgramPointData.actions) && (
+            <PCGNavigator
+              iterations={iterations[currentPoint.stmt]}
+              pcgData={pcgProgramPointData as PcgStmtVisualizationData}
+              selectedPhase={
+                getSelectedAction(currentPoint) === null ? selected : null
+              }
               selectedAction={getSelectedAction(currentPoint)}
-              setSelectedAction={(selectedAction) => {
+              onSelectPhase={(index) => {
                 if (currentPoint.type === "stmt") {
                   setCurrentPoint({
                     ...currentPoint,
-                    selectedAction,
+                    selectedAction: null,
+                  });
+                  setSelected(index);
+                }
+              }}
+              onSelectAction={(action) => {
+                if (currentPoint.type === "stmt") {
+                  setCurrentPoint({
+                    ...currentPoint,
+                    selectedAction: action,
                   });
                 }
               }}
             />
-          </>
-        )}
+          )}
         {pathData && (
           <div style={{ position: "absolute", top: "20px", right: "20px" }}>
             <SymbolicHeap heap={pathData.heap} />
@@ -587,7 +571,6 @@ export const App: React.FC<AppProps> = ({
             <Assertions assertions={assertions} />
           </div>
         )}
-        {pcgGraphSelector}
       </div>
 
       {/* Draggable divider */}
