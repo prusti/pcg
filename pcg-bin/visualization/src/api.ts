@@ -1,11 +1,8 @@
 import { Assertion } from "./components/Assertions";
 import {
   CurrentPoint,
-  FunctionName,
-  FunctionSlug,
   FunctionsMetadata,
   PcgProgramPointData,
-  PCGStmtVisualizationData,
   SourcePos,
 } from "./types";
 
