@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef } from "react";
 import { Highlight, themes } from "prism-react-renderer";
 import { FunctionMetadata, SourcePos } from "../types";
 
@@ -17,22 +17,6 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   highlightSpan,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!highlightSpan || !containerRef.current) {
-      return;
-    }
-
-    const startLine = highlightSpan.low.line + 1;
-    const container = containerRef.current;
-    const lineElement = container.querySelector(
-      `[data-line="${startLine}"]`
-    );
-
-    if (lineElement) {
-      lineElement.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [highlightSpan]);
 
   const shouldHighlight = (lineIndex: number, charIndex: number): boolean => {
     if (!highlightSpan) return false;
