@@ -1,10 +1,16 @@
 use serde::{Serialize, Serializer};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", specta(export = true))]
 pub enum EvalStmtPhase {
+    #[cfg_attr(feature = "type-export", specta(rename = "pre_operands"))]
     PreOperands,
+    #[cfg_attr(feature = "type-export", specta(rename = "post_operands"))]
     PostOperands,
+    #[cfg_attr(feature = "type-export", specta(rename = "pre_main"))]
     PreMain,
+    #[cfg_attr(feature = "type-export", specta(rename = "post_main"))]
     PostMain,
 }
 

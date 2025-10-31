@@ -1,42 +1,11 @@
 import { Assertion } from "./components/Assertions";
+import { MirGraph } from "./generated/types";
 import {
   CurrentPoint,
   FunctionsMetadata,
   PcgProgramPointData,
-  SourcePos,
+  MirStmt,
 } from "./types";
-
-type MirStmtSpan = {
-  low: SourcePos;
-  high: SourcePos;
-};
-
-export type MirStmt = {
-  stmt: string;
-  span: MirStmtSpan;
-  loans_invalidated_start: string[];
-  loans_invalidated_mid: string[];
-  borrows_in_scope_start: string[];
-  borrows_in_scope_mid: string[];
-};
-
-export type MirGraphNode = {
-  id: string;
-  block: number;
-  stmts: MirStmt[];
-  terminator: MirStmt;
-};
-
-export type MirGraphEdge = {
-  source: string;
-  target: string;
-  label: string;
-};
-
-type MirGraph = {
-  nodes: MirGraphNode[];
-  edges: MirGraphEdge[];
-};
 
 export type StmtActions = Record<string, string[]>;
 

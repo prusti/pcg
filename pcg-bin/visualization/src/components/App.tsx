@@ -11,9 +11,9 @@ import { fetchDotFile, openDotGraphInNewWindow } from "../dot_graph";
 import PCGOps from "./PcgActionsDisplay";
 import {
   CurrentPoint,
-  FunctionName,
   FunctionSlug,
   FunctionsMetadata,
+  MirStmt,
   PathData,
   PcgProgramPointData,
   SelectedAction,
@@ -24,9 +24,6 @@ import PathConditions from "./PathConditions";
 import MirGraph from "./MirGraph";
 import Assertions, { Assertion } from "./Assertions";
 import {
-  MirGraphEdge,
-  MirGraphNode,
-  MirStmt,
   getGraphData,
   getPcgProgramPointData,
   getPaths,
@@ -49,6 +46,7 @@ import {
 } from "../effects";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 import SourceCodeViewer from "./SourceCodeViewer";
+import { MirEdge, MirNode } from "../generated/types";
 
 const getActionGraphFilename = (
   selectedFunction: string,
@@ -132,8 +130,8 @@ export const App: React.FC<AppProps> = ({
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
   const [paths, setPaths] = useState<number[][]>(initialPaths);
   const [assertions, setAssertions] = useState<Assertion[]>(initialAssertions);
-  const [nodes, setNodes] = useState<MirGraphNode[]>([]);
-  const [edges, setEdges] = useState<MirGraphEdge[]>([]);
+  const [nodes, setNodes] = useState<MirNode[]>([]);
+  const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
     localStorage.getItem("showPathBlocksOnly") === "true"
   );
@@ -498,7 +496,7 @@ function getIterationActions(
 }
 
 function getSelectedStmt(
-  nodes: MirGraphNode[],
+  nodes: MirNode[],
   currentPoint: CurrentPoint
 ): MirStmt | null {
   if (currentPoint.type !== "stmt") {

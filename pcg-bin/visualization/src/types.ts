@@ -1,11 +1,3 @@
-import { MirStmt } from "./api";
-
-export type EvalStmtPhase =
-  | "pre_operands"
-  | "post_operands"
-  | "pre_main"
-  | "post_main";
-
 export type SelectedAction = {
   phase: EvalStmtPhase;
   index: number;
@@ -74,17 +66,20 @@ export type FunctionName = Branded<string, "FunctionName">;
 
 import type {
   ActionKindWithDebugCtxt,
-  EvalStmtData,
+  EvalStmtPhase,
   FunctionMetadata,
+  MirStmt,
   PcgStmtVisualizationData,
   PcgSuccessorVisualizationData,
   SourcePos,
 } from "./generated/types";
 export type {
+  EvalStmtPhase,
   FunctionMetadata,
   SourcePos,
   PcgStmtVisualizationData,
   PcgSuccessorVisualizationData,
+  MirStmt,
 };
 
 export type FunctionsMetadata = {

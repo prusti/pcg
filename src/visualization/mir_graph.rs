@@ -24,6 +24,7 @@ use rustc_interface::middle::mir::RawPtrKind;
 use rustc_interface::ast::Mutability;
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirGraph {
     nodes: Vec<MirNode>,
     edges: Vec<MirEdge>,
@@ -50,12 +51,14 @@ impl SourcePos {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirStmtSpan {
     low: SourcePos,
     high: SourcePos,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirStmt {
     stmt: String,
     span: MirStmtSpan,
@@ -66,14 +69,17 @@ struct MirStmt {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirNode {
     id: String,
+    #[cfg_attr(feature = "type-export", specta(type = u32))]
     block: usize,
     stmts: Vec<MirStmt>,
     terminator: MirStmt,
 }
 
 #[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirEdge {
     source: String,
     target: String,

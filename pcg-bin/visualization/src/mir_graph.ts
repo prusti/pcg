@@ -1,4 +1,4 @@
-import { MirGraphEdge, MirGraphNode } from "./api";
+import { MirEdge, MirNode } from "./generated/types";
 import { computeTableHeight } from "./components/BasicBlockTable";
 import { BasicBlockData, DagreEdge, DagreInputNode, DagreNode } from "./types";
 import * as dagre from "@dagrejs/dagre";
@@ -9,12 +9,12 @@ export type FilterOptions = {
 };
 
 export function filterNodesAndEdges(
-  nodes: MirGraphNode[],
-  edges: MirGraphEdge[],
+  nodes: MirNode[],
+  edges: MirEdge[],
   options: FilterOptions
 ): {
-  filteredNodes: MirGraphNode[];
-  filteredEdges: MirGraphEdge[];
+  filteredNodes: MirNode[];
+  filteredEdges: MirEdge[];
 } {
   let filteredNodes = nodes;
   let filteredEdges = edges;
@@ -66,7 +66,7 @@ export function layoutSizedNodes(
 }
 
 export function layoutUnsizedNodes(
-  nodes: MirGraphNode[],
+  nodes: MirNode[],
   edges: { source: string; target: string }[]
 ): {
   nodes: DagreNode<BasicBlockData>[];
@@ -91,7 +91,7 @@ export function layoutUnsizedNodes(
   };
 }
 
-export function toDagreEdges(edges: MirGraphEdge[]): DagreEdge[] {
+export function toDagreEdges(edges: MirEdge[]): DagreEdge[] {
   return edges.map((edge, idx) => ({
     id: `${edge.source}-${edge.target}-${idx}`,
     source: edge.source,

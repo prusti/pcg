@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::path::PathBuf;
 
 use serde_derive::Serialize;
 
@@ -26,7 +26,7 @@ use crate::{
             ty::{self, TyCtxt, TyKind, TypeVisitable},
         },
     },
-    utils::{ctxt::CompilerCtxt, validity::HasValidityCheck},
+    utils::{DebugRepr, ctxt::CompilerCtxt, eval_stmt_data::EvalStmtData, validity::HasValidityCheck},
     validity_checks_enabled,
 };
 
@@ -174,10 +174,35 @@ pub(crate) enum ToGraph {
     Action(EvalStmtPhase, usize),
 }
 
-#[derive(Clone, Serialize, Default, Debug)]
-pub(crate) struct StmtGraphs {
-    at_phase: Vec<(DataflowStmtPhase, PathBuf)>,
-    actions: BTreeMap<EvalStmtPhase, Vec<PathBuf>>,
+#[derive(Clone, Serialize, Debug)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
+    at_phase: Vec<(PhaseKey, PathBuf)>,
+    actions: EvalStmtData<Vec<PathBuf>>,
+}
+
+impl Default for StmtGraphs {
+    fn default() -> Self {
+        Self {
+            at_phase: Vec::new(),
+            actions: EvalStmtData::default(),
+        }
+    }
+}
+
+impl DebugRepr for StmtGraphs {
+    type Repr = StmtGraphs<String>;
+
+    fn debug_repr(&self, _ctxt: ()) -> StmtGraphs<String> {
+        StmtGraphs {
+            at_phase: self
+                .at_phase
+                .iter()
+                .map(|(phase, filename)| (phase.to_string(), filename.clone()))
+                .collect(),
+            actions: self.actions.clone(),
+        }
+    }
 }
 
 impl StmtGraphs {
@@ -211,7 +236,7 @@ impl StmtGraphs {
         action_idx: usize,
         filename: PathBuf,
     ) {
-        let within_phase = self.actions.entry(phase).or_default();
+        let within_phase = &mut self.actions[phase];
         assert_eq!(
             within_phase.len(),
             action_idx,
