@@ -22,6 +22,16 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const isSingleLineSpan = (): boolean => {
+    if (!highlightSpan) return false;
+    return highlightSpan.low.line === highlightSpan.high.line;
+  };
+
+  const shouldHighlightLine = (lineIndex: number): boolean => {
+    if (!highlightSpan || !isSingleLineSpan()) return false;
+    return lineIndex === highlightSpan.low.line;
+  };
+
   const shouldHighlight = (lineIndex: number, charIndex: number): boolean => {
     if (!highlightSpan) return false;
 
@@ -83,6 +93,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
               >
                 {tokens.map((line, lineIndex) => {
                   let charIndex = 0;
+                  const lineHighlighted = shouldHighlightLine(lineIndex);
                   return (
                     <div
                       key={lineIndex}
@@ -97,11 +108,17 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                           paddingRight: "1em",
                           userSelect: "none",
                           opacity: 0.5,
+                          backgroundColor: lineHighlighted ? "#ffffcc" : "transparent",
                         }}
                       >
                         {lineIndex + 1}
                       </span>
-                      <span style={{ display: "table-cell" }}>
+                      <span
+                        style={{
+                          display: "table-cell",
+                          backgroundColor: lineHighlighted ? "#ffffcc" : "transparent",
+                        }}
+                      >
                         {line.map((token, tokenIndex) => {
                           const tokenContent = token.content;
                           const tokenLength =
@@ -123,7 +140,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                                 key={i}
                                 style={{
                                   backgroundColor: highlight
-                                    ? "#ffff99"
+                                    ? "#ffcc00"
                                     : "transparent",
                                 }}
                               >
