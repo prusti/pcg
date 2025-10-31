@@ -37,7 +37,6 @@ import {
 import { Selection, PCGGraphSelector } from "./PCSGraphSelector";
 import FunctionSelector from "./FunctionSelector";
 import PathSelector from "./PathSelector";
-import LegendButton from "./LegendButton";
 import {
   addKeyDownListener,
   reloadPathData,
@@ -143,6 +142,15 @@ export const App: React.FC<AppProps> = ({
   );
   const [showPCGOps, setShowPCGOps] = useState(
     localStorage.getItem("showPCGOps") !== "false"
+  );
+  const [showSettings, setShowSettings] = useState(
+    localStorage.getItem("showSettings") === "true"
+  );
+  const [isSourceCodeMinimized, setIsSourceCodeMinimized] = useState(
+    localStorage.getItem("isSourceCodeMinimized") === "true"
+  );
+  const [codeFontSize, setCodeFontSize] = useState<number>(
+    parseInt(localStorage.getItem("codeFontSize") || "12")
   );
 
   // State for panel resizing
@@ -260,6 +268,9 @@ export const App: React.FC<AppProps> = ({
   addLocalStorageCallback("showPCG", showPCG);
   addLocalStorageCallback("showPCGSelector", showPCGSelector);
   addLocalStorageCallback("showPCGOps", showPCGOps);
+  addLocalStorageCallback("showSettings", showSettings);
+  addLocalStorageCallback("isSourceCodeMinimized", isSourceCodeMinimized);
+  addLocalStorageCallback("codeFontSize", codeFontSize);
   addLocalStorageCallback("leftPanelWidth", leftPanelWidth);
 
   const isBlockOnSelectedPath = useCallback(
@@ -348,73 +359,201 @@ export const App: React.FC<AppProps> = ({
           overflow: "auto",
         }}
       >
-        <div>
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            backgroundColor: "white",
+            zIndex: 100,
+            paddingBottom: "10px",
+          }}
+        >
           <FunctionSelector
             functions={functions}
             selectedFunction={selectedFunction}
             onChange={setSelectedFunction}
           />
-          <SourceCodeViewer
-            metadata={functions[selectedFunction]}
-            highlightSpan={highlightSpan}
-          />
-          <br />
-          <PathSelector
-            paths={paths}
-            selectedPath={selectedPath}
-            setSelectedPath={setSelectedPath}
-            showPathBlocksOnly={showPathBlocksOnly}
-            setShowPathBlocksOnly={setShowPathBlocksOnly}
-          />
-          <label>
-            <input
-              type="checkbox"
-              checked={showPCG}
-              onChange={(e) => setShowPCG(e.target.checked)}
-            />
-            Show PCG
-          </label>
           <button
-            style={{ marginLeft: "10px" }}
-            onClick={async () => {
-              const dotFilePath = getPCGDotGraphFilename(
-                currentPoint,
-                selectedFunction,
-                selected,
-                iterations
-              );
-              if (dotFilePath) {
-                openDotGraphInNewWindow(dotFilePath);
-              }
+            onClick={() => setShowSettings(!showSettings)}
+            style={{
+              margin: "10px",
+              padding: "8px 16px",
+              cursor: "pointer",
+              backgroundColor: "#4CAF50",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
             }}
           >
-            Open Current PCG in New Window
+            {showSettings ? "Hide Settings" : "Show Settings"}
           </button>
-          <br />
-          <BorrowCheckerGraphs
-            currentPoint={currentPoint}
-            selectedFunction={selectedFunction}
-          />
-          <br />
-          <label>
-            <input
-              type="checkbox"
-              checked={showPCGSelector}
-              onChange={(e) => setShowPCGSelector(e.target.checked)}
+          <div style={{ position: "relative" }}>
+            <div
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                zIndex: 10,
+                display: "flex",
+                gap: "5px",
+              }}
+            >
+              <button
+                onClick={() => setCodeFontSize(Math.max(8, codeFontSize - 1))}
+                style={{
+                  cursor: "pointer",
+                  backgroundColor: "#888",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                }}
+                title="Decrease font size"
+              >
+                A−
+              </button>
+              <button
+                onClick={() => setCodeFontSize(Math.min(24, codeFontSize + 1))}
+                style={{
+                  cursor: "pointer",
+                  backgroundColor: "#888",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                }}
+                title="Increase font size"
+              >
+                A+
+              </button>
+              <button
+                onClick={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
+                style={{
+                  cursor: "pointer",
+                  backgroundColor: "#888",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  padding: "5px 10px",
+                  fontSize: "12px",
+                }}
+                title={isSourceCodeMinimized ? "Maximize" : "Minimize"}
+              >
+                {isSourceCodeMinimized ? "▼" : "▲"}
+              </button>
+            </div>
+            <SourceCodeViewer
+              metadata={functions[selectedFunction]}
+              highlightSpan={highlightSpan}
+              minimized={isSourceCodeMinimized}
+              fontSize={codeFontSize}
             />
-            Show PCG selector
-          </label>
-          <br />
-          <label>
-            <input
-              type="checkbox"
-              checked={showPCGOps}
-              onChange={(e) => setShowPCGOps(e.target.checked)}
-            />
-            Show PCG operations
-          </label>
-          <LegendButton selectedFunction={selectedFunction} />
+          </div>
         </div>
+
+        {showSettings && (
+          <div
+            style={{
+              position: "fixed",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: "300px",
+              backgroundColor: "#f5f5f5",
+              borderLeft: "2px solid #ccc",
+              padding: "20px",
+              overflowY: "auto",
+              zIndex: 1000,
+              boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
+            }}
+          >
+            <h3 style={{ marginTop: 0 }}>Settings</h3>
+            <button
+              onClick={() => setShowSettings(false)}
+              style={{
+                position: "absolute",
+                top: "10px",
+                right: "10px",
+                cursor: "pointer",
+                backgroundColor: "#f44336",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                padding: "5px 10px",
+              }}
+            >
+              ✕
+            </button>
+
+            <div style={{ marginBottom: "20px" }}>
+              <PathSelector
+                paths={paths}
+                selectedPath={selectedPath}
+                setSelectedPath={setSelectedPath}
+                showPathBlocksOnly={showPathBlocksOnly}
+                setShowPathBlocksOnly={setShowPathBlocksOnly}
+              />
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={showPCG}
+                  onChange={(e) => setShowPCG(e.target.checked)}
+                />
+                {" "}Show PCG
+              </label>
+              <button
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  marginBottom: "10px",
+                  cursor: "pointer",
+                }}
+                onClick={async () => {
+                  const dotFilePath = getPCGDotGraphFilename(
+                    currentPoint,
+                    selectedFunction,
+                    selected,
+                    iterations
+                  );
+                  if (dotFilePath) {
+                    openDotGraphInNewWindow(dotFilePath);
+                  }
+                }}
+              >
+                Open Current PCG in New Window
+              </button>
+              <label style={{ display: "block", marginBottom: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={showPCGSelector}
+                  onChange={(e) => setShowPCGSelector(e.target.checked)}
+                />
+                {" "}Show PCG selector
+              </label>
+              <label style={{ display: "block", marginBottom: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={showPCGOps}
+                  onChange={(e) => setShowPCGOps(e.target.checked)}
+                />
+                {" "}Show PCG operations
+              </label>
+            </div>
+
+            <div style={{ marginBottom: "20px" }}>
+              <h4>Borrow Checker</h4>
+              <BorrowCheckerGraphs
+                currentPoint={currentPoint}
+                selectedFunction={selectedFunction}
+              />
+            </div>
+          </div>
+        )}
         <MirGraph
           nodes={dagreNodes}
           edges={dagreEdges}
