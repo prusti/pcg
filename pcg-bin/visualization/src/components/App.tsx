@@ -28,7 +28,6 @@ import {
   getPcgProgramPointData,
   getPaths,
   PcgBlockDotGraphs,
-  StmtActions,
 } from "../api";
 import {
   filterNodesAndEdges,
@@ -46,7 +45,7 @@ import {
 } from "../effects";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 import SourceCodeViewer from "./SourceCodeViewer";
-import { MirEdge, MirNode } from "../generated/types";
+import { EvalStmtData, MirEdge, MirNode } from "../generated/types";
 
 const getActionGraphFilename = (
   selectedFunction: string,
@@ -487,9 +486,9 @@ export const App: React.FC<AppProps> = ({
 function getIterationActions(
   dotGraphs: PcgBlockDotGraphs,
   currentPoint: CurrentPoint
-): StmtActions {
+): EvalStmtData<string[]> {
   if (currentPoint.type !== "stmt" || dotGraphs.length <= currentPoint.stmt) {
-    return {};
+    return { pre_operands: [], post_operands: [], pre_main: [], post_main: [] };
   }
   const stmt = dotGraphs[currentPoint.stmt];
   return stmt.actions;

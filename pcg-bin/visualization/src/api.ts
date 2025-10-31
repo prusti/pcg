@@ -1,27 +1,19 @@
 import { Assertion } from "./components/Assertions";
-import { MirGraph } from "./generated/types";
+import { MirGraph, StmtGraphs } from "./generated/types";
 import {
   CurrentPoint,
   FunctionsMetadata,
   PcgProgramPointData,
-  MirStmt,
 } from "./types";
 
-export type StmtActions = Record<string, string[]>;
-
-export type PcgStmt = {
-  at_phase: [string, string][];
-  actions: StmtActions;
-};
-
-export type PcgBlockDotGraphs = PcgStmt[];
+export type PcgBlockDotGraphs = StmtGraphs<string>[];
 
 const fetchJsonFile = async (filePath: string) => {
   const response = await fetch(filePath);
   return await response.json();
 };
 
-export async function getPCSIterations(
+export async function getPcgIterations(
   functionName: string,
   block: number
 ): Promise<PcgBlockDotGraphs> {

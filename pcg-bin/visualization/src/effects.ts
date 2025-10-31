@@ -1,6 +1,6 @@
 import {
   getPathData,
-  getPCSIterations,
+  getPcgIterations,
   PcgBlockDotGraphs,
 } from "./api";
 import { MirNode } from "./generated/types";
@@ -16,7 +16,7 @@ export function reloadIterations(
     return;
   }
   const fetchIterations = async () => {
-    const iterations = await getPCSIterations(
+    const iterations = await getPcgIterations(
       selectedFunction,
       currentPoint.block
     );

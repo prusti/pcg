@@ -290,7 +290,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
 }
 
 impl<'tcx> RepackOp<'tcx> {
-    pub(crate) fn weaken<'a>(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
+    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
         Self::Weaken(Weaken::new(place, from, to))
     }
     pub(crate) fn expand<'a>(

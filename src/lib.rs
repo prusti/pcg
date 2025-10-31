@@ -459,7 +459,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                     statement_index
                 ));
                 let pcg_data_json = serde_json::to_string(&data).unwrap();
-                std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
+                std::fs::write(&pcg_data_file_path, pcg_data_json)
                     .expect("Failed to write pcg data to JSON file");
             }
             for succ in pcs_block.terminator.succs {
@@ -472,7 +472,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                     succ.block().index()
                 ));
                 let pcg_data_json = serde_json::to_string(&data).unwrap();
-                std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
+                std::fs::write(&pcg_data_file_path, pcg_data_json)
                     .expect("Failed to write pcg data to JSON file");
             }
         }
