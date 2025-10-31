@@ -26,7 +26,9 @@ use crate::{
             ty::{self, TyCtxt, TyKind, TypeVisitable},
         },
     },
-    utils::{DebugRepr, ctxt::CompilerCtxt, eval_stmt_data::EvalStmtData, validity::HasValidityCheck},
+    utils::{
+        DebugRepr, ctxt::CompilerCtxt, eval_stmt_data::EvalStmtData, validity::HasValidityCheck,
+    },
     validity_checks_enabled,
 };
 

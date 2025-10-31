@@ -8,16 +8,15 @@ import {
   PcgSuccessorVisualizationData,
   SelectedAction,
 } from "../types";
+import { BorrowPcgActionKindDebugRepr, RepackOp } from "../generated/types";
 
 function PcgActionsDisplay({
   actions,
-  selectedFunction,
   phase,
   selectedAction,
   onActionSelect,
 }: {
   actions: PcgActions;
-  selectedFunction?: string;
   phase: EvalStmtPhase;
   selectedAction?: { phase: EvalStmtPhase; index: number };
   onActionSelect?: (phase: EvalStmtPhase, index: number) => void;
@@ -31,6 +30,9 @@ function PcgActionsDisplay({
       {actions.map((action, index) => {
         const isSelected =
           selectedAction?.phase === phase && selectedAction?.index === index;
+        if (action.data.kind.type === "MakePlaceOld") {
+          return;
+        }
         return (
           <li
             key={`action-${index}`}
@@ -49,17 +51,26 @@ function PcgActionsDisplay({
                 flex: 1,
               }}
               onClick={() => handleActionClick(index)}
-              title={
-                typeof action === "object" ? action.debug_context : undefined
-              }
+              title={action.data.debug_context}
             >
-              {typeof action === "object" ? action.kind : action}
+              <code>{actionLine(action.data.kind)}</code>
             </span>
           </li>
         );
       })}
     </ul>
   );
+}
+
+function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr) {
+  switch (action.type) {
+    case "Expand":
+      return `unpack ${action.data.from}`;
+    case "Collapse":
+      return `pack ${action.data.to}`;
+    default:
+      return JSON.stringify(action);
+  }
 }
 
 export default function PCGOps({
@@ -211,7 +222,6 @@ export default function PCGOps({
             <h5>{key}</h5>
             <PcgActionsDisplay
               actions={stmtData.actions[key]}
-              selectedFunction={selectedFunction}
               phase={key}
               selectedAction={selectedAction}
               onActionSelect={(phase, index) =>
@@ -230,7 +240,6 @@ export default function PCGOps({
         <h4>Actions</h4>
         <PcgActionsDisplay
           actions={successorData.actions}
-          selectedFunction={selectedFunction}
           phase={null}
           selectedAction={selectedAction}
           onActionSelect={(phase, index) => setSelectedAction({ phase, index })}

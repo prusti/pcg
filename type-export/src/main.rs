@@ -1,8 +1,6 @@
 #![feature(rustc_private)]
 
-use pcg::visualization::SourcePos;
-use specta_typescript::Typescript;
-use specta::Type;
+use specta_typescript::{BigIntExportBehavior, Typescript};
 use std::fs;
 use std::path::PathBuf;
 
@@ -19,8 +17,12 @@ fn main() {
 
     let output_file = output_dir.join("types.ts");
 
-    specta::export::ts(output_file.to_str().unwrap()).unwrap();
+    let typescript = Typescript::default().bigint(BigIntExportBehavior::Number);
+
+    let collection = pcg::type_collection();
+    typescript
+        .export_to(&output_file, &collection)
+        .unwrap();
 
     println!("TypeScript types generated at: {}", output_file.display());
 }
-

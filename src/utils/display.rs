@@ -21,7 +21,10 @@ use rustc_interface::{
     span::Span,
 };
 
-use crate::{rustc_interface::{self, middle::mir}, utils::HasCompilerCtxt};
+use crate::{
+    rustc_interface::{self, middle::mir},
+    utils::HasCompilerCtxt,
+};
 
 use super::{CompilerCtxt, Place};
 

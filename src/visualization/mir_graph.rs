@@ -33,9 +33,7 @@ struct MirGraph {
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct SourcePos {
-    #[cfg_attr(feature = "type-export", specta(type = u32))]
     pub line: usize,
-    #[cfg_attr(feature = "type-export", specta(type = u32))]
     pub column: usize,
 }
 
@@ -72,7 +70,6 @@ struct MirStmt {
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirNode {
     id: String,
-    #[cfg_attr(feature = "type-export", specta(type = u32))]
     block: usize,
     stmts: Vec<MirStmt>,
     terminator: MirStmt,

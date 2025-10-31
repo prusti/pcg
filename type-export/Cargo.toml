@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 pcg = { path = "..", features = ["type-export"] }
-specta = { version = "1.0.5", features = ["export"] }
+specta = { version = "2.0.0-rc.22", features = ["derive", "export"] }
 specta-typescript = "0.0.9"
 
 [package.metadata.rust-analyzer]

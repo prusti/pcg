@@ -27,7 +27,7 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{borrow::Cow, cell::RefCell};
+use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
@@ -69,11 +69,39 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
 /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
 /// If `_.2` is `None`, the capability is removed.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Weaken<'tcx> {
-    pub(crate) place: Place<'tcx>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+    pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
-    pub(crate) to: Option<CapabilityKind>,
+    pub(crate) to: ToCap,
+    #[serde(skip)]
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Serialize> DebugRepr<Ctxt>
+    for Weaken<'tcx, Place<'tcx>, ToCap>
+{
+    type Repr = Weaken<'static, String, ToCap>;
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        Weaken {
+            place: self.place.to_short_string(ctxt),
+            from: self.from,
+            to: self.to,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
+    pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+        Self {
+            place,
+            from,
+            to,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> Weaken<'tcx> {
@@ -88,29 +116,6 @@ impl<'tcx> Weaken<'tcx> {
             self.from,
             to_str
         )
-    }
-
-    pub(crate) fn new<'a>(
-        place: Place<'tcx>,
-        from: CapabilityKind,
-        to: Option<CapabilityKind>,
-        _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Self
-    where
-        'tcx: 'a,
-    {
-        // TODO: Sometimes R can be downgraded to W
-        // if let Some(to) = to {
-        //     pcg_validity_assert!(
-        //         from > to,
-        //         "Weak of ({}: {}): FROM capability ({:?}) is not greater than TO capability ({:?})",
-        //         place.to_short_string(ctxt),
-        //         place.ty(ctxt).ty,
-        //         from,
-        //         to
-        //     );
-        // }
-        Self { place, from, to }
     }
 
     pub fn place(&self) -> Place<'tcx> {
@@ -189,7 +194,7 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 use borrow_pcg::action::actions::BorrowPcgActions;
 use utils::eval_stmt_data::EvalStmtData;
 
-type VisualizationActions = Vec<ActionKindWithDebugCtxt<String>>;
+type VisualizationActions = Vec<PcgActionDebugRepr>;
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -632,7 +637,7 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    action::ActionKindWithDebugCtxt,
+    action::PcgActionDebugRepr,
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
 };
@@ -643,4 +648,9 @@ pub(crate) fn validity_checks_enabled() -> bool {
 
 pub(crate) fn validity_checks_warn_only() -> bool {
     *VALIDITY_CHECKS_WARN_ONLY
+}
+
+#[cfg(feature = "type-export")]
+pub fn type_collection() -> specta::TypeCollection {
+    specta::export()
 }

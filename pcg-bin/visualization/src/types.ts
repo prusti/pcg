@@ -45,7 +45,7 @@ export type DagreNode<T> = {
   height: number;
 };
 
-export type PcgAction = ActionKindWithDebugCtxt<string>
+export type PcgAction = PcgActionDebugRepr;
 
 export type PcgActions = PcgAction[];
 
@@ -69,6 +69,7 @@ import type {
   EvalStmtPhase,
   FunctionMetadata,
   MirStmt,
+  PcgActionDebugRepr,
   PcgStmtVisualizationData,
   PcgSuccessorVisualizationData,
   SourcePos,

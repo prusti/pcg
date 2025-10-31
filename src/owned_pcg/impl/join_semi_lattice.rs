@@ -54,7 +54,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 let mut repacks = vec![];
                 for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
                     if k.expect_concrete() > CapabilityKind::Write {
-                        repacks.push(RepackOp::Weaken(
+                        repacks.push(RepackOp::weaken(
                             place,
                             k.expect_concrete(),
                             CapabilityKind::Write,
