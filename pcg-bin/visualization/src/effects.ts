@@ -1,12 +1,9 @@
-import {
-  getPathData,
-  getPcgIterations,
-  PcgBlockDotGraphs,
-} from "./api";
+import { Api, PcgBlockDotGraphs } from "./api";
 import { MirNode } from "./generated/types";
 import { CurrentPoint, MirStmt, PathData } from "./types";
 
 export function reloadIterations(
+  api: Api,
   selectedFunction: string,
   currentPoint: CurrentPoint,
   setIterations: React.Dispatch<React.SetStateAction<PcgBlockDotGraphs>>
@@ -16,7 +13,7 @@ export function reloadIterations(
     return;
   }
   const fetchIterations = async () => {
-    const iterations = await getPcgIterations(
+    const iterations = await api.getPcgIterations(
       selectedFunction,
       currentPoint.block
     );
@@ -27,6 +24,7 @@ export function reloadIterations(
 }
 
 export async function reloadPathData(
+  api: Api,
   selectedFunction: string,
   selectedPath: number,
   currentPoint: CurrentPoint,
@@ -48,7 +46,7 @@ export async function reloadPathData(
   const pathToCurrentBlock = currentPath.slice(0, currentBlockIndex + 1);
 
   try {
-    const data: PathData = await getPathData(
+    const data = await api.getPathData(
       selectedFunction,
       pathToCurrentBlock,
       currentPoint.type === "stmt"
@@ -58,7 +56,7 @@ export async function reloadPathData(
         : {
             terminator: currentPoint.block2,
           }
-    );
+    ) as PathData;
     setPathData(data);
   } catch (error) {
     console.error("Error fetching path data:", error);
@@ -73,10 +71,8 @@ export function addKeyDownListener(
   const handleKeyDown = (event: KeyboardEvent) => {
     keydown(event, nodes, filteredNodes, setCurrentPoint);
   };
-  console.log("add keydown listener");
   window.addEventListener("keydown", handleKeyDown);
   return () => {
-    console.log("removing keydown listener");
     window.removeEventListener("keydown", handleKeyDown);
   };
 }
@@ -110,7 +106,7 @@ function keydown(
 
       const getNextStmtIdx = (node: { stmts: MirStmt[] }, from: number) => {
         const offset = direction === "up" ? -1 : 1;
-        let idx = from + offset;
+        const idx = from + offset;
         if (isSelectable(node, idx)) {
           return idx;
         } else {

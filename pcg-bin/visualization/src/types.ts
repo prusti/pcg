@@ -22,8 +22,9 @@ export type BasicBlockData = {
   terminator: MirStmt;
 };
 
-export type DagreInputNode<T> = {
+export type DagreInputNode<T = unknown> = {
   id: string;
+  data?: T;
 };
 
 export type DagreEdge = {
@@ -65,7 +66,6 @@ export type FunctionSlug = Branded<string, "FunctionSlug">;
 export type FunctionName = Branded<string, "FunctionName">;
 
 import type {
-  ActionKindWithDebugCtxt,
   EvalStmtPhase,
   FunctionMetadata,
   MirStmt,

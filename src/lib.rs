@@ -254,10 +254,14 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     }
 
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+        Self::with_settings(tcx, PcgSettings::new())
+    }
+
+    pub fn with_settings(tcx: TyCtxt<'tcx>, settings: PcgSettings) -> Self {
         Self {
             tcx,
             arena: bumpalo::Bump::new(),
-            settings: PcgSettings::new(),
+            settings,
             #[cfg(feature = "visualization")]
             debug_function_metadata: RefCell::new(visualization::FunctionsMetadata::new()),
         }

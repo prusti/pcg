@@ -1,11 +1,8 @@
 import * as Viz from "@viz-js/viz";
-export async function fetchDotFile(filePath: string) {
-    const response = await fetch(filePath);
-    return await response.text();
-}
+import { api } from "./api";
 
 export async function openDotGraphInNewWindow(filename: string) {
-    const dotData = await fetchDotFile(filename);
+    const dotData = await api.fetchDotFile(filename);
     Viz.instance().then((viz) => {
       const svgElement = viz.renderSVGElement(dotData);
       const popup = window.open(

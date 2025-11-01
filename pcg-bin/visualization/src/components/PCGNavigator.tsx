@@ -6,6 +6,7 @@ import {
   SelectedAction,
 } from "../types";
 import { BorrowPcgActionKindDebugRepr, RepackOp, StmtGraphs } from "../generated/types";
+import { storage } from "../storage";
 
 type NavigationItem =
   | { type: "phase"; index: number; name: string; filename: string }
@@ -48,11 +49,11 @@ export default function PCGNavigator({
   onSelectAction: (action: SelectedAction | null) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
-    const saved = localStorage.getItem("pcgNavigatorDocked");
+    const saved = storage.getItem("pcgNavigatorDocked");
     return saved !== "false";
   });
   const [isMinimized, setIsMinimized] = useState(() => {
-    const saved = localStorage.getItem("pcgNavigatorMinimized");
+    const saved = storage.getItem("pcgNavigatorMinimized");
     return saved === "true";
   });
   const [isDragging, setIsDragging] = useState(false);
@@ -61,11 +62,11 @@ export default function PCGNavigator({
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("pcgNavigatorDocked", isDocked.toString());
+    storage.setItem("pcgNavigatorDocked", isDocked.toString());
   }, [isDocked]);
 
   useEffect(() => {
-    localStorage.setItem("pcgNavigatorMinimized", isMinimized.toString());
+    storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
   }, [isMinimized]);
 
   // Build navigation items list with interleaving
@@ -80,7 +81,7 @@ export default function PCGNavigator({
 
     // Map phase names to their indices in iterations.at_phase
     const phaseNameToIndex = new Map<string, number>();
-    iterations.at_phase.forEach(([name, filename], index) => {
+    iterations.at_phase.forEach(([name, _filename], index) => {
       phaseNameToIndex.set(name, index);
     });
 
@@ -365,7 +366,7 @@ export default function PCGNavigator({
                 flexShrink: 0,
               }}
             >
-              Press 'q'/'a' to navigate between phases and actions
+              Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
             </div>
           </>
         )}
@@ -445,7 +446,7 @@ export default function PCGNavigator({
           paddingTop: "10px",
         }}
       >
-        Press 'q'/'a' to navigate between phases and actions
+        Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
       </div>
     </div>
   );
