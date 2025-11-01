@@ -45,16 +45,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build pcg-bin
-        run: cargo build --release
-
       - name: Generate visualization data from rfmig examples
+        working-directory: pcg-bin
         run: |
-          mkdir -p pcg-bin/visualization/data
-          export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib:${LD_LIBRARY_PATH}"
+          mkdir -p visualization/data
           PCG_VISUALIZATION=true \
-          PCG_VISUALIZATION_DATA_DIR="$(pwd)/pcg-bin/visualization/data" \
-          ./target/release/pcg_bin test-files/209_rfmig_demos.rs
+          cargo run --release -- ../test-files/209_rfmig_demos.rs
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

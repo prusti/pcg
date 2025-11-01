@@ -9,7 +9,7 @@ use axum::{
     Router,
 };
 use hyper::StatusCode;
-use std::{backtrace::Backtrace, fs, io::Write, net::SocketAddr, path::PathBuf};
+use std::{backtrace::Backtrace, fs, net::SocketAddr, path::PathBuf};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, Level};
@@ -119,20 +119,34 @@ fn run_pcg_analysis(file_path: PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn find_pcg_visualization_dir() -> Result<PathBuf, String> {
-    let to_try = vec![
-        PathBuf::from("visualization"),
-        PathBuf::from("../visualization"),
-    ];
+fn zip_directory(src_dir: &PathBuf, dst_file: &PathBuf) -> Result<(), String> {
+    let file = fs::File::create(dst_file).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
 
-    for path in to_try {
-        if path.exists() {
-            tracing::info!("Found visualization directory at {:?}", path);
-            return Ok(path);
+    let walkdir = walkdir::WalkDir::new(src_dir);
+    let it = walkdir.into_iter().filter_map(|e| e.ok());
+
+    for entry in it {
+        let path = entry.path();
+        let name = path.strip_prefix(src_dir).map_err(|e| e.to_string())?;
+
+        if path.is_file() {
+            debug!("Adding file to zip: {:?}", name);
+            zip.start_file(name.to_string_lossy().to_string(), options)
+                .map_err(|e| e.to_string())?;
+            let mut f = fs::File::open(path).map_err(|e| e.to_string())?;
+            std::io::copy(&mut f, &mut zip).map_err(|e| e.to_string())?;
+        } else if !name.as_os_str().is_empty() {
+            debug!("Adding directory to zip: {:?}", name);
+            zip.add_directory(name.to_string_lossy().to_string(), options)
+                .map_err(|e| e.to_string())?;
         }
     }
 
-    Err("visualization directory not found".to_string())
+    zip.finish().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, String> {
@@ -218,41 +232,17 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
         return Ok((StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response());
     }
 
-    let visualization_dir = find_pcg_visualization_dir()?;
+    // Zip the data directory
+    let data_zip_path = unique_dir.join("data.zip");
+    zip_directory(&data_dir, &data_zip_path)?;
+    debug!("Created data.zip at {:?}", data_zip_path);
 
-    // Copy visualization files
-    copy_dir(visualization_dir.join("dist"), unique_dir.join("dist")).map_err(|e| e.to_string())?;
-
-    fs::copy(
-        visualization_dir.join("index.html"),
-        unique_dir.join("index.html"),
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Redirect to the visualization
-    let redirect_path = format!(
-        "/tmp/{}/index.html",
-        unique_dir.file_name().unwrap().to_str().unwrap()
+    // Redirect to hosted visualization with data source URL
+    let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
+    let redirect_url = format!(
+        "https://prusti.github.io/pcg/#datasrc=/tmp/{}",
+        unique_dir_name
     );
-    Ok(Redirect::to(&redirect_path).into_response())
+    Ok(Redirect::to(&redirect_url).into_response())
 }
 
-fn copy_dir(src: PathBuf, dst: PathBuf) -> std::io::Result<()> {
-    if !dst.exists() {
-        fs::create_dir(&dst)?;
-    }
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        let dst_path = dst.join(entry.file_name());
-
-        if ty.is_dir() {
-            copy_dir(entry.path(), dst_path)?;
-        } else {
-            fs::copy(entry.path(), dst_path)?;
-        }
-    }
-
-    Ok(())
-}
