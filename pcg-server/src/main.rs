@@ -21,6 +21,7 @@ use pcg::rustc_interface::driver::{self, args};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::rustc_interface::session::EarlyDiagCtxt;
+use pcg::PcgSettings;
 
 mod callbacks;
 use callbacks::run_pcg_on_all_fns;
@@ -62,7 +63,7 @@ async fn handle_upload(multipart: Multipart) -> Response {
 }
 
 
-fn run_pcg_analysis(file_path: PathBuf) -> Result<(), String> {
+fn run_pcg_analysis(file_path: PathBuf, settings: PcgSettings) -> Result<(), String> {
     let mut rustc_args = vec![file_path.to_str().unwrap().to_string()];
 
     if !rustc_args.iter().any(|arg| arg.starts_with("--edition")) {
@@ -103,7 +104,7 @@ fn run_pcg_analysis(file_path: PathBuf) -> Result<(), String> {
         expanded_args: args,
     };
 
-    interface::run_compiler(config, |compiler| {
+    interface::run_compiler(config, move |compiler| {
         let sess = &compiler.sess;
         let krate = interface::passes::parse(sess);
         interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
@@ -111,7 +112,7 @@ fn run_pcg_analysis(file_path: PathBuf) -> Result<(), String> {
             tcx.dcx().abort_if_errors();
             let _ = tcx.ensure_ok().analysis(());
             unsafe {
-                run_pcg_on_all_fns(tcx);
+                run_pcg_on_all_fns(tcx, settings);
             }
         })
     });
@@ -221,11 +222,26 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     debug!("Using absolute file path: {:?}", abs_file_path);
     debug!("Using absolute data dir: {:?}", abs_data_dir);
 
-    // Run PCG analysis using the library directly
-    std::env::set_var("PCG_VISUALIZATION", "true");
-    std::env::set_var("PCG_VISUALIZATION_DATA_DIR", abs_data_dir.to_str().unwrap());
+    // Run PCG analysis using the library directly with visualization enabled
+    let settings = PcgSettings {
+        check_cycles: false,
+        validity_checks: cfg!(debug_assertions),
+        debug_block: None,
+        debug_imgcat: vec![],
+        validity_checks_warn_only: false,
+        panic_on_error: false,
+        polonius: false,
+        dump_mir_dataflow: false,
+        visualization: true,
+        visualization_data_dir: abs_data_dir,
+        check_annotations: false,
+        emit_annotations: false,
+        check_function: None,
+        skip_function: None,
+        coupling: cfg!(feature = "coupling"),
+    };
 
-    let result = run_pcg_analysis(abs_file_path);
+    let result = run_pcg_analysis(abs_file_path, settings);
 
     if let Err(e) = result {
         let error_message = format!("PCG analysis failed: {}", e);

@@ -1,5 +1,5 @@
 use borrowck_body_storage::take_stored_body;
-use pcg::{PcgCtxtCreator, run_pcg};
+use pcg::{PcgCtxtCreator, PcgSettings, run_pcg};
 use pcg::rustc_interface::{
     hir::def::DefKind,
     middle::ty::TyCtxt,
@@ -13,8 +13,8 @@ fn hir_body_owners(tcx: TyCtxt<'_>) -> impl std::iter::Iterator<Item = LocalDefI
 /// # Safety
 /// 1. Should be called for the same `tcx` where the borrow-checking occurred.
 /// 2. The `config` for the compiler run should have had `override_queries` set to [`set_mir_borrowck`].
-pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
-    let ctxt_creator = PcgCtxtCreator::new(tcx);
+pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, settings: PcgSettings) {
+    let ctxt_creator = PcgCtxtCreator::with_settings(tcx, settings);
     tracing::info!("Running PCG on all functions");
 
     for def_id in hir_body_owners(tcx) {
