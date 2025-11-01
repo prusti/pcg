@@ -6,7 +6,7 @@ import React, {
   useRef,
 } from "react";
 import * as Viz from "@viz-js/viz";
-import { fetchDotFile, openDotGraphInNewWindow } from "../dot_graph";
+import { openDotGraphInNewWindow } from "../dot_graph";
 
 import {
   CurrentPoint,
@@ -23,12 +23,7 @@ import SymbolicHeap from "./SymbolicHeap";
 import PathConditions from "./PathConditions";
 import MirGraph from "./MirGraph";
 import Assertions, { Assertion } from "./Assertions";
-import {
-  getGraphData,
-  getPcgProgramPointData,
-  getPaths,
-  PcgBlockDotGraphs,
-} from "../api";
+import { Api, PcgBlockDotGraphs, ZipFileApi } from "../api";
 import {
   filterNodesAndEdges,
   layoutUnsizedNodes,
@@ -94,6 +89,8 @@ interface AppProps {
   initialAssertions: Assertion[];
   functions: FunctionsMetadata;
   initialPath?: number;
+  api: Api;
+  onApiChange: (newApi: Api) => void;
 }
 
 function getSelectedAction(currentPoint: CurrentPoint): SelectedAction | null {
@@ -109,6 +106,8 @@ export const App: React.FC<AppProps> = ({
   initialAssertions,
   functions,
   initialPath = 0,
+  api,
+  onApiChange,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -189,14 +188,14 @@ export const App: React.FC<AppProps> = ({
     if (!dotFilePath) {
       dotGraph.innerHTML = "";
     } else {
-      const dotData = await fetchDotFile(dotFilePath);
+      const dotData = await api.fetchDotFile(dotFilePath);
 
       Viz.instance().then(function (viz) {
         dotGraph.innerHTML = "";
         dotGraph.appendChild(viz.renderSVGElement(dotData));
       });
     }
-  }, [iterations, currentPoint, selectedFunction, selected]);
+  }, [api, iterations, currentPoint, selectedFunction, selected]);
 
   useEffect(() => {
     const graph = document.getElementById("pcg-graph");
@@ -214,18 +213,18 @@ export const App: React.FC<AppProps> = ({
   useEffect(() => {
     if (selectedFunction) {
       (async function () {
-        const mirGraph = await getGraphData(selectedFunction);
+        const mirGraph = await api.getGraphData(selectedFunction);
         setNodes(mirGraph.nodes);
         setEdges(mirGraph.edges);
-        setPaths(await getPaths(selectedFunction));
+        setPaths(await api.getPaths(selectedFunction));
       })();
     }
-  }, [selectedFunction]);
+  }, [api, selectedFunction]);
 
   useEffect(() => {
     const fetchPcgStmtVisualizationData = async () => {
       try {
-        const pcgStmtVisualizationData = await getPcgProgramPointData(
+        const pcgStmtVisualizationData = await api.getPcgProgramPointData(
           selectedFunction,
           currentPoint
         );
@@ -236,6 +235,7 @@ export const App: React.FC<AppProps> = ({
     };
 
     reloadPathData(
+      api,
       selectedFunction,
       selectedPath,
       currentPoint,
@@ -243,14 +243,14 @@ export const App: React.FC<AppProps> = ({
       setPathData
     );
     fetchPcgStmtVisualizationData();
-  }, [selectedFunction, selectedPath, currentPoint, paths]);
+  }, [api, selectedFunction, selectedPath, currentPoint, paths]);
 
   const currentBlock = currentPoint.type === "stmt" ? currentPoint.block : null;
   const currentStmt = currentPoint.type === "stmt" ? currentPoint.stmt : null;
 
   useEffect(() => {
-    reloadIterations(selectedFunction, currentPoint, setIterations);
-  }, [selectedFunction, currentPoint]);
+    reloadIterations(api, selectedFunction, currentPoint, setIterations);
+  }, [api, selectedFunction, currentPoint]);
 
   useEffect(() => {
     setSelected(null);
@@ -486,7 +486,7 @@ export const App: React.FC<AppProps> = ({
               borderLeft: "2px solid #ccc",
               padding: "20px",
               overflowY: "auto",
-              zIndex: 1000,
+              zIndex: 1100,
               boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
             }}
           >
@@ -507,6 +507,39 @@ export const App: React.FC<AppProps> = ({
             >
               ✕
             </button>
+
+            <div style={{ marginBottom: "20px" }}>
+              <h4 style={{ marginTop: 0, marginBottom: "10px" }}>Data Source</h4>
+              <input
+                type="file"
+                accept=".zip"
+                id="zip-file-input"
+                style={{ display: "none" }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const zipApi = await ZipFileApi.fromFile(file);
+                    onApiChange(zipApi);
+                  }
+                }}
+              />
+              <button
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  cursor: "pointer",
+                  backgroundColor: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                }}
+                onClick={() => {
+                  document.getElementById("zip-file-input")?.click();
+                }}
+              >
+                Upload Zip File
+              </button>
+            </div>
 
             <div style={{ marginBottom: "20px" }}>
               <PathSelector
