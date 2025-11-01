@@ -11,7 +11,7 @@ import { App } from "./components/App";
 import { FunctionSlug } from "./types";
 
 async function main() {
-  const _viz = await Viz.instance();
+  await Viz.instance();
   const functions = await getFunctions();
   let initialFunction = localStorage.getItem("selectedFunction") as FunctionSlug;
   if (!initialFunction || !Object.keys(functions).includes(initialFunction)) {
@@ -21,7 +21,7 @@ async function main() {
   const initialAssertions = await getAssertions(initialFunction);
 
   let initialPath = 0;
-  let initialPathStr = localStorage.getItem("selectedPath");
+  const initialPathStr = localStorage.getItem("selectedPath");
   if (initialPathStr) {
     initialPath = parseInt(initialPathStr);
     if (initialPath >= initialPaths.length) {

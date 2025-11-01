@@ -170,6 +170,14 @@ jobs:
       working-directory: pcg-bin/visualization
       run: npm ci
 
+    - name: Check for unused .tsx files
+      working-directory: pcg-bin/visualization
+      run: npm run check-unused
+
+    - name: Lint TypeScript/JavaScript code
+      working-directory: pcg-bin/visualization
+      run: npm run lint
+
     - name: Build web visualization
       working-directory: pcg-bin/visualization
       run: npm run build
