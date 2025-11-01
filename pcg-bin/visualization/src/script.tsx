@@ -8,6 +8,18 @@ import { FunctionSlug } from "./types";
 import { loadCachedZip, cacheZip } from "./zipCache";
 import { storage } from "./storage";
 
+function getDataZipUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  const datasrc = params.get('datasrc');
+
+  if (datasrc) {
+    const prefix = datasrc.endsWith('/') ? datasrc : `${datasrc}/`;
+    return `${prefix}data.zip`;
+  }
+
+  return "data.zip";
+}
+
 function AppWrapper() {
   const [currentApi, setCurrentApi] = useState<Api>(api);
   const [initialFunction, setInitialFunction] = useState<FunctionSlug | null>(null);
@@ -48,10 +60,27 @@ function AppWrapper() {
         }
         setInitialPath(initPath);
       } catch (error) {
-        const cachedZip = await loadCachedZip();
-        if (cachedZip && currentApi === api) {
-          setIsLoadingCache(true);
-          setCurrentApi(cachedZip);
+        if (currentApi === api) {
+          try {
+            const zipUrl = getDataZipUrl();
+            const zipApi = await ZipFileApi.fromUrl(zipUrl);
+            await cacheZip(zipApi);
+            setIsLoadingCache(true);
+            setCurrentApi(zipApi);
+            return;
+          } catch (zipError) {
+            console.log("Failed to load data.zip, trying cached ZIP");
+          }
+
+          const cachedZip = await loadCachedZip();
+          if (cachedZip) {
+            setIsLoadingCache(true);
+            setCurrentApi(cachedZip);
+          } else {
+            setDataUnavailable(true);
+            setFunctions(null);
+            setInitialFunction(null);
+          }
         } else {
           setDataUnavailable(true);
           setFunctions(null);

@@ -86,13 +86,24 @@ export abstract class Api {
 }
 
 class FetchApi extends Api {
+  private prefix: string;
+
+  constructor(prefix?: string) {
+    super();
+    if (prefix) {
+      this.prefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+    } else {
+      this.prefix = '';
+    }
+  }
+
   protected async fetchJsonFile(filePath: string): Promise<unknown> {
-    const response = await fetch(filePath);
+    const response = await fetch(`${this.prefix}${filePath}`);
     return await response.json();
   }
 
   protected async fetchTextFile(filePath: string): Promise<string> {
-    const response = await fetch(filePath);
+    const response = await fetch(`${this.prefix}${filePath}`);
     return await response.text();
   }
 }
@@ -112,6 +123,16 @@ export class ZipFileApi extends Api {
 
   static async fromBase64(base64String: string): Promise<ZipFileApi> {
     const zip = await JSZip.loadAsync(base64String, { base64: true });
+    return new ZipFileApi(zip);
+  }
+
+  static async fromUrl(url: string): Promise<ZipFileApi> {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch ZIP file from ${url}: ${response.statusText}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const zip = await JSZip.loadAsync(arrayBuffer);
     return new ZipFileApi(zip);
   }
 
@@ -137,4 +158,11 @@ export class ZipFileApi extends Api {
   }
 }
 
-export const api = new FetchApi();
+function createDefaultApi(): Api {
+  const params = new URLSearchParams(window.location.search);
+  const datasrc = params.get('datasrc');
+
+  return new FetchApi(datasrc || undefined);
+}
+
+export const api = createDefaultApi();
