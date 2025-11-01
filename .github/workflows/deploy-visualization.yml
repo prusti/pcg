@@ -54,7 +54,7 @@ jobs:
           export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib:${LD_LIBRARY_PATH}"
           PCG_VISUALIZATION=true \
           PCG_VISUALIZATION_DATA_DIR="$(pwd)/pcg-bin/visualization/data" \
-          ./pcg-bin/target/release/pcg_bin test-files/209_rfmig_demos.rs
+          ./target/release/pcg_bin test-files/209_rfmig_demos.rs
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
