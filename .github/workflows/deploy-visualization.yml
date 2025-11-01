@@ -46,12 +46,12 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build pcg-bin
-        working-directory: pcg-bin
         run: cargo build --release
 
       - name: Generate visualization data from rfmig examples
         run: |
           mkdir -p pcg-bin/visualization/data
+          export LD_LIBRARY_PATH="$(rustc --print sysroot)/lib:${LD_LIBRARY_PATH}"
           PCG_VISUALIZATION=true \
           PCG_VISUALIZATION_DATA_DIR="$(pwd)/pcg-bin/visualization/data" \
           ./pcg-bin/target/release/pcg_bin test-files/209_rfmig_demos.rs

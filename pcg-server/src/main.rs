@@ -1,3 +1,7 @@
+#![feature(rustc_private)]
+#![feature(stmt_expr_attributes)]
+#![feature(proc_macro_hygiene)]
+
 use axum::{
     extract::Multipart,
     response::{Html, IntoResponse, Redirect, Response},
@@ -5,12 +9,22 @@ use axum::{
     Router,
 };
 use hyper::StatusCode;
-use std::{backtrace::Backtrace, fs, net::SocketAddr, path::PathBuf, process::Command};
+use std::{backtrace::Backtrace, fs, net::SocketAddr, path::PathBuf};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
+
+use borrowck_body_storage::set_mir_borrowck;
+use pcg::rustc_interface::driver::{self, args};
+use pcg::rustc_interface::interface;
+use pcg::rustc_interface::session::config::{self, ErrorOutputType};
+use pcg::rustc_interface::session::EarlyDiagCtxt;
+use pcg::PcgCtxtCreator;
+
+mod callbacks;
+use callbacks::run_pcg_on_all_fns;
 
 #[tokio::main]
 async fn main() {
