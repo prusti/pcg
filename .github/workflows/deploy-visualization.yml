@@ -24,6 +24,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-09-04
+          components: rustc-dev
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            pcg-bin/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build pcg-bin
+        working-directory: pcg-bin
+        run: cargo build --release
+
+      - name: Generate visualization data from rfmig examples
+        run: |
+          mkdir -p pcg-bin/visualization/data
+          PCG_VISUALIZATION=true \
+          PCG_VISUALIZATION_DATA_DIR="$(pwd)/pcg-bin/visualization/data" \
+          ./pcg-bin/target/release/pcg_bin test-files/209_rfmig_demos.rs
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -44,6 +75,7 @@ jobs:
           mkdir -p _site
           cp pcg-bin/visualization/index.html _site/
           cp -r pcg-bin/visualization/dist _site/
+          cp -r pcg-bin/visualization/data _site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
