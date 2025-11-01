@@ -87,7 +87,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                                 target_cap,
                                 Some(CapabilityKind::Write),
                                 "pre_main",
-                                self.ctxt,
                             )
                             .into(),
                         )?;

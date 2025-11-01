@@ -42,8 +42,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             "{}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
                             debug_ctxt,
                             place.to_short_string(self.ctxt.bc_ctxt()),
-                        ),
-                        self.ctxt,
+                        )
                     )
                     .into(),
                 )?;
@@ -58,7 +57,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         debug_ctxt,
                         place.to_short_string(self.ctxt.bc_ctxt()),
                     ),
-                    self.ctxt,
                 )
                 .into(),
             )?;

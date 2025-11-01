@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "serve": "http-server -c-1",
-    "watch": "nodemon --watch src --ext tsx --exec \"npm run build\"",
+    "watch": "nodemon",
     "build": "webpack --mode development",
     "dev": "concurrently \"npm run serve\" \"npm run watch\""
   },
@@ -15,6 +15,7 @@
     "@types/d3": "^7.4.3",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "concurrently": "^8.2.2",
     "css-loader": "^7.1.2",
     "http-server": "^14.1.1",
@@ -26,12 +27,14 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "brace-expansion": ">=1.1.12",
     "@dagrejs/dagre": "github:dagrejs/dagre",
     "@viz-js/viz": "^3.6.0",
+    "brace-expansion": ">=1.1.12",
     "d3": "^7.9.0",
+    "prism-react-renderer": "^2.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-syntax-highlighter": "^16.1.0",
     "reactflow": "^11.11.4"
   }
 }

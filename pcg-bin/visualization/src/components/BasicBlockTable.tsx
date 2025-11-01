@@ -1,7 +1,7 @@
 import React from "react";
 import { BasicBlockData, CurrentPoint } from "../types";
 import ReactDOMServer from "react-dom/server";
-import { MirStmt } from "../api";
+import { MirStmt } from "../types";
 
 interface BasicBlockTableProps {
   data: BasicBlockData;

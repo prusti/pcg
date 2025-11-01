@@ -5,7 +5,7 @@ use crate::{
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{CompilerCtxt, HasBorrowCheckerCtxt, json::ToJsonWithCtxt},
+    utils::CompilerCtxt,
 };
 
 use super::BorrowPcgActionKind;
@@ -14,18 +14,6 @@ use super::BorrowPcgActionKind;
 /// (typically as the result of analyzing a statement)
 #[derive(Clone, Deref, DerefMut, Debug, Default)]
 pub struct BorrowPcgActions<'tcx>(pub(crate) Vec<BorrowPcgAction<'tcx>>);
-
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for BorrowPcgActions<'tcx>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        self.0
-            .iter()
-            .map(|a| a.to_json(ctxt))
-            .collect::<Vec<_>>()
-            .into()
-    }
-}
 
 impl<'tcx> BorrowPcgActions<'tcx> {
     /// Actions applied to the PCG, in the order they occurred.

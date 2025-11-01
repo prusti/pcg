@@ -1,10 +1,11 @@
 use crate::{
     pcg::EvalStmtPhase,
-    utils::{HasCompilerCtxt, json::ToJsonWithCtxt, validity::HasValidityCheck},
+    utils::{DebugRepr, HasCompilerCtxt, validity::HasValidityCheck},
 };
-use serde_json::json;
+use serde_derive::Serialize;
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct EvalStmtData<T> {
     pub(crate) pre_operands: T,
     pub(crate) post_operands: T,
@@ -23,14 +24,16 @@ impl<T> EvalStmtData<T> {
     }
 }
 
-impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for EvalStmtData<T> {
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        json!({
-            "pre_operands": self.pre_operands.to_json(ctxt),
-            "post_operands": self.post_operands.to_json(ctxt),
-            "pre_main": self.pre_main.to_json(ctxt),
-            "post_main": self.post_main.to_json(ctxt),
-        })
+impl<Ctxt: Copy, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for EvalStmtData<T> {
+    type Repr = EvalStmtData<T::Repr>;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        EvalStmtData {
+            pre_operands: self.pre_operands.debug_repr(ctxt),
+            post_operands: self.post_operands.debug_repr(ctxt),
+            pre_main: self.pre_main.debug_repr(ctxt),
+            post_main: self.post_main.debug_repr(ctxt),
+        }
     }
 }
 

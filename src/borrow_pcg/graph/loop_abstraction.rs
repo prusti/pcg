@@ -516,7 +516,7 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::StorageDead(_) => todo!(),
                 RepackOp::IgnoreStorageDead(_) => todo!(),
-                RepackOp::Weaken(_, _, _) => todo!(),
+                RepackOp::Weaken(..) => todo!(),
                 RepackOp::Expand(_repack_expand) => {
                     unreachable!()
                 }

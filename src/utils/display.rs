@@ -21,7 +21,10 @@ use rustc_interface::{
     span::Span,
 };
 
-use crate::{rustc_interface, utils::HasCompilerCtxt};
+use crate::{
+    rustc_interface::{self, middle::mir},
+    utils::HasCompilerCtxt,
+};
 
 use super::{CompilerCtxt, Place};
 
@@ -52,6 +55,13 @@ pub trait DisplayWithCtxt<Ctxt> {
 
 pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =
     DisplayWithCtxt<CompilerCtxt<'a, 'tcx, BC>>;
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for mir::Local {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        let as_place: Place<'tcx> = (*self).into();
+        format!("local {}", as_place.to_short_string(ctxt))
+    }
+}
 
 impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for Vec<T> {
     fn to_short_string(&self, ctxt: Ctxt) -> String {

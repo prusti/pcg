@@ -1,51 +1,19 @@
 import { Assertion } from "./components/Assertions";
+import { MirGraph, StmtGraphs } from "./generated/types";
 import {
   CurrentPoint,
+  FunctionsMetadata,
   PcgProgramPointData,
-  PCGStmtVisualizationData,
 } from "./types";
 
-export type MirStmt = {
-  stmt: string;
-  loans_invalidated_start: string[];
-  loans_invalidated_mid: string[];
-  borrows_in_scope_start: string[];
-  borrows_in_scope_mid: string[];
-};
-
-export type MirGraphNode = {
-  id: string;
-  block: number;
-  stmts: MirStmt[];
-  terminator: MirStmt;
-};
-
-export type MirGraphEdge = {
-  source: string;
-  target: string;
-  label: string;
-};
-
-type MirGraph = {
-  nodes: MirGraphNode[];
-  edges: MirGraphEdge[];
-};
-
-export type StmtActions = Record<string, string[]>;
-
-export type PcgStmt = {
-  at_phase: [string, string][];
-  actions: StmtActions;
-};
-
-export type PcgBlockDotGraphs = PcgStmt[];
+export type PcgBlockDotGraphs = StmtGraphs<string>[];
 
 const fetchJsonFile = async (filePath: string) => {
   const response = await fetch(filePath);
   return await response.json();
 };
 
-export async function getPCSIterations(
+export async function getPcgIterations(
   functionName: string,
   block: number
 ): Promise<PcgBlockDotGraphs> {
@@ -60,7 +28,7 @@ export async function getGraphData(func: string): Promise<MirGraph> {
   return await fetchJsonFile(graphFilePath);
 }
 
-export async function getFunctions(): Promise<Record<string, string>> {
+export async function getFunctions(): Promise<FunctionsMetadata> {
   return await fetchJsonFile("data/functions.json");
 }
 

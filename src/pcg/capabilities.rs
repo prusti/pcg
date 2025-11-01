@@ -10,6 +10,7 @@ use std::{
 };
 
 use derive_more::From;
+use serde_derive::Serialize;
 
 use crate::{
     pcg::PcgArena,
@@ -433,7 +434,8 @@ impl SymbolicCapability {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum CapabilityKind {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.

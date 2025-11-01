@@ -59,8 +59,9 @@ mod private {
         #[allow(dead_code)]
         pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         pub(crate) block: mir::BasicBlock,
-        pub(crate) graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
         pub(crate) arena: PcgArena<'a>,
+        #[cfg(feature = "visualization")]
+        pub(crate) graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
     }
 }
 
@@ -260,16 +261,17 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         body_analysis: &'a BodyAnalysis<'a, 'tcx>,
         symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         arena: PcgArena<'a>,
-        graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
+        #[cfg(feature = "visualization")] graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
     ) -> Self {
         Self {
             ctxt,
             body_analysis,
             settings: &SETTINGS,
             block,
-            graphs,
             symbolic_capability_ctxt,
             arena,
+            #[cfg(feature = "visualization")]
+            graphs,
         }
     }
     pub(crate) fn matches(&self, predicate: LogPredicate) -> bool {

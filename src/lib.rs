@@ -27,7 +27,7 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{borrow::Cow, cell::RefCell, path::PathBuf};
+use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
@@ -38,10 +38,9 @@ pub mod utils;
 #[cfg(feature = "visualization")]
 pub mod visualization;
 
-use action::PcgActions;
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::{CapabilityKind, PcgEngine, PcgSuccessor};
+use pcg::{CapabilityKind, PcgEngine};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -52,6 +51,7 @@ use rustc_interface::{
     mir_dataflow::move_paths::MoveData,
     span::def_id::LocalDefId,
 };
+use serde_derive::Serialize;
 use serde_json::json;
 use utils::{
     CompilerCtxt, Place, VALIDITY_CHECKS, VALIDITY_CHECKS_WARN_ONLY,
@@ -64,18 +64,44 @@ pub use pcg::ctxt::HasSettings;
 #[cfg(feature = "visualization")]
 use visualization::mir_graph::generate_json_from_mir;
 
-use utils::json::ToJsonWithCompilerCtxt;
-
 /// The result of the PCG analysis.
 pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
 /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
 /// If `_.2` is `None`, the capability is removed.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Weaken<'tcx> {
-    pub(crate) place: Place<'tcx>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+    pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
-    pub(crate) to: Option<CapabilityKind>,
+    pub(crate) to: ToCap,
+    #[serde(skip)]
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Serialize> DebugRepr<Ctxt>
+    for Weaken<'tcx, Place<'tcx>, ToCap>
+{
+    type Repr = Weaken<'static, String, ToCap>;
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        Weaken {
+            place: self.place.to_short_string(ctxt),
+            from: self.from,
+            to: self.to,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
+    pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+        Self {
+            place,
+            from,
+            to,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> Weaken<'tcx> {
@@ -90,29 +116,6 @@ impl<'tcx> Weaken<'tcx> {
             self.from,
             to_str
         )
-    }
-
-    pub(crate) fn new<'a>(
-        place: Place<'tcx>,
-        from: CapabilityKind,
-        to: Option<CapabilityKind>,
-        _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Self
-    where
-        'tcx: 'a,
-    {
-        // TODO: Sometimes R can be downgraded to W
-        // if let Some(to) = to {
-        //     pcg_validity_assert!(
-        //         from > to,
-        //         "Weak of ({}: {}): FROM capability ({:?}) is not greater than TO capability ({:?})",
-        //         place.to_short_string(ctxt),
-        //         place.ty(ctxt).ty,
-        //         from,
-        //         to
-        //     );
-        // }
-        Self { place, from, to }
     }
 
     pub fn place(&self) -> Place<'tcx> {
@@ -191,51 +194,18 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 use borrow_pcg::action::actions::BorrowPcgActions;
 use utils::eval_stmt_data::EvalStmtData;
 
-struct PCGStmtVisualizationData<'a, 'tcx> {
-    actions: &'a EvalStmtData<PcgActions<'tcx>>,
+type VisualizationActions = Vec<PcgActionDebugRepr>;
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgStmtVisualizationData {
+    actions: EvalStmtData<VisualizationActions>,
 }
 
-struct PcgSuccessorVisualizationData<'a, 'tcx> {
-    actions: &'a PcgActions<'tcx>,
-}
-
-impl<'tcx, 'a> From<&'a PcgSuccessor<'a, 'tcx>> for PcgSuccessorVisualizationData<'a, 'tcx> {
-    fn from(successor: &'a PcgSuccessor<'a, 'tcx>) -> Self {
-        Self {
-            actions: &successor.actions,
-        }
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PcgSuccessorVisualizationData<'a, 'tcx>
-{
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "actions": self.actions.iter().map(|a| a.to_json(repacker)).collect::<Vec<_>>(),
-        })
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PCGStmtVisualizationData<'a, 'tcx>
-{
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "actions": self.actions.to_json(repacker),
-        })
-    }
-}
-
-impl<'a, 'tcx> PCGStmtVisualizationData<'a, 'tcx> {
-    fn new<'mir>(location: &'a PcgLocation<'a, 'tcx>) -> Self
-    where
-        'tcx: 'mir,
-    {
-        Self {
-            actions: &location.actions,
-        }
-    }
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgSuccessorVisualizationData {
+    actions: VisualizationActions,
 }
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
@@ -274,7 +244,8 @@ pub struct PcgCtxtCreator<'tcx> {
     pub tcx: TyCtxt<'tcx>,
     arena: bumpalo::Bump,
     settings: PcgSettings,
-    debug_visualization_identifiers: RefCell<Vec<String>>,
+    #[cfg(feature = "visualization")]
+    debug_function_metadata: RefCell<crate::visualization::FunctionsMetadata>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -286,8 +257,9 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         Self {
             tcx,
             arena: bumpalo::Bump::new(),
-            debug_visualization_identifiers: RefCell::new(vec![]),
             settings: PcgSettings::new(),
+            #[cfg(feature = "visualization")]
+            debug_function_metadata: RefCell::new(visualization::FunctionsMetadata::new()),
         }
     }
 
@@ -302,10 +274,11 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let pcg_ctxt: PcgCtxt<'a, 'tcx> =
             PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
-        if let Some(identifier) = pcg_ctxt.visualization_output_identifier() {
-            self.debug_visualization_identifiers
+        #[cfg(feature = "visualization")]
+        if let Some(identifier) = pcg_ctxt.visualization_function_metadata() {
+            self.debug_function_metadata
                 .borrow_mut()
-                .push(identifier);
+                .insert(pcg_ctxt.compiler_ctxt.function_metadata_slug(), identifier);
         }
         self.alloc(pcg_ctxt)
     }
@@ -316,14 +289,6 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
     ) -> &'a PcgCtxt<'a, 'tcx> {
         let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
         self.new_ctxt(body, bc)
-    }
-
-    pub fn write_debug_visualization_metadata(self) {
-        let identifiers = self.debug_visualization_identifiers.take();
-        if !identifiers.is_empty() {
-            self.settings
-                .write_debug_visualization_metadata(&identifiers);
-        }
     }
 }
 
@@ -387,39 +352,8 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
         }
     }
 
-    pub fn update_debug_visualization_metadata(&self) {
-        if let Some(identifier) = self.visualization_output_identifier() {
-            self.settings
-                .write_new_debug_visualization_metadata(&identifier);
-        }
-    }
-
     pub fn body_def_id(&self) -> LocalDefId {
         self.compiler_ctxt.def_id()
-    }
-
-    pub(crate) fn visualization_output_identifier(&self) -> Option<String> {
-        if self.settings.visualization {
-            Some(
-                self.compiler_ctxt
-                    .tcx()
-                    .def_path_str(self.compiler_ctxt.def_id()),
-            )
-        } else {
-            None
-        }
-    }
-
-    pub fn visualization_output_path(&self) -> Option<PathBuf> {
-        if self.settings.visualization {
-            Some(
-                self.settings
-                    .visualization_data_dir
-                    .join(self.visualization_output_identifier()?),
-            )
-        } else {
-            None
-        }
     }
 }
 
@@ -433,6 +367,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
         &pcg_ctxt.arena,
+        #[cfg(feature = "visualization")]
         pcg_ctxt.visualization_output_path(),
     );
     let body = pcg_ctxt.compiler_ctxt.body();
@@ -444,6 +379,8 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         let state = analysis.entry_state_for_block_mut(block);
         state.complete(ctxt);
     }
+
+    #[cfg(feature = "visualization")]
     if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
         for block in body.basic_blocks.indices() {
             let state = analysis.entry_set_for_block(block);
@@ -461,6 +398,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             }
         }
     }
+
     let mut analysis_results = results::PcgAnalysisResults::new(analysis.into_results_cursor(body));
 
     if validity_checks_enabled() {
@@ -512,25 +450,29 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             }
             let pcs_block = pcs_block_option.unwrap();
             for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
-                let data = PCGStmtVisualizationData::new(statement);
+                let data = PcgStmtVisualizationData {
+                    actions: statement.actions.debug_repr(pcg_ctxt.compiler_ctxt),
+                };
                 let pcg_data_file_path = dir_path.join(format!(
                     "block_{}_stmt_{}_pcg_data.json",
                     block.index(),
                     statement_index
                 ));
-                let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
-                std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
+                let pcg_data_json = serde_json::to_string(&data).unwrap();
+                std::fs::write(&pcg_data_file_path, pcg_data_json)
                     .expect("Failed to write pcg data to JSON file");
             }
             for succ in pcs_block.terminator.succs {
-                let data = PcgSuccessorVisualizationData::from(&succ);
+                let data = PcgSuccessorVisualizationData {
+                    actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
+                };
                 let pcg_data_file_path = dir_path.join(format!(
                     "block_{}_term_block_{}_pcg_data.json",
                     block.index(),
                     succ.block().index()
                 ));
-                let pcg_data_json = data.to_json(pcg_ctxt.compiler_ctxt);
-                std::fs::write(&pcg_data_file_path, pcg_data_json.to_string())
+                let pcg_data_json = serde_json::to_string(&data).unwrap();
+                std::fs::write(&pcg_data_file_path, pcg_data_json)
                     .expect("Failed to write pcg data to JSON file");
             }
         }
@@ -695,9 +637,9 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
+    action::PcgActionDebugRepr,
     borrow_checker::r#impl::NllBorrowCheckerImpl,
-    results::PcgLocation,
-    utils::{HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
+    utils::{DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {
@@ -706,4 +648,9 @@ pub(crate) fn validity_checks_enabled() -> bool {
 
 pub(crate) fn validity_checks_warn_only() -> bool {
     *VALIDITY_CHECKS_WARN_ONLY
+}
+
+#[cfg(feature = "type-export")]
+pub fn type_collection() -> specta::TypeCollection {
+    specta::export()
 }

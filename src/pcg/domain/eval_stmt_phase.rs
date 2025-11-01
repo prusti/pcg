@@ -1,10 +1,15 @@
-use serde::{Serialize, Serializer};
+use serde_derive::Serialize;
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum EvalStmtPhase {
+    #[cfg_attr(feature = "type-export", serde(rename = "pre_operands"))]
     PreOperands,
+    #[cfg_attr(feature = "type-export", serde(rename = "post_operands"))]
     PostOperands,
+    #[cfg_attr(feature = "type-export", serde(rename = "pre_main"))]
     PreMain,
+    #[cfg_attr(feature = "type-export", serde(rename = "post_main"))]
     PostMain,
 }
 
@@ -15,15 +20,6 @@ impl EvalStmtPhase {
 
     pub const fn last() -> Self {
         EvalStmtPhase::PostMain
-    }
-}
-
-impl Serialize for EvalStmtPhase {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&self.to_string())
     }
 }
 

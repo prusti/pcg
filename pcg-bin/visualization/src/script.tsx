@@ -8,13 +8,14 @@ import {
   getPaths,
 } from "./api";
 import { App } from "./components/App";
+import { FunctionSlug } from "./types";
 
 async function main() {
   const _viz = await Viz.instance();
   const functions = await getFunctions();
-  let initialFunction = localStorage.getItem("selectedFunction");
+  let initialFunction = localStorage.getItem("selectedFunction") as FunctionSlug;
   if (!initialFunction || !Object.keys(functions).includes(initialFunction)) {
-    initialFunction = Object.keys(functions)[0];
+    initialFunction = Object.keys(functions)[0] as FunctionSlug;
   }
   const initialPaths = await getPaths(initialFunction);
   const initialAssertions = await getAssertions(initialFunction);

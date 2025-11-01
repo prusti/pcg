@@ -6,13 +6,20 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 pub mod bc_facts_graph;
+pub(crate) mod ctxt;
 pub mod dot_graph;
 pub mod drawer;
+pub(crate) mod functions_metadata;
 pub mod graph_constructor;
 mod grapher;
 pub mod legend;
 pub mod mir_graph;
 mod node;
+mod settings;
+pub(crate) use functions_metadata::*;
+
+#[cfg(feature = "type-export")]
+pub use mir_graph::SourcePos;
 
 use crate::{
     borrow_pcg::{edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph},

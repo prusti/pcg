@@ -4,20 +4,36 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::rustc_interface::middle::mir::{Local, PlaceElem};
+use std::marker::PhantomData;
 
+use crate::Weaken;
+use crate::rustc_interface::middle::mir::{self, PlaceElem};
+
+use crate::utils::DebugRepr;
 use crate::{
     pcg::CapabilityKind,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place, display::DisplayWithCtxt},
 };
+use serde_derive::Serialize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum RepackGuide {
+pub enum RepackGuide<Local = mir::Local> {
     Downcast(Option<Symbol>, VariantIdx),
     ConstantIndex(ConstantIndex),
     Index(Local),
     Subslice { from: u64, to: u64, from_end: bool },
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        match self {
+            RepackGuide::Index(local) => {
+                format!("index with local {}", (*local).to_short_string(ctxt))
+            }
+            _ => format!("{self:?}"),
+        }
+    }
 }
 
 impl From<RepackGuide> for PlaceElem<'_> {
@@ -62,11 +78,26 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RepackExpand<'tcx> {
-    pub(crate) from: Place<'tcx>,
-    pub(crate) guide: Option<RepackGuide>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+    pub(crate) from: Place,
+    pub(crate) guide: Option<Guide>,
     pub(crate) capability: CapabilityKind,
+    #[serde(skip)]
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackExpand<'tcx> {
+    type Repr = RepackExpand<'static, String, String>;
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        RepackExpand {
+            from: self.from.to_short_string(ctxt),
+            guide: self.guide.map(|g| g.to_short_string(ctxt)),
+            capability: self.capability,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> RepackExpand<'tcx> {
@@ -79,6 +110,7 @@ impl<'tcx> RepackExpand<'tcx> {
             from,
             guide,
             capability,
+            _marker: PhantomData,
         }
     }
 
@@ -94,7 +126,7 @@ impl<'tcx> RepackExpand<'tcx> {
         self.guide
     }
 
-    pub(crate) fn local(&self) -> Local {
+    pub(crate) fn local(&self) -> mir::Local {
         self.from.local
     }
 
@@ -107,11 +139,26 @@ impl<'tcx> RepackExpand<'tcx> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct RepackCollapse<'tcx> {
-    pub(crate) to: Place<'tcx>,
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+    pub(crate) to: Place,
     pub(crate) capability: CapabilityKind,
-    pub(crate) guide: Option<RepackGuide>,
+    pub(crate) guide: Option<Guide>,
+    #[serde(skip)]
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackCollapse<'tcx> {
+    type Repr = RepackCollapse<'static, String, String>;
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        RepackCollapse {
+            to: self.to.to_short_string(ctxt),
+            capability: self.capability,
+            guide: self.guide.map(|g| g.to_short_string(ctxt)),
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'tcx> RepackCollapse<'tcx> {
@@ -124,6 +171,7 @@ impl<'tcx> RepackCollapse<'tcx> {
             to,
             capability,
             guide,
+            _marker: PhantomData,
         }
     }
 
@@ -147,13 +195,16 @@ impl<'tcx> RepackCollapse<'tcx> {
         self.capability
     }
 
-    pub(crate) fn local(&self) -> Local {
+    pub(crate) fn local(&self) -> mir::Local {
         self.to.local
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RepackOp<'tcx> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(tag = "type", content = "data")]
+pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
+{
     /// Rust will sometimes join two BasicBlocks where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
     /// edge from where it was live.
@@ -180,25 +231,47 @@ pub enum RepackOp<'tcx> {
     /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
     /// the same capability. It can also appear at basic block join points, where one branch has
     /// a weaker capability than the other.
-    Weaken(Place<'tcx>, CapabilityKind, CapabilityKind),
+    Weaken(Weaken<'tcx, Place, CapabilityKind>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places (except as noted in the documentation for that fn) which will be obtained by unpacking.
-    Expand(RepackExpand<'tcx>),
+    Expand(RepackExpand<'tcx, Place, Guide>),
     /// Instructs that one should pack up `place` with the given capability.
     /// `guide` denotes e.g. the enum variant to pack from. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places which should be packed up. We guarantee that the current state holds exactly the
     /// given capability for all places in this set.
-    Collapse(RepackCollapse<'tcx>),
+    Collapse(RepackCollapse<'tcx, Place, Guide>),
     /// TODO
-    DerefShallowInit(Place<'tcx>, Place<'tcx>),
+    DerefShallowInit(Place, Place),
     /// This place should have its capability changed from `Lent` (for mutably
     /// borrowed places) or `Read` (for shared borrow places), to the given
     /// capability, because it is no longer lent out.
-    RegainLoanedCapability(Place<'tcx>, CapabilityKind),
+    RegainLoanedCapability(Place, CapabilityKind),
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp<'tcx> {
+    type Repr = RepackOp<'static, String, String, String>;
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        match self {
+            RepackOp::StorageDead(local) => RepackOp::StorageDead(local.to_short_string(ctxt)),
+            RepackOp::IgnoreStorageDead(local) => {
+                RepackOp::IgnoreStorageDead(local.to_short_string(ctxt))
+            }
+            RepackOp::RegainLoanedCapability(place, capability) => {
+                RepackOp::RegainLoanedCapability(place.to_short_string(ctxt), *capability)
+            }
+            RepackOp::Weaken(weaken) => RepackOp::Weaken(weaken.debug_repr(ctxt)),
+            RepackOp::Expand(expand) => RepackOp::Expand(expand.debug_repr(ctxt)),
+            RepackOp::Collapse(collapse) => RepackOp::Collapse(collapse.debug_repr(ctxt)),
+            RepackOp::DerefShallowInit(place, place2) => RepackOp::DerefShallowInit(
+                place.to_short_string(ctxt),
+                place2.to_short_string(ctxt),
+            ),
+        }
+    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx> {
@@ -211,12 +284,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
                     place.to_short_string(ctxt),
                 )
             }
+            RepackOp::Expand(expand) => format!(
+                "unpack {} with capability {:?}",
+                expand.from.to_short_string(ctxt),
+                expand.capability
+            ),
             _ => format!("{self:?}"),
         }
     }
 }
 
 impl<'tcx> RepackOp<'tcx> {
+    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
+        Self::Weaken(Weaken::new(place, from, to))
+    }
     pub(crate) fn expand<'a>(
         from: Place<'tcx>,
         guide: Option<RepackGuide>,
@@ -229,13 +310,14 @@ impl<'tcx> RepackOp<'tcx> {
             from,
             guide,
             capability: for_cap,
+            _marker: PhantomData,
         })
     }
 
     pub fn affected_place(&self) -> Place<'tcx> {
         match *self {
             RepackOp::StorageDead(local) | RepackOp::IgnoreStorageDead(local) => local.into(),
-            RepackOp::Weaken(place, _, _)
+            RepackOp::Weaken(Weaken { place, .. })
             | RepackOp::Collapse(RepackCollapse { to: place, .. })
             | RepackOp::Expand(RepackExpand { from: place, .. })
             | RepackOp::RegainLoanedCapability(place, _)

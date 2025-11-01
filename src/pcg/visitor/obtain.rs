@@ -335,7 +335,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             existing_cap.expect_concrete(),
                             Some(CapabilityKind::Write),
                             "remove borrow edge",
-                            self.ctxt,
                         )
                         .into(),
                     )?;
@@ -389,7 +388,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     cap.expect_concrete(),
                     None,
                     "Remove read permission downwards",
-                    self.ctxt,
                 )
                 .into(),
             )?;

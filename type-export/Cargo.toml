@@ -1,0 +1,17 @@
+[package]
+name = "type-export"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "generate_types"
+path = "src/main.rs"
+
+[dependencies]
+pcg = { path = "..", features = ["type-export"] }
+specta = { version = "2.0.0-rc.22", features = ["derive", "export"] }
+specta-typescript = "0.0.9"
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+

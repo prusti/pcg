@@ -129,6 +129,7 @@ pub(crate) type PcgArena<'a> = &'a PcgArenaStore;
 pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
     pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
+    #[cfg(feature = "visualization")]
     debug_graphs: Option<PCGEngineDebugData<'a>>,
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: BitSet<Block>,
@@ -195,6 +196,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             .get_used_places(block)
     }
 
+    #[cfg(feature = "visualization")]
     fn dot_graphs(&self, block: BasicBlock) -> Option<PcgBlockDebugVisualizationGraphs<'a>> {
         self.debug_graphs.as_ref().map(|data| {
             PcgBlockDebugVisualizationGraphs::new(
@@ -212,6 +214,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             self.body_analysis,
             self.symbolic_capability_ctxt,
             self.arena,
+            #[cfg(feature = "visualization")]
             self.dot_graphs(block),
         )
     }
@@ -305,8 +308,9 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
         move_data: &'a MoveData<'tcx>,
         arena: PcgArena<'a>,
-        debug_output_dir: Option<PathBuf>,
+        #[cfg(feature = "visualization")] debug_output_dir: Option<PathBuf>,
     ) -> Self {
+        #[cfg(feature = "visualization")]
         let debug_data = debug_output_dir.map(|dir_path| {
             if dir_path.exists() {
                 std::fs::remove_dir_all(&dir_path).expect("Failed to delete directory contents");
@@ -335,6 +339,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             first_error: ErrorState::default(),
             reachable_blocks,
             ctxt,
+            #[cfg(feature = "visualization")]
             debug_graphs: debug_data,
             body_analysis: arena.alloc(BodyAnalysis::new(ctxt, move_data)),
             arena,

@@ -1,11 +1,10 @@
 import {
   getPathData,
-  getPCSIterations,
-  MirGraphNode,
-  MirStmt,
+  getPcgIterations,
   PcgBlockDotGraphs,
 } from "./api";
-import { CurrentPoint, PathData } from "./types";
+import { MirNode } from "./generated/types";
+import { CurrentPoint, MirStmt, PathData } from "./types";
 
 export function reloadIterations(
   selectedFunction: string,
@@ -17,7 +16,7 @@ export function reloadIterations(
     return;
   }
   const fetchIterations = async () => {
-    const iterations = await getPCSIterations(
+    const iterations = await getPcgIterations(
       selectedFunction,
       currentPoint.block
     );
@@ -67,8 +66,8 @@ export async function reloadPathData(
 }
 
 export function addKeyDownListener(
-  nodes: MirGraphNode[],
-  filteredNodes: MirGraphNode[],
+  nodes: MirNode[],
+  filteredNodes: MirNode[],
   setCurrentPoint: React.Dispatch<React.SetStateAction<CurrentPoint>>
 ) {
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -84,8 +83,8 @@ export function addKeyDownListener(
 
 function keydown(
   event: KeyboardEvent,
-  nodes: MirGraphNode[],
-  filteredNodes: MirGraphNode[],
+  nodes: MirNode[],
+  filteredNodes: MirNode[],
   setCurrentPoint: React.Dispatch<React.SetStateAction<CurrentPoint>>
 ) {
   if (

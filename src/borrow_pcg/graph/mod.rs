@@ -478,6 +478,7 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub struct Conditioned<T, Conditions = ValidityConditions> {
     pub(crate) conditions: Conditions,
     pub(crate) value: T,

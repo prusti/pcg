@@ -7,13 +7,12 @@ import {
   DagreNode,
   BasicBlockData,
 } from "../types";
-
-import { MirGraphNode } from "../api";
+import { MirNode } from "../generated/types";
 
 interface MirGraphProps {
   nodes: DagreNode<BasicBlockData>[];
   edges: DagreEdge[];
-  mirNodes: MirGraphNode[];
+  mirNodes: MirNode[];
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
   isBlockOnSelectedPath: (block: number) => boolean;
