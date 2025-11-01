@@ -16,12 +16,17 @@ type NavigationItem =
       action: PcgAction;
     };
 
-function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr) {
+function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr): string {
   switch (action.type) {
     case "Expand":
       return `unpack ${action.data.from}`;
     case "Collapse":
       return `pack ${action.data.to}`;
+    case "AddEdge":
+    case "RemoveEdge":
+    case "Restore":
+    case "Weaken":
+      return String(action.data);
     default:
       return JSON.stringify(action);
   }
@@ -42,10 +47,26 @@ export default function PCGNavigator({
   onSelectPhase: (index: number) => void;
   onSelectAction: (action: SelectedAction | null) => void;
 }) {
+  const [isDocked, setIsDocked] = useState(() => {
+    const saved = localStorage.getItem("pcgNavigatorDocked");
+    return saved !== "false";
+  });
+  const [isMinimized, setIsMinimized] = useState(() => {
+    const saved = localStorage.getItem("pcgNavigatorMinimized");
+    return saved === "true";
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("pcgNavigatorDocked", isDocked.toString());
+  }, [isDocked]);
+
+  useEffect(() => {
+    localStorage.setItem("pcgNavigatorMinimized", isMinimized.toString());
+  }, [isMinimized]);
 
   // Build navigation items list with interleaving
   const buildNavigationItems = (): NavigationItem[] => {
@@ -81,7 +102,7 @@ export default function PCGNavigator({
     phases.forEach((phase) => {
       // Add actions for this phase
       pcgData.actions[phase].forEach((action, index) => {
-        if (action.data.kind.type !== "MakePlaceOld") {
+        if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
           items.push({ type: "action", phase, index, action });
         }
       });
@@ -114,18 +135,20 @@ export default function PCGNavigator({
     }
   }, [initialized]);
 
-  // Drag handlers
+  // Drag handlers (only for floating mode)
   const handleMouseDown = (event: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({
-      x: event.clientX - position.x,
-      y: event.clientY - position.y,
-    });
+    if (!isDocked) {
+      setIsDragging(true);
+      setDragStart({
+        x: event.clientX - position.x,
+        y: event.clientY - position.y,
+      });
+    }
   };
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
-      if (isDragging) {
+      if (isDragging && !isDocked) {
         setPosition({
           x: event.clientX - dragStart.x,
           y: event.clientY - dragStart.y,
@@ -145,7 +168,7 @@ export default function PCGNavigator({
         window.removeEventListener("mouseup", handleMouseUp);
       };
     }
-  }, [isDragging, dragStart]);
+  }, [isDragging, dragStart, isDocked]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -255,6 +278,116 @@ export default function PCGNavigator({
     });
   };
 
+  if (isDocked) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: isMinimized ? "40px" : "350px",
+          backgroundColor: "white",
+          boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
+          display: "flex",
+          flexDirection: "column",
+          zIndex: 1000,
+          transition: "width 0.3s ease",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px",
+            borderBottom: "1px solid #ddd",
+            backgroundColor: "#f5f5f5",
+            flexShrink: 0,
+          }}
+        >
+          {!isMinimized && (
+            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+              Navigator
+            </h3>
+          )}
+          <div style={{ display: "flex", gap: "5px", marginLeft: "auto" }}>
+            <button
+              onClick={() => setIsMinimized(!isMinimized)}
+              style={{
+                cursor: "pointer",
+                backgroundColor: "#888",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                padding: "5px 8px",
+                fontSize: "12px",
+              }}
+              title={isMinimized ? "Maximize" : "Minimize"}
+            >
+              {isMinimized ? "▶" : "◀"}
+            </button>
+            <button
+              onClick={() => setIsDocked(false)}
+              style={{
+                cursor: "pointer",
+                backgroundColor: "#4CAF50",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                padding: "5px 8px",
+                fontSize: "12px",
+              }}
+              title="Detach"
+            >
+              ⤢
+            </button>
+          </div>
+        </div>
+        {!isMinimized && (
+          <>
+            <div
+              style={{
+                flex: 1,
+                overflowY: "auto",
+                padding: "15px",
+              }}
+            >
+              {renderItems()}
+            </div>
+            <div
+              style={{
+                padding: "10px",
+                fontSize: "12px",
+                color: "#666",
+                borderTop: "1px solid #ddd",
+                backgroundColor: "#f5f5f5",
+                flexShrink: 0,
+              }}
+            >
+              Press 'q'/'a' to navigate between phases and actions
+            </div>
+          </>
+        )}
+        {isMinimized && (
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              writingMode: "vertical-rl",
+              fontSize: "12px",
+              color: "#666",
+            }}
+          >
+            Navigator
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -269,13 +402,49 @@ export default function PCGNavigator({
         maxHeight: "80vh",
         cursor: isDragging ? "grabbing" : "grab",
         userSelect: "none",
+        zIndex: 1000,
       }}
       onMouseDown={handleMouseDown}
     >
-      <div style={{ marginBottom: "10px" }}>
-        {renderItems()}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "10px",
+          paddingBottom: "10px",
+          borderBottom: "1px solid #ddd",
+        }}
+      >
+        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+          Navigator
+        </h3>
+        <button
+          onClick={() => setIsDocked(true)}
+          style={{
+            cursor: "pointer",
+            backgroundColor: "#4CAF50",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            padding: "5px 8px",
+            fontSize: "12px",
+          }}
+          title="Dock to right"
+        >
+          ⤢
+        </button>
       </div>
-      <div style={{ marginTop: "10px", fontSize: "12px", color: "#666", borderTop: "1px solid #ddd", paddingTop: "10px" }}>
+      <div style={{ marginBottom: "10px" }}>{renderItems()}</div>
+      <div
+        style={{
+          marginTop: "10px",
+          fontSize: "12px",
+          color: "#666",
+          borderTop: "1px solid #ddd",
+          paddingTop: "10px",
+        }}
+      >
         Press 'q'/'a' to navigate between phases and actions
       </div>
     </div>
