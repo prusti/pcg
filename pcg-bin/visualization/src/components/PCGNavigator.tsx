@@ -6,6 +6,7 @@ import {
   SelectedAction,
 } from "../types";
 import { BorrowPcgActionKindDebugRepr, RepackOp, StmtGraphs } from "../generated/types";
+import { storage } from "../storage";
 
 type NavigationItem =
   | { type: "phase"; index: number; name: string; filename: string }
@@ -48,11 +49,11 @@ export default function PCGNavigator({
   onSelectAction: (action: SelectedAction | null) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
-    const saved = localStorage.getItem("pcgNavigatorDocked");
+    const saved = storage.getItem("pcgNavigatorDocked");
     return saved !== "false";
   });
   const [isMinimized, setIsMinimized] = useState(() => {
-    const saved = localStorage.getItem("pcgNavigatorMinimized");
+    const saved = storage.getItem("pcgNavigatorMinimized");
     return saved === "true";
   });
   const [isDragging, setIsDragging] = useState(false);
@@ -61,11 +62,11 @@ export default function PCGNavigator({
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("pcgNavigatorDocked", isDocked.toString());
+    storage.setItem("pcgNavigatorDocked", isDocked.toString());
   }, [isDocked]);
 
   useEffect(() => {
-    localStorage.setItem("pcgNavigatorMinimized", isMinimized.toString());
+    storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
   }, [isMinimized]);
 
   // Build navigation items list with interleaving

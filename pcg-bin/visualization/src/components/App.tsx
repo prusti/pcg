@@ -29,6 +29,8 @@ import {
   layoutUnsizedNodes,
   toDagreEdges,
 } from "../mir_graph";
+import { cacheZip } from "../zipCache";
+import { storage } from "../storage";
 import FunctionSelector from "./FunctionSelector";
 import PCGNavigator from "./PCGNavigator";
 import PathSelector from "./PathSelector";
@@ -52,7 +54,7 @@ const getActionGraphFilename = (
 function getPCGDotGraphFilename(
   currentPoint: CurrentPoint,
   selectedFunction: string,
-  selected: number,
+  selected: number | null,
   graphs: PcgBlockDotGraphs
 ): string | null {
   if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
@@ -71,8 +73,8 @@ function getPCGDotGraphFilename(
 
   const phases: [string, string][] = graphs[currentPoint.stmt].at_phase;
 
-  // Handle deselection case
-  if (selected < 0) {
+  // Handle deselection case or null selection
+  if (selected === null || selected < 0 || phases.length === 0) {
     return null;
   }
 
@@ -130,28 +132,28 @@ export const App: React.FC<AppProps> = ({
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
-    localStorage.getItem("showPathBlocksOnly") === "true"
+    storage.getItem("showPathBlocksOnly") === "true"
   );
   const [showUnwindEdges] = useState(false);
   const [showPCG, setShowPCG] = useState(
-    localStorage.getItem("showPCG") !== "false"
+    storage.getItem("showPCG") !== "false"
   );
   const [showPCGNavigator, setShowPCGNavigator] = useState(
-    localStorage.getItem("showPCGNavigator") !== "false"
+    storage.getItem("showPCGNavigator") !== "false"
   );
   const [showSettings, setShowSettings] = useState(
-    localStorage.getItem("showSettings") === "true"
+    storage.getItem("showSettings") === "true"
   );
   const [isSourceCodeMinimized, setIsSourceCodeMinimized] = useState(
-    localStorage.getItem("isSourceCodeMinimized") === "true"
+    storage.getItem("isSourceCodeMinimized") === "true"
   );
   const [codeFontSize, setCodeFontSize] = useState<number>(
-    parseInt(localStorage.getItem("codeFontSize") || "12")
+    parseInt(storage.getItem("codeFontSize") || "12")
   );
 
   // State for panel resizing
   const [leftPanelWidth, setLeftPanelWidth] = useState<string>(
-    localStorage.getItem("leftPanelWidth") || "50%"
+    storage.getItem("leftPanelWidth") || "50%"
   );
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dividerRef = useRef<HTMLDivElement>(null);
@@ -277,39 +279,39 @@ export const App: React.FC<AppProps> = ({
   }, [nodes, filteredNodes, showPathBlocksOnly, setCurrentPoint]);
 
   useEffect(() => {
-    localStorage.setItem("selectedFunction", selectedFunction.toString());
+    storage.setItem("selectedFunction", selectedFunction.toString());
   }, [selectedFunction]);
 
   useEffect(() => {
-    localStorage.setItem("selectedPath", selectedPath.toString());
+    storage.setItem("selectedPath", selectedPath.toString());
   }, [selectedPath]);
 
   useEffect(() => {
-    localStorage.setItem("showPathBlocksOnly", showPathBlocksOnly.toString());
+    storage.setItem("showPathBlocksOnly", showPathBlocksOnly.toString());
   }, [showPathBlocksOnly]);
 
   useEffect(() => {
-    localStorage.setItem("showPCG", showPCG.toString());
+    storage.setItem("showPCG", showPCG.toString());
   }, [showPCG]);
 
   useEffect(() => {
-    localStorage.setItem("showPCGNavigator", showPCGNavigator.toString());
+    storage.setItem("showPCGNavigator", showPCGNavigator.toString());
   }, [showPCGNavigator]);
 
   useEffect(() => {
-    localStorage.setItem("showSettings", showSettings.toString());
+    storage.setItem("showSettings", showSettings.toString());
   }, [showSettings]);
 
   useEffect(() => {
-    localStorage.setItem("isSourceCodeMinimized", isSourceCodeMinimized.toString());
+    storage.setItem("isSourceCodeMinimized", isSourceCodeMinimized.toString());
   }, [isSourceCodeMinimized]);
 
   useEffect(() => {
-    localStorage.setItem("codeFontSize", codeFontSize.toString());
+    storage.setItem("codeFontSize", codeFontSize.toString());
   }, [codeFontSize]);
 
   useEffect(() => {
-    localStorage.setItem("leftPanelWidth", leftPanelWidth.toString());
+    storage.setItem("leftPanelWidth", leftPanelWidth.toString());
   }, [leftPanelWidth]);
 
   const isBlockOnSelectedPath = useCallback(
@@ -519,6 +521,7 @@ export const App: React.FC<AppProps> = ({
                   const file = e.target.files?.[0];
                   if (file) {
                     const zipApi = await ZipFileApi.fromFile(file);
+                    await cacheZip(zipApi);
                     onApiChange(zipApi);
                   }
                 }}

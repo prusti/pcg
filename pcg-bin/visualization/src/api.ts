@@ -110,6 +110,15 @@ export class ZipFileApi extends Api {
     return new ZipFileApi(zip);
   }
 
+  static async fromBase64(base64String: string): Promise<ZipFileApi> {
+    const zip = await JSZip.loadAsync(base64String, { base64: true });
+    return new ZipFileApi(zip);
+  }
+
+  async toBase64(): Promise<string> {
+    return await this.zipFile.generateAsync({ type: "base64" });
+  }
+
   protected async fetchJsonFile(filePath: string): Promise<unknown> {
     const file = this.zipFile.file(filePath);
     if (!file) {
