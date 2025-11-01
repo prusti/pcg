@@ -60,7 +60,7 @@ export async function getPcgProgramPointData(
   functionName: string,
   currentPoint: CurrentPoint
 ): Promise<PcgProgramPointData> {
-  let path =
+  const path =
     currentPoint.type === "stmt"
       ? `block_${currentPoint.block}_stmt_${currentPoint.stmt}`
       : `block_${currentPoint.block1}_term_block_${currentPoint.block2}`;

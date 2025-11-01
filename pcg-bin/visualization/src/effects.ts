@@ -110,7 +110,7 @@ function keydown(
 
       const getNextStmtIdx = (node: { stmts: MirStmt[] }, from: number) => {
         const offset = direction === "up" ? -1 : 1;
-        let idx = from + offset;
+        const idx = from + offset;
         if (isSelectable(node, idx)) {
           return idx;
         } else {

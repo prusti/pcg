@@ -123,17 +123,17 @@ export const App: React.FC<AppProps> = ({
   });
 
   const [selectedFunction, setSelectedFunction] = useState<FunctionSlug>(
-    initialFunction || (Object.keys(functions)[0] as any)
+    initialFunction || (Object.keys(functions)[0] as FunctionSlug)
   );
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
   const [paths, setPaths] = useState<number[][]>(initialPaths);
-  const [assertions, setAssertions] = useState<Assertion[]>(initialAssertions);
+  const [assertions] = useState<Assertion[]>(initialAssertions);
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
     localStorage.getItem("showPathBlocksOnly") === "true"
   );
-  const [showUnwindEdges, setShowUnwindEdges] = useState(false);
+  const [showUnwindEdges] = useState(false);
   const [showPCG, setShowPCG] = useState(
     localStorage.getItem("showPCG") !== "false"
   );
@@ -174,7 +174,7 @@ export const App: React.FC<AppProps> = ({
     return toDagreEdges(filteredEdges);
   }, [filteredEdges]);
 
-  async function loadPCGDotGraph() {
+  const loadPCGDotGraph = useCallback(async () => {
     const dotGraph = document.getElementById("pcg-graph");
     if (!dotGraph) {
       console.error("Dot graph element not found");
@@ -196,7 +196,7 @@ export const App: React.FC<AppProps> = ({
         dotGraph.appendChild(viz.renderSVGElement(dotData));
       });
     }
-  }
+  }, [iterations, currentPoint, selectedFunction, selected]);
 
   useEffect(() => {
     const graph = document.getElementById("pcg-graph");
@@ -209,7 +209,7 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     loadPCGDotGraph();
-  }, [iterations, currentPoint, selectedFunction, selected]);
+  }, [loadPCGDotGraph]);
 
   useEffect(() => {
     if (selectedFunction) {
@@ -274,23 +274,43 @@ export const App: React.FC<AppProps> = ({
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
-  }, [nodes, showPathBlocksOnly]);
+  }, [nodes, filteredNodes, showPathBlocksOnly, setCurrentPoint]);
 
-  function addLocalStorageCallback(key: string, value: any) {
-    useEffect(() => {
-      localStorage.setItem(key, value.toString());
-    }, [value]);
-  }
+  useEffect(() => {
+    localStorage.setItem("selectedFunction", selectedFunction.toString());
+  }, [selectedFunction]);
 
-  addLocalStorageCallback("selectedFunction", selectedFunction);
-  addLocalStorageCallback("selectedPath", selectedPath);
-  addLocalStorageCallback("showPathBlocksOnly", showPathBlocksOnly);
-  addLocalStorageCallback("showPCG", showPCG);
-  addLocalStorageCallback("showPCGNavigator", showPCGNavigator);
-  addLocalStorageCallback("showSettings", showSettings);
-  addLocalStorageCallback("isSourceCodeMinimized", isSourceCodeMinimized);
-  addLocalStorageCallback("codeFontSize", codeFontSize);
-  addLocalStorageCallback("leftPanelWidth", leftPanelWidth);
+  useEffect(() => {
+    localStorage.setItem("selectedPath", selectedPath.toString());
+  }, [selectedPath]);
+
+  useEffect(() => {
+    localStorage.setItem("showPathBlocksOnly", showPathBlocksOnly.toString());
+  }, [showPathBlocksOnly]);
+
+  useEffect(() => {
+    localStorage.setItem("showPCG", showPCG.toString());
+  }, [showPCG]);
+
+  useEffect(() => {
+    localStorage.setItem("showPCGNavigator", showPCGNavigator.toString());
+  }, [showPCGNavigator]);
+
+  useEffect(() => {
+    localStorage.setItem("showSettings", showSettings.toString());
+  }, [showSettings]);
+
+  useEffect(() => {
+    localStorage.setItem("isSourceCodeMinimized", isSourceCodeMinimized.toString());
+  }, [isSourceCodeMinimized]);
+
+  useEffect(() => {
+    localStorage.setItem("codeFontSize", codeFontSize.toString());
+  }, [codeFontSize]);
+
+  useEffect(() => {
+    localStorage.setItem("leftPanelWidth", leftPanelWidth.toString());
+  }, [leftPanelWidth]);
 
   const isBlockOnSelectedPath = useCallback(
     (block: number) => {

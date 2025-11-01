@@ -1,5 +1,5 @@
 import React from "react";
-import { FunctionName, FunctionSlug, FunctionsMetadata } from "../types";
+import { FunctionSlug, FunctionsMetadata } from "../types";
 
 interface FunctionSelectorProps {
   functions: FunctionsMetadata;

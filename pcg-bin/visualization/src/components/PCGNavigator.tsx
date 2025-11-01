@@ -80,7 +80,7 @@ export default function PCGNavigator({
 
     // Map phase names to their indices in iterations.at_phase
     const phaseNameToIndex = new Map<string, number>();
-    iterations.at_phase.forEach(([name, filename], index) => {
+    iterations.at_phase.forEach(([name, _filename], index) => {
       phaseNameToIndex.set(name, index);
     });
 
@@ -365,7 +365,7 @@ export default function PCGNavigator({
                 flexShrink: 0,
               }}
             >
-              Press 'q'/'a' to navigate between phases and actions
+              Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
             </div>
           </>
         )}
@@ -445,7 +445,7 @@ export default function PCGNavigator({
           paddingTop: "10px",
         }}
       >
-        Press 'q'/'a' to navigate between phases and actions
+        Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
       </div>
     </div>
   );
