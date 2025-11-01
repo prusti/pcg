@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - improve-visualization-2
   workflow_dispatch:
 
 permissions:

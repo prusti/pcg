@@ -6,6 +6,7 @@ import {
   PcgProgramPointData,
 } from "./types";
 import * as JSZip from "jszip";
+import { loadCachedZip, cacheZip } from "./zipCache";
 
 export type PcgBlockDotGraphs = StmtGraphs<string>[];
 
@@ -163,6 +164,45 @@ function createDefaultApi(): Api {
   const datasrc = params.get('datasrc');
 
   return new FetchApi(datasrc || undefined);
+}
+
+function getDataZipUrl(): string {
+  const params = new URLSearchParams(window.location.search);
+  const datasrc = params.get('datasrc');
+
+  if (datasrc) {
+    const prefix = datasrc.endsWith('/') ? datasrc : `${datasrc}/`;
+    return `${prefix}data.zip`;
+  }
+
+  return "data.zip";
+}
+
+export async function getDefaultApi(): Promise<Api> {
+  const fetchApi = createDefaultApi();
+
+  try {
+    await fetchApi.getFunctions();
+    return fetchApi;
+  } catch (error) {
+    console.log("Failed to load data/functions.json, trying data.zip");
+  }
+
+  try {
+    const zipUrl = getDataZipUrl();
+    const zipApi = await ZipFileApi.fromUrl(zipUrl);
+    await cacheZip(zipApi);
+    return zipApi;
+  } catch (zipError) {
+    console.log("Failed to load data.zip, trying cached ZIP");
+  }
+
+  const cachedZip = await loadCachedZip();
+  if (cachedZip) {
+    return cachedZip;
+  }
+
+  throw new Error("No data source available");
 }
 
 export const api = createDefaultApi();

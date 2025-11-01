@@ -2,41 +2,30 @@ import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as Viz from "@viz-js/viz";
 
-import { api, Api, ZipFileApi } from "./api";
+import { getDefaultApi, Api, ZipFileApi } from "./api";
 import { App } from "./components/App";
 import { FunctionSlug } from "./types";
-import { loadCachedZip, cacheZip } from "./zipCache";
+import { cacheZip } from "./zipCache";
 import { storage } from "./storage";
 
-function getDataZipUrl(): string {
-  const params = new URLSearchParams(window.location.search);
-  const datasrc = params.get('datasrc');
-
-  if (datasrc) {
-    const prefix = datasrc.endsWith('/') ? datasrc : `${datasrc}/`;
-    return `${prefix}data.zip`;
-  }
-
-  return "data.zip";
-}
-
 function AppWrapper() {
-  const [currentApi, setCurrentApi] = useState<Api>(api);
+  const [currentApi, setCurrentApi] = useState<Api | null>(null);
   const [initialFunction, setInitialFunction] = useState<FunctionSlug | null>(null);
   const [initialPaths, setInitialPaths] = useState<number[][]>([]);
   const [initialAssertions, setInitialAssertions] = useState<any[]>([]);
   const [functions, setFunctions] = useState<any>(null);
   const [initialPath, setInitialPath] = useState<number>(0);
   const [dataUnavailable, setDataUnavailable] = useState<boolean>(false);
-  const [isLoadingCache, setIsLoadingCache] = useState<boolean>(false);
 
   React.useEffect(() => {
     async function loadData() {
       try {
-        const funcs = await currentApi.getFunctions();
+        const api = await getDefaultApi();
+        setCurrentApi(api);
+
+        const funcs = await api.getFunctions();
         setFunctions(funcs);
         setDataUnavailable(false);
-        setIsLoadingCache(false);
 
         let initFunc = storage.getItem("selectedFunction") as FunctionSlug;
         if (!initFunc || !Object.keys(funcs).includes(initFunc)) {
@@ -44,10 +33,10 @@ function AppWrapper() {
         }
         setInitialFunction(initFunc);
 
-        const paths = await currentApi.getPaths(initFunc);
+        const paths = await api.getPaths(initFunc);
         setInitialPaths(paths);
 
-        const assertions = await currentApi.getAssertions(initFunc);
+        const assertions = await api.getAssertions(initFunc);
         setInitialAssertions(assertions);
 
         let initPath = 0;
@@ -60,37 +49,14 @@ function AppWrapper() {
         }
         setInitialPath(initPath);
       } catch (error) {
-        if (currentApi === api) {
-          try {
-            const zipUrl = getDataZipUrl();
-            const zipApi = await ZipFileApi.fromUrl(zipUrl);
-            await cacheZip(zipApi);
-            setIsLoadingCache(true);
-            setCurrentApi(zipApi);
-            return;
-          } catch (zipError) {
-            console.log("Failed to load data.zip, trying cached ZIP");
-          }
-
-          const cachedZip = await loadCachedZip();
-          if (cachedZip) {
-            setIsLoadingCache(true);
-            setCurrentApi(cachedZip);
-          } else {
-            setDataUnavailable(true);
-            setFunctions(null);
-            setInitialFunction(null);
-          }
-        } else {
-          setDataUnavailable(true);
-          setFunctions(null);
-          setInitialFunction(null);
-        }
+        setDataUnavailable(true);
+        setFunctions(null);
+        setInitialFunction(null);
       }
     }
 
     loadData();
-  }, [currentApi]);
+  }, []);
 
   if (dataUnavailable) {
     return (
@@ -137,7 +103,7 @@ function AppWrapper() {
     );
   }
 
-  if (!functions || !initialFunction || isLoadingCache) {
+  if (!functions || !initialFunction || !currentApi) {
     return <div>Loading...</div>;
   }
 
