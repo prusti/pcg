@@ -111,7 +111,7 @@ export const App: React.FC<AppProps> = ({
   initialPath = 0,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [selected, setSelected] = useState<number | null>(999); // HACK - always show last iteration
+  const [selected, setSelected] = useState<number | null>(null);
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
@@ -245,9 +245,32 @@ export const App: React.FC<AppProps> = ({
     fetchPcgStmtVisualizationData();
   }, [selectedFunction, selectedPath, currentPoint, paths]);
 
+  const currentBlock = currentPoint.type === "stmt" ? currentPoint.block : null;
+  const currentStmt = currentPoint.type === "stmt" ? currentPoint.stmt : null;
+
   useEffect(() => {
     reloadIterations(selectedFunction, currentPoint, setIterations);
   }, [selectedFunction, currentPoint]);
+
+  useEffect(() => {
+    setSelected(null);
+  }, [selectedFunction, currentBlock, currentStmt]);
+
+  useEffect(() => {
+    if (
+      currentPoint.type === "stmt" &&
+      iterations.length > currentPoint.stmt &&
+      selected === null
+    ) {
+      const phases = iterations[currentPoint.stmt].at_phase;
+      const postMainIndex = phases.findIndex(([name]) => name === "post_main");
+      if (postMainIndex !== -1) {
+        setSelected(postMainIndex);
+      } else if (phases.length > 0) {
+        setSelected(phases.length - 1);
+      }
+    }
+  }, [iterations, currentPoint, selected]);
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
