@@ -24,11 +24,16 @@ issue](https://github.com/prusti/pcg/issues/new).
 ## Testing and Generating Debug Visualizations
 
 We provide a UI for generating debug visualizations for the PCG. You can see
-the visualization for some simple example programs here:
+the visualizations for some simple example programs here:
 https://prusti.github.io/pcg/
 
-If you want to generate and visualize PCGs for your own code, follow the
+We also provide a simple webservice where you can upload a Rust file and view
+the resulting PCGs: https://pcg.fly.dev.
+
+If you want to generate and visualize PCGs on your own machine, follow the
 instructions below...
+
+### Generating and visualizing PCGs locally
 
 The `pcg-bin` folder contains a binary can be used to run the PCG analysis on
 all functions within a Rust source file and (optionally) produce visualizations
@@ -37,8 +42,6 @@ of the analysis outputs that can be viewed via a web interface.
 To run the binary on all functions in a Rust source file:
 
 `cargo run [FILENAME].rs`
-
-### Visualizing the PCG Analysis Output Results
 
 To generate visualization output, set the `PCG_VISUALIZATION` environment
 variable to `true` when running the `pcg-bin`, e.g.:
