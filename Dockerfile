@@ -20,11 +20,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /usr/src/app
 
-# Copy all project files
-COPY . .
+# Copy rust-toolchain to ensure correct Rust version
+COPY rust-toolchain ./
 
 # Ensure the toolchain is installed
 RUN rustup show
+
+# Copy all project files
+COPY . .
 
 # Copy built visualization from node-builder
 RUN mkdir -p /usr/src/app/visualization/dist
@@ -42,4 +45,6 @@ EXPOSE 4000
 
 # Run pcg-server
 WORKDIR /usr/src/app/pcg-server
+
+RUN cargo build --release
 CMD ["cargo", "run", "--release"]
