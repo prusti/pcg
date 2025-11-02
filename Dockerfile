@@ -29,6 +29,9 @@ RUN rustup show
 # Copy all project files
 COPY . .
 
+# Add the target for the platform we're running on (after files are copied)
+RUN rustup target add $(rustc -vV | grep 'host:' | awk '{print $2}')
+
 # Copy built visualization from node-builder
 RUN mkdir -p /usr/src/app/visualization/dist
 COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualization/dist/
@@ -47,4 +50,14 @@ EXPOSE 4000
 WORKDIR /usr/src/app/pcg-server
 
 RUN cargo build --release
-CMD ["cargo", "run", "--release"]
+
+# Set LD_LIBRARY_PATH to include rustc libraries from the sysroot
+RUN RUSTC_SYSROOT=$(rustc --print sysroot) && \
+    echo "$RUSTC_SYSROOT/lib" > /etc/ld.so.conf.d/rustc.conf && \
+    ldconfig
+
+# Copy and set up the start script
+COPY pcg-server/start-server.sh /usr/local/bin/start-server.sh
+RUN chmod +x /usr/local/bin/start-server.sh
+
+CMD ["/usr/local/bin/start-server.sh"]
