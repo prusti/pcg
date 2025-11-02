@@ -65,6 +65,29 @@ async fn handle_upload(multipart: Multipart) -> Response {
 
 
 fn run_pcg_analysis(file_path: PathBuf, settings: PcgSettings) -> Result<(), String> {
+    use std::process::Command;
+    use tempfile::NamedTempFile;
+
+    // First, try to compile using rustc in a subprocess to detect compilation errors
+    // without crashing the server
+    let temp_out = NamedTempFile::new().map_err(|e| e.to_string())?;
+    let check_output = Command::new("rustc")
+        .arg("--crate-type")
+        .arg("lib")
+        .arg("--edition=2018")
+        .arg("--error-format=short")
+        .arg(&file_path)
+        .arg("-o")
+        .arg(temp_out.path())
+        .output()
+        .map_err(|e| format!("Failed to run rustc: {}", e))?;
+
+    if !check_output.status.success() {
+        let stderr = String::from_utf8_lossy(&check_output.stderr);
+        return Err(format!("Compilation failed:\n{}", stderr));
+    }
+
+    // If compilation succeeds, run PCG analysis
     let mut rustc_args = vec![file_path.to_str().unwrap().to_string()];
 
     if !rustc_args.iter().any(|arg| arg.starts_with("--edition")) {
@@ -110,8 +133,7 @@ fn run_pcg_analysis(file_path: PathBuf, settings: PcgSettings) -> Result<(), Str
         let krate = interface::passes::parse(sess);
         interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
             let _ = tcx.resolver_for_lowering();
-            tcx.dcx().abort_if_errors();
-            let _ = tcx.ensure_ok().analysis(());
+            let _ = tcx.analysis(());
             unsafe {
                 run_pcg_on_all_fns(tcx, settings);
             }

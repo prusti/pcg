@@ -50,6 +50,14 @@ jobs:
     - name: Run tests on files
       run: cd pcg-tests && cargo test
 
+  pcg_server_tests:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run pcg-server tests
+      run: cd pcg-server && cargo test
+
   build_2025_07_21:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
