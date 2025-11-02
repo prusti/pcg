@@ -4,10 +4,10 @@ FROM node:20 AS node-builder
 WORKDIR /usr/src/app/visualization
 
 # Copy visualization project files
-COPY pcg-bin/visualization/package*.json ./
+COPY visualization/package*.json ./
 RUN npm install
 
-COPY pcg-bin/visualization/ ./
+COPY visualization/ ./
 RUN npm run build
 
 # Backend stage - build and run with Rust
