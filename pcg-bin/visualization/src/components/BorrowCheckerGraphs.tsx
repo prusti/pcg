@@ -1,14 +1,17 @@
 import React from "react";
 import { openDotGraphInNewWindow } from "../dot_graph";
 import { CurrentPoint } from "../types";
+import { Api } from "../api";
 
 interface BorrowCheckerGraphsProps {
   currentPoint: CurrentPoint;
   selectedFunction: string;
+  api: Api;
 }
 export default function BorrowCheckerGraphs({
   currentPoint,
   selectedFunction,
+  api,
 }: BorrowCheckerGraphsProps) {
   return (
     <>
@@ -17,7 +20,7 @@ export default function BorrowCheckerGraphs({
         onClick={async () => {
           if (currentPoint.type == "stmt") {
             const dotFilePath = `data/${selectedFunction}/bc_facts_graph_bb${currentPoint.block}_${currentPoint.stmt}_start.dot`;
-            openDotGraphInNewWindow(dotFilePath);
+            openDotGraphInNewWindow(api, dotFilePath);
           }
         }}
       >
@@ -29,7 +32,7 @@ export default function BorrowCheckerGraphs({
         onClick={async () => {
           if (currentPoint.type == "stmt") {
             const dotFilePath = `data/${selectedFunction}/bc_facts_graph_bb${currentPoint.block}_${currentPoint.stmt}_mid.dot`;
-            openDotGraphInNewWindow(dotFilePath);
+            openDotGraphInNewWindow(api, dotFilePath);
           }
         }}
       >
@@ -41,7 +44,7 @@ export default function BorrowCheckerGraphs({
         onClick={async () => {
           if (currentPoint.type == "stmt") {
             const dotFilePath = `data/${selectedFunction}/bc_facts_graph_anywhere.dot`;
-            openDotGraphInNewWindow(dotFilePath);
+            openDotGraphInNewWindow(api, dotFilePath);
           }
         }}
       >
@@ -53,7 +56,7 @@ export default function BorrowCheckerGraphs({
         onClick={async () => {
           if (currentPoint.type == "stmt") {
             const dotFilePath = `data/${selectedFunction}/region_inference_outlives.dot`;
-            openDotGraphInNewWindow(dotFilePath);
+            openDotGraphInNewWindow(api, dotFilePath);
           }
         }}
       >

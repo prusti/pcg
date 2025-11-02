@@ -17,6 +17,8 @@ type NavigationItem =
       action: PcgAction;
     };
 
+const NAVIGATOR_MAX_WIDTH = "200px";
+
 function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr): string {
   switch (action.type) {
     case "Expand":
@@ -49,12 +51,10 @@ export default function PCGNavigator({
   onSelectAction: (action: SelectedAction | null) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
-    const saved = storage.getItem("pcgNavigatorDocked");
-    return saved !== "false";
+    return storage.getBool("pcgNavigatorDocked", true);
   });
   const [isMinimized, setIsMinimized] = useState(() => {
-    const saved = storage.getItem("pcgNavigatorMinimized");
-    return saved === "true";
+    return storage.getBool("pcgNavigatorMinimized", false);
   });
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -287,13 +287,12 @@ export default function PCGNavigator({
           right: 0,
           top: 0,
           bottom: 0,
-          width: isMinimized ? "40px" : "350px",
+          width: isMinimized ? "40px" : NAVIGATOR_MAX_WIDTH,
           backgroundColor: "white",
           boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
           display: "flex",
           flexDirection: "column",
           zIndex: 1000,
-          transition: "width 0.3s ease",
         }}
       >
         <div
@@ -398,7 +397,7 @@ export default function PCGNavigator({
         backgroundColor: "white",
         boxShadow: "0 0 10px rgba(0,0,0,0.1)",
         padding: "15px",
-        maxWidth: "350px",
+        maxWidth: NAVIGATOR_MAX_WIDTH,
         overflowY: "auto",
         maxHeight: "80vh",
         cursor: isDragging ? "grabbing" : "grab",

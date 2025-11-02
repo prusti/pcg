@@ -23,6 +23,14 @@ class VersionedStorage {
     localStorage.removeItem(this.getKey(key));
   }
 
+  getBool(key: string, defaultValue: boolean): boolean {
+    const value = this.getItem(key);
+    if (value === null) {
+      return defaultValue;
+    }
+    return value === "true";
+  }
+
   clear(): void {
     const keys = Object.keys(localStorage);
     keys.forEach((key) => {
