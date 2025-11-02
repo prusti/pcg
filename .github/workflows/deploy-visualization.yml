@@ -47,7 +47,7 @@ jobs:
       - name: Generate visualization data from rfmig examples
         working-directory: pcg-bin
         run: |
-          mkdir -p visualization/data
+          mkdir -p ../visualization/data
           PCG_VISUALIZATION=true \
           cargo run --release -- ../test-files/209_rfmig_demos.rs
 

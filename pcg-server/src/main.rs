@@ -21,7 +21,7 @@ use pcg::rustc_interface::driver::{self, args};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::rustc_interface::session::EarlyDiagCtxt;
-use pcg::PcgSettings;
+use pcg::utils::PcgSettings;
 
 mod callbacks;
 use callbacks::run_pcg_on_all_fns;
@@ -37,7 +37,8 @@ async fn main() {
     let app = Router::new()
         .route("/", get(serve_upload_form))
         .route("/upload", post(handle_upload))
-        .fallback_service(ServeDir::new("./").append_index_html_on_directories(false));
+        .nest_service("/visualization", ServeDir::new("../visualization"))
+        .nest_service("/tmp", ServeDir::new("./tmp"));
 
     info!("Starting server on 0.0.0.0:4000");
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
@@ -219,8 +220,8 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     // Get absolute paths for both input file and data directory
     let abs_file_path = file_path.canonicalize().map_err(|e| e.to_string())?;
     let abs_data_dir = data_dir.canonicalize().map_err(|e| e.to_string())?;
-    debug!("Using absolute file path: {:?}", abs_file_path);
-    debug!("Using absolute data dir: {:?}", abs_data_dir);
+    info!("Using absolute file path: {:?}", abs_file_path);
+    info!("Using absolute data dir: {:?}", abs_data_dir);
 
     // Run PCG analysis using the library directly with visualization enabled
     let settings = PcgSettings {
@@ -238,7 +239,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
         emit_annotations: false,
         check_function: None,
         skip_function: None,
-        coupling: cfg!(feature = "coupling"),
+        coupling: true
     };
 
     let result = run_pcg_analysis(abs_file_path, settings);
@@ -251,12 +252,12 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     // Zip the data directory
     let data_zip_path = unique_dir.join("data.zip");
     zip_directory(&data_dir, &data_zip_path)?;
-    debug!("Created data.zip at {:?}", data_zip_path);
+    info!("Created data.zip at {:?}", data_zip_path);
 
-    // Redirect to hosted visualization with data source URL
+    // Redirect to local visualization with data source URL
     let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
     let redirect_url = format!(
-        "https://prusti.github.io/pcg/#datasrc=/tmp/{}",
+        "/visualization/?datasrc=/tmp/{}",
         unique_dir_name
     );
     Ok(Redirect::to(&redirect_url).into_response())

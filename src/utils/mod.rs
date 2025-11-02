@@ -156,7 +156,7 @@ impl PcgSettings {
         let visualization = Self::process_bool_var(&mut processed_vars, "PCG_VISUALIZATION", false);
         let visualization_data_dir = PathBuf::from(
             Self::process_string_var(&mut processed_vars, "PCG_VISUALIZATION_DATA_DIR")
-                .unwrap_or("visualization/data".into()),
+                .unwrap_or("../visualization/data".into()),
         );
 
         let check_annotations =

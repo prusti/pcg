@@ -1,5 +1,6 @@
 use borrowck_body_storage::take_stored_body;
-use pcg::{PcgCtxtCreator, PcgSettings, run_pcg};
+use pcg::{PcgCtxtCreator, run_pcg};
+use pcg::utils::PcgSettings;
 use pcg::rustc_interface::{
     hir::def::DefKind,
     middle::ty::TyCtxt,
@@ -36,7 +37,6 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>, settings: PcgSettings) {
         let _ = run_pcg(pcg_ctxt);
     }
 
-    #[cfg(feature = "visualization")]
     ctxt_creator.write_debug_visualization_metadata();
 }
 
