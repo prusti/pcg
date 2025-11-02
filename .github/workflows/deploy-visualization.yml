@@ -47,7 +47,7 @@ jobs:
       - name: Generate visualization data from rfmig examples
         working-directory: pcg-bin
         run: |
-          mkdir -p visualization/data
+          mkdir -p ../visualization/data
           PCG_VISUALIZATION=true \
           cargo run --release -- ../test-files/209_rfmig_demos.rs
 
@@ -56,22 +56,22 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: pcg-bin/visualization/package-lock.json
+          cache-dependency-path: visualization/package-lock.json
 
       - name: Install dependencies
-        working-directory: pcg-bin/visualization
+        working-directory: visualization
         run: npm ci
 
       - name: Build visualization
-        working-directory: pcg-bin/visualization
+        working-directory: visualization
         run: npm run build
 
       - name: Prepare deployment directory
         run: |
           mkdir -p _site
-          cp pcg-bin/visualization/index.html _site/
-          cp -r pcg-bin/visualization/dist _site/
-          cp -r pcg-bin/visualization/data _site/
+          cp visualization/index.html _site/
+          cp -r visualization/dist _site/
+          cp -r visualization/data _site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

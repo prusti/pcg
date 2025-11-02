@@ -1,7 +1,7 @@
 import * as Viz from "@viz-js/viz";
-import { api } from "./api";
+import { Api } from "./api";
 
-export async function openDotGraphInNewWindow(filename: string) {
+export async function openDotGraphInNewWindow(api: Api, filename: string) {
     const dotData = await api.fetchDotFile(filename);
     Viz.instance().then((viz) => {
       const svgElement = viz.renderSVGElement(dotData);
@@ -10,6 +10,10 @@ export async function openDotGraphInNewWindow(filename: string) {
         `Dot Graph - ${filename}`,
         "width=800,height=600"
       );
+      if (!popup) {
+        console.error("Failed to open popup window");
+        return;
+      }
       popup.document.head.innerHTML = `
         <style>
           body { margin: 0; }

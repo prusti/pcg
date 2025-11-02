@@ -50,6 +50,14 @@ jobs:
     - name: Run tests on files
       run: cd pcg-tests && cargo test
 
+  pcg_server_tests:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Run pcg-server tests
+      run: cd pcg-server && cargo test
+
   build_2025_07_21:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
@@ -164,20 +172,60 @@ jobs:
       with:
         node-version: '20'
         cache: 'npm'
-        cache-dependency-path: pcg-bin/visualization/package-lock.json
+        cache-dependency-path: visualization/package-lock.json
 
     - name: Install web visualization dependencies
-      working-directory: pcg-bin/visualization
+      working-directory: visualization
       run: npm ci
 
     - name: Check for unused .tsx files
-      working-directory: pcg-bin/visualization
+      working-directory: visualization
       run: npm run check-unused
 
     - name: Lint TypeScript/JavaScript code
-      working-directory: pcg-bin/visualization
+      working-directory: visualization
       run: npm run lint
 
     - name: Build web visualization
-      working-directory: pcg-bin/visualization
+      working-directory: visualization
       run: npm run build
+
+  build_docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max

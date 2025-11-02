@@ -11,3 +11,5 @@ visualization/data/
 .DS_Store
 **/*.swp
 **/*.swo
+
+Dockerfile

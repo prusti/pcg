@@ -132,20 +132,20 @@ export const App: React.FC<AppProps> = ({
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
-    storage.getItem("showPathBlocksOnly") === "true"
+    storage.getBool("showPathBlocksOnly", false)
   );
   const [showUnwindEdges] = useState(false);
   const [showPCG, setShowPCG] = useState(
-    storage.getItem("showPCG") !== "false"
+    storage.getBool("showPCG", true)
   );
   const [showPCGNavigator, setShowPCGNavigator] = useState(
-    storage.getItem("showPCGNavigator") !== "false"
+    storage.getBool("showPCGNavigator", true)
   );
   const [showSettings, setShowSettings] = useState(
-    storage.getItem("showSettings") === "true"
+    storage.getBool("showSettings", false)
   );
   const [isSourceCodeMinimized, setIsSourceCodeMinimized] = useState(
-    storage.getItem("isSourceCodeMinimized") === "true"
+    storage.getBool("isSourceCodeMinimized", false)
   );
   const [codeFontSize, setCodeFontSize] = useState<number>(
     parseInt(storage.getItem("codeFontSize") || "12")
@@ -578,7 +578,7 @@ export const App: React.FC<AppProps> = ({
                     iterations
                   );
                   if (dotFilePath) {
-                    openDotGraphInNewWindow(dotFilePath);
+                    openDotGraphInNewWindow(api, dotFilePath);
                   }
                 }}
               >
@@ -599,6 +599,7 @@ export const App: React.FC<AppProps> = ({
               <BorrowCheckerGraphs
                 currentPoint={currentPoint}
                 selectedFunction={selectedFunction}
+                api={api}
               />
             </div>
           </div>

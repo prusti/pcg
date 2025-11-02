@@ -21,7 +21,7 @@ use pcg::rustc_interface::driver::{self, args};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::rustc_interface::session::EarlyDiagCtxt;
-use pcg::PcgSettings;
+use pcg::utils::PcgSettings;
 
 mod callbacks;
 use callbacks::run_pcg_on_all_fns;
@@ -37,7 +37,8 @@ async fn main() {
     let app = Router::new()
         .route("/", get(serve_upload_form))
         .route("/upload", post(handle_upload))
-        .fallback_service(ServeDir::new("./").append_index_html_on_directories(false));
+        .nest_service("/visualization", ServeDir::new("../visualization"))
+        .nest_service("/tmp", ServeDir::new("./tmp"));
 
     info!("Starting server on 0.0.0.0:4000");
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
@@ -64,6 +65,29 @@ async fn handle_upload(multipart: Multipart) -> Response {
 
 
 fn run_pcg_analysis(file_path: PathBuf, settings: PcgSettings) -> Result<(), String> {
+    use std::process::Command;
+    use tempfile::NamedTempFile;
+
+    // First, try to compile using rustc in a subprocess to detect compilation errors
+    // without crashing the server
+    let temp_out = NamedTempFile::new().map_err(|e| e.to_string())?;
+    let check_output = Command::new("rustc")
+        .arg("--crate-type")
+        .arg("lib")
+        .arg("--edition=2018")
+        .arg("--error-format=short")
+        .arg(&file_path)
+        .arg("-o")
+        .arg(temp_out.path())
+        .output()
+        .map_err(|e| format!("Failed to run rustc: {}", e))?;
+
+    if !check_output.status.success() {
+        let stderr = String::from_utf8_lossy(&check_output.stderr);
+        return Err(format!("Compilation failed:\n{}", stderr));
+    }
+
+    // If compilation succeeds, run PCG analysis
     let mut rustc_args = vec![file_path.to_str().unwrap().to_string()];
 
     if !rustc_args.iter().any(|arg| arg.starts_with("--edition")) {
@@ -109,8 +133,7 @@ fn run_pcg_analysis(file_path: PathBuf, settings: PcgSettings) -> Result<(), Str
         let krate = interface::passes::parse(sess);
         interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
             let _ = tcx.resolver_for_lowering();
-            tcx.dcx().abort_if_errors();
-            let _ = tcx.ensure_ok().analysis(());
+            let _ = tcx.analysis(());
             unsafe {
                 run_pcg_on_all_fns(tcx, settings);
             }
@@ -170,17 +193,25 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
         debug!("Processing multipart field: {}", name);
 
         match name.as_str() {
-            "input_method" => {
+            "input-method" => {
                 input_method = field.text().await.map_err(|e| e.to_string())?;
                 debug!("Got input method: {}", input_method);
             }
             "code" => {
-                code = field.text().await.map_err(|e| e.to_string())?;
-                debug!("Got code field content length: {}", code.len());
+                let code_text = field.text().await.map_err(|e| e.to_string())?;
+                debug!("Got code field content length: {}", code_text.len());
+                if input_method == "code" {
+                    code = code_text;
+                    debug!("Using code from textarea");
+                } else {
+                    debug!("Ignoring code field because input method is: {}", input_method);
+                }
             }
             "file" => {
+                debug!("Processing file field, input_method={}", input_method);
                 if input_method == "file" {
                     let file_name = field.file_name().ok_or("No file name")?.to_string();
+                    debug!("File name: {}", file_name);
 
                     if !file_name.ends_with(".rs") {
                         return Ok((
@@ -192,6 +223,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
                     let contents = field.bytes().await.map_err(|e| e.to_string())?;
                     code = String::from_utf8(contents.to_vec()).map_err(|e| e.to_string())?;
+                    debug!("Extracted code from file, length: {}", code.len());
                 }
             }
             _ => {
@@ -219,8 +251,8 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     // Get absolute paths for both input file and data directory
     let abs_file_path = file_path.canonicalize().map_err(|e| e.to_string())?;
     let abs_data_dir = data_dir.canonicalize().map_err(|e| e.to_string())?;
-    debug!("Using absolute file path: {:?}", abs_file_path);
-    debug!("Using absolute data dir: {:?}", abs_data_dir);
+    info!("Using absolute file path: {:?}", abs_file_path);
+    info!("Using absolute data dir: {:?}", abs_data_dir);
 
     // Run PCG analysis using the library directly with visualization enabled
     let settings = PcgSettings {
@@ -238,7 +270,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
         emit_annotations: false,
         check_function: None,
         skip_function: None,
-        coupling: cfg!(feature = "coupling"),
+        coupling: true
     };
 
     let result = run_pcg_analysis(abs_file_path, settings);
@@ -251,12 +283,12 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     // Zip the data directory
     let data_zip_path = unique_dir.join("data.zip");
     zip_directory(&data_dir, &data_zip_path)?;
-    debug!("Created data.zip at {:?}", data_zip_path);
+    info!("Created data.zip at {:?}", data_zip_path);
 
-    // Redirect to hosted visualization with data source URL
+    // Redirect to local visualization with data source URL
     let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
     let redirect_url = format!(
-        "https://prusti.github.io/pcg/#datasrc=/tmp/{}",
+        "/visualization/?datasrc=/tmp/{}",
         unique_dir_name
     );
     Ok(Redirect::to(&redirect_url).into_response())

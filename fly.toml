@@ -1,0 +1,16 @@
+app = "pcg"
+build = { }
+primary_region = "sjc"
+
+[http_service]
+auto_start_machines = true
+auto_stop_machines = true
+force_https = true
+internal_port = 4_000
+min_machines_running = 0
+processes = [ "app" ]
+
+[[vm]]
+cpu_kind = "performance"
+cpus = 1
+memory = "8gb"

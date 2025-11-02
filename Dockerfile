@@ -1,46 +1,5 @@
-FROM rust:1.75 as rust-deps
-
-# Install required dependencies
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /usr/src/app
-
-# Copy Rust project files
-COPY . .
-
-FROM rust-deps as dev-profile
-
-# Install extra useful stuff
-RUN apt-get update && apt-get install -y \
-    golang-go tmux vim graphviz \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install latest pprof
-RUN go install github.com/google/pprof@latest
-
-# Build a debug version
-WORKDIR /usr/src/app/pcg-bin
-RUN cargo build
-
-# Set up Rust environment variables
-ENV PATH="/usr/local/cargo/bin:${PATH}"
-ENV RUSTUP_HOME="/usr/local/rustup"
-ENV CARGO_HOME="/usr/local/cargo"
-
-FROM rust-deps as rust-pcg-server-builder
-
-# Build PCG binary
-WORKDIR /usr/src/app/pcg-bin
-RUN cargo build --release
-
-# Build pcg-server
-WORKDIR /usr/src/app/pcg-server
-RUN cargo build --release
-
 # Build stage for Node.js visualization
-FROM node:20 as node-builder
+FROM node:20 AS node-builder
 
 WORKDIR /usr/src/app/visualization
 
@@ -51,35 +10,35 @@ RUN npm install
 COPY visualization/ ./
 RUN npm run build
 
-# Final stage
-FROM debian:bookworm-slim
+# Backend stage - build and run with Rust
+FROM rust:1.91
 
-# Install required runtime dependencies
+# Install required dependencies
 RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libgcc-12-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
+# Copy rust-toolchain to ensure correct Rust version
+COPY rust-toolchain ./
+
+# Ensure the toolchain is installed
+RUN rustup show
+
+# Copy all project files
+COPY . .
+
+# Add the target for the platform we're running on (after files are copied)
+RUN rustup target add $(rustc -vV | grep 'host:' | awk '{print $2}')
+
+# Copy built visualization from node-builder
+RUN mkdir -p /usr/src/app/visualization/dist
+COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualization/dist/
+COPY --from=node-builder /usr/src/app/visualization/index.html /usr/src/app/visualization/index.html
+
 # Create tmp directory with proper permissions
-RUN mkdir tmp && chmod 777 tmp
-
-# Copy built artifacts from previous stages
-COPY --from=rust-pcg-server-builder /usr/src/app/pcg-bin/target/release/pcg_bin ./
-COPY --from=rust-pcg-server-builder /usr/src/app/pcg-server/target/release/pcg-server ./
-COPY --from=rust-pcg-server-builder /usr/src/app/pcg-server/templates ./templates
-# Copy Rust runtime libraries
-COPY --from=rust-pcg-server-builder /usr/local/rustup /usr/local/rustup
-COPY --from=rust-pcg-server-builder /usr/local/cargo /usr/local/cargo
-ENV PATH="/usr/local/cargo/bin:${PATH}"
-ENV RUSTUP_HOME="/usr/local/rustup"
-ENV CARGO_HOME="/usr/local/cargo"
-
-# Set up visualization directory structure
-RUN mkdir -p visualization/dist
-COPY --from=node-builder /usr/src/app/visualization/dist ./visualization/dist/
-COPY --from=node-builder /usr/src/app/visualization/index.html ./visualization/
+RUN mkdir -p pcg-server/tmp && chmod 777 pcg-server/tmp
 
 # Enable full backtraces
 ENV RUST_BACKTRACE=1
@@ -87,15 +46,18 @@ ENV RUST_BACKTRACE=1
 # Expose port for pcg-server
 EXPOSE 4000
 
-# Expose port for memory profiling
-EXPOSE 4444
+# Run pcg-server
+WORKDIR /usr/src/app/pcg-server
 
-CMD ["./pcg-server"]
+RUN cargo build --release
 
-FROM rust-deps as rust-artifact
+# Set LD_LIBRARY_PATH to include rustc libraries from the sysroot
+RUN RUSTC_SYSROOT=$(rustc --print sysroot) && \
+    echo "$RUSTC_SYSROOT/lib" > /etc/ld.so.conf.d/rustc.conf && \
+    ldconfig
 
-WORKDIR /usr/src/app/pcg-bin
-RUN cargo build
+# Copy and set up the start script
+COPY pcg-server/start-server.sh /usr/local/bin/start-server.sh
+RUN chmod +x /usr/local/bin/start-server.sh
 
-COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualization/dist/
-COPY --from=node-builder /usr/src/app/visualization/index.html /usr/src/app/visualization/
+CMD ["/usr/local/bin/start-server.sh"]
