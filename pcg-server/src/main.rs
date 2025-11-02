@@ -193,17 +193,25 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
         debug!("Processing multipart field: {}", name);
 
         match name.as_str() {
-            "input_method" => {
+            "input-method" => {
                 input_method = field.text().await.map_err(|e| e.to_string())?;
                 debug!("Got input method: {}", input_method);
             }
             "code" => {
-                code = field.text().await.map_err(|e| e.to_string())?;
-                debug!("Got code field content length: {}", code.len());
+                let code_text = field.text().await.map_err(|e| e.to_string())?;
+                debug!("Got code field content length: {}", code_text.len());
+                if input_method == "code" {
+                    code = code_text;
+                    debug!("Using code from textarea");
+                } else {
+                    debug!("Ignoring code field because input method is: {}", input_method);
+                }
             }
             "file" => {
+                debug!("Processing file field, input_method={}", input_method);
                 if input_method == "file" {
                     let file_name = field.file_name().ok_or("No file name")?.to_string();
+                    debug!("File name: {}", file_name);
 
                     if !file_name.ends_with(".rs") {
                         return Ok((
@@ -215,6 +223,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
                     let contents = field.bytes().await.map_err(|e| e.to_string())?;
                     code = String::from_utf8(contents.to_vec()).map_err(|e| e.to_string())?;
+                    debug!("Extracted code from file, length: {}", code.len());
                 }
             }
             _ => {
