@@ -32,7 +32,7 @@ import {
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
 import FunctionSelector from "./FunctionSelector";
-import PCGNavigator from "./PCGNavigator";
+import PCGNavigator, { NAVIGATOR_MAX_WIDTH, NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
   addKeyDownListener,
@@ -149,6 +149,14 @@ export const App: React.FC<AppProps> = ({
   );
   const [codeFontSize, setCodeFontSize] = useState<number>(
     parseInt(storage.getItem("codeFontSize") || "12")
+  );
+
+  // Track PCG Navigator state for layout adjustment
+  const [navigatorDocked, setNavigatorDocked] = useState(
+    storage.getBool("pcgNavigatorDocked", true)
+  );
+  const [navigatorMinimized, setNavigatorMinimized] = useState(
+    storage.getBool("pcgNavigatorMinimized", false)
   );
 
   // State for panel resizing
@@ -321,6 +329,19 @@ export const App: React.FC<AppProps> = ({
     },
     [paths, selectedPath]
   );
+
+  const handleNavigatorStateChange = useCallback((isDocked: boolean, isMinimized: boolean) => {
+    setNavigatorDocked(isDocked);
+    setNavigatorMinimized(isMinimized);
+  }, []);
+
+  // Calculate the width to reserve for the navigator when it's docked
+  const navigatorReservedWidth = useMemo(() => {
+    if (!showPCGNavigator || !navigatorDocked) {
+      return "0px";
+    }
+    return navigatorMinimized ? NAVIGATOR_MIN_WIDTH : NAVIGATOR_MAX_WIDTH;
+  }, [showPCGNavigator, navigatorDocked, navigatorMinimized]);
 
   const highlightSpan = useMemo(() => {
     const selectedStmt = getSelectedStmt(nodes, currentPoint);
@@ -642,6 +663,7 @@ export const App: React.FC<AppProps> = ({
                   });
                 }
               }}
+              onNavigatorStateChange={handleNavigatorStateChange}
             />
           )}
         {pathData && (
@@ -680,7 +702,14 @@ export const App: React.FC<AppProps> = ({
         ></div>
       </div>
 
-      <div id="pcg-graph" style={{ flex: 1, overflow: "auto" }}></div>
+      <div
+        id="pcg-graph"
+        style={{
+          flex: 1,
+          overflow: "auto",
+          marginRight: navigatorReservedWidth,
+        }}
+      ></div>
     </div>
   );
 };

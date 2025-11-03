@@ -17,7 +17,8 @@ type NavigationItem =
       action: PcgAction;
     };
 
-const NAVIGATOR_MAX_WIDTH = "200px";
+export const NAVIGATOR_MAX_WIDTH = "200px";
+export const NAVIGATOR_MIN_WIDTH = "40px";
 
 function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr): string {
   switch (action.type) {
@@ -42,6 +43,7 @@ export default function PCGNavigator({
   selectedAction,
   onSelectPhase,
   onSelectAction,
+  onNavigatorStateChange,
 }: {
   iterations: StmtGraphs<string>;
   pcgData: PcgStmtVisualizationData;
@@ -49,6 +51,7 @@ export default function PCGNavigator({
   selectedAction: SelectedAction | null;
   onSelectPhase: (index: number) => void;
   onSelectAction: (action: SelectedAction | null) => void;
+  onNavigatorStateChange?: (isDocked: boolean, isMinimized: boolean) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
     return storage.getBool("pcgNavigatorDocked", true);
@@ -68,6 +71,13 @@ export default function PCGNavigator({
   useEffect(() => {
     storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
   }, [isMinimized]);
+
+  // Notify parent of state changes
+  useEffect(() => {
+    if (onNavigatorStateChange) {
+      onNavigatorStateChange(isDocked, isMinimized);
+    }
+  }, [isDocked, isMinimized, onNavigatorStateChange]);
 
   // Build navigation items list with interleaving
   const buildNavigationItems = (): NavigationItem[] => {
@@ -287,7 +297,7 @@ export default function PCGNavigator({
           right: 0,
           top: 0,
           bottom: 0,
-          width: isMinimized ? "40px" : NAVIGATOR_MAX_WIDTH,
+          width: isMinimized ? NAVIGATOR_MIN_WIDTH : NAVIGATOR_MAX_WIDTH,
           backgroundColor: "white",
           boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
           display: "flex",
