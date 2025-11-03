@@ -1,11 +1,5 @@
 struct Pair { fst: String, snd: String }
 
-fn replace_fst(mut p: Pair, s: String) -> Pair {
-    let tmp = p.fst;
-    p.fst = s;
-    p
-}
-
 fn borrow() {
    let mut x = 1;
    let y = &mut x;
@@ -14,6 +8,24 @@ fn borrow() {
    *y = *y + 1;
    println!("x: {}", x); // prints 6
 }
+
+fn replace_fst(mut p: Pair, s: String) -> Pair {
+    let tmp = p.fst;
+    p.fst = s;
+    p
+}
+
+fn path_sensitive(c: bool) {
+    let x = 1;
+    let y = 2;
+    let r: &mut i32 = if c {
+        y = &mut x;
+    } else {
+        y = &mut x;
+    };
+    *r = 3;
+}
+
 
 fn main() {
 }

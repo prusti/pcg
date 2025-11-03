@@ -33,6 +33,10 @@ fn main() {
         rustc_args.push("-Zpolonius".to_string());
     }
 
+    if GLOBAL_SETTINGS.allow_borrowck_errors {
+        borrowck_body_storage::allow_borrowck_errors();
+    }
+
     if GLOBAL_SETTINGS.be_rustc {
         // Behaves exactly like rustc, but also runs PCG on all functions
         let mut args = vec!["rustc".to_string()];
