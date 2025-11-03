@@ -1,13 +1,8 @@
-#![feature(rustc_private)]
-#![feature(stmt_expr_attributes)]
-#![feature(proc_macro_hygiene)]
-
 use std::fs;
-use tempfile::TempDir;
 
 #[test]
 fn test_multipart_form_structure_file_upload() {
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let tmp_path = temp_dir.path();
     fs::create_dir_all(tmp_path).unwrap();
 

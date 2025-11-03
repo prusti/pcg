@@ -16,12 +16,12 @@ fn replace_fst(mut p: Pair, s: String) -> Pair {
 }
 
 fn path_sensitive(c: bool) {
-    let x = 1;
-    let y = 2;
+    let mut x = 1;
+    let mut y = 2;
     let r: &mut i32 = if c {
-        y = &mut x;
+        &mut x
     } else {
-        y = &mut x;
+        &mut y
     };
     *r = 3;
 }
