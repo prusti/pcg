@@ -268,7 +268,7 @@ pub fn build_pcg_bin(target: Target) {
         Target::Release => "release",
     };
 
-    let base_dir = find_workspace_base_dir(target_name);
+    let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
 
     let status = Command::new("cargo")
