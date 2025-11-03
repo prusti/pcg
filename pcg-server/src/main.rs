@@ -45,13 +45,8 @@ async fn handle_upload(multipart: Multipart) -> Response {
     }
 }
 
-// We call pcg-bin instead of using the PCG library directly to avoid running rustc twice.
-// The pcg library requires compiling the Rust code with a custom rustc configuration,
-// but if there are compilation errors, it's difficult to capture and format them nicely.
-// By calling pcg-bin as a subprocess, we can:
-// 1. Only run rustc once (pcg-bin handles the compilation internally)
-// 2. Easily capture all stdout/stderr output when compilation or analysis fails
-// 3. Return detailed error messages to the user via the HTTP response
+// We call pcg-bin instead of using the PCG library directly so that we can
+// capture all stdout/stderr output when compilation or analysis fails.
 fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String> {
     use std::process::Command;
 
