@@ -58,23 +58,23 @@ pub enum DisplayOutput {
 }
 
 impl DisplayOutput {
-    pub(crate) fn to_html(self) -> Html {
+    pub(crate) fn into_html(self) -> Html {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
             DisplayOutput::Text(text) => Html::Text(text),
             DisplayOutput::Seq(display_outputs) => {
-                Html::Seq(display_outputs.into_iter().map(|d| d.to_html()).collect())
+                Html::Seq(display_outputs.into_iter().map(|d| d.into_html()).collect())
             }
         }
     }
 
-    pub(crate) fn to_text(self) -> String {
+    pub(crate) fn into_text(self) -> String {
         match self {
             DisplayOutput::Html(html) => html.text(),
             DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text,
             DisplayOutput::Seq(display_outputs) => display_outputs
                 .into_iter()
-                .map(|d| d.to_text())
+                .map(|d| d.into_text())
                 .collect::<Vec<_>>()
                 .join(""),
         }
@@ -86,10 +86,10 @@ pub trait DisplayWithCtxt<Ctxt> {
         unimplemented!()
     }
     fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.output(ctxt).to_text()
+        self.output(ctxt).into_text()
     }
     fn to_html(&self, ctxt: Ctxt) -> Html {
-        self.output(ctxt).to_html()
+        self.output(ctxt).into_html()
     }
 }
 
@@ -104,28 +104,38 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for mi
 }
 
 impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for Vec<T> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        let comma_sep = self
-            .iter()
-            .map(|t| t.to_short_string(ctxt))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("[{comma_sep}]")
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        let mut result = vec![DisplayOutput::Text("[".to_string())];
+        for (i, item) in self.iter().enumerate() {
+            if i > 0 {
+                result.push(DisplayOutput::Text(", ".to_string()));
+            }
+            result.push(item.output(ctxt));
+        }
+        result.push(DisplayOutput::Text("]".to_string()));
+        DisplayOutput::Seq(result)
     }
 }
 
 impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        let comma_sep = self
-            .iter()
-            .map(|t| t.to_short_string(ctxt))
-            .collect::<Vec<_>>()
-            .join(", ");
-        format!("{{{comma_sep}}}")
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        let mut result = vec![DisplayOutput::Text("{".to_string())];
+        for (i, item) in self.iter().enumerate() {
+            if i > 0 {
+                result.push(DisplayOutput::Text(", ".to_string()));
+            }
+            result.push(item.output(ctxt));
+        }
+        result.push(DisplayOutput::Text("}".to_string()));
+        DisplayOutput::Seq(result)
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Place<'tcx> {
+    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(self.to_short_string(repacker))
+    }
+
     fn to_short_string(&self, repacker: Ctxt) -> String {
         match self.to_string(repacker.ctxt()) {
             PlaceDisplay::Temporary(p) => format!("{p:?}"),

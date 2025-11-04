@@ -153,8 +153,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionInput<'tcx> 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionInput<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn output(&self, ctxt: Ctxt) -> crate::utils::display::DisplayOutput {
+        self.0.output(ctxt)
     }
 }
 
@@ -214,8 +214,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionOutput<'tcx>
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionOutput<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn output(&self, ctxt: Ctxt) -> crate::utils::display::DisplayOutput {
+        self.0.output(ctxt)
     }
 }
 
