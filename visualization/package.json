@@ -2,7 +2,7 @@
   "name": "visualization",
   "version": "1.0.0",
   "type": "module",
-  "description": "This project contains a simple server for serving a D3.js Directed Control Flow Graph visualization.",
+  "description": "PCG Visualization",
   "main": "index.js",
   "scripts": {
     "serve": "http-server -c-1",
