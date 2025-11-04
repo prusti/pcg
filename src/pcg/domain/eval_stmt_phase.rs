@@ -1,6 +1,8 @@
 use serde_derive::Serialize;
 
-use crate::{utils::display::{DisplayOutput, DisplayWithCtxt}, visualization::html::Html};
+use crate::{
+    utils::display::{DisplayOutput, DisplayWithCtxt},
+};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -54,16 +56,7 @@ impl EvalStmtPhase {
 
 impl DisplayWithCtxt<()> for EvalStmtPhase {
     fn output(&self, _ctxt: ()) -> DisplayOutput {
-        let (main, sub) = match self {
-            EvalStmtPhase::PreOperands => ("op".to_string(), "pre".to_string()),
-            EvalStmtPhase::PostOperands => ("op".to_string(), "post".to_string()),
-            EvalStmtPhase::PreMain => ("main".to_string(), "pre".to_string()),
-            EvalStmtPhase::PostMain => ("main".to_string(), "post".to_string()),
-        };
-        DisplayOutput::Both(
-            Html::Seq(vec![main.clone().into(), Html::Subscript(sub.clone().into())]),
-            format!("{:?}", self)
-        )
+        DisplayOutput::Text(format!("{self}"))
     }
 }
 

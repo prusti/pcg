@@ -157,7 +157,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node = GraphNode {
             id,
             node_type: NodeType::RegionProjectionNode {
-                label: projection.to_html(self.ctxt),
+                label: projection.short_output(self.ctxt).into_html(),
                 base_ty,
                 loans,
             },

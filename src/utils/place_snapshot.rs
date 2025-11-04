@@ -38,8 +38,7 @@ impl std::fmt::Display for AnalysisLocation {
     }
 }
 
-impl DisplayWithCtxt<()> for AnalysisLocation
-{
+impl DisplayWithCtxt<()> for AnalysisLocation {
     fn output(&self, ctxt: ()) -> DisplayOutput {
         DisplayOutput::Seq(vec![
             self.location.output(ctxt),
@@ -179,8 +178,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Labell
     }
 }
 
-impl DisplayWithCtxt<()> for SnapshotLocation
-{
+impl DisplayWithCtxt<()> for SnapshotLocation {
+    fn short_output(&self, ctxt: ()) -> DisplayOutput {
+        match self {
+            SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text("before ".to_string()),
+                analysis_location.location().output(ctxt),
+            ]),
+            other => other.output(ctxt),
+        }
+    }
     fn output(&self, ctxt: ()) -> DisplayOutput {
         match self {
             SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![

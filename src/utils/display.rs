@@ -85,10 +85,16 @@ pub trait DisplayWithCtxt<Ctxt> {
     fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
         unimplemented!()
     }
+
+    fn short_output(&self, ctxt: Ctxt) -> DisplayOutput {
+        self.output(ctxt)
+    }
+
     fn display_string(&self, ctxt: Ctxt) -> String {
         self.output(ctxt).into_text()
     }
-    fn to_html(&self, ctxt: Ctxt) -> Html {
+
+    fn display_html(&self, ctxt: Ctxt) -> Html {
         self.output(ctxt).into_html()
     }
 }

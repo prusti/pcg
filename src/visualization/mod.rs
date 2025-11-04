@@ -97,7 +97,7 @@ impl GraphNode {
                 let location_html: Html = match location {
                     Some(l) => Html::Seq(vec![
                         " at ".into(),
-                        l.to_html(()),
+                        l.display_html(()),
                     ]),
                     None => Html::Text(String::new()),
                 };
@@ -123,7 +123,7 @@ impl GraphNode {
                     "courier",
                     Box::new(Html::Seq(vec![
                         Html::Text(label.clone()),
-                        Html::Text(":".to_string()),
+                        Html::Text(": ".to_string()),
                         capability_text.into(),
                         location_html
                     ])),
