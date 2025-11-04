@@ -101,11 +101,6 @@ pub trait DisplayWithCtxt<Ctxt> {
     fn to_short_string(&self, ctxt: Ctxt) -> String {
         self.display_output(ctxt, OutputMode::Short).into_text()
     }
-
-    #[deprecated(note = "Use output(ctxt, OutputMode::Normal) instead")]
-    fn display_html(&self, ctxt: Ctxt) -> Html {
-        self.display_output(ctxt, OutputMode::Normal).into_html()
-    }
 }
 
 pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =

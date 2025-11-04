@@ -89,10 +89,6 @@ impl GraphNode {
                 label,
                 ty,
             } => {
-                let capability_text = match capability {
-                    Some(k) => format!("{k:?}"),
-                    None => "".to_string(),
-                };
                 let location_html: Html = match location {
                     Some(l) => Html::Seq(vec![
                         " at ".into(),
@@ -118,12 +114,14 @@ impl GraphNode {
                         Some(DotFloatAttr(1.5)),
                     )
                 };
+                let capability_text = match capability {
+                    Some(k) => format!(": {k:?}"),
+                    None => "".to_string(),
+                };
                 let label_html = Html::Font(
                     "courier",
                     Box::new(Html::Seq(vec![
-                        Html::Text(label.clone()),
-                        Html::Text(": ".to_string()),
-                        capability_text.into(),
+                        Html::Text(format!("{label}{capability_text}")),
                         location_html,
                     ])),
                 );

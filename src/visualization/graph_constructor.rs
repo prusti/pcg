@@ -225,7 +225,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
         let capability = capability_getter.get(place);
         let id = self.place_node_id(place, location);
-        let label = place.display_string(self.ctxt);
+        let label = place.to_short_string(self.ctxt);
         let place_ty = place.ty(self.ctxt);
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),
