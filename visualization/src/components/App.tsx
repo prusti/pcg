@@ -32,7 +32,7 @@ import {
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
 import FunctionSelector from "./FunctionSelector";
-import PCGNavigator, { NAVIGATOR_MAX_WIDTH, NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
+import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
   addKeyDownListener,

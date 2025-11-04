@@ -4,16 +4,17 @@ import * as Viz from "@viz-js/viz";
 
 import { getDefaultApi, Api, ZipFileApi } from "./api";
 import { App } from "./components/App";
-import { FunctionSlug } from "./types";
+import { FunctionSlug, FunctionsMetadata } from "./types";
 import { cacheZip } from "./zipCache";
 import { storage } from "./storage";
+import { Assertion } from "./components/Assertions";
 
 function AppWrapper() {
   const [currentApi, setCurrentApi] = useState<Api | null>(null);
   const [initialFunction, setInitialFunction] = useState<FunctionSlug | null>(null);
   const [initialPaths, setInitialPaths] = useState<number[][]>([]);
-  const [initialAssertions, setInitialAssertions] = useState<any[]>([]);
-  const [functions, setFunctions] = useState<any>(null);
+  const [initialAssertions, setInitialAssertions] = useState<Assertion[]>([]);
+  const [functions, setFunctions] = useState<FunctionsMetadata | null>(null);
   const [initialPath, setInitialPath] = useState<number>(0);
   const [dataUnavailable, setDataUnavailable] = useState<boolean>(false);
 
