@@ -48,7 +48,7 @@ function AppWrapper() {
           }
         }
         setInitialPath(initPath);
-      } catch (error) {
+      } catch {
         setDataUnavailable(true);
         setFunctions(null);
         setInitialFunction(null);

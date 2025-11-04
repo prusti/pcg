@@ -24,3 +24,5 @@ fi
 echo "✓ No deprecated packages found"
 exit 0
 
+
+

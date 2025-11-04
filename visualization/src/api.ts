@@ -36,7 +36,7 @@ export abstract class Api {
         `data/${functionName}/paths.json`
       );
       return paths as number[][];
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -47,7 +47,7 @@ export abstract class Api {
         `data/${functionName}/assertions.json`
       );
       return assertions as Assertion[];
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -117,7 +117,7 @@ export class ZipFileApi extends Api {
     this.zipFile = zipFile;
   }
 
-  static async fromFile(file: File): Promise<ZipFileApi> {
+  static async fromFile(file: Blob): Promise<ZipFileApi> {
     const zip = await JSZip.loadAsync(file);
     return new ZipFileApi(zip);
   }
@@ -184,7 +184,7 @@ export async function getDefaultApi(): Promise<Api> {
   try {
     await fetchApi.getFunctions();
     return fetchApi;
-  } catch (error) {
+  } catch {
     console.log("Failed to load data/functions.json, trying data.zip");
   }
 
@@ -193,7 +193,7 @@ export async function getDefaultApi(): Promise<Api> {
     const zipApi = await ZipFileApi.fromUrl(zipUrl);
     await cacheZip(zipApi);
     return zipApi;
-  } catch (zipError) {
+  } catch {
     console.log("Failed to load data.zip, trying cached ZIP");
   }
 

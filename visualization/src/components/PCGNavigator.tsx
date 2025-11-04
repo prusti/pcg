@@ -17,6 +17,8 @@ type NavigationItem =
       action: PcgAction;
     };
 
+export const NAVIGATOR_DEFAULT_WIDTH = 200;
+export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
 
@@ -51,7 +53,7 @@ export default function PCGNavigator({
   selectedAction: SelectedAction | null;
   onSelectPhase: (index: number) => void;
   onSelectAction: (action: SelectedAction | null) => void;
-  onNavigatorStateChange?: (isDocked: boolean, isMinimized: boolean) => void;
+  onNavigatorStateChange?: (isDocked: boolean, isMinimized: boolean, width: number) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
     return storage.getBool("pcgNavigatorDocked", true);
@@ -63,6 +65,11 @@ export default function PCGNavigator({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
+  const [navigatorWidth, setNavigatorWidth] = useState(() => {
+    const stored = storage.getItem("pcgNavigatorWidth");
+    return stored ? parseInt(stored, 10) : NAVIGATOR_DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     storage.setItem("pcgNavigatorDocked", isDocked.toString());
@@ -72,12 +79,16 @@ export default function PCGNavigator({
     storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
   }, [isMinimized]);
 
+  useEffect(() => {
+    storage.setItem("pcgNavigatorWidth", navigatorWidth.toString());
+  }, [navigatorWidth]);
+
   // Notify parent of state changes
   useEffect(() => {
     if (onNavigatorStateChange) {
-      onNavigatorStateChange(isDocked, isMinimized);
+      onNavigatorStateChange(isDocked, isMinimized, navigatorWidth);
     }
-  }, [isDocked, isMinimized, onNavigatorStateChange]);
+  }, [isDocked, isMinimized, navigatorWidth, onNavigatorStateChange]);
 
   // Build navigation items list with interleaving
   const buildNavigationItems = (): NavigationItem[] => {
@@ -138,6 +149,8 @@ export default function PCGNavigator({
   // Initialize position
   useEffect(() => {
     if (!initialized) {
+      // Initial position setup only on first render
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPosition({
         x: window.innerWidth - 320,
         y: window.innerHeight - 200,
@@ -180,6 +193,35 @@ export default function PCGNavigator({
       };
     }
   }, [isDragging, dragStart, isDocked]);
+
+  // Resize handlers for docked mode
+  const handleResizeStart = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleResizeMove = (event: MouseEvent) => {
+      if (isResizing && isDocked) {
+        const newWidth = window.innerWidth - event.clientX;
+        const clampedWidth = Math.max(NAVIGATOR_MIN_WIDTH_NUM, Math.min(600, newWidth));
+        setNavigatorWidth(clampedWidth);
+      }
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener("mousemove", handleResizeMove);
+      window.addEventListener("mouseup", handleResizeEnd);
+      return () => {
+        window.removeEventListener("mousemove", handleResizeMove);
+        window.removeEventListener("mouseup", handleResizeEnd);
+      };
+    }
+  }, [isResizing, isDocked]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -297,7 +339,7 @@ export default function PCGNavigator({
           right: 0,
           top: 0,
           bottom: 0,
-          width: isMinimized ? NAVIGATOR_MIN_WIDTH : NAVIGATOR_MAX_WIDTH,
+          width: isMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`,
           backgroundColor: "white",
           boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
           display: "flex",
@@ -305,6 +347,30 @@ export default function PCGNavigator({
           zIndex: 1000,
         }}
       >
+        {!isMinimized && (
+          <div
+            onMouseDown={handleResizeStart}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: "5px",
+              cursor: "ew-resize",
+              backgroundColor: isResizing ? "#007acc" : "transparent",
+              transition: "background-color 0.2s",
+              zIndex: 1001,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#007acc";
+            }}
+            onMouseLeave={(e) => {
+              if (!isResizing) {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }
+            }}
+          />
+        )}
         <div
           style={{
             display: "flex",
