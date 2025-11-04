@@ -225,7 +225,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {
-            DisplayOutput::Text(format!(" {location}").into())
+            DisplayOutput::Seq(vec![
+                DisplayOutput::Text(Cow::Borrowed(" ")),
+                location.display_output((), mode),
+            ])
         } else {
             DisplayOutput::Text(Cow::Borrowed(""))
         };
