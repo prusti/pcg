@@ -45,16 +45,16 @@ function actionLine(
 ): string {
   switch (action.type) {
     case "Expand":
-      return `unpack ${action.data.from}`;
+      return `Unpack ${action.data.from}`;
     case "Collapse":
-      return `pack ${action.data.to}`;
+      return `Pack ${action.data.to}`;
     case "AddEdge":
     case "RemoveEdge":
     case "Restore":
     case "Weaken":
       return String(action.data);
     case "RegainLoanedCapability":
-      return `restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
+      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
     default:
       return JSON.stringify(action);
   }
