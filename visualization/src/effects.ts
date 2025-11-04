@@ -116,7 +116,9 @@ function keydown(
 
       const nextStmtIdx = getNextStmtIdx(currentNode, prevPoint.stmt);
       if (nextStmtIdx !== null) {
-        return { ...prevPoint, stmt: nextStmtIdx };
+        const result = { ...prevPoint, stmt: nextStmtIdx };
+        result.navigatorPoint = { type: "iteration", name: "post_main" };
+        return result;
       } else {
         const currBlockIdx = filteredNodes.findIndex(
           (node) => node.block === prevPoint.block

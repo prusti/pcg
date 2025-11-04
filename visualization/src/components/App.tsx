@@ -126,7 +126,7 @@ export const App: React.FC<AppProps> = ({
     stmt: 0,
     navigatorPoint: {
       type: "iteration",
-      name: "pre_operands",
+      name: "initial",
     },
   });
 
@@ -653,7 +653,7 @@ export const App: React.FC<AppProps> = ({
                       setCurrentPoint({
                         ...currentPoint,
                         stmt: nextStmt,
-                        navigatorPoint: { type: "iteration", name: "pre_operands" },
+                        navigatorPoint: { type: "iteration", name: "initial" },
                       });
                     } else {
                       // At last statement, move to next block
@@ -668,7 +668,7 @@ export const App: React.FC<AppProps> = ({
                           type: "stmt",
                           block: nextNode.block,
                           stmt: 0,
-                          navigatorPoint: { type: "iteration", name: "pre_operands" },
+                          navigatorPoint: { type: "iteration", name: "initial" },
                         });
                       }
                     }
