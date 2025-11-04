@@ -4,9 +4,8 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_pcg::borrow_pcg_edge::BorrowPcgEdge,
-    error::PcgInternalError,
-    utils::{data_structures::HashSet, json::ToJsonWithCtxt},
+    borrow_pcg::borrow_pcg_edge::BorrowPcgEdge, error::PcgInternalError,
+    utils::data_structures::HashSet,
 };
 
 use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdgeLike};
@@ -46,13 +45,13 @@ impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
     }
 }
 
-impl<'tcx, Ctxt> ToJsonWithCtxt<Ctxt> for BorrowPcgUnblockAction<'tcx> {
-    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
-        serde_json::json!({
-            "edge": format!("{:?}", self.edge)
-        })
-    }
-}
+// impl<'tcx, Ctxt> ToJsonWithCtxt<Ctxt> for BorrowPcgUnblockAction<'tcx> {
+//     fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
+//         serde_json::json!({
+//             "edge": format!("{:?}", self.edge)
+//         })
+//     }
+// }
 
 impl<'tcx, Edge: EdgeData<'tcx> + std::fmt::Debug + Clone + Eq + std::hash::Hash>
     UnblockGraph<'tcx, Edge>

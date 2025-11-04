@@ -27,14 +27,12 @@ use crate::{
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
         },
-        json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
 use frozen::{CachedLeafEdges, FrozenGraphRef};
 use itertools::Itertools;
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
@@ -501,15 +499,6 @@ impl<T> Conditioned<T> {
 
     pub fn value(&self) -> &T {
         &self.value
-    }
-}
-
-impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for Conditioned<T> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "conditions": self.conditions.to_json(repacker),
-            "value": self.value.to_json(repacker)
-        })
     }
 }
 

@@ -3,7 +3,6 @@ use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
 
 use derive_more::From;
 use itertools::Itertools;
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BlockingNode, LocalNode},
@@ -35,7 +34,6 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        json::ToJsonWithCtxt,
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
     },
@@ -396,14 +394,5 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         };
         result.assert_validity(ctxt.bc_ctxt());
         Ok(result)
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for BorrowPcgExpansion<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "base": self.base.to_json(repacker),
-            "expansion": self.expansion.iter().map(|p| p.to_json(repacker)).collect::<Vec<_>>(),
-        })
     }
 }

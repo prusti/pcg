@@ -2,7 +2,6 @@
 use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
@@ -32,7 +31,6 @@ use crate::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
-        json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
@@ -326,17 +324,6 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {
             PlaceOrConst::Place(p) => p.check_validity(ctxt),
-            PlaceOrConst::Const(_) => todo!(),
-        }
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PcgLifetimeProjectionBase<'tcx>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        match self {
-            PlaceOrConst::Place(p) => p.to_json(ctxt.bc_ctxt()),
             PlaceOrConst::Const(_) => todo!(),
         }
     }
@@ -699,24 +686,6 @@ impl<
             self.region(ctxt).display_output(ctxt.bc_ctxt(), mode),
             label_part,
         ])
-    }
-}
-
-impl<
-    'a,
-    'tcx: 'a,
-    Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
-    T: HasTy<'tcx, Ctxt>
-        + HasRegions<'tcx, Ctxt>
-        + PcgLifetimeProjectionBaseLike<'tcx>
-        + ToJsonWithCtxt<Ctxt>,
-> ToJsonWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        json!({
-            "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).output(Some(ctxt.bc_ctxt()), OutputMode::Normal).into_text(),
-        })
     }
 }
 

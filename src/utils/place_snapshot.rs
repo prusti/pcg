@@ -30,7 +30,7 @@ pub struct AnalysisLocation {
 
 impl DisplayWithCtxt<()> for Location {
     fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(format!("{:?}", self).into())
+        DisplayOutput::Text(format!("{self:?}").into())
     }
 }
 
