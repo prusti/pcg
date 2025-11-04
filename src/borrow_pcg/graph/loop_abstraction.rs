@@ -525,7 +525,7 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                 }
                 RepackOp::Collapse(_) => todo!(),
                 RepackOp::DerefShallowInit(_, _) => todo!(),
-                RepackOp::RegainLoanedCapability(_, _) => todo!(),
+                RepackOp::RegainLoanedCapability(_) => todo!(),
             },
         }
     }

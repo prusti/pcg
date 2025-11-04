@@ -46,10 +46,10 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                     Ok(true)
                 }
                 RepackOp::DerefShallowInit(..) => todo!(),
-                RepackOp::RegainLoanedCapability(place, capability_kind) => {
+                RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.data.capabilities.regain_loaned_capability(
-                        place,
-                        capability_kind.into(),
+                        regained_capability.place,
+                        regained_capability.capability.into(),
                         self.data.borrows.as_mut_ref(),
                         self.ctxt,
                     )?;

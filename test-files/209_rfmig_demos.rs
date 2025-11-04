@@ -21,8 +21,19 @@ fn ex3_distinct(x: &mut i32, y: &mut i32) {
     assert!(*x == 5);
 }
 
+fn ex4_expiry(mut x: i32, mut y: i32, mut z: i32) {
+    let r1 = &mut x;
+    let r2 = if z > 5 {
+        &mut *r1
+    } else {
+        x = 5;
+        &mut y
+    };
+    *r2 = 5;
+}
 
-fn ex4_path_sensitive(c: bool) {
+
+fn ex5_path_sensitive(c: bool) {
     let mut x = 1;
     let mut y = 2;
     let r: &mut i32 = if c {
@@ -35,7 +46,7 @@ fn ex4_path_sensitive(c: bool) {
 
 fn g<T>(x1: &mut T, x2: &mut T){}
 
-fn ex5_nested<'a>() {
+fn ex6_nested<'a>() {
     let mut x = 1;
     let mut y = 2;
     let mut r1 = &mut x;
@@ -49,7 +60,7 @@ fn choose<'a>(c: bool, x: &'a mut i32, y: &'a mut i32) -> &'a mut i32 {
     if c { x } else { y }
 }
 
-fn ex6_function_call(c: bool) {
+fn ex7_function_call(c: bool) {
     let mut x = 1;
     let mut y = 2;
     let r = choose(c, &mut x, &mut y);

@@ -461,10 +461,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 analysis_ctxt,
             )?,
             PcgAction::Owned(owned_action) => match owned_action.kind {
-                RepackOp::RegainLoanedCapability(place, capability_kind) => {
+                RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.pcg.capabilities.regain_loaned_capability(
-                        place,
-                        capability_kind.into(),
+                        regained_capability.place,
+                        regained_capability.capability.into(),
                         self.pcg.borrow.as_mut_ref(),
                         analysis_ctxt,
                     )?;

@@ -8,7 +8,7 @@ use crate::{
         edge::kind::BorrowPcgEdgeKind,
         unblock_graph::BorrowPcgUnblockAction,
     },
-    owned_pcg::RepackOp,
+    owned_pcg::{RegainedCapability, RepackOp},
     pcg::capabilities::CapabilityKind,
     utils::{DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DisplayWithCtxt},
 };
@@ -176,7 +176,7 @@ impl<'tcx> PcgAction<'tcx> {
     {
         if place.is_owned(ctxt) {
             PcgAction::Owned(OwnedPcgAction {
-                kind: RepackOp::RegainLoanedCapability(place, capability),
+                kind: RepackOp::RegainLoanedCapability(RegainedCapability::new(place, capability)),
                 debug_context: Some(debug_context.into()),
             })
         } else {
