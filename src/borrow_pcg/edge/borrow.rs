@@ -18,7 +18,8 @@ use crate::{
         },
     },
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, display::DisplayWithCtxt,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         remote::RemotePlace,
     },
 };
@@ -202,11 +203,14 @@ impl<'tcx> RemoteBorrow<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for RemoteBorrow<'tcx>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{} -> {}",
-            self.blocked_place().display_string(ctxt),
-            self.assigned_lifetime_projection(ctxt).display_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{} -> {}",
+                self.blocked_place().display_string(ctxt),
+                self.assigned_lifetime_projection(ctxt).display_string(ctxt)
+            )
+            .into(),
         )
     }
 }
@@ -355,22 +359,25 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LocalBorrow<'tcx> {
-    fn display_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
             format!(" <{}>", DisplayWithCtxt::<_>::display_string(&rp, ()))
         } else {
             "".to_string()
         };
-        format!(
-            "borrow: {}{} = &{} {}",
-            self.assigned_ref.display_string(ctxt),
-            rp_part,
-            if self.kind.mutability() == Mutability::Mut {
-                "mut "
-            } else {
-                ""
-            },
-            self.blocked_place.display_string(ctxt),
+        DisplayOutput::Text(
+            format!(
+                "borrow: {}{} = &{} {}",
+                self.assigned_ref.display_string(ctxt),
+                rp_part,
+                if self.kind.mutability() == Mutability::Mut {
+                    "mut "
+                } else {
+                    ""
+                },
+                self.blocked_place.display_string(ctxt),
+            )
+            .into(),
         )
     }
 }

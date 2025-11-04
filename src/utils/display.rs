@@ -52,8 +52,8 @@ impl PlaceDisplay<'_> {
 
 pub enum DisplayOutput {
     Html(Html),
-    Text(String),
-    Both(Html, String),
+    Text(Cow<'static, str>),
+    Both(Html, Cow<'static, str>),
     Seq(Vec<DisplayOutput>),
 }
 
@@ -61,7 +61,7 @@ impl DisplayOutput {
     pub(crate) fn into_html(self) -> Html {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
-            DisplayOutput::Text(text) => Html::Text(text),
+            DisplayOutput::Text(text) => Html::Text(text.into_owned()),
             DisplayOutput::Seq(display_outputs) => {
                 Html::Seq(display_outputs.into_iter().map(|d| d.into_html()).collect())
             }
@@ -71,7 +71,7 @@ impl DisplayOutput {
     pub(crate) fn into_text(self) -> String {
         match self {
             DisplayOutput::Html(html) => html.text(),
-            DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text,
+            DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text.into_owned(),
             DisplayOutput::Seq(display_outputs) => display_outputs
                 .into_iter()
                 .map(|d| d.into_text())
@@ -81,21 +81,30 @@ impl DisplayOutput {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum OutputMode {
+    Normal,
+    Short,
+}
+
 pub trait DisplayWithCtxt<Ctxt> {
-    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
-        unimplemented!()
-    }
+    fn display_output(&self, data_ctxt: Ctxt, mode: OutputMode) -> DisplayOutput;
 
     fn short_output(&self, ctxt: Ctxt) -> DisplayOutput {
-        self.output(ctxt)
+        self.display_output(ctxt, OutputMode::Short)
     }
 
     fn display_string(&self, ctxt: Ctxt) -> String {
-        self.output(ctxt).into_text()
+        self.display_output(ctxt, OutputMode::Normal).into_text()
     }
 
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        self.display_output(ctxt, OutputMode::Short).into_text()
+    }
+
+    #[deprecated(note = "Use output(ctxt, OutputMode::Normal) instead")]
     fn display_html(&self, ctxt: Ctxt) -> Html {
-        self.output(ctxt).into_html()
+        self.display_output(ctxt, OutputMode::Normal).into_html()
     }
 }
 
@@ -103,43 +112,43 @@ pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =
     DisplayWithCtxt<CompilerCtxt<'a, 'tcx, BC>>;
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for mir::Local {
-    fn display_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         let as_place: Place<'tcx> = (*self).into();
-        format!("local {}", as_place.display_string(ctxt))
+        DisplayOutput::Text(format!("local {}", as_place.display_string(ctxt)).into())
     }
 }
 
 impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for Vec<T> {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
-        let mut result = vec![DisplayOutput::Text("[".to_string())];
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let mut result = vec![DisplayOutput::Text("[".into())];
         for (i, item) in self.iter().enumerate() {
             if i > 0 {
-                result.push(DisplayOutput::Text(", ".to_string()));
+                result.push(DisplayOutput::Text(", ".into()));
             }
-            result.push(item.output(ctxt));
+            result.push(item.display_output(ctxt, mode));
         }
-        result.push(DisplayOutput::Text("]".to_string()));
+        result.push(DisplayOutput::Text("]".into()));
         DisplayOutput::Seq(result)
     }
 }
 
 impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T> {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
-        let mut result = vec![DisplayOutput::Text("{".to_string())];
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let mut result = vec![DisplayOutput::Text("{".into())];
         for (i, item) in self.iter().enumerate() {
             if i > 0 {
-                result.push(DisplayOutput::Text(", ".to_string()));
+                result.push(DisplayOutput::Text(", ".into()));
             }
-            result.push(item.output(ctxt));
+            result.push(item.display_output(ctxt, mode));
         }
-        result.push(DisplayOutput::Text("}".to_string()));
+        result.push(DisplayOutput::Text("}".into()));
         DisplayOutput::Seq(result)
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Place<'tcx> {
-    fn output(&self, repacker: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(self.display_string(repacker))
+    fn display_output(&self, repacker: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.display_string(repacker).into())
     }
 
     fn display_string(&self, repacker: Ctxt) -> String {

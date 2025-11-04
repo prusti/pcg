@@ -28,7 +28,9 @@ use crate::{
         mir_dataflow::{Forward, JoinSemiLattice, fmt::DebugWithContext},
     },
     utils::{
-        HasCompilerCtxt, Place, data_structures::HashMap, display::DisplayWithCtxt,
+        HasCompilerCtxt, Place,
+        data_structures::HashMap,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         visitor::FallableVisitor,
     },
     validity_checks_enabled,
@@ -215,8 +217,8 @@ pub(crate) struct PlaceUsage<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PlaceUsage<'tcx> {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        format!("{}: {:?}", self.place.display_string(ctxt), self.usage)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{}: {:?}", self.place.display_string(ctxt), self.usage).into())
     }
 }
 
@@ -224,11 +226,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
 pub struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PlaceUsages<'tcx> {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        self.0
-            .iter()
-            .map(|(p, usage)| format!("{}: {:?}", p.display_string(ctxt), usage))
-            .join("\n")
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            self.0
+                .iter()
+                .map(|(p, usage)| format!("{}: {:?}", p.display_string(ctxt), usage))
+                .join("\n")
+                .into(),
+        )
     }
 }
 

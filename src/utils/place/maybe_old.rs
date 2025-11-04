@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -22,7 +24,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
         SnapshotLocation,
-        display::{DisplayOutput, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,
         validity::HasValidityCheck,
@@ -221,13 +223,16 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeLabelledPlace<'tcx>
 {
-    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+    fn display_output(&self, repacker: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {
-            DisplayOutput::Text(format!(" {location}"))
+            DisplayOutput::Text(format!(" {location}").into())
         } else {
-            DisplayOutput::Text(String::new())
+            DisplayOutput::Text(Cow::Borrowed(""))
         };
-        DisplayOutput::Seq(vec![self.place().output(repacker), location_part])
+        DisplayOutput::Seq(vec![
+            self.place().display_output(repacker, mode),
+            location_part,
+        ])
     }
 }
 

@@ -1,6 +1,6 @@
 use serde_derive::Serialize;
 
-use crate::utils::display::{DisplayOutput, DisplayWithCtxt};
+use crate::utils::display::{DisplayOutput, DisplayWithCtxt, OutputMode};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -53,8 +53,8 @@ impl EvalStmtPhase {
 }
 
 impl DisplayWithCtxt<()> for EvalStmtPhase {
-    fn output(&self, _ctxt: ()) -> DisplayOutput {
-        DisplayOutput::Text(format!("{self}"))
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{self}").into())
     }
 }
 

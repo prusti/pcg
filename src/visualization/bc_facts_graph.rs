@@ -18,7 +18,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
         callbacks::RustBorrowCheckerImpl,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
     },
 };
 
@@ -30,9 +30,9 @@ use super::{
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PoloniusRegionVid
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         let region: RegionVid = (*self).into();
-        region.display_string(ctxt)
+        DisplayOutput::Text(region.display_string(ctxt).into())
     }
 }
 

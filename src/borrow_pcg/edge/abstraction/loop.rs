@@ -21,7 +21,7 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::display::DisplayOutput,
+    utils::display::{DisplayOutput, OutputMode},
     utils::{CompilerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck},
 };
 
@@ -38,8 +38,8 @@ impl LoopAbstractionEdgeMetadata {
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
-    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(format!("Loop({:?})", self.0))
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("Loop({:?})", self.0).into())
     }
 }
 

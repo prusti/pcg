@@ -34,7 +34,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::DisplayWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
@@ -238,14 +238,17 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
 impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{{{}}} -> {{{}}}",
-            self.base.display_string(ctxt),
-            self.expansion
-                .iter()
-                .map(|p| p.display_string(ctxt))
-                .join(", ")
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{{{}}} -> {{{}}}",
+                self.base.display_string(ctxt),
+                self.expansion
+                    .iter()
+                    .map(|p| p.display_string(ctxt))
+                    .join(", ")
+            )
+            .into(),
         )
     }
 }

@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     borrow_pcg::{
         FunctionData,
@@ -26,7 +28,7 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::display::DisplayOutput,
+    utils::display::{DisplayOutput, OutputMode},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck,
     },
@@ -192,16 +194,19 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for FunctionCallAbstractionEdgeMetadata<'tcx>
 {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(format!(
-            "call{} at {:?}",
-            if let Some(function_data) = &self.function_data {
-                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
-            } else {
-                "".to_string()
-            },
-            self.location
-        ))
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "call{} at {:?}",
+                if let Some(function_data) = &self.function_data {
+                    format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
+                } else {
+                    "".to_string()
+                },
+                self.location
+            )
+            .into(),
+        )
     }
 }
 impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
@@ -302,11 +307,11 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
 impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Seq(vec![
-            self.metadata.output(ctxt),
-            DisplayOutput::Text(": ".to_string()),
-            self.edge.output(ctxt),
+            self.metadata.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed(": ")),
+            self.edge.display_output(ctxt, mode),
         ])
     }
 }

@@ -13,7 +13,10 @@ use crate::utils::DebugRepr;
 use crate::{
     pcg::CapabilityKind,
     rustc_interface::{VariantIdx, span::Symbol},
-    utils::{CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place, display::DisplayWithCtxt},
+    utils::{
+        CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 use serde_derive::Serialize;
 
@@ -26,13 +29,16 @@ pub enum RepackGuide<Local = mir::Local> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            RepackGuide::Index(local) => {
-                format!("index with local {}", (*local).display_string(ctxt))
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                RepackGuide::Index(local) => {
+                    format!("index with local {}", (*local).display_string(ctxt))
+                }
+                _ => format!("{self:?}"),
             }
-            _ => format!("{self:?}"),
-        }
+            .into(),
+        )
     }
 }
 
@@ -274,22 +280,25 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx> {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            RepackOp::RegainLoanedCapability(place, capability_kind) => {
-                format!(
-                    "Restore capability {:?} to {}",
-                    capability_kind,
-                    place.display_string(ctxt),
-                )
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                RepackOp::RegainLoanedCapability(place, capability_kind) => {
+                    format!(
+                        "Restore capability {:?} to {}",
+                        capability_kind,
+                        place.display_string(ctxt),
+                    )
+                }
+                RepackOp::Expand(expand) => format!(
+                    "unpack {} with capability {:?}",
+                    expand.from.display_string(ctxt),
+                    expand.capability
+                ),
+                _ => format!("{self:?}"),
             }
-            RepackOp::Expand(expand) => format!(
-                "unpack {} with capability {:?}",
-                expand.from.display_string(ctxt),
-                expand.capability
-            ),
-            _ => format!("{self:?}"),
-        }
+            .into(),
+        )
     }
 }
 

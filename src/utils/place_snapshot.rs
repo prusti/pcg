@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde_json::json;
 
 use super::{CompilerCtxt, Place, validity::HasValidityCheck};
@@ -15,7 +17,7 @@ use crate::{
     },
     utils::{
         HasCompilerCtxt, PlaceProjectable,
-        display::{DisplayOutput, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
     },
 };
@@ -27,8 +29,8 @@ pub struct AnalysisLocation {
 }
 
 impl DisplayWithCtxt<()> for Location {
-    fn output(&self, _ctxt: ()) -> DisplayOutput {
-        DisplayOutput::Text(format!("{:?}", self))
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{:?}", self).into())
     }
 }
 
@@ -39,12 +41,15 @@ impl std::fmt::Display for AnalysisLocation {
 }
 
 impl DisplayWithCtxt<()> for AnalysisLocation {
-    fn output(&self, ctxt: ()) -> DisplayOutput {
-        DisplayOutput::Seq(vec![
-            self.location.output(ctxt),
-            DisplayOutput::Text(":".to_string()),
-            self.eval_stmt_phase.output(ctxt),
-        ])
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
+        match mode {
+            OutputMode::Short => self.location.display_output(ctxt, mode),
+            OutputMode::Normal => DisplayOutput::Seq(vec![
+                self.location.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(":")),
+                self.eval_stmt_phase.display_output(ctxt, mode),
+            ]),
+        }
     }
 }
 
@@ -179,26 +184,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Labell
 }
 
 impl DisplayWithCtxt<()> for SnapshotLocation {
-    fn short_output(&self, ctxt: ()) -> DisplayOutput {
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
         match self {
             SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![
-                DisplayOutput::Text("before ".to_string()),
-                analysis_location.location().output(ctxt),
+                DisplayOutput::Text(Cow::Borrowed("before ")),
+                analysis_location.display_output(ctxt, mode),
             ]),
-            other => other.output(ctxt),
-        }
-    }
-    fn output(&self, ctxt: ()) -> DisplayOutput {
-        match self {
-            SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![
-                DisplayOutput::Text("before ".to_string()),
-                analysis_location.output(ctxt),
-            ]),
-            SnapshotLocation::After(loc) => DisplayOutput::Text(format!("after {loc:?}")),
-            SnapshotLocation::Loop(bb) => DisplayOutput::Text(format!("loop {bb:?}")),
-            SnapshotLocation::BeforeJoin(bb) => DisplayOutput::Text(format!("before join {bb:?}")),
+            SnapshotLocation::After(loc) => DisplayOutput::Text(format!("after {loc:?}").into()),
+            SnapshotLocation::Loop(bb) => DisplayOutput::Text(format!("loop {bb:?}").into()),
+            SnapshotLocation::BeforeJoin(bb) => {
+                DisplayOutput::Text(format!("before join {bb:?}").into())
+            }
             SnapshotLocation::BeforeRefReassignment(location) => {
-                DisplayOutput::Text(format!("before ref reassignment {location:?}"))
+                DisplayOutput::Text(format!("before ref reassignment {location:?}").into())
             }
         }
     }
@@ -254,10 +252,10 @@ impl std::fmt::Display for LabelledPlace<'_> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+    fn display_output(&self, repacker: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Seq(vec![
-            self.place.output(repacker),
-            DisplayOutput::Text(format!(" at {:?}", self.at)),
+            self.place.display_output(repacker, mode),
+            DisplayOutput::Text(format!(" at {:?}", self.at).into()),
         ])
     }
 }

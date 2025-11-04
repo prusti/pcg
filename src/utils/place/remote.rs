@@ -10,7 +10,7 @@ use crate::{
     },
     utils::{
         self, CompilerCtxt, HasCompilerCtxt,
-        display::{DisplayOutput, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         validity::HasValidityCheck,
     },
@@ -42,8 +42,8 @@ impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemoteP
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
-    fn output(&self, _repacker: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(format!("Remote({:?})", self.local))
+    fn display_output(&self, _repacker: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("Remote({:?})", self.local).into())
     }
 }
 

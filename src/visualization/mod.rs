@@ -27,8 +27,11 @@ use crate::{
         CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Location,
-    utils::{HasBorrowCheckerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt},
     utils::html::Html,
+    utils::{
+        HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        display::{DisplayWithCtxt, OutputMode},
+    },
 };
 use std::{
     collections::HashSet,
@@ -91,7 +94,10 @@ impl GraphNode {
                     None => "".to_string(),
                 };
                 let location_html: Html = match location {
-                    Some(l) => Html::Seq(vec![" at ".into(), l.display_html(())]),
+                    Some(l) => Html::Seq(vec![
+                        " at ".into(),
+                        l.display_output((), OutputMode::Normal).into_html(),
+                    ]),
                     None => Html::Text(String::new()),
                 };
                 let color = if location.is_some()

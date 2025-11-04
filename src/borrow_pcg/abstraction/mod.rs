@@ -19,7 +19,7 @@ use crate::{
     },
     utils::{
         self, CompilerCtxt, HasTyCtxt,
-        display::{DisplayOutput, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
 
@@ -324,14 +324,15 @@ impl std::fmt::Display for ArgIdxOrResult {
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
-    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             self.edges
                 .iter()
                 .map(|edge| format!("{edge}"))
                 .sorted()
                 .collect::<Vec<_>>()
-                .join("\n, "),
+                .join("\n, ")
+                .into(),
         )
     }
 }

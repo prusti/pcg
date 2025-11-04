@@ -11,8 +11,10 @@ use crate::{
     pcg::{LocalNodeLike, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
-        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -72,11 +74,14 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefEdge<'tcx> {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{{{}}} -> {{{}}}",
-            self.blocked_place.display_string(ctxt),
-            self.deref_place.display_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{{{}}} -> {{{}}}",
+                self.blocked_place.display_string(ctxt),
+                self.deref_place.display_string(ctxt)
+            )
+            .into(),
         )
     }
 }

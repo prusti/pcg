@@ -24,7 +24,9 @@ use crate::{
     utils::{
         DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
-        display::{DebugLines, DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{
+            DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
+        },
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -487,8 +489,8 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for Conditioned<T>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        self.conditions.conditional_string(&self.value, ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.conditions.conditional_string(&self.value, ctxt).into())
     }
 }
 

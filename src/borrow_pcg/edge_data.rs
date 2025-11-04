@@ -2,7 +2,10 @@ use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
     rustc_interface::middle::mir::ProjectionElem,
-    utils::{CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
@@ -88,25 +91,28 @@ pub enum EdgePredicate {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlacePredicate<'tcx>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            LabelPlacePredicate::Postfix { place, .. } => {
-                place.display_string(ctxt) // As a hack for now so debug output doesn't change
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                LabelPlacePredicate::Postfix { place, .. } => {
+                    place.display_string(ctxt) // As a hack for now so debug output doesn't change
+                }
+                LabelPlacePredicate::DerefPostfixOf {
+                    place,
+                    shared_refs_only,
+                } => {
+                    format!(
+                        "deref postfix of {} (shared_refs_only: {})",
+                        place.display_string(ctxt),
+                        shared_refs_only
+                    )
+                }
+                LabelPlacePredicate::Exact(place) => {
+                    format!("exact {}", place.display_string(ctxt))
+                }
             }
-            LabelPlacePredicate::DerefPostfixOf {
-                place,
-                shared_refs_only,
-            } => {
-                format!(
-                    "deref postfix of {} (shared_refs_only: {})",
-                    place.display_string(ctxt),
-                    shared_refs_only
-                )
-            }
-            LabelPlacePredicate::Exact(place) => {
-                format!("exact {}", place.display_string(ctxt))
-            }
-        }
+            .into(),
+        )
     }
 }
 
@@ -304,10 +310,10 @@ macro_rules! edgedata_enum {
         }
 
         impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
-            fn display_string(&self, ctxt: Ctxt) -> String {
+            fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.display_string(ctxt),
+                        $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
                     )+
                 }
             }

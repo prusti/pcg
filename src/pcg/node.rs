@@ -15,9 +15,13 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt,
-        json::ToJsonWithCtxt, maybe_old::MaybeLabelledPlace, place::maybe_remote::MaybeRemotePlace,
-        remote::RemotePlace, validity::HasValidityCheck,
+        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
+        maybe_old::MaybeLabelledPlace,
+        place::maybe_remote::MaybeRemotePlace,
+        remote::RemotePlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -183,11 +187,14 @@ impl<
 where
     LifetimeProjection<'tcx, U>: DisplayWithCtxt<Ctxt>,
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            PcgNode::Place(p) => p.display_string(ctxt),
-            PcgNode::LifetimeProjection(rp) => rp.display_string(ctxt),
-        }
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                PcgNode::Place(p) => p.display_string(ctxt),
+                PcgNode::LifetimeProjection(rp) => rp.display_string(ctxt),
+            }
+            .into(),
+        )
     }
 }
 

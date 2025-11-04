@@ -29,7 +29,7 @@ use crate::{
     utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         logging::{self, LogPredicate},
         maybe_old::MaybeLabelledPlace,
         remote::RemotePlace,
@@ -65,11 +65,14 @@ pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeRemoteCurrentPlace<'tcx>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            MaybeRemoteCurrentPlace::Local(place) => place.display_string(ctxt),
-            MaybeRemoteCurrentPlace::Remote(place) => place.display_string(ctxt),
-        }
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                MaybeRemoteCurrentPlace::Local(place) => place.display_string(ctxt),
+                MaybeRemoteCurrentPlace::Remote(place) => place.display_string(ctxt),
+            }
+            .into(),
+        )
     }
 }
 impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {

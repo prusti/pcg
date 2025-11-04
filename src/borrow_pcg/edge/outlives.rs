@@ -13,7 +13,7 @@ use crate::{
     pcg_validity_assert,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };
@@ -73,11 +73,14 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{} -> {}",
-            DisplayWithCtxt::<_>::display_string(&self.long, ctxt),
-            self.short.display_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{} -> {}",
+                DisplayWithCtxt::<_>::display_string(&self.long, ctxt),
+                self.short.display_string(ctxt)
+            )
+            .into(),
         )
     }
 }

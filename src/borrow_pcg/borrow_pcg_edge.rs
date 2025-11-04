@@ -30,7 +30,7 @@ use crate::{
     pcg::PcgNode,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::DisplayWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },
@@ -47,8 +47,8 @@ pub struct BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
 impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        self.conditions.conditional_string(self.kind, ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.conditions.conditional_string(self.kind, ctxt).into())
     }
 }
 
@@ -427,8 +427,8 @@ edgedata_enum!(
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for &BorrowPcgEdgeKind<'tcx>
 {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        (*self).display_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        (*self).display_output(ctxt, mode)
     }
 }
 

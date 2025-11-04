@@ -18,7 +18,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasPlace, LabelledPlace, Place,
-        display::{DisplayOutput, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
     },
@@ -112,10 +112,10 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeRemotePlace<'tcx>
 {
-    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+    fn display_output(&self, repacker: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
-            MaybeRemotePlace::Local(p) => p.output(repacker),
-            MaybeRemotePlace::Remote(rp) => DisplayOutput::Text(format!("{rp}")),
+            MaybeRemotePlace::Local(p) => p.display_output(repacker, mode),
+            MaybeRemotePlace::Remote(rp) => DisplayOutput::Text(format!("{rp}").into()),
         }
     }
 }

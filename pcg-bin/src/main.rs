@@ -8,9 +8,9 @@ use borrowck_body_storage::set_mir_borrowck;
 
 use pcg::rustc_interface::driver::{self, args};
 use pcg::rustc_interface::interface;
-use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::rustc_interface::session::EarlyDiagCtxt;
-use pcg::utils::{SETTINGS, GLOBAL_SETTINGS};
+use pcg::rustc_interface::session::config::{self, ErrorOutputType};
+use pcg::utils::{GLOBAL_SETTINGS, SETTINGS};
 
 use crate::callbacks::PcgAsRustcCallbacks;
 

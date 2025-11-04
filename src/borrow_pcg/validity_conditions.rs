@@ -1,7 +1,10 @@
 //! Data structures for validity conditions.
 use crate::{
     rustc_interface::middle::mir,
-    utils::{HasCompilerCtxt, display::DisplayWithCtxt},
+    utils::{
+        HasCompilerCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 use bit_set::BitSet;
 use itertools::Itertools;
@@ -117,30 +120,33 @@ impl BranchChoices {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for BranchChoices {
-    fn display_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         let successors = effective_successors(self.from, ctxt.body());
-        if self.chosen.len() == 1 {
-            format!(
-                "{:?} -> {:?}",
-                self.from,
-                successors[self.chosen.iter().next().unwrap()]
-            )
-        } else {
-            let chosen_successors = successors
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| self.chosen.contains(*i))
-                .map(|(_, s)| s)
-                .collect::<Vec<_>>();
-            format!(
-                "{:?} -> {{ {} }}",
-                self.from,
-                chosen_successors
+        DisplayOutput::Text(
+            if self.chosen.len() == 1 {
+                format!(
+                    "{:?} -> {:?}",
+                    self.from,
+                    successors[self.chosen.iter().next().unwrap()]
+                )
+            } else {
+                let chosen_successors = successors
                     .iter()
-                    .map(|s| format!("{s:?}"))
-                    .join(", ")
-            )
-        }
+                    .enumerate()
+                    .filter(|(i, _)| self.chosen.contains(*i))
+                    .map(|(_, s)| s)
+                    .collect::<Vec<_>>();
+                format!(
+                    "{:?} -> {{ {} }}",
+                    self.from,
+                    chosen_successors
+                        .iter()
+                        .map(|s| format!("{s:?}"))
+                        .join(", ")
+                )
+            }
+            .into(),
+        )
     }
 }
 
@@ -187,11 +193,14 @@ impl<Ctxt> ToJsonWithCtxt<Ctxt> for ValidityConditions {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for ValidityConditions {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        self.all_branch_choices()
-            .map(|bc| bc.display_string(ctxt))
-            .collect::<Vec<_>>()
-            .join(", ")
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            self.all_branch_choices()
+                .map(|bc| bc.display_string(ctxt))
+                .collect::<Vec<_>>()
+                .join(", ")
+                .into(),
+        )
     }
 }
 

@@ -1,5 +1,5 @@
 //! Data structures for lifetime projections.
-use std::{fmt, hash::Hash, marker::PhantomData};
+use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
 use serde_json::json;
@@ -31,7 +31,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
@@ -58,18 +58,21 @@ pub enum PcgRegionInternalError {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RegionVid {
-    fn display_string(&self, ctxt: Ctxt) -> String {
-        if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
-            string.to_string()
-        } else {
-            format!("{self:?}")
-        }
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
+                string.to_string()
+            } else {
+                format!("{self:?}")
+            }
+            .into(),
+        )
     }
 }
 
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.display_string(None))
+        write!(f, "{}", self.output(None, OutputMode::Normal).into_text())
     }
 }
 
@@ -77,29 +80,32 @@ impl PcgRegion {
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
     }
-    pub fn display_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
-        match self {
-            PcgRegion::RegionVid(vid) => {
-                if let Some(ctxt) = ctxt {
-                    vid.display_string(ctxt)
-                } else {
-                    format!("{vid:?}")
+    pub fn output(&self, ctxt: Option<CompilerCtxt<'_, '_>>, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                PcgRegion::RegionVid(vid) => {
+                    if let Some(ctxt) = ctxt {
+                        vid.display_string(ctxt)
+                    } else {
+                        format!("{vid:?}")
+                    }
+                }
+                PcgRegion::ReErased => "ReErased".to_string(),
+                PcgRegion::ReStatic => "ReStatic".to_string(),
+                PcgRegion::ReBound(debruijn_index, region) => {
+                    format!("ReBound({debruijn_index:?}, {region:?})")
+                }
+                PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
+                PcgRegion::PcgInternalError(pcg_region_internal_error) => {
+                    format!("{pcg_region_internal_error:?}")
+                }
+                PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
+                PcgRegion::ReEarlyParam(early_param_region) => {
+                    format!("ReEarlyParam({early_param_region:?})")
                 }
             }
-            PcgRegion::ReErased => "ReErased".to_string(),
-            PcgRegion::ReStatic => "ReStatic".to_string(),
-            PcgRegion::ReBound(debruijn_index, region) => {
-                format!("ReBound({debruijn_index:?}, {region:?})")
-            }
-            PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
-            PcgRegion::PcgInternalError(pcg_region_internal_error) => {
-                format!("{pcg_region_internal_error:?}")
-            }
-            PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
-            PcgRegion::ReEarlyParam(early_param_region) => {
-                format!("ReEarlyParam({early_param_region:?})")
-            }
-        }
+            .into(),
+        )
     }
 
     pub fn vid(&self) -> Option<RegionVid> {
@@ -146,8 +152,8 @@ impl PcgRegion {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(self.display_string(Some(ctxt.bc_ctxt())))
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.output(Some(ctxt.bc_ctxt()), mode)
     }
 }
 
@@ -215,10 +221,10 @@ impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
 where
     T: DisplayWithCtxt<Ctxt>,
 {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
-            PlaceOrConst::Place(p) => p.output(ctxt),
-            PlaceOrConst::Const(c) => DisplayOutput::Text(format!("Const({c:?})")),
+            PlaceOrConst::Place(p) => p.display_output(ctxt, mode),
+            PlaceOrConst::Const(c) => DisplayOutput::Text(format!("Const({c:?})").into()),
         }
     }
 }
@@ -370,10 +376,10 @@ pub enum LifetimeProjectionLabel {
 }
 
 impl DisplayWithCtxt<()> for LifetimeProjectionLabel {
-    fn output(&self, ctxt: ()) -> DisplayOutput {
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
         match self {
-            LifetimeProjectionLabel::Location(location) => location.output(ctxt),
-            LifetimeProjectionLabel::Future => DisplayOutput::Text("FUTURE".to_string()),
+            LifetimeProjectionLabel::Location(location) => location.display_output(ctxt, mode),
+            LifetimeProjectionLabel::Future => DisplayOutput::Text(Cow::Borrowed("FUTURE")),
         }
     }
 }
@@ -679,17 +685,18 @@ impl<
         + HasRegions<'tcx, Ctxt>,
 > DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
-            Some(label) => {
-                DisplayOutput::Seq(vec![DisplayOutput::Text(" ".to_string()), label.output(())])
-            }
-            _ => DisplayOutput::Text(String::new()),
+            Some(label) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text(Cow::Borrowed(" ")),
+                label.display_output((), mode),
+            ]),
+            _ => DisplayOutput::Text(Cow::Borrowed("")),
         };
         DisplayOutput::Seq(vec![
-            self.base.output(ctxt),
-            DisplayOutput::Text("↓".to_string()),
-            self.region(ctxt).output(ctxt.bc_ctxt()),
+            self.base.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed("↓")),
+            self.region(ctxt).display_output(ctxt.bc_ctxt(), mode),
             label_part,
         ])
     }
@@ -708,7 +715,7 @@ impl<
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
             "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).display_string(Some(ctxt.bc_ctxt())),
+            "region": self.region(ctxt).output(Some(ctxt.bc_ctxt()), OutputMode::Normal).into_text(),
         })
     }
 }
