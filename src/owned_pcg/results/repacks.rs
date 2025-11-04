@@ -26,10 +26,10 @@ pub enum RepackGuide<Local = mir::Local> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
             RepackGuide::Index(local) => {
-                format!("index with local {}", (*local).to_short_string(ctxt))
+                format!("index with local {}", (*local).display_string(ctxt))
             }
             _ => format!("{self:?}"),
         }
@@ -92,8 +92,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
     type Repr = RepackExpand<'static, String, String>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         RepackExpand {
-            from: self.from.to_short_string(ctxt),
-            guide: self.guide.map(|g| g.to_short_string(ctxt)),
+            from: self.from.display_string(ctxt),
+            guide: self.guide.map(|g| g.display_string(ctxt)),
             capability: self.capability,
             _marker: PhantomData,
         }
@@ -153,9 +153,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackCo
     type Repr = RepackCollapse<'static, String, String>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         RepackCollapse {
-            to: self.to.to_short_string(ctxt),
+            to: self.to.display_string(ctxt),
             capability: self.capability,
-            guide: self.guide.map(|g| g.to_short_string(ctxt)),
+            guide: self.guide.map(|g| g.display_string(ctxt)),
             _marker: PhantomData,
         }
     }
@@ -256,37 +256,37 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     type Repr = RepackOp<'static, String, String, String>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         match self {
-            RepackOp::StorageDead(local) => RepackOp::StorageDead(local.to_short_string(ctxt)),
+            RepackOp::StorageDead(local) => RepackOp::StorageDead(local.display_string(ctxt)),
             RepackOp::IgnoreStorageDead(local) => {
-                RepackOp::IgnoreStorageDead(local.to_short_string(ctxt))
+                RepackOp::IgnoreStorageDead(local.display_string(ctxt))
             }
             RepackOp::RegainLoanedCapability(place, capability) => {
-                RepackOp::RegainLoanedCapability(place.to_short_string(ctxt), *capability)
+                RepackOp::RegainLoanedCapability(place.display_string(ctxt), *capability)
             }
             RepackOp::Weaken(weaken) => RepackOp::Weaken(weaken.debug_repr(ctxt)),
             RepackOp::Expand(expand) => RepackOp::Expand(expand.debug_repr(ctxt)),
             RepackOp::Collapse(collapse) => RepackOp::Collapse(collapse.debug_repr(ctxt)),
             RepackOp::DerefShallowInit(place, place2) => RepackOp::DerefShallowInit(
-                place.to_short_string(ctxt),
-                place2.to_short_string(ctxt),
+                place.display_string(ctxt),
+                place2.display_string(ctxt),
             ),
         }
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
             RepackOp::RegainLoanedCapability(place, capability_kind) => {
                 format!(
                     "Restore capability {:?} to {}",
                     capability_kind,
-                    place.to_short_string(ctxt),
+                    place.display_string(ctxt),
                 )
             }
             RepackOp::Expand(expand) => format!(
                 "unpack {} with capability {:?}",
-                expand.from.to_short_string(ctxt),
+                expand.from.display_string(ctxt),
                 expand.capability
             ),
             _ => format!("{self:?}"),

@@ -313,8 +313,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for AbstractionOutputTarget<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_string(&self, ctxt: Ctxt) -> String {
+        self.0.display_string(ctxt)
     }
 }
 

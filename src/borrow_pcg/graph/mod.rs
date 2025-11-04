@@ -66,7 +66,7 @@ impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.edges()
-            .map(|edge| edge.to_short_string(repacker).to_string())
+            .map(|edge| edge.display_string(repacker).to_string())
             .sorted()
             .collect()
     }
@@ -88,11 +88,11 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
                 if !conflicting_edges.is_empty() {
                     return Err(format!(
                         "Placeholder region projection {} has edges blocking or blocked by its current version {}:\n\t{}",
-                        rp.to_short_string(ctxt),
-                        current_rp.to_short_string(ctxt),
+                        rp.display_string(ctxt),
+                        current_rp.display_string(ctxt),
                         conflicting_edges
                             .iter()
-                            .map(|e| e.to_short_string(ctxt))
+                            .map(|e| e.display_string(ctxt))
                             .join("\n\t")
                     ));
                 }
@@ -487,7 +487,7 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for Conditioned<T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         self.conditions.conditional_string(&self.value, ctxt)
     }
 }

@@ -56,7 +56,7 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
-            self.to_short_string(ctxt),
+            self.display_string(ctxt),
             predicate,
             label
         );
@@ -73,11 +73,11 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
-            DisplayWithCtxt::<_>::to_short_string(&self.long, ctxt),
-            self.short.to_short_string(ctxt)
+            DisplayWithCtxt::<_>::display_string(&self.long, ctxt),
+            self.short.display_string(ctxt)
         )
     }
 }
@@ -115,7 +115,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
         if self.long.to_pcg_node(ctxt) == self.short.to_pcg_node(ctxt) {
             return Err(format!(
                 "BorrowFlowEdge: long and short are the same node: {}",
-                self.to_short_string(ctxt)
+                self.display_string(ctxt)
             ));
         }
         Ok(())

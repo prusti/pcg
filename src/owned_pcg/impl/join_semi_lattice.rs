@@ -128,9 +128,9 @@ impl<'tcx> LocalExpansions<'tcx> {
                 pcg_validity_assert!(
                     false,
                     "no cap for {}",
-                    expand.from.to_short_string(ctxt.ctxt())
+                    expand.from.display_string(ctxt.ctxt())
                 );
-                // panic!("no cap for {}", expand.from.to_short_string(ctxt));
+                // panic!("no cap for {}", expand.from.display_string(ctxt));
                 // For debugging, assume exclusive, we can visualize the graph to see what's going on
                 CapabilityKind::Exclusive.into()
             })
@@ -220,7 +220,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                         fallback: CapabilityKind::Exclusive.into(),
                         [ctxt],
                         "Expected capability for {}",
-                        place.to_short_string(ctxt.ctxt())
+                        place.display_string(ctxt.ctxt())
                     );
                     let joined_cap = removed_cap.minimum(acc, ctxt);
                     joined_cap.unwrap()

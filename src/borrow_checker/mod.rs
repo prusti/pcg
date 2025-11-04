@@ -140,7 +140,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for
             |_this, borrow_index, _borrow| {
                 tracing::debug!(
                     "Checking if {} contains {:?} at {:?}",
-                    blocking_place.to_short_string(ctxt),
+                    blocking_place.display_string(ctxt),
                     borrow_index,
                     location
                 );

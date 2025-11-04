@@ -116,12 +116,12 @@ fn format_bin_op(op: &BinOp) -> String {
 
 fn format_local<'tcx>(local: &Local, repacker: CompilerCtxt<'_, 'tcx>) -> String {
     let place: Place<'tcx> = (*local).into();
-    place.to_short_string(repacker)
+    place.display_string(repacker)
 }
 
 fn format_place<'tcx>(place: &mir::Place<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> String {
     let place: Place<'tcx> = (*place).into();
-    place.to_short_string(repacker)
+    place.display_string(repacker)
 }
 
 fn format_operand<'tcx>(operand: &Operand<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> String {

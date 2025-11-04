@@ -176,10 +176,10 @@ pub struct LabelPlaceAction<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlaceAction<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "Make {} an old place ({:?})",
-            self.place.to_short_string(ctxt),
+            self.place.display_string(ctxt),
             self.reason
         )
     }
@@ -224,7 +224,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         BorrowPcgActionKindDebugRepr {
             r#type: BorrowPcgActionKindDiscriminants::from(self),
-            data: self.to_short_string(ctxt),
+            data: self.display_string(ctxt),
         }
     }
 }
@@ -232,12 +232,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
             BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
                 format!(
                     "Label Region Projection: {} with {:?}",
-                    rp.to_short_string(ctxt),
+                    rp.display_string(ctxt),
                     label
                 )
             }
@@ -245,12 +245,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::Restore(restore_capability) => {
                 restore_capability.debug_line(ctxt.ctxt())
             }
-            BorrowPcgActionKind::MakePlaceOld(action) => action.to_short_string(ctxt),
+            BorrowPcgActionKind::MakePlaceOld(action) => action.display_string(ctxt),
             BorrowPcgActionKind::RemoveEdge(borrow_pcgedge) => {
-                format!("Remove Edge {}", borrow_pcgedge.to_short_string(ctxt))
+                format!("Remove Edge {}", borrow_pcgedge.display_string(ctxt))
             }
             BorrowPcgActionKind::AddEdge { edge } => {
-                format!("Add Edge: {}", edge.to_short_string(ctxt),)
+                format!("Add Edge: {}", edge.display_string(ctxt),)
             }
         }
     }

@@ -85,7 +85,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
     type Repr = Weaken<'static, String, ToCap>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         Weaken {
-            place: self.place.to_short_string(ctxt),
+            place: self.place.display_string(ctxt),
             from: self.from,
             to: self.to,
             _marker: PhantomData,
@@ -112,7 +112,7 @@ impl<'tcx> Weaken<'tcx> {
         };
         format!(
             "Weaken {} from {:?} to {}",
-            self.place.to_short_string(ctxt),
+            self.place.display_string(ctxt),
             self.from,
             to_str
         )
@@ -154,7 +154,7 @@ impl<'tcx> RestoreCapability<'tcx> {
     pub(crate) fn debug_line<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
         format!(
             "Restore {} to {:?}",
-            self.place.to_short_string(repacker),
+            self.place.display_string(repacker),
             self.capability,
         )
     }

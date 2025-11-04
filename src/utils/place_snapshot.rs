@@ -160,7 +160,7 @@ impl SnapshotLocation {
 
 impl std::fmt::Display for SnapshotLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", DisplayWithCtxt::<_>::to_short_string(self, ()))
+        write!(f, "{}", DisplayWithCtxt::<_>::display_string(self, ()))
     }
 }
 

@@ -202,12 +202,12 @@ impl<'tcx> RemoteBorrow<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for RemoteBorrow<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
-            self.blocked_place().to_short_string(ctxt),
+            self.blocked_place().display_string(ctxt),
             self.assigned_lifetime_projection(ctxt)
-                .to_short_string(ctxt)
+                .display_string(ctxt)
         )
     }
 }
@@ -356,22 +356,22 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LocalBorrow<'tcx> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
-            format!(" <{}>", DisplayWithCtxt::<_>::to_short_string(&rp, ()))
+            format!(" <{}>", DisplayWithCtxt::<_>::display_string(&rp, ()))
         } else {
             "".to_string()
         };
         format!(
             "borrow: {}{} = &{} {}",
-            self.assigned_ref.to_short_string(ctxt),
+            self.assigned_ref.display_string(ctxt),
             rp_part,
             if self.kind.mutability() == Mutability::Mut {
                 "mut "
             } else {
                 ""
             },
-            self.blocked_place.to_short_string(ctxt),
+            self.blocked_place.display_string(ctxt),
         )
     }
 }

@@ -70,7 +70,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
         edge: impl BorrowPcgEdgeLike<'tcx>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
     ) {
-        let path_conditions = edge.conditions().to_short_string(self.ctxt());
+        let path_conditions = edge.conditions().display_string(self.ctxt());
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref_edge) => {
                 let deref_place = self.insert_pcg_node(deref_edge.deref_place.into());

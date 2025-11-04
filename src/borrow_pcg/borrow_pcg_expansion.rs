@@ -189,7 +189,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
     ) -> bool {
         tracing::debug!(
             "label blocked places: {} with {:?}",
-            self.to_short_string(ctxt),
+            self.display_string(ctxt),
             predicate
         );
         let result =
@@ -238,13 +238,13 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
 impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{{{}}} -> {{{}}}",
-            self.base.to_short_string(ctxt),
+            self.base.display_string(ctxt),
             self.expansion
                 .iter()
-                .map(|p| p.to_short_string(ctxt))
+                .map(|p| p.display_string(ctxt))
                 .join(", ")
         )
     }
@@ -262,7 +262,7 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
                 return Err(format!(
                     "Expansion of {:?} contains owned place {}",
                     self,
-                    node.place().to_short_string(ctxt)
+                    node.place().display_string(ctxt)
                 ));
             }
         }
@@ -380,7 +380,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
             !(base.is_place() && base.place().is_ref(ctxt) && expansion == PlaceExpansion::Deref),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
-            base.place().to_short_string(ctxt.ctxt())
+            base.place().display_string(ctxt.ctxt())
         );
         let result = Self {
             base,

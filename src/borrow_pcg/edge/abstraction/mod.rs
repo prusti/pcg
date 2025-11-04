@@ -253,11 +253,11 @@ impl<'tcx, Input: AbstractionInputLike<'tcx>, Output: Copy + PcgNodeLike<'tcx>> 
 impl<'tcx, Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
-            self.input.to_short_string(ctxt),
-            self.output.to_short_string(ctxt),
+            self.input.display_string(ctxt),
+            self.output.display_string(ctxt),
         )
     }
 }

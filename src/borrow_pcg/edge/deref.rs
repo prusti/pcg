@@ -72,11 +72,11 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefEdge<'tcx> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{{{}}} -> {{{}}}",
-            self.blocked_place.to_short_string(ctxt),
-            self.deref_place.to_short_string(ctxt)
+            self.blocked_place.display_string(ctxt),
+            self.deref_place.display_string(ctxt)
         )
     }
 }

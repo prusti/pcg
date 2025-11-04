@@ -99,7 +99,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
                 for edge in blocking_edges {
                     match self.clone().try_push(edge, ctxt) {
                         PushResult::Cycle => {
-                            tracing::info!("Cycle: {}", self.0.to_short_string(ctxt));
+                            tracing::info!("Cycle: {}", self.0.display_string(ctxt));
                             return true;
                         }
                         PushResult::ExtendPath(next_path) => {

@@ -117,7 +117,7 @@ impl BranchChoices {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for BranchChoices {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         let successors = effective_successors(self.from, ctxt.body());
         if self.chosen.len() == 1 {
             format!(
@@ -163,12 +163,12 @@ impl ValidityConditions {
         ctxt: Ctxt,
     ) -> String {
         if self.is_empty() {
-            content.to_short_string(ctxt)
+            content.display_string(ctxt)
         } else {
             format!(
                 "{} under conditions {}",
-                content.to_short_string(ctxt),
-                self.to_short_string(ctxt)
+                content.display_string(ctxt),
+                self.display_string(ctxt)
             )
         }
     }
@@ -187,9 +187,9 @@ impl<Ctxt> ToJsonWithCtxt<Ctxt> for ValidityConditions {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for ValidityConditions {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         self.all_branch_choices()
-            .map(|bc| bc.to_short_string(ctxt))
+            .map(|bc| bc.display_string(ctxt))
             .collect::<Vec<_>>()
             .join(", ")
     }

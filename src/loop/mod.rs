@@ -215,8 +215,8 @@ pub(crate) struct PlaceUsage<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PlaceUsage<'tcx> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!("{}: {:?}", self.place.to_short_string(ctxt), self.usage)
+    fn display_string(&self, ctxt: Ctxt) -> String {
+        format!("{}: {:?}", self.place.display_string(ctxt), self.usage)
     }
 }
 
@@ -224,10 +224,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
 pub struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PlaceUsages<'tcx> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         self.0
             .iter()
-            .map(|(p, usage)| format!("{}: {:?}", p.to_short_string(ctxt), usage))
+            .map(|(p, usage)| format!("{}: {:?}", p.display_string(ctxt), usage))
             .join("\n")
     }
 }

@@ -124,7 +124,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             if let Some(CapabilityKind::Write) = capabilities.get(expansion.place, ctxt) {
                 return Err(format!(
                     "Base {} of expansion {:?} has write capability",
-                    expansion.place.to_short_string(ctxt),
+                    expansion.place.display_string(ctxt),
                     expansion
                 ));
             }
@@ -144,7 +144,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     {
         tracing::debug!(
             "Removing all expansions from {}",
-            place.to_short_string(ctxt.ctxt())
+            place.display_string(ctxt.ctxt())
         );
         self.expansions.retain(|pe| pe.place != place);
     }

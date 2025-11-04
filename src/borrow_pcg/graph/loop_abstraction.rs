@@ -65,10 +65,10 @@ pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeRemoteCurrentPlace<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
-            MaybeRemoteCurrentPlace::Local(place) => place.to_short_string(ctxt),
-            MaybeRemoteCurrentPlace::Remote(place) => place.to_short_string(ctxt),
+            MaybeRemoteCurrentPlace::Local(place) => place.display_string(ctxt),
+            MaybeRemoteCurrentPlace::Remote(place) => place.display_string(ctxt),
         }
     }
 }
@@ -139,7 +139,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         tracing::debug!(
             "loop blocked places: {}",
-            loop_blocked_places.to_short_string(ctxt)
+            loop_blocked_places.display_string(ctxt)
         );
 
         for blocker in candidate_blockers.iter_places() {
@@ -152,8 +152,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 {
                     tracing::debug!(
                         "{} blocks root {}",
-                        blocker.to_short_string(ctxt),
-                        relevant_root.to_short_string(ctxt)
+                        blocker.display_string(ctxt),
+                        relevant_root.display_string(ctxt)
                     );
                     add_block_edges(&mut expander, *root, blocker, ctxt);
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
@@ -258,11 +258,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let frozen_graph = graph.frozen_graph();
         tracing::debug!(
             "leaf edges: {}",
-            frozen_graph.leaf_edges(ctxt).to_short_string(ctxt)
+            frozen_graph.leaf_edges(ctxt).display_string(ctxt)
         );
         tracing::debug!(
             "leaf nodes: {}",
-            frozen_graph.leaf_nodes(ctxt).to_short_string(ctxt)
+            frozen_graph.leaf_nodes(ctxt).display_string(ctxt)
         );
         for rp in to_label.iter() {
             tracing::debug!("labeling {:?}", rp);
@@ -274,7 +274,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 LogPredicate::DebugBlock,
                 analysis_ctxt,
                 "capability update for {}: {:?}",
-                place.to_short_string(ctxt),
+                place.display_string(ctxt),
                 capability
             );
         }
@@ -334,8 +334,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
         tracing::debug!(
             "immediate live ancestors of {}: {}",
-            node.to_short_string(ctxt),
-            result.to_short_string(ctxt)
+            node.display_string(ctxt),
+            result.display_string(ctxt)
         );
         result
     }
@@ -386,7 +386,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 Some(DebugImgcat::JoinLoop),
                 &format!(
                     "After obtaining (self) {}",
-                    place_usage.to_short_string(ctxt.ctxt)
+                    place_usage.display_string(ctxt.ctxt)
                 ),
             );
         }
@@ -477,7 +477,7 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 
     fn expand_to_places(&mut self, blocked_places: &PlaceUsages<'tcx>, places: &PlaceUsages<'tcx>) {
         for place in places.iter() {
-            tracing::debug!("loop expanding to {}", place.to_short_string(self.ctxt));
+            tracing::debug!("loop expanding to {}", place.display_string(self.ctxt));
             self.expand_to(
                 place.place,
                 ObtainType::LoopInvariant {
@@ -633,8 +633,8 @@ fn add_rp_block_edges<'mir, 'tcx>(
             if !mut_rps.is_empty() {
                 tracing::debug!(
                     "Mutable rps: {} -> {}",
-                    blocked_rp.to_short_string(ctxt),
-                    mut_rps.to_short_string(ctxt)
+                    blocked_rp.display_string(ctxt),
+                    mut_rps.display_string(ctxt)
                 );
                 expander
                     .add_and_update_placeholder_edges(blocked_rp, &mut_rps, "mut rps", ctxt)
@@ -666,8 +666,8 @@ fn add_block_edges<'mir, 'tcx>(
         MaybeRemoteCurrentPlace::Local(blocker),
         blocked_place,
         "blocker {} and blocked_place {} are the same",
-        blocker.to_short_string(ctxt),
-        blocked_place.to_short_string(ctxt)
+        blocker.display_string(ctxt),
+        blocked_place.display_string(ctxt)
     );
     let blocker_rps = blocker.lifetime_projections(ctxt);
     // Add top-level borrow

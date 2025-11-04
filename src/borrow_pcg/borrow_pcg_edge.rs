@@ -47,7 +47,7 @@ pub struct BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
 impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         self.conditions.conditional_string(self.kind, ctxt)
     }
 }
@@ -427,8 +427,8 @@ edgedata_enum!(
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for &BorrowPcgEdgeKind<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        (*self).to_short_string(ctxt)
+    fn display_string(&self, ctxt: Ctxt) -> String {
+        (*self).display_string(ctxt)
     }
 }
 

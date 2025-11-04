@@ -102,7 +102,7 @@ impl Ord for Place<'_> {
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Place<'tcx> {
     fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        serde_json::Value::String(self.to_short_string(repacker))
+        serde_json::Value::String(self.display_string(repacker))
     }
 }
 

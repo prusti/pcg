@@ -144,7 +144,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 );
                 format!(
                     "Loans in {} - before: {}, mid: {}",
-                    DisplayWithCtxt::<_>::to_short_string(&projection.region(self.ctxt), self.ctxt),
+                    DisplayWithCtxt::<_>::display_string(&projection.region(self.ctxt), self.ctxt),
                     loans_before,
                     loans_after
                 )
@@ -180,7 +180,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             capabilities,
         );
         let label = match abstraction {
-            AbstractionEdge::FunctionCall(fc) => fc.to_short_string(self.ctxt),
+            AbstractionEdge::FunctionCall(fc) => fc.display_string(self.ctxt),
             AbstractionEdge::Loop(loop_abstraction) => {
                 format!("loop at {:?}", loop_abstraction.location())
             }
@@ -222,7 +222,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
         let capability = capability_getter.get(place);
         let id = self.place_node_id(place, location);
-        let label = place.to_short_string(self.ctxt);
+        let label = place.display_string(self.ctxt);
         let place_ty = place.ty(self.ctxt);
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),

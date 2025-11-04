@@ -88,10 +88,10 @@ pub enum EdgePredicate {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlacePredicate<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
             LabelPlacePredicate::Postfix { place, .. } => {
-                place.to_short_string(ctxt) // As a hack for now so debug output doesn't change
+                place.display_string(ctxt) // As a hack for now so debug output doesn't change
             }
             LabelPlacePredicate::DerefPostfixOf {
                 place,
@@ -99,12 +99,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
             } => {
                 format!(
                     "deref postfix of {} (shared_refs_only: {})",
-                    place.to_short_string(ctxt),
+                    place.display_string(ctxt),
                     shared_refs_only
                 )
             }
             LabelPlacePredicate::Exact(place) => {
-                format!("exact {}", place.to_short_string(ctxt))
+                format!("exact {}", place.display_string(ctxt))
             }
         }
     }
@@ -304,10 +304,10 @@ macro_rules! edgedata_enum {
         }
 
         impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
-            fn to_short_string(&self, ctxt: Ctxt) -> String {
+            fn display_string(&self, ctxt: Ctxt) -> String {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.to_short_string(ctxt),
+                        $enum_name::$variant_name(inner) => inner.display_string(ctxt),
                     )+
                 }
             }

@@ -58,7 +58,7 @@ pub enum PcgRegionInternalError {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RegionVid {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
             string.to_string()
         } else {
@@ -69,7 +69,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_short_string(None))
+        write!(f, "{}", self.display_string(None))
     }
 }
 
@@ -77,11 +77,11 @@ impl PcgRegion {
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
     }
-    pub fn to_short_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
+    pub fn display_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
         match self {
             PcgRegion::RegionVid(vid) => {
                 if let Some(ctxt) = ctxt {
-                    vid.to_short_string(ctxt)
+                    vid.display_string(ctxt)
                 } else {
                     format!("{vid:?}")
                 }
@@ -149,7 +149,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PcgRegion
 {
     fn output(&self, ctxt: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(self.to_short_string(Some(ctxt.bc_ctxt())))
+        DisplayOutput::Text(self.display_string(Some(ctxt.bc_ctxt())))
     }
 }
 
@@ -712,7 +712,7 @@ impl<
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
             "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).to_short_string(Some(ctxt.bc_ctxt())),
+            "region": self.region(ctxt).display_string(Some(ctxt.bc_ctxt())),
         })
     }
 }

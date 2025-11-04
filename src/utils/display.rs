@@ -85,7 +85,7 @@ pub trait DisplayWithCtxt<Ctxt> {
     fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
         unimplemented!()
     }
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         self.output(ctxt).into_text()
     }
     fn to_html(&self, ctxt: Ctxt) -> Html {
@@ -97,9 +97,9 @@ pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =
     DisplayWithCtxt<CompilerCtxt<'a, 'tcx, BC>>;
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for mir::Local {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         let as_place: Place<'tcx> = (*self).into();
-        format!("local {}", as_place.to_short_string(ctxt))
+        format!("local {}", as_place.display_string(ctxt))
     }
 }
 
@@ -133,10 +133,10 @@ impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Place<'tcx> {
     fn output(&self, repacker: Ctxt) -> DisplayOutput {
-        DisplayOutput::Text(self.to_short_string(repacker))
+        DisplayOutput::Text(self.display_string(repacker))
     }
 
-    fn to_short_string(&self, repacker: Ctxt) -> String {
+    fn display_string(&self, repacker: Ctxt) -> String {
         match self.to_string(repacker.ctxt()) {
             PlaceDisplay::Temporary(p) => format!("{p:?}"),
             PlaceDisplay::User(_p, s) => s,
@@ -146,7 +146,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
 
 impl<'tcx> Place<'tcx> {
     pub(crate) fn to_json<BC: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
-        serde_json::Value::String(self.to_short_string(ctxt))
+        serde_json::Value::String(self.display_string(ctxt))
     }
 
     pub fn to_string<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> PlaceDisplay<'tcx> {

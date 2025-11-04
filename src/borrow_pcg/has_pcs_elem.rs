@@ -31,23 +31,23 @@ pub enum LabelLifetimeProjectionPredicate<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelLifetimeProjectionPredicate<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
             LabelLifetimeProjectionPredicate::Postfix(region_projection) => {
-                format!("postfixes of {}", region_projection.to_short_string(ctxt))
+                format!("postfixes of {}", region_projection.display_string(ctxt))
             }
             LabelLifetimeProjectionPredicate::Equals(region_projection) => {
-                region_projection.to_short_string(ctxt)
+                region_projection.display_string(ctxt)
             }
             LabelLifetimeProjectionPredicate::AllNonFuture(maybe_old_place, region_idx) => {
                 format!(
                     "AllNonFuture: {}, {:?}",
-                    maybe_old_place.to_short_string(ctxt),
+                    maybe_old_place.display_string(ctxt),
                     region_idx
                 )
             }
             LabelLifetimeProjectionPredicate::AllFuturePostfixes(place) => {
-                format!("AllPlaceholderPostfixes: {}", place.to_short_string(ctxt))
+                format!("AllPlaceholderPostfixes: {}", place.display_string(ctxt))
             }
         }
     }

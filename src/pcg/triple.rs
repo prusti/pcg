@@ -70,7 +70,7 @@ impl<'tcx> PlaceCondition<'tcx> {
         pcg_validity_assert!(
             !place.projects_shared_ref(repacker),
             "Cannot get exclusive on projection of shared ref {}",
-            place.to_short_string(repacker)
+            place.display_string(repacker)
         );
         Self::new(place, CapabilityKind::Exclusive)
     }

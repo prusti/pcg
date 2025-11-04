@@ -183,10 +183,10 @@ impl<
 where
     LifetimeProjection<'tcx, U>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_string(&self, ctxt: Ctxt) -> String {
         match self {
-            PcgNode::Place(p) => p.to_short_string(ctxt),
-            PcgNode::LifetimeProjection(rp) => rp.to_short_string(ctxt),
+            PcgNode::Place(p) => p.display_string(ctxt),
+            PcgNode::LifetimeProjection(rp) => rp.display_string(ctxt),
         }
     }
 }

@@ -220,7 +220,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         pre_rp.label(),
                         format!(
                             "Function call:Label Pre version of {}",
-                            rp.to_short_string(self.ctxt.bc_ctxt()),
+                            rp.display_string(self.ctxt.bc_ctxt()),
                         ),
                     )
                     .into(),
@@ -234,13 +234,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             // pcg_validity_assert!(
             //     sig_shape.is_specialization_of(&call_shape),
             //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\n does not specialize Call shape {}.\nDiff: {}",
-            //     sig_shape.to_short_string(self.ctxt.bc_ctxt()),
+            //     sig_shape.display_string(self.ctxt.bc_ctxt()),
             //     function_call_data.def_id(),
             //     ctxt.tcx().fn_sig(function_call_data.def_id()),
             //     function_call_data.function_data.fn_sig(self.ctxt.bc_ctxt()),
             //     // function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
-            //     call_shape.to_short_string(self.ctxt.bc_ctxt()),
-            //     sig_shape.diff(&call_shape).to_short_string(self.ctxt.bc_ctxt())
+            //     call_shape.display_string(self.ctxt.bc_ctxt()),
+            //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
             // );
             sig_shape.or_else(|err| {
                 tracing::warn!("Error getting signature shape: {:?}", err);

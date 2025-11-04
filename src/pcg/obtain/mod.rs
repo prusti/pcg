@@ -206,7 +206,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         let mut leaf_places = self.leaf_places(ctxt.bc_ctxt());
         tracing::debug!(
             "Leaf places: {}",
-            leaf_places.to_short_string(ctxt.bc_ctxt())
+            leaf_places.display_string(ctxt.bc_ctxt())
         );
         leaf_places.retain(|p| {
             self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read.into())
@@ -216,7 +216,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         });
         tracing::debug!(
             "Restoring capability to leaf places: {}",
-            leaf_places.to_short_string(ctxt.bc_ctxt())
+            leaf_places.display_string(ctxt.bc_ctxt())
         );
         for place in leaf_places {
             if let Some(parent_place) = parent_place
@@ -270,7 +270,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         for mut rp in derefs_to_disconnect.iter().copied() {
             tracing::debug!(
                 "Disconnecting deref projection {}",
-                rp.to_short_string(ctxt.bc_ctxt())
+                rp.display_string(ctxt.bc_ctxt())
             );
             let conditions = self.borrows_state().graph.remove(&rp.into()).unwrap();
             let label = self.prev_snapshot_location();
@@ -303,7 +303,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         if !derefs_to_disconnect.is_empty() {
             tracing::debug!(
                 "Labeling deref projections for place {}",
-                place.to_short_string(ctxt.ctxt())
+                place.display_string(ctxt.ctxt())
             );
             self.apply_action(
                 BorrowPcgAction::label_place_and_update_related_capabilities(
@@ -330,8 +330,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             .places_to_collapse_for_obtain_of(place, ctxt);
         tracing::debug!(
             "To obtain {}, will collapse {}",
-            place.to_short_string(ctxt.ctxt()),
-            to_collapse.to_short_string(ctxt.ctxt())
+            place.display_string(ctxt.ctxt()),
+            to_collapse.display_string(ctxt.ctxt())
         );
         for place in to_collapse {
             let expansions = self
