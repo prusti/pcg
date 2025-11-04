@@ -99,7 +99,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             // We want to insert this expansion (and all further expansions), without any capabilities
             tracing::debug!(
                 "Other expansions contain a descendent leaf node without capability for place {}",
-                base_place.to_short_string(ctxt)
+                base_place.display_string(ctxt)
             );
             self.owned
                 .insert_expansion(other_expansion.place, other_expansion.expansion.clone());
@@ -118,7 +118,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 CapabilityKind::Write,
                 format!(
                     "Join: collapse owned places {}",
-                    other_expansion.place.to_short_string(ctxt)
+                    other_expansion.place.display_string(ctxt)
                 ),
                 ctxt,
             )?;
@@ -127,7 +127,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 self_obtainer.data.capabilities.get(base_place, ctxt)
                     == Some(CapabilityKind::Write.into()),
                 "Expected capability for {} to be Write",
-                base_place.to_short_string(ctxt)
+                base_place.display_string(ctxt)
             );
 
             let mut other_obtainer = JoinObtainer {
@@ -141,7 +141,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 CapabilityKind::Write,
                 format!(
                     "Join: collapse owned places {}",
-                    other_expansion.place.to_short_string(ctxt)
+                    other_expansion.place.display_string(ctxt)
                 ),
                 ctxt,
             )?;
@@ -166,7 +166,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         if let Some(expand_cap) = self_cap.minimum(other_cap, ctxt) {
             tracing::debug!(
                 "Expanding from place {} with cap {:?}",
-                place.to_short_string(ctxt),
+                place.display_string(ctxt),
                 expand_cap
             );
             let expand_action = RepackExpand::new(place, guide, expand_cap.expect_concrete());
@@ -179,7 +179,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             pcg_validity_assert!(other_cap == CapabilityKind::Write.into());
             tracing::debug!(
                 "No join expansion from place {}",
-                place.to_short_string(ctxt)
+                place.display_string(ctxt)
             );
             let actions = self.join_leaf_read_and_write_capabilities(other, place, ctxt)?;
             pcg_validity_assert!(!actions.is_empty());
@@ -430,7 +430,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         }
         tracing::debug!(
             "Join {} actions:\n\t{}",
-            Place::from(self.owned.get_local()).to_short_string(ctxt),
+            Place::from(self.owned.get_local()).display_string(ctxt),
             actions.debug_lines(ctxt).join("\n\t")
         );
         tracing::debug!(
@@ -452,7 +452,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             if place.is_prefix_of(p) && place_capabilities.get(p, ctxt).is_none() {
                 tracing::debug!(
                     "Place {} is a leaf node without capability",
-                    p.to_short_string(ctxt)
+                    p.display_string(ctxt)
                 );
                 true
             } else {

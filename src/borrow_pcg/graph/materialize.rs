@@ -28,18 +28,18 @@ pub(crate) enum MaterializedEdge<'tcx, 'graph> {
 impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn materialized_edges<'graph, 'mir>(
         &'graph self,
-        repacker: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> Vec<MaterializedEdge<'tcx, 'graph>> {
         let mut result = Vec::new();
         for edge in self.edges() {
             result.push(edge.into());
             if let BorrowPcgEdgeKind::Borrow(edge) = edge.kind()
-                && self.contains(edge.deref_place(repacker), repacker)
+                && self.contains(edge.deref_place(ctxt), ctxt)
             {
                 result.push(MaterializedEdge::Synthetic(SyntheticEdge::Alias(
                     AliasEdge {
                         blocked_place: edge.blocked_place().into(),
-                        blocking_place: edge.deref_place(repacker).into(),
+                        blocking_place: edge.deref_place(ctxt).into(),
                     },
                 )));
             }

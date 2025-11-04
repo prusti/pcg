@@ -64,7 +64,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
                 tracing::debug!(
                     "expand region projections for {} one level",
-                    base.to_short_string(ctxt.ctxt())
+                    base.display_string(ctxt.ctxt())
                 );
                 self.expand_lifetime_projections_one_level(base, &expansion, obtain_type, ctxt)?;
             }
@@ -122,13 +122,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(
                 "Already contains owned expansion from {}",
-                base.to_short_string(ctxt.ctxt())
+                base.display_string(ctxt.ctxt())
             );
             return Ok(false);
         }
         tracing::debug!(
             "New owned expansion from {}",
-            base.to_short_string(ctxt.ctxt())
+            base.display_string(ctxt.ctxt())
         );
         if expansion.kind.is_deref_box()
             && obtain_type.capability(base, ctxt).is_shallow_exclusive()
@@ -246,12 +246,12 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         }
         tracing::debug!(
             "Create expansion from {}",
-            base.to_short_string(ctxt.bc_ctxt())
+            base.display_string(ctxt.bc_ctxt())
         );
         let block_type = expanded_place.expansion.block_type(base, obtain_type, ctxt);
         tracing::debug!(
             "Block type for {} is {:?}",
-            base.to_short_string(ctxt.bc_ctxt()),
+            base.display_string(ctxt.bc_ctxt()),
             block_type
         );
         let expansion: BorrowPcgExpansion<'tcx, LocalNode<'tcx>> =
@@ -261,7 +261,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             None,
             &format!(
                 "add_borrow_pcg_expansion: before update_capabilities_for_borrow_expansion {}",
-                expansion.to_short_string(ctxt.bc_ctxt())
+                expansion.display_string(ctxt.bc_ctxt())
             ),
         );
         self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt())?;
@@ -293,7 +293,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if let Some(place_expansion) =
                 expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
-                tracing::debug!("Expand {}", base_rp.to_short_string(ctxt.bc_ctxt()));
+                tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
                 let mut expansion = BorrowPcgExpansion::new(base_rp.into(), place_expansion, ctxt)?;
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {

@@ -18,7 +18,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
         callbacks::RustBorrowCheckerImpl,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
     },
 };
 
@@ -30,9 +30,9 @@ use super::{
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PoloniusRegionVid
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         let region: RegionVid = (*self).into();
-        region.to_short_string(ctxt)
+        DisplayOutput::Text(region.display_string(ctxt).into())
     }
 }
 
@@ -51,7 +51,7 @@ fn get_id<
         id.to_string()
     } else {
         let id = nodes.node_id(elem);
-        graph_nodes.push(DotNode::simple(id.to_string(), elem.to_short_string(ctxt)));
+        graph_nodes.push(DotNode::simple(id.to_string(), elem.display_string(ctxt)));
         id.to_string()
     }
 }
@@ -170,7 +170,7 @@ pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
                 "[{}]",
                 regions
                     .iter()
-                    .map(|r| r.to_short_string(ctxt.as_dyn()))
+                    .map(|r| r.display_string(ctxt.as_dyn()))
                     .collect::<Vec<_>>()
                     .join(", ")
             )

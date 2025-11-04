@@ -2,7 +2,10 @@ use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
     rustc_interface::middle::mir::ProjectionElem,
-    utils::{CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt},
+    utils::{
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
@@ -88,25 +91,28 @@ pub enum EdgePredicate {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlacePredicate<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        match self {
-            LabelPlacePredicate::Postfix { place, .. } => {
-                place.to_short_string(ctxt) // As a hack for now so debug output doesn't change
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                LabelPlacePredicate::Postfix { place, .. } => {
+                    place.display_string(ctxt) // As a hack for now so debug output doesn't change
+                }
+                LabelPlacePredicate::DerefPostfixOf {
+                    place,
+                    shared_refs_only,
+                } => {
+                    format!(
+                        "deref postfix of {} (shared_refs_only: {})",
+                        place.display_string(ctxt),
+                        shared_refs_only
+                    )
+                }
+                LabelPlacePredicate::Exact(place) => {
+                    format!("exact {}", place.display_string(ctxt))
+                }
             }
-            LabelPlacePredicate::DerefPostfixOf {
-                place,
-                shared_refs_only,
-            } => {
-                format!(
-                    "deref postfix of {} (shared_refs_only: {})",
-                    place.to_short_string(ctxt),
-                    shared_refs_only
-                )
-            }
-            LabelPlacePredicate::Exact(place) => {
-                format!("exact {}", place.to_short_string(ctxt))
-            }
-        }
+            .into(),
+        )
     }
 }
 
@@ -191,28 +197,28 @@ macro_rules! edgedata_enum {
         impl<$tcx> $crate::borrow_pcg::edge_data::EdgeData<$tcx> for $enum_name<$tcx> {
             fn blocked_nodes<'slf, BC: Copy>(
                 &'slf self,
-                repacker: CompilerCtxt<'_, $tcx, BC>,
+                ctxt: CompilerCtxt<'_, $tcx, BC>,
             ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
             where
                 'tcx: 'slf,
             {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.blocked_nodes(repacker),
+                        $enum_name::$variant_name(inner) => inner.blocked_nodes(ctxt),
                     )+
                 }
             }
 
             fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
                 &'slf self,
-                repacker: CompilerCtxt<'mir, $tcx, BC>,
+                ctxt: CompilerCtxt<'mir, $tcx, BC>,
             ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf>
             where
                 'tcx: 'mir,
             {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.blocked_by_nodes(repacker),
+                        $enum_name::$variant_name(inner) => inner.blocked_by_nodes(ctxt),
                     )+
                 }
             }
@@ -220,11 +226,11 @@ macro_rules! edgedata_enum {
             fn blocks_node<'slf>(
                 &self,
                 node: BlockedNode<'tcx>,
-                repacker: CompilerCtxt<'_, $tcx>,
+                ctxt: CompilerCtxt<'_, $tcx>,
             ) -> bool {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.blocks_node(node, repacker),
+                        $enum_name::$variant_name(inner) => inner.blocks_node(node, ctxt),
                     )+
                 }
             }
@@ -232,11 +238,11 @@ macro_rules! edgedata_enum {
             fn is_blocked_by<'slf>(
                 &self,
                 node: LocalNode<'tcx>,
-                repacker: CompilerCtxt<'_, $tcx>,
+                ctxt: CompilerCtxt<'_, $tcx>,
             ) -> bool {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.is_blocked_by(node, repacker),
+                        $enum_name::$variant_name(inner) => inner.is_blocked_by(node, ctxt),
                     )+
                 }
             }
@@ -283,11 +289,11 @@ macro_rules! edgedata_enum {
                 &mut self,
                 predicate: &$crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate<'tcx>,
                 location: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
-                repacker: CompilerCtxt<'a, 'tcx>,
+                ctxt: CompilerCtxt<'a, 'tcx>,
             ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.label_lifetime_projection(predicate, location, repacker),
+                        $enum_name::$variant_name(inner) => inner.label_lifetime_projection(predicate, location, ctxt),
                     )+
                 }
             }
@@ -304,10 +310,10 @@ macro_rules! edgedata_enum {
         }
 
         impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
-            fn to_short_string(&self, ctxt: Ctxt) -> String {
+            fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.to_short_string(ctxt),
+                        $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
                     )+
                 }
             }

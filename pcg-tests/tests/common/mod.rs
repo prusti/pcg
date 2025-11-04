@@ -63,7 +63,7 @@ fn pcg_bin_name() -> &'static str {
     }
 }
 
-fn find_workspace_base_dir(target: &str) -> PathBuf {
+fn find_workspace_base_dir() -> PathBuf {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap());
@@ -79,7 +79,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         "debug"
     };
 
-    let base_dir = find_workspace_base_dir(target);
+    let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
 
     let build_args = match options.target() {
@@ -130,7 +130,7 @@ pub fn is_polonius_test_file(file: &Path) -> bool {
 
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
-    let base_dir = find_workspace_base_dir("debug");
+    let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
     let pcg_exe = pcg_bin_dir
         .join("target")
@@ -149,6 +149,7 @@ pub fn run_pcg_on_file(file: &Path) {
                 "false"
             },
         )
+        .env("PCG_ALLOW_BORROWCK_ERRORS", "true")
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute test {}: {}", file.display(), e));
 
@@ -267,7 +268,7 @@ pub fn build_pcg_bin(target: Target) {
         Target::Release => "release",
     };
 
-    let base_dir = find_workspace_base_dir(target_name);
+    let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
 
     let status = Command::new("cargo")

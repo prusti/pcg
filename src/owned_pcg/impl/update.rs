@@ -55,7 +55,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                         pcg_validity_assert!(
                             !place.projects_shared_ref(ctxt),
                             "Cannot get exclusive on projection of shared ref {}",
-                            place.to_short_string(ctxt.bc_ctxt())
+                            place.display_string(ctxt.bc_ctxt())
                         );
                     }
                     CapabilityKind::ShallowExclusive => unreachable!(),
@@ -74,7 +74,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                             false,
                             [ctxt],
                             "No capability for {}",
-                            place.to_short_string(ctxt.bc_ctxt())
+                            place.display_string(ctxt.bc_ctxt())
                         );
                     }
                 }

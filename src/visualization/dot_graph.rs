@@ -7,6 +7,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use crate::utils::html::Html;
+
 type NodeId = String;
 
 pub struct DotGraph {
@@ -97,9 +99,9 @@ impl Display for DotGraph {
     }
 }
 
-pub enum DotLabel {
+pub(crate) enum DotLabel {
     Text(String),
-    Html(String),
+    Html(Html),
 }
 
 impl Display for DotLabel {
@@ -115,7 +117,7 @@ impl DotAttr for DotLabel {}
 
 pub struct DotNode {
     pub id: NodeId,
-    pub label: DotLabel,
+    pub(crate) label: DotLabel,
     pub font_color: DotStringAttr,
     pub color: DotStringAttr,
     pub shape: DotStringAttr,

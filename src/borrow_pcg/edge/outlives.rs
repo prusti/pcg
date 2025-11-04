@@ -13,7 +13,7 @@ use crate::{
     pcg_validity_assert,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };
@@ -56,7 +56,7 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
-            self.to_short_string(ctxt),
+            self.display_string(ctxt),
             predicate,
             label
         );
@@ -73,18 +73,21 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{} -> {}",
-            self.long.to_short_string(ctxt),
-            self.short.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{} -> {}",
+                DisplayWithCtxt::<_>::display_string(&self.long, ctxt),
+                self.short.display_string(ctxt)
+            )
+            .into(),
         )
     }
 }
 
 impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
-    fn blocks_node<'slf>(&self, node: PcgNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.long.to_pcg_node(repacker) == node
+    fn blocks_node<'slf>(&self, node: PcgNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.long.to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -99,7 +102,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        _repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
@@ -115,7 +118,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
         if self.long.to_pcg_node(ctxt) == self.short.to_pcg_node(ctxt) {
             return Err(format!(
                 "BorrowFlowEdge: long and short are the same node: {}",
-                self.to_short_string(ctxt)
+                self.display_string(ctxt)
             ));
         }
         Ok(())

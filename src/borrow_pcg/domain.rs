@@ -17,8 +17,10 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt,
-        maybe_remote::MaybeRemotePlace, place::maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_remote::MaybeRemotePlace,
+        place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -88,8 +90,8 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionInput<'tcx>
 where
     LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.0.display_output(ctxt, mode)
     }
 }
 
@@ -153,8 +155,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionInput<'tcx> 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionInput<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> crate::utils::display::DisplayOutput {
+        self.0.display_output(ctxt, mode)
     }
 }
 
@@ -214,8 +216,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionOutput<'tcx>
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionOutput<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> crate::utils::display::DisplayOutput {
+        self.0.display_output(ctxt, mode)
     }
 }
 
@@ -313,8 +315,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for AbstractionOutputTarget<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.0.display_output(ctxt, mode)
     }
 }
 
@@ -331,8 +333,8 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionOutput<'tcx>
 where
     LocalLifetimeProjection<'tcx>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.0.display_output(ctxt, mode)
     }
 }
 

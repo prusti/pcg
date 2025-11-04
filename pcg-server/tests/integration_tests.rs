@@ -13,15 +13,10 @@
 //! - Non-Rust files being rejected
 //! - Compilation errors being returned to the user
 
-#![feature(rustc_private)]
-#![feature(stmt_expr_attributes)]
-#![feature(proc_macro_hygiene)]
-
 use reqwest::blocking::{multipart, Client};
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use tempfile::TempDir;
 
 fn get_server_url() -> String {
     "http://localhost:4001".to_string()
@@ -47,7 +42,7 @@ fn test_file_upload_integration() {
         return;
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let test_file = temp_dir.path().join("test.rs");
     let valid_rust_code = r#"
 fn main() {
@@ -172,7 +167,7 @@ fn test_non_rust_file_rejected() {
         return;
     }
 
-    let temp_dir = TempDir::new().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let test_file = temp_dir.path().join("test.txt");
     fs::write(&test_file, "not rust code").unwrap();
 

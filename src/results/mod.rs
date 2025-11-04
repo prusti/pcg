@@ -308,17 +308,17 @@ impl<'tcx> PcgBasicBlock<'_, 'tcx> {
         result
     }
 
-    pub fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
         for stmt in self.statements.iter() {
             for phase in EvalStmtPhase::phases() {
-                for line in stmt.debug_lines(phase, repacker) {
+                for line in stmt.debug_lines(phase, ctxt) {
                     result.push(format!("{:?} {}: {}", stmt.location, phase, line));
                 }
             }
         }
         for term_succ in self.terminator.succs.iter() {
-            for line in term_succ.debug_lines(repacker) {
+            for line in term_succ.debug_lines(ctxt) {
                 result.push(format!("Terminator({:?}): {}", term_succ.block(), line));
             }
         }
@@ -336,7 +336,7 @@ pub struct PcgLocation<'a, 'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
-    fn debug_lines(&self, _repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.iter().map(|r| format!("{r:?}")).collect()
     }
 }
@@ -361,12 +361,12 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
     pub fn ancestor_edges<'slf, 'mir: 'slf, 'bc: 'slf>(
         &'slf self,
         place: Place<'tcx>,
-        repacker: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'slf>> {
         let borrows_graph = self.states[EvalStmtPhase::PostMain].borrow.graph();
-        let mut ancestors = borrows_graph.ancestor_edges(place.into(), repacker);
-        for rp in place.lifetime_projections(repacker) {
-            ancestors.extend(borrows_graph.ancestor_edges(rp.into(), repacker));
+        let mut ancestors = borrows_graph.ancestor_edges(place.into(), ctxt);
+        for rp in place.lifetime_projections(ctxt) {
+            ancestors.extend(borrows_graph.ancestor_edges(rp.into(), ctxt));
         }
         ancestors
     }
@@ -406,11 +406,11 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
     pub(crate) fn debug_lines(
         &self,
         phase: EvalStmtPhase,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Vec<String> {
-        let mut result = self.states[phase].debug_lines(repacker);
+        let mut result = self.states[phase].debug_lines(ctxt);
         for action in self.actions[phase].0.iter() {
-            result.push(action.debug_line(repacker));
+            result.push(action.debug_line(ctxt));
         }
         result
     }

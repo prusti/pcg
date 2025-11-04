@@ -55,6 +55,8 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Build pcg-bin (required by pcg-server)
+      run: cd pcg-bin && cargo build --release
     - name: Run pcg-server tests
       run: cd pcg-server && cargo test
 

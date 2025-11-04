@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     borrow_pcg::{
         FunctionData,
@@ -26,6 +28,7 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
+    utils::display::{DisplayOutput, OutputMode},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck,
     },
@@ -191,15 +194,18 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for FunctionCallAbstractionEdgeMetadata<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "call{} at {:?}",
-            if let Some(function_data) = &self.function_data {
-                format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
-            } else {
-                "".to_string()
-            },
-            self.location
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "call{} at {:?}",
+                if let Some(function_data) = &self.function_data {
+                    format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
+                } else {
+                    "".to_string()
+                },
+                self.location
+            )
+            .into(),
         )
     }
 }
@@ -239,10 +245,9 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tc
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_lifetime_projection(predicate, label, repacker)
+        self.edge.label_lifetime_projection(predicate, label, ctxt)
     }
 }
 
@@ -267,8 +272,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
 }
 
 impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.edge.blocks_node(node, repacker)
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.edge.blocks_node(node, ctxt)
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -283,12 +288,12 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
-        repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
     {
-        self.edge.blocked_by_nodes(repacker)
+        self.edge.blocked_by_nodes(ctxt)
     }
 }
 
@@ -301,12 +306,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
 impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{}: {}",
-            self.metadata.to_short_string(ctxt),
-            self.edge.to_short_string(ctxt)
-        )
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.metadata.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed(": ")),
+            self.edge.display_output(ctxt, mode),
+        ])
     }
 }
 

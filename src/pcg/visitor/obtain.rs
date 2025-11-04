@@ -129,7 +129,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         rp.with_placeholder_label(self.ctxt).into(),
                         format!(
                             "Place {} unblocked: remove placeholder label of rps of newly unblocked nodes",
-                            place.to_short_string(self.ctxt.bc_ctxt())
+                            place.display_string(self.ctxt.bc_ctxt())
                         ),
                     )
                     .into(),
@@ -302,7 +302,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             for rp in place.lifetime_projections(self.ctxt) {
                                 tracing::debug!(
                                     "labeling region projection: {}",
-                                    rp.to_short_string(self.ctxt.bc_ctxt())
+                                    rp.display_string(self.ctxt.bc_ctxt())
                                 );
                                 self.record_and_apply_action(
                                     BorrowPcgAction::label_lifetime_projection(
@@ -398,7 +398,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
         tracing::debug!(
             "upgrade_read_to_exclusive: {}",
-            place.to_short_string(self.ctxt.bc_ctxt())
+            place.display_string(self.ctxt.bc_ctxt())
         );
         self.record_and_apply_action(
             BorrowPcgAction::restore_capability(
@@ -589,7 +589,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         tracing::debug!(
             "Obtain {:?} to place {} in phase {:?}: Current cap: {:?}, Obtain cap: {:?}",
             obtain_type,
-            place.to_short_string(self.ctxt.bc_ctxt()),
+            place.display_string(self.ctxt.bc_ctxt()),
             self.phase(),
             current_cap,
             obtain_cap
@@ -616,19 +616,19 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 };
             tracing::debug!(
                 "Collapsing owned places to {}",
-                place.to_short_string(self.ctxt.bc_ctxt())
+                place.display_string(self.ctxt.bc_ctxt())
             );
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
                 collapse_cap,
-                format!("Obtain {}", place.to_short_string(self.ctxt.bc_ctxt())),
+                format!("Obtain {}", place.display_string(self.ctxt.bc_ctxt())),
                 self.ctxt,
             )?;
             self.render_debug_graph(
                 None,
                 &format!(
                     "after step 2 (collapse owned places and lifetime projections to {})",
-                    place.to_short_string(self.ctxt.bc_ctxt())
+                    place.display_string(self.ctxt.bc_ctxt())
                 ),
             );
         }
@@ -638,7 +638,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             tracing::debug!(
                 "Obtain {:?} to place {} in phase {:?}",
                 obtain_type,
-                place.to_short_string(self.ctxt.bc_ctxt()),
+                place.display_string(self.ctxt.bc_ctxt()),
                 self.phase()
             );
             // It's possible that we want to obtain exclusive or write permission to

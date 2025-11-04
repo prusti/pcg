@@ -1,8 +1,7 @@
 //! Data structures for lifetime projections.
-use std::{fmt, hash::Hash, marker::PhantomData};
+use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
@@ -31,8 +30,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::ToJsonWithCtxt,
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
@@ -58,18 +56,21 @@ pub enum PcgRegionInternalError {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RegionVid {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
-            string.to_string()
-        } else {
-            format!("{self:?}")
-        }
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
+                string.to_string()
+            } else {
+                format!("{self:?}")
+            }
+            .into(),
+        )
     }
 }
 
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string(None))
+        write!(f, "{}", self.output(None, OutputMode::Normal).into_text())
     }
 }
 
@@ -77,29 +78,32 @@ impl PcgRegion {
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
     }
-    pub fn to_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
-        match self {
-            PcgRegion::RegionVid(vid) => {
-                if let Some(ctxt) = ctxt {
-                    vid.to_short_string(ctxt)
-                } else {
-                    format!("{vid:?}")
+    pub fn output(&self, ctxt: Option<CompilerCtxt<'_, '_>>, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            match self {
+                PcgRegion::RegionVid(vid) => {
+                    if let Some(ctxt) = ctxt {
+                        vid.display_string(ctxt)
+                    } else {
+                        format!("{vid:?}")
+                    }
+                }
+                PcgRegion::ReErased => "ReErased".to_string(),
+                PcgRegion::ReStatic => "ReStatic".to_string(),
+                PcgRegion::ReBound(debruijn_index, region) => {
+                    format!("ReBound({debruijn_index:?}, {region:?})")
+                }
+                PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
+                PcgRegion::PcgInternalError(pcg_region_internal_error) => {
+                    format!("{pcg_region_internal_error:?}")
+                }
+                PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
+                PcgRegion::ReEarlyParam(early_param_region) => {
+                    format!("ReEarlyParam({early_param_region:?})")
                 }
             }
-            PcgRegion::ReErased => "ReErased".to_string(),
-            PcgRegion::ReStatic => "ReStatic".to_string(),
-            PcgRegion::ReBound(debruijn_index, region) => {
-                format!("ReBound({debruijn_index:?}, {region:?})")
-            }
-            PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
-            PcgRegion::PcgInternalError(pcg_region_internal_error) => {
-                format!("{pcg_region_internal_error:?}")
-            }
-            PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
-            PcgRegion::ReEarlyParam(early_param_region) => {
-                format!("ReEarlyParam({early_param_region:?})")
-            }
-        }
+            .into(),
+        )
     }
 
     pub fn vid(&self) -> Option<RegionVid> {
@@ -146,8 +150,8 @@ impl PcgRegion {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.to_string(Some(ctxt.bc_ctxt()))
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.output(Some(ctxt.bc_ctxt()), mode)
     }
 }
 
@@ -215,10 +219,10 @@ impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
 where
     T: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
-            PlaceOrConst::Place(p) => p.to_short_string(ctxt),
-            PlaceOrConst::Const(c) => format!("Const({c:?})"),
+            PlaceOrConst::Place(p) => p.display_output(ctxt, mode),
+            PlaceOrConst::Const(c) => DisplayOutput::Text(format!("Const({c:?})").into()),
         }
     }
 }
@@ -325,17 +329,6 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for PcgLifetimeProjectionBase<'tcx>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        match self {
-            PlaceOrConst::Place(p) => p.to_json(ctxt.bc_ctxt()),
-            PlaceOrConst::Const(_) => todo!(),
-        }
-    }
-}
-
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
         *self
@@ -369,11 +362,11 @@ pub enum LifetimeProjectionLabel {
     Future,
 }
 
-impl std::fmt::Display for LifetimeProjectionLabel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DisplayWithCtxt<()> for LifetimeProjectionLabel {
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
         match self {
-            LifetimeProjectionLabel::Location(location) => write!(f, "{location}"),
-            LifetimeProjectionLabel::Future => write!(f, "FUTURE"),
+            LifetimeProjectionLabel::Location(location) => location.display_output(ctxt, mode),
+            LifetimeProjectionLabel::Future => DisplayOutput::Text(Cow::Borrowed("FUTURE")),
         }
     }
 }
@@ -623,7 +616,7 @@ impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, Place<'tcx>> {
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
-    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self)
     }
 }
@@ -679,36 +672,20 @@ impl<
         + HasRegions<'tcx, Ctxt>,
 > DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
-            Some(LifetimeProjectionLabel::Location(location)) => format!(" {location}"),
-            Some(LifetimeProjectionLabel::Future) => " FUTURE".to_string(),
-            _ => "".to_string(),
+            Some(label) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text(Cow::Borrowed(" ")),
+                label.display_output((), mode),
+            ]),
+            _ => DisplayOutput::Text(Cow::Borrowed("")),
         };
-        format!(
-            "{}↓{}{}",
-            self.base.to_short_string(ctxt),
-            self.region(ctxt).to_short_string(ctxt.bc_ctxt()),
-            label_part
-        )
-    }
-}
-
-impl<
-    'a,
-    'tcx: 'a,
-    Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
-    T: HasTy<'tcx, Ctxt>
-        + HasRegions<'tcx, Ctxt>
-        + PcgLifetimeProjectionBaseLike<'tcx>
-        + ToJsonWithCtxt<Ctxt>,
-> ToJsonWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        json!({
-            "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).to_string(Some(ctxt.bc_ctxt())),
-        })
+        DisplayOutput::Seq(vec![
+            self.base.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed("↓")),
+            self.region(ctxt).display_output(ctxt.bc_ctxt(), mode),
+            label_part,
+        ])
     }
 }
 

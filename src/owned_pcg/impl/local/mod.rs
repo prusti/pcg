@@ -124,7 +124,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             if let Some(CapabilityKind::Write) = capabilities.get(expansion.place, ctxt) {
                 return Err(format!(
                     "Base {} of expansion {:?} has write capability",
-                    expansion.place.to_short_string(ctxt),
+                    expansion.place.display_string(ctxt),
                     expansion
                 ));
             }
@@ -144,7 +144,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     {
         tracing::debug!(
             "Removing all expansions from {}",
-            place.to_short_string(ctxt.ctxt())
+            place.display_string(ctxt.ctxt())
         );
         self.expansions.retain(|pe| pe.place != place);
     }
@@ -180,7 +180,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         self.leaf_places(ctxt).contains(&place)
     }
 
-    pub fn leaf_places<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
+    pub fn leaf_places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
     {
@@ -189,7 +189,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         }
         self.expansions
             .iter()
-            .flat_map(|e| e.expansion_places(repacker).unwrap())
+            .flat_map(|e| e.expansion_places(ctxt).unwrap())
             .filter(|p| !self.contains_expansion_from(*p))
             .collect::<HashSet<_>>()
     }

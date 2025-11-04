@@ -1,5 +1,7 @@
 use serde_derive::Serialize;
 
+use crate::utils::display::{DisplayOutput, DisplayWithCtxt, OutputMode};
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum EvalStmtPhase {
@@ -47,6 +49,12 @@ impl EvalStmtPhase {
             EvalStmtPhase::PreMain => Some(EvalStmtPhase::PostMain),
             EvalStmtPhase::PostMain => None,
         }
+    }
+}
+
+impl DisplayWithCtxt<()> for EvalStmtPhase {
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{self:?}").into())
     }
 }
 

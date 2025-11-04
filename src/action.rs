@@ -111,7 +111,7 @@ impl<T> ActionKindWithDebugCtxt<T> {
     where
         T: DisplayWithCtxt<Ctxt>,
     {
-        self.kind.to_short_string(ctxt)
+        self.kind.display_string(ctxt)
     }
 }
 

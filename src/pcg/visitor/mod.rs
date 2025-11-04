@@ -308,7 +308,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         if place.contains_unsafe_deref(self.ctxt) {
             tracing::error!(
                 "DerefUnsafePtr: {}",
-                place.to_short_string(self.ctxt.bc_ctxt())
+                place.display_string(self.ctxt.bc_ctxt())
             );
             return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
         }
@@ -370,7 +370,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 candidate_cap.expect_concrete(),
                 format!(
                     "Collapse owned place {} (iteration {})",
-                    place.to_short_string(self.ctxt.bc_ctxt()),
+                    place.display_string(self.ctxt.bc_ctxt()),
                     iteration
                 ),
                 self.ctxt,
@@ -423,7 +423,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         };
         tracing::debug!(
             "activate twophase borrow: {}",
-            borrow.to_short_string(self.ctxt.bc_ctxt())
+            borrow.display_string(self.ctxt.bc_ctxt())
         );
         let blocked_place = borrow.blocked_place.place();
         if !blocked_place.is_owned(self.ctxt) {

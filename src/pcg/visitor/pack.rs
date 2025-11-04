@@ -255,7 +255,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",
-                            expansion.to_short_string(self.ctxt.bc_ctxt())
+                            expansion.display_string(self.ctxt.bc_ctxt())
                         )
                         .into(),
                     }
@@ -269,13 +269,13 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                     if let ShouldKillNode::Yes { reason } = should_kill_node(node, &fg) {
                         why_killed_reasons.push(format!(
                             "{}: {}",
-                            node.to_short_string(self.ctxt.bc_ctxt()),
+                            node.display_string(self.ctxt.bc_ctxt()),
                             reason
                         ));
                     } else {
                         tracing::debug!(
                             "Node {} will not be killed",
-                            node.to_short_string(self.ctxt.bc_ctxt())
+                            node.display_string(self.ctxt.bc_ctxt())
                         );
                         return ShouldPackEdge::No;
                     }
@@ -293,7 +293,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
         for edge in leaf_edges.into_iter().map(|e| e.to_owned_edge()) {
             tracing::debug!(
                 "Checking leaf edge: {}",
-                edge.value.to_short_string(self.ctxt.bc_ctxt())
+                edge.value.display_string(self.ctxt.bc_ctxt())
             );
             if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
                 edges_to_remove.push(edge, reason);

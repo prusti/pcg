@@ -24,15 +24,15 @@ use crate::{
     utils::{
         DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
-        display::{DebugLines, DisplayWithCompilerCtxt, DisplayWithCtxt},
-        json::ToJsonWithCtxt,
+        display::{
+            DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
+        },
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
 use frozen::{CachedLeafEdges, FrozenGraphRef};
 use itertools::Itertools;
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
@@ -64,9 +64,9 @@ impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
-    fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.edges()
-            .map(|edge| edge.to_short_string(repacker).to_string())
+            .map(|edge| edge.display_string(ctxt).to_string())
             .sorted()
             .collect()
     }
@@ -88,11 +88,11 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
                 if !conflicting_edges.is_empty() {
                     return Err(format!(
                         "Placeholder region projection {} has edges blocking or blocked by its current version {}:\n\t{}",
-                        rp.to_short_string(ctxt),
-                        current_rp.to_short_string(ctxt),
+                        rp.display_string(ctxt),
+                        current_rp.display_string(ctxt),
                         conflicting_edges
                             .iter()
-                            .map(|e| e.to_short_string(ctxt))
+                            .map(|e| e.display_string(ctxt))
                             .join("\n\t")
                     ));
                 }
@@ -335,14 +335,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn leaf_edges_set<'slf, 'a: 'slf, 'bc: 'slf>(
         &'slf self,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
         frozen_graph: &FrozenGraphRef<'slf, 'tcx>,
     ) -> CachedLeafEdges<'slf, 'tcx>
     where
         'tcx: 'a,
     {
         self.edges()
-            .filter(move |edge| self.is_leaf_edge(edge, repacker, frozen_graph))
+            .filter(move |edge| self.is_leaf_edge(edge, ctxt, frozen_graph))
             .collect()
     }
 
@@ -359,11 +359,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .collect()
     }
 
-    pub(crate) fn roots(&self, repacker: CompilerCtxt<'_, 'tcx>) -> FxHashSet<PcgNode<'tcx>> {
+    pub(crate) fn roots(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> FxHashSet<PcgNode<'tcx>> {
         let roots: FxHashSet<PcgNode<'tcx>> = self
-            .nodes(repacker)
+            .nodes(ctxt)
             .into_iter()
-            .filter(|node| self.is_root(*node, repacker))
+            .filter(|node| self.is_root(*node, ctxt))
             .collect();
         roots
     }
@@ -386,9 +386,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn has_edge_blocked_by(
         &self,
         node: LocalNode<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.edges().any(|edge| edge.is_blocked_by(node, repacker))
+        self.edges().any(|edge| edge.is_blocked_by(node, ctxt))
     }
 
     pub fn edges_blocked_by<'graph, 'a: 'graph>(
@@ -487,8 +487,8 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for Conditioned<T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.conditions.conditional_string(&self.value, ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.conditions.conditional_string(&self.value, ctxt).into())
     }
 }
 
@@ -499,15 +499,6 @@ impl<T> Conditioned<T> {
 
     pub fn value(&self) -> &T {
         &self.value
-    }
-}
-
-impl<Ctxt: Copy, T: ToJsonWithCtxt<Ctxt>> ToJsonWithCtxt<Ctxt> for Conditioned<T> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "conditions": self.conditions.to_json(repacker),
-            "value": self.value.to_json(repacker)
-        })
     }
 }
 
@@ -550,19 +541,19 @@ impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, E
     pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
         &self,
         node: T,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
     where
         'tcx: 'a,
     {
         let node = node.into();
         self.edges().any(|edge| {
-            edge.kind.blocks_node(node, repacker.bc_ctxt())
+            edge.kind.blocks_node(node, ctxt.bc_ctxt())
                 || node
                     .as_blocking_node()
                     .map(|blocking| {
                         edge.kind
-                            .blocked_by_nodes(repacker.bc_ctxt())
+                            .blocked_by_nodes(ctxt.bc_ctxt())
                             .contains(&blocking)
                     })
                     .unwrap_or(false)

@@ -198,7 +198,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",
-                    place.to_short_string(ctxt.bc_ctxt()),
+                    place.display_string(ctxt.bc_ctxt()),
                     cap
                 ));
             }
@@ -218,7 +218,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
         //     {
         //         return Err(format!(
         //             "Place {} has exclusive capability but is not a leaf place",
-        //             place.to_short_string(ctxt)
+        //             place.display_string(ctxt)
         //         ));
         //     }
         // }
@@ -236,10 +236,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
                     {
                         return Err(format!(
                             "Deref edge {} blocked place {} has capability {:?} but deref place {} has no capability",
-                            deref_edge.to_short_string(ctxt.bc_ctxt()),
-                            blocked_place.to_short_string(ctxt.bc_ctxt()),
+                            deref_edge.display_string(ctxt.bc_ctxt()),
+                            blocked_place.display_string(ctxt.bc_ctxt()),
                             c,
-                            deref_place.to_short_string(ctxt.bc_ctxt())
+                            deref_place.display_string(ctxt.bc_ctxt())
                         ));
                     }
                 }
@@ -250,8 +250,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
                     {
                         return Err(format!(
                             "Borrow edge {} blocks owned place {}, which is not in the owned PCG",
-                            borrow_edge.to_short_string(ctxt.bc_ctxt()),
-                            blocked_place.to_short_string(ctxt.bc_ctxt())
+                            borrow_edge.display_string(ctxt.bc_ctxt()),
+                            blocked_place.display_string(ctxt.bc_ctxt())
                         ));
                     }
                 }
@@ -378,10 +378,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
-    pub(crate) fn debug_lines(&self, repacker: CompilerCtxt<'a, 'tcx>) -> Vec<String> {
-        let mut result = self.borrow.debug_lines(repacker);
+    pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<String> {
+        let mut result = self.borrow.debug_lines(ctxt);
         result.sort();
-        let mut capabilities = self.capabilities.debug_lines(repacker);
+        let mut capabilities = self.capabilities.debug_lines(ctxt);
         capabilities.sort();
         result.extend(capabilities);
         result

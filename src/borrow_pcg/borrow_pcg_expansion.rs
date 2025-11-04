@@ -3,7 +3,6 @@ use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
 
 use derive_more::From;
 use itertools::Itertools;
-use serde_json::json;
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BlockingNode, LocalNode},
@@ -34,8 +33,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::DisplayWithCtxt,
-        json::ToJsonWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
     },
@@ -189,7 +187,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
     ) -> bool {
         tracing::debug!(
             "label blocked places: {} with {:?}",
-            self.to_short_string(ctxt),
+            self.display_string(ctxt),
             predicate
         );
         let result =
@@ -238,14 +236,17 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
 impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{{{}}} -> {{{}}}",
-            self.base.to_short_string(ctxt),
-            self.expansion
-                .iter()
-                .map(|p| p.to_short_string(ctxt))
-                .join(", ")
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{{{}}} -> {{{}}}",
+                self.base.display_string(ctxt),
+                self.expansion
+                    .iter()
+                    .map(|p| p.display_string(ctxt))
+                    .join(", ")
+            )
+            .into(),
         )
     }
 }
@@ -262,7 +263,7 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
                 return Err(format!(
                     "Expansion of {:?} contains owned place {}",
                     self,
-                    node.place().to_short_string(ctxt)
+                    node.place().display_string(ctxt)
                 ));
             }
         }
@@ -271,8 +272,8 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
 }
 
 impl<'tcx> EdgeData<'tcx> for BorrowPcgExpansion<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.base.to_pcg_node(repacker) == node
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.base.to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -314,9 +315,9 @@ impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
-    pub(crate) fn is_deref<C: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
+    pub(crate) fn is_deref<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
         if let BlockingNode::Place(p) = self.base {
-            p.place().is_ref(repacker)
+            p.place().is_ref(ctxt)
         } else {
             false
         }
@@ -380,7 +381,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
             !(base.is_place() && base.place().is_ref(ctxt) && expansion == PlaceExpansion::Deref),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
-            base.place().to_short_string(ctxt.ctxt())
+            base.place().display_string(ctxt.ctxt())
         );
         let result = Self {
             base,
@@ -393,14 +394,5 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         };
         result.assert_validity(ctxt.bc_ctxt());
         Ok(result)
-    }
-}
-
-impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for BorrowPcgExpansion<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        json!({
-            "base": self.base.to_json(repacker),
-            "expansion": self.expansion.iter().map(|p| p.to_json(repacker)).collect::<Vec<_>>(),
-        })
     }
 }

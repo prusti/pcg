@@ -10,7 +10,10 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
-    utils::{CompilerCtxt, HasPlace, Place, SnapshotLocation, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasPlace, Place, SnapshotLocation,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use super::{
@@ -144,7 +147,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 );
                 format!(
                     "Loans in {} - before: {}, mid: {}",
-                    projection.region(self.ctxt).to_short_string(self.ctxt),
+                    DisplayWithCtxt::<_>::display_string(&projection.region(self.ctxt), self.ctxt),
                     loans_before,
                     loans_after
                 )
@@ -157,7 +160,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node = GraphNode {
             id,
             node_type: NodeType::RegionProjectionNode {
-                label: projection.to_short_string(self.ctxt),
+                label: projection.short_output(self.ctxt).into_html(),
                 base_ty,
                 loans,
             },
@@ -180,7 +183,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             capabilities,
         );
         let label = match abstraction {
-            AbstractionEdge::FunctionCall(fc) => fc.to_short_string(self.ctxt),
+            AbstractionEdge::FunctionCall(fc) => fc.display_string(self.ctxt),
             AbstractionEdge::Loop(loop_abstraction) => {
                 format!("loop at {:?}", loop_abstraction.location())
             }
@@ -348,15 +351,15 @@ where
 impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
     pub fn new(
         pcg: PcgRef<'pcg, 'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
         location: mir::Location,
     ) -> Self {
         Self {
             summary: pcg.owned,
             borrows_domain: pcg.borrow,
             capabilities: pcg.capabilities,
-            constructor: GraphConstructor::new(repacker, Some(location)),
-            ctxt: repacker,
+            constructor: GraphConstructor::new(ctxt, Some(location)),
+            ctxt,
         }
     }
 

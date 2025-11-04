@@ -30,7 +30,7 @@ use crate::{
     pcg::PcgNode,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        display::DisplayWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
     },
@@ -47,8 +47,8 @@ pub struct BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
 impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.conditions.conditional_string(self.kind, ctxt)
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.conditions.conditional_string(self.kind, ctxt).into())
     }
 }
 
@@ -222,15 +222,15 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         })
     }
 
-    fn iter_projections(&self, repacker: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         match self {
             LocalNode::Place(p) => p
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (p.into(), e))
                 .collect(),
             LocalNode::LifetimeProjection(rp) => rp
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (LocalNode::LifetimeProjection(p), e))
                 .collect(),
@@ -397,20 +397,20 @@ impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> EdgeData<'tcx> for T {
 
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        self.kind().blocked_nodes(repacker)
+        self.kind().blocked_nodes(ctxt)
     }
 
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().blocks_node(node, repacker)
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.kind().blocks_node(node, ctxt)
     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().is_blocked_by(node, repacker)
+    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.kind().is_blocked_by(node, ctxt)
     }
 }
 
@@ -427,8 +427,8 @@ edgedata_enum!(
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for &BorrowPcgEdgeKind<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        (*self).to_short_string(ctxt)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        (*self).display_output(ctxt, mode)
     }
 }
 

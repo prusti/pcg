@@ -46,9 +46,13 @@ ENV RUST_BACKTRACE=1
 # Expose port for pcg-server
 EXPOSE 4000
 
-# Run pcg-server
-WORKDIR /usr/src/app/pcg-server
+# Build pcg-bin first (required by pcg-server)
+# Note: pcg-bin has its own workspace, so we need to build it in its directory
+WORKDIR /usr/src/app/pcg-bin
+RUN cargo build --release
 
+# Build and run pcg-server
+WORKDIR /usr/src/app/pcg-server
 RUN cargo build --release
 
 # Set LD_LIBRARY_PATH to include rustc libraries from the sysroot

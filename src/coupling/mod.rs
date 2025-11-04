@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use derive_more::{Deref, From, IntoIterator};
 use itertools::Itertools;
 
@@ -34,7 +36,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
         data_structures::{HashMap, HashSet},
-        display::DisplayWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };
@@ -49,12 +51,14 @@ pub struct HyperEdge<InputNode, OutputNode> {
 impl<Ctxt: Copy, InputNode: DisplayWithCtxt<Ctxt>, OutputNode: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for HyperEdge<InputNode, OutputNode>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "HyperEdge(inputs: {}, outputs: {})",
-            self.inputs.to_short_string(ctxt),
-            self.outputs.to_short_string(ctxt)
-        )
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            DisplayOutput::Text(Cow::Borrowed("HyperEdge(inputs: ")),
+            self.inputs.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed(", outputs: ")),
+            self.outputs.display_output(ctxt, mode),
+            DisplayOutput::Text(Cow::Borrowed(")")),
+        ])
     }
 }
 
@@ -263,21 +267,23 @@ impl<
     OutputNode: DisplayWithCtxt<Ctxt>,
 > DisplayWithCtxt<Ctxt> for CoupledEdgeKind<Metadata, InputNode, OutputNode>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         if let Some((input, output)) = self.edge.try_to_singleton_edge() {
-            format!(
-                "{}: {} -> {}",
-                self.metadata.to_short_string(ctxt),
-                input.to_short_string(ctxt),
-                output.to_short_string(ctxt)
-            )
+            DisplayOutput::Seq(vec![
+                self.metadata.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(": ")),
+                input.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(" -> ")),
+                output.display_output(ctxt, mode),
+            ])
         } else {
-            format!(
-                "{}: {} -> {}",
-                self.metadata.to_short_string(ctxt),
-                self.edge.inputs.to_short_string(ctxt),
-                self.edge.outputs.to_short_string(ctxt)
-            )
+            DisplayOutput::Seq(vec![
+                self.metadata.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(": ")),
+                self.edge.inputs.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(" -> ")),
+                self.edge.outputs.display_output(ctxt, mode),
+            ])
         }
     }
 }
@@ -458,12 +464,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PcgCoupledEdgeKind<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => {
-                function.to_short_string(ctxt)
+                function.display_output(ctxt, mode)
             }
-            PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.to_short_string(ctxt),
+            PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.display_output(ctxt, mode),
         }
     }
 }
@@ -837,10 +843,10 @@ pub enum MaybeCoupledEdgeKind<'tcx, T> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for MaybeCoupledEdgeKind<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
-            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.to_short_string(ctxt),
-            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.to_short_string(ctxt),
+            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.display_output(ctxt, mode),
+            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.display_output(ctxt, mode),
         }
     }
 }

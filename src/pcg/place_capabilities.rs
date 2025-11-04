@@ -239,7 +239,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
             if place.projects_shared_ref(ctxt) && !cap.is_read() {
                 return Err(format!(
                     "Place {} projects a shared ref, but has capability {:?}",
-                    place.to_short_string(ctxt),
+                    place.display_string(ctxt),
                     cap
                 ));
             }
@@ -276,10 +276,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
                     {
                         return Err(format!(
                             "Place ({}: {}) with capability {:?} has a child {} with capability {:?} which is not allowed",
-                            place.to_short_string(ctxt),
+                            place.display_string(ctxt),
                             place.ty(ctxt).ty,
                             parent_cap,
-                            other_place.to_short_string(ctxt),
+                            other_place.display_string(ctxt),
                             other_cap
                         ));
                     }
@@ -291,12 +291,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for SymbolicPlaceCapabilities<'tcx> {
-    fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.iter()
             .map(|(node, capability)| {
                 format!(
                     "{}: {:?}",
-                    node.to_short_string(repacker),
+                    node.display_string(ctxt),
                     capability.expect_concrete()
                 )
             })

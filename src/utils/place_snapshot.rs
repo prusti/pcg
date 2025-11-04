@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use serde_json::json;
 
 use super::{CompilerCtxt, Place, validity::HasValidityCheck};
@@ -13,7 +15,11 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{HasCompilerCtxt, PlaceProjectable, display::DisplayWithCtxt, json::ToJsonWithCtxt},
+    utils::{
+        HasCompilerCtxt, PlaceProjectable,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
+    },
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -22,9 +28,28 @@ pub struct AnalysisLocation {
     pub(crate) eval_stmt_phase: EvalStmtPhase,
 }
 
+impl DisplayWithCtxt<()> for Location {
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{self:?}").into())
+    }
+}
+
 impl std::fmt::Display for AnalysisLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}:{:?}", self.location, self.eval_stmt_phase)
+    }
+}
+
+impl DisplayWithCtxt<()> for AnalysisLocation {
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
+        match mode {
+            OutputMode::Short => self.location.display_output(ctxt, mode),
+            OutputMode::Normal => DisplayOutput::Seq(vec![
+                self.location.display_output(ctxt, mode),
+                DisplayOutput::Text(Cow::Borrowed(":")),
+                self.eval_stmt_phase.display_output(ctxt, mode),
+            ]),
+        }
     }
 }
 
@@ -137,6 +162,12 @@ impl SnapshotLocation {
     }
 }
 
+impl std::fmt::Display for SnapshotLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", DisplayWithCtxt::<_>::display_string(self, ()))
+    }
+}
+
 #[deprecated(note = "Use LabelledPlace instead")]
 pub type PlaceSnapshot<'tcx> = LabelledPlace<'tcx>;
 
@@ -152,16 +183,21 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Labell
     }
 }
 
-impl std::fmt::Display for SnapshotLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DisplayWithCtxt<()> for SnapshotLocation {
+    fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
         match self {
-            SnapshotLocation::After(loc) => write!(f, "after {loc:?}"),
-            SnapshotLocation::Loop(bb) => write!(f, "loop {bb:?}"),
-            SnapshotLocation::BeforeJoin(bb) => write!(f, "before join {bb:?}"),
-            SnapshotLocation::BeforeRefReassignment(location) => {
-                write!(f, "before ref reassignment {location:?}")
+            SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text(Cow::Borrowed("before ")),
+                analysis_location.display_output(ctxt, mode),
+            ]),
+            SnapshotLocation::After(loc) => DisplayOutput::Text(format!("after {loc:?}").into()),
+            SnapshotLocation::Loop(bb) => DisplayOutput::Text(format!("loop {bb:?}").into()),
+            SnapshotLocation::BeforeJoin(bb) => {
+                DisplayOutput::Text(format!("before join {bb:?}").into())
             }
-            SnapshotLocation::Before(eval_stmt_phase) => write!(f, "before {eval_stmt_phase}"),
+            SnapshotLocation::BeforeRefReassignment(location) => {
+                DisplayOutput::Text(format!("before ref reassignment {location:?}").into())
+            }
         }
     }
 }
@@ -192,13 +228,13 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.to_local_node(repacker).into()
+    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+        self.to_local_node(ctxt).into()
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
@@ -216,15 +252,18 @@ impl std::fmt::Display for LabelledPlace<'_> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn to_short_string(&self, repacker: Ctxt) -> String {
-        format!("{} at {:?}", self.place.to_short_string(repacker), self.at)
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.place.display_output(ctxt, mode),
+            DisplayOutput::Text(format!(" at {:?}", self.at).into()),
+        ])
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker.ctxt()),
+            "place": self.place.to_json(ctxt.ctxt()),
             "at": self.at.to_json(),
         })
     }
@@ -248,13 +287,13 @@ impl<'tcx> LabelledPlace<'tcx> {
 
     pub(crate) fn with_inherent_region<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> LabelledPlace<'tcx>
     where
         'tcx: 'a,
     {
         LabelledPlace {
-            place: self.place.with_inherent_region(repacker),
+            place: self.place.with_inherent_region(ctxt),
             at: self.at,
         }
     }

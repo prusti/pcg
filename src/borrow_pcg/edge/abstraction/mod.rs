@@ -20,7 +20,11 @@ use crate::{
     },
     coupling::HyperEdge,
     pcg::PcgNodeLike,
-    utils::{HasBorrowCheckerCtxt, display::DisplayWithCtxt, maybe_remote::MaybeRemotePlace},
+    utils::{
+        HasBorrowCheckerCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_remote::MaybeRemotePlace,
+    },
 };
 
 use crate::coupling::PcgCoupledEdgeKind;
@@ -253,11 +257,14 @@ impl<'tcx, Input: AbstractionInputLike<'tcx>, Output: Copy + PcgNodeLike<'tcx>> 
 impl<'tcx, Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{} -> {}",
-            self.input.to_short_string(ctxt),
-            self.output.to_short_string(ctxt),
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(
+            format!(
+                "{} -> {}",
+                self.input.display_string(ctxt),
+                self.output.display_string(ctxt),
+            )
+            .into(),
         )
     }
 }

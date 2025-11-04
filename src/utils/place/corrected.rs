@@ -5,11 +5,11 @@ use crate::{
 use derive_more::{Deref, DerefMut};
 
 impl<'tcx> CorrectedPlace<'tcx> {
-    pub fn new<'a>(place: Place<'tcx>, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> Self
+    pub fn new<'a>(place: Place<'tcx>, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,
     {
-        Self(place.with_inherent_region(repacker))
+        Self(place.with_inherent_region(ctxt))
     }
 
     pub(crate) fn last_projection(&self) -> Option<CorrectedPlaceElem<'tcx>> {

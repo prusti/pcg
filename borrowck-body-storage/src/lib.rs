@@ -3,7 +3,7 @@
 extern crate rustc_hir;
 extern crate rustc_middle;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use pcg::{
     pcg::BodyWithBorrowckFacts,
@@ -19,9 +19,15 @@ use pcg::{
 };
 
 thread_local! {
-    pub static BODIES:
+    static ALLOW_BORROWCK_ERRORS: Cell<bool> = Cell::new(false);
+    static BODIES:
         RefCell<FxHashMap<LocalDefId, BodyWithBorrowckFacts<'static>>> =
         RefCell::new(FxHashMap::default());
+}
+
+pub fn allow_borrowck_errors() {
+    tracing::info!("Allowing borrowck errors");
+    ALLOW_BORROWCK_ERRORS.set(true);
 }
 
 /// # Safety
@@ -81,8 +87,9 @@ fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> MirBorrowck<'tcx
         save_body(tcx, def_id, body.into());
     }
     let result = original_mir_borrowck(tcx, def_id);
-    // This allows us to still generate PCGs even if there are borrowck errors
-    tcx.dcx().reset_err_count();
+    if ALLOW_BORROWCK_ERRORS.get() {
+        tcx.dcx().reset_err_count();
+    }
     result
 }
 

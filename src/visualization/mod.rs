@@ -27,7 +27,11 @@ use crate::{
         CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Location,
-    utils::{HasBorrowCheckerCtxt, Place, SnapshotLocation},
+    utils::html::Html,
+    utils::{
+        HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        display::{DisplayWithCtxt, OutputMode},
+    },
 };
 use std::{
     collections::HashSet,
@@ -36,7 +40,6 @@ use std::{
     path::Path,
 };
 
-use dot::escape_html;
 use graph_constructor::BorrowsGraphConstructor;
 
 use self::{
@@ -70,8 +73,11 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    fn label(&self) -> String {
-        self.node_type.label()
+    pub(crate) fn label_text(&self) -> String {
+        match &self.node_type {
+            NodeType::PlaceNode { label, .. } => label.clone(),
+            NodeType::RegionProjectionNode { label, .. } => label.text(),
+        }
     }
 
     fn to_dot_node(&self) -> DotNode {
@@ -83,13 +89,12 @@ impl GraphNode {
                 label,
                 ty,
             } => {
-                let capability_text = match capability {
-                    Some(k) => format!("{k:?}"),
-                    None => "".to_string(),
-                };
-                let location_text = match location {
-                    Some(l) => escape_html(&format!(" at {l}")),
-                    None => "".to_string(),
+                let location_html: Html = match location {
+                    Some(l) => Html::Seq(vec![
+                        " at ".into(),
+                        l.display_output((), OutputMode::Normal).into_html(),
+                    ]),
+                    None => Html::Text(String::new()),
                 };
                 let color = if location.is_some()
                     || capability.is_none()
@@ -109,15 +114,20 @@ impl GraphNode {
                         Some(DotFloatAttr(1.5)),
                     )
                 };
-                let label = format!(
-                    "<FONT FACE=\"courier\">{}&nbsp;{}{}</FONT>",
-                    escape_html(label),
-                    escape_html(&capability_text),
-                    escape_html(&location_text),
+                let capability_text = match capability {
+                    Some(k) => format!(": {k:?}"),
+                    None => "".to_string(),
+                };
+                let label_html = Html::Font(
+                    "courier",
+                    Box::new(Html::Seq(vec![
+                        Html::Text(format!("{label}{capability_text}")),
+                        location_html,
+                    ])),
                 );
                 DotNode {
                     id: self.id.to_string(),
-                    label: DotLabel::Html(label),
+                    label: DotLabel::Html(label_html),
                     color: DotStringAttr(color.to_string()),
                     font_color: DotStringAttr(color.to_string()),
                     shape: DotStringAttr("rect".to_string()),
@@ -130,19 +140,16 @@ impl GraphNode {
                 label,
                 loans,
                 base_ty: place_ty,
-            } => {
-                let label = escape_html(label);
-                DotNode {
-                    id: self.id.to_string(),
-                    label: DotLabel::Html(label.clone()),
-                    color: DotStringAttr("blue".to_string()),
-                    font_color: DotStringAttr("blue".to_string()),
-                    shape: DotStringAttr("octagon".to_string()),
-                    style: None,
-                    penwidth: None,
-                    tooltip: Some(DotStringAttr(format!("{place_ty}\\\n{loans}"))),
-                }
-            }
+            } => DotNode {
+                id: self.id.to_string(),
+                label: DotLabel::Html(label.clone()),
+                color: DotStringAttr("blue".to_string()),
+                font_color: DotStringAttr("blue".to_string()),
+                shape: DotStringAttr("octagon".to_string()),
+                style: None,
+                penwidth: None,
+                tooltip: Some(DotStringAttr(format!("{place_ty}\\\n{loans}"))),
+            },
         }
     }
 }
@@ -157,19 +164,10 @@ enum NodeType {
         ty: String,
     },
     RegionProjectionNode {
-        label: String,
+        label: Html,
         base_ty: String,
         loans: String,
     },
-}
-
-impl NodeType {
-    pub(crate) fn label(&self) -> String {
-        match self {
-            NodeType::PlaceNode { label, .. } => label.clone(),
-            NodeType::RegionProjectionNode { label, .. } => label.clone(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -327,7 +325,7 @@ impl Graph {
         let Some(label_1_id) = self
             .nodes
             .iter()
-            .find(|n| n.label() == label1)
+            .find(|n| n.label_text() == label1)
             .map(|n| n.id)
         else {
             return false;
@@ -335,7 +333,7 @@ impl Graph {
         let Some(label_2_id) = self
             .nodes
             .iter()
-            .find(|n| n.label() == label2)
+            .find(|n| n.label_text() == label2)
             .map(|n| n.id)
         else {
             return false;

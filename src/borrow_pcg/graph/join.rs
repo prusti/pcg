@@ -206,7 +206,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "used places: {}",
-            used_places.to_short_string(ctxt.ctxt)
+            used_places.display_string(ctxt.ctxt)
         );
         // p_loop
         let live_loop_places = used_places.usages_where(|p| {
@@ -230,7 +230,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "live loop places: {}",
-            live_loop_places.to_short_string(ctxt.ctxt)
+            live_loop_places.display_string(ctxt.ctxt)
         );
 
         let loop_blocked_places = live_loop_places.usages_where(|p| {
@@ -248,7 +248,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "loop_blocked_places: {}",
-            loop_blocked_places.to_short_string(ctxt.ctxt)
+            loop_blocked_places.display_string(ctxt.ctxt)
         );
 
         let loop_blocker_places =
@@ -258,7 +258,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "loop_blocker_places: {}",
-            loop_blocker_places.to_short_string(ctxt.ctxt)
+            loop_blocker_places.display_string(ctxt.ctxt)
         );
 
         let expand_places = loop_blocker_places.joined_with(&loop_blocked_places);
@@ -289,7 +289,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "live roots: {}",
-            live_roots.to_short_string(ctxt.ctxt)
+            live_roots.display_string(ctxt.ctxt)
         );
 
         let root_places = live_roots
@@ -304,7 +304,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             LogPredicate::DebugBlock,
             ctxt,
             "root places: {}",
-            root_places.to_short_string(ctxt.ctxt)
+            root_places.display_string(ctxt.ctxt)
         );
 
         let ConstructAbstractionGraphResult {
