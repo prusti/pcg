@@ -69,6 +69,7 @@ export default function PCGNavigator({
   onSelectPoint,
   onNavigatorStateChange,
   onAdvanceToNextStatement,
+  onGoToPreviousStatement,
   onClearSelectFirstItem,
 }: {
   iterations: StmtGraphs<StringOf<"DataflowStmtPhase">>;
@@ -78,6 +79,7 @@ export default function PCGNavigator({
   onSelectPoint: (point: NavigatorPoint) => void;
   onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
   onAdvanceToNextStatement?: () => void;
+  onGoToPreviousStatement?: () => void;
   onClearSelectFirstItem: () => void;
 }) {
   const [isMinimized, setIsMinimized] = useState(() => {
@@ -242,8 +244,17 @@ export default function PCGNavigator({
           newIndex = event.key === "q" ? navigationItems.length - 1 : 0;
         } else {
           if (event.key === "q") {
-            newIndex =
-              currentIndex > 0 ? currentIndex - 1 : navigationItems.length - 1;
+            // Pressing 'q' to go back
+            if (currentIndex === 0) {
+              // At the first step, go to previous statement instead of wrapping
+              if (onGoToPreviousStatement) {
+                onGoToPreviousStatement();
+                return;
+              }
+              newIndex = navigationItems.length - 1;
+            } else {
+              newIndex = currentIndex - 1;
+            }
           } else {
             // Pressing 'a' to advance
             if (currentIndex === navigationItems.length - 1) {
@@ -274,7 +285,13 @@ export default function PCGNavigator({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigationItems, selectedPoint, onSelectPoint, onAdvanceToNextStatement]);
+  }, [
+    navigationItems,
+    selectedPoint,
+    onSelectPoint,
+    onAdvanceToNextStatement,
+    onGoToPreviousStatement,
+  ]);
 
   // Render navigation items in order (interleaved)
   const renderItems = () => {

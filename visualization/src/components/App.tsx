@@ -682,9 +682,61 @@ export const App: React.FC<AppProps> = ({
                   if (currentNode) {
                     const nextStmt = currentPoint.stmt + 1;
                     if (nextStmt <= currentNode.stmts.length) {
+                      // Move to next statement in same block
                       setCurrentPoint({
                         ...currentPoint,
                         stmt: nextStmt,
+                        navigatorPoint: { type: "phase", index: 0 },
+                      });
+                      setSelected(null);
+                      setSelectFirstItem(true);
+                    } else {
+                      // At last statement, move to next block
+                      const currBlockIdx = filteredNodes.findIndex(
+                        (node) => node.block === currentPoint.block
+                      );
+                      if (currBlockIdx !== -1) {
+                        const nextBlockIdx =
+                          (currBlockIdx + 1) % filteredNodes.length;
+                        const nextNode = filteredNodes[nextBlockIdx];
+                        setCurrentPoint({
+                          type: "stmt",
+                          block: nextNode.block,
+                          stmt: 0,
+                          navigatorPoint: { type: "phase", index: 0 },
+                        });
+                        setSelected(null);
+                        setSelectFirstItem(true);
+                      }
+                    }
+                  }
+                }
+              }}
+              onGoToPreviousStatement={() => {
+                if (currentPoint.type === "stmt") {
+                  if (currentPoint.stmt > 0) {
+                    // Move to previous statement in same block
+                    setCurrentPoint({
+                      ...currentPoint,
+                      stmt: currentPoint.stmt - 1,
+                      navigatorPoint: { type: "phase", index: 0 },
+                    });
+                    setSelected(null);
+                    setSelectFirstItem(true);
+                  } else {
+                    // At first statement, move to previous block
+                    const currBlockIdx = filteredNodes.findIndex(
+                      (node) => node.block === currentPoint.block
+                    );
+                    if (currBlockIdx !== -1) {
+                      const prevBlockIdx =
+                        (currBlockIdx - 1 + filteredNodes.length) %
+                        filteredNodes.length;
+                      const prevNode = filteredNodes[prevBlockIdx];
+                      setCurrentPoint({
+                        type: "stmt",
+                        block: prevNode.block,
+                        stmt: prevNode.stmts.length,
                         navigatorPoint: { type: "phase", index: 0 },
                       });
                       setSelected(null);
