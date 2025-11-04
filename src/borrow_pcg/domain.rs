@@ -17,7 +17,7 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, display::DisplayWithCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place, display::{DisplayOutput, DisplayWithCtxt},
         maybe_remote::MaybeRemotePlace, place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -88,8 +88,8 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionInput<'tcx>
 where
     LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        self.0.output(ctxt)
     }
 }
 
@@ -331,8 +331,8 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for FunctionCallAbstractionOutput<'tcx>
 where
     LocalLifetimeProjection<'tcx>: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.0.to_short_string(ctxt)
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        self.0.output(ctxt)
     }
 }
 

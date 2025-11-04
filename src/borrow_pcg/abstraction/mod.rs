@@ -17,7 +17,7 @@ use crate::{
         },
         span::def_id::{DefId, LocalDefId},
     },
-    utils::{self, CompilerCtxt, HasTyCtxt, display::DisplayWithCtxt},
+    utils::{self, CompilerCtxt, HasTyCtxt, display::{DisplayOutput, DisplayWithCtxt}},
 };
 
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
@@ -321,13 +321,15 @@ impl std::fmt::Display for ArgIdxOrResult {
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
-    fn to_short_string(&self, _ctxt: Ctxt) -> String {
-        self.edges
-            .iter()
-            .map(|edge| format!("{edge}"))
-            .sorted()
-            .collect::<Vec<_>>()
-            .join("\n, ")
+    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(
+            self.edges
+                .iter()
+                .map(|edge| format!("{edge}"))
+                .sorted()
+                .collect::<Vec<_>>()
+                .join("\n, ")
+        )
     }
 }
 

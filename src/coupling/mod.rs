@@ -34,7 +34,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
         data_structures::{HashMap, HashSet},
-        display::DisplayWithCtxt,
+        display::{DisplayOutput, DisplayWithCtxt},
         validity::HasValidityCheck,
     },
 };
@@ -49,12 +49,14 @@ pub struct HyperEdge<InputNode, OutputNode> {
 impl<Ctxt: Copy, InputNode: DisplayWithCtxt<Ctxt>, OutputNode: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for HyperEdge<InputNode, OutputNode>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "HyperEdge(inputs: {}, outputs: {})",
-            self.inputs.to_short_string(ctxt),
-            self.outputs.to_short_string(ctxt)
-        )
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            DisplayOutput::Text("HyperEdge(inputs: ".to_string()),
+            self.inputs.output(ctxt),
+            DisplayOutput::Text(", outputs: ".to_string()),
+            self.outputs.output(ctxt),
+            DisplayOutput::Text(")".to_string()),
+        ])
     }
 }
 
@@ -263,21 +265,23 @@ impl<
     OutputNode: DisplayWithCtxt<Ctxt>,
 > DisplayWithCtxt<Ctxt> for CoupledEdgeKind<Metadata, InputNode, OutputNode>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         if let Some((input, output)) = self.edge.try_to_singleton_edge() {
-            format!(
-                "{}: {} -> {}",
-                self.metadata.to_short_string(ctxt),
-                input.to_short_string(ctxt),
-                output.to_short_string(ctxt)
-            )
+            DisplayOutput::Seq(vec![
+                self.metadata.output(ctxt),
+                DisplayOutput::Text(": ".to_string()),
+                input.output(ctxt),
+                DisplayOutput::Text(" -> ".to_string()),
+                output.output(ctxt),
+            ])
         } else {
-            format!(
-                "{}: {} -> {}",
-                self.metadata.to_short_string(ctxt),
-                self.edge.inputs.to_short_string(ctxt),
-                self.edge.outputs.to_short_string(ctxt)
-            )
+            DisplayOutput::Seq(vec![
+                self.metadata.output(ctxt),
+                DisplayOutput::Text(": ".to_string()),
+                self.edge.inputs.output(ctxt),
+                DisplayOutput::Text(" -> ".to_string()),
+                self.edge.outputs.output(ctxt),
+            ])
         }
     }
 }
@@ -458,12 +462,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for PcgCoupledEdgeKind<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         match self {
             PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => {
-                function.to_short_string(ctxt)
+                function.output(ctxt)
             }
-            PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.to_short_string(ctxt),
+            PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.output(ctxt),
         }
     }
 }
@@ -837,10 +841,10 @@ pub enum MaybeCoupledEdgeKind<'tcx, T> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for MaybeCoupledEdgeKind<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         match self {
-            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.to_short_string(ctxt),
-            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.to_short_string(ctxt),
+            MaybeCoupledEdgeKind::Coupled(coupled) => coupled.output(ctxt),
+            MaybeCoupledEdgeKind::NotCoupled(normal) => normal.output(ctxt),
         }
     }
 }

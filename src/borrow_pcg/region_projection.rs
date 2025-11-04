@@ -31,7 +31,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
@@ -69,7 +69,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string(None))
+        write!(f, "{}", self.to_short_string(None))
     }
 }
 
@@ -77,7 +77,7 @@ impl PcgRegion {
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
     }
-    pub fn to_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
+    pub fn to_short_string(&self, ctxt: Option<CompilerCtxt<'_, '_>>) -> String {
         match self {
             PcgRegion::RegionVid(vid) => {
                 if let Some(ctxt) = ctxt {
@@ -145,9 +145,11 @@ impl PcgRegion {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.to_string(Some(ctxt.bc_ctxt()))
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for PcgRegion
+{
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(self.to_short_string(Some(ctxt.bc_ctxt())))
     }
 }
 
@@ -215,10 +217,10 @@ impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
 where
     T: DisplayWithCtxt<Ctxt>,
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         match self {
-            PlaceOrConst::Place(p) => p.to_short_string(ctxt),
-            PlaceOrConst::Const(c) => format!("Const({c:?})"),
+            PlaceOrConst::Place(p) => p.output(ctxt),
+            PlaceOrConst::Const(c) => DisplayOutput::Text(format!("Const({c:?})")),
         }
     }
 }
@@ -369,11 +371,12 @@ pub enum LifetimeProjectionLabel {
     Future,
 }
 
-impl std::fmt::Display for LifetimeProjectionLabel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DisplayWithCtxt<()> for LifetimeProjectionLabel
+{
+    fn output(&self, ctxt: ()) -> DisplayOutput {
         match self {
-            LifetimeProjectionLabel::Location(location) => write!(f, "{location}"),
-            LifetimeProjectionLabel::Future => write!(f, "FUTURE"),
+            LifetimeProjectionLabel::Location(location) => location.output(ctxt),
+            LifetimeProjectionLabel::Future => DisplayOutput::Text("FUTURE".to_string()),
         }
     }
 }
@@ -679,18 +682,20 @@ impl<
         + HasRegions<'tcx, Ctxt>,
 > DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         let label_part = match self.label {
-            Some(LifetimeProjectionLabel::Location(location)) => format!(" {location}"),
-            Some(LifetimeProjectionLabel::Future) => " FUTURE".to_string(),
-            _ => "".to_string(),
+            Some(label) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text(" ".to_string()),
+                label.output(())
+            ]),
+            _ => DisplayOutput::Text(String::new()),
         };
-        format!(
-            "{}↓{}{}",
-            self.base.to_short_string(ctxt),
-            self.region(ctxt).to_short_string(ctxt.bc_ctxt()),
-            label_part
-        )
+        DisplayOutput::Seq(vec![
+            self.base.output(ctxt),
+            DisplayOutput::Text("↓".to_string()),
+            self.region(ctxt).output(ctxt.bc_ctxt()),
+            label_part,
+        ])
     }
 }
 
@@ -707,7 +712,7 @@ impl<
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
             "place": self.base.to_json(ctxt),
-            "region": self.region(ctxt).to_string(Some(ctxt.bc_ctxt())),
+            "region": self.region(ctxt).to_short_string(Some(ctxt.bc_ctxt())),
         })
     }
 }

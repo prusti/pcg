@@ -13,7 +13,11 @@ use crate::{
         mir::{self, BasicBlock, Location},
         ty,
     },
-    utils::{HasCompilerCtxt, PlaceProjectable, display::DisplayWithCtxt, json::ToJsonWithCtxt},
+    utils::{
+        HasCompilerCtxt, PlaceProjectable,
+        display::{DisplayOutput, DisplayWithCtxt},
+        json::ToJsonWithCtxt,
+    },
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Copy, Ord, PartialOrd)]
@@ -22,9 +26,26 @@ pub struct AnalysisLocation {
     pub(crate) eval_stmt_phase: EvalStmtPhase,
 }
 
+impl DisplayWithCtxt<()> for Location {
+    fn output(&self, _ctxt: ()) -> DisplayOutput {
+        DisplayOutput::Text(format!("{:?}", self))
+    }
+}
+
 impl std::fmt::Display for AnalysisLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}:{:?}", self.location, self.eval_stmt_phase)
+    }
+}
+
+impl DisplayWithCtxt<()> for AnalysisLocation
+{
+    fn output(&self, ctxt: ()) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.location.output(ctxt),
+            DisplayOutput::Text(":".to_string()),
+            self.eval_stmt_phase.output(ctxt),
+        ])
     }
 }
 
@@ -137,6 +158,12 @@ impl SnapshotLocation {
     }
 }
 
+impl std::fmt::Display for SnapshotLocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", DisplayWithCtxt::<_>::to_short_string(self, ()))
+    }
+}
+
 #[deprecated(note = "Use LabelledPlace instead")]
 pub type PlaceSnapshot<'tcx> = LabelledPlace<'tcx>;
 
@@ -152,16 +179,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Labell
     }
 }
 
-impl std::fmt::Display for SnapshotLocation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DisplayWithCtxt<()> for SnapshotLocation
+{
+    fn output(&self, ctxt: ()) -> DisplayOutput {
         match self {
-            SnapshotLocation::After(loc) => write!(f, "after {loc:?}"),
-            SnapshotLocation::Loop(bb) => write!(f, "loop {bb:?}"),
-            SnapshotLocation::BeforeJoin(bb) => write!(f, "before join {bb:?}"),
+            SnapshotLocation::Before(analysis_location) => DisplayOutput::Seq(vec![
+                DisplayOutput::Text("before ".to_string()),
+                analysis_location.output(ctxt),
+            ]),
+            SnapshotLocation::After(loc) => DisplayOutput::Text(format!("after {loc:?}")),
+            SnapshotLocation::Loop(bb) => DisplayOutput::Text(format!("loop {bb:?}")),
+            SnapshotLocation::BeforeJoin(bb) => DisplayOutput::Text(format!("before join {bb:?}")),
             SnapshotLocation::BeforeRefReassignment(location) => {
-                write!(f, "before ref reassignment {location:?}")
+                DisplayOutput::Text(format!("before ref reassignment {location:?}"))
             }
-            SnapshotLocation::Before(eval_stmt_phase) => write!(f, "before {eval_stmt_phase}"),
         }
     }
 }
@@ -216,8 +247,11 @@ impl std::fmt::Display for LabelledPlace<'_> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn to_short_string(&self, repacker: Ctxt) -> String {
-        format!("{} at {:?}", self.place.to_short_string(repacker), self.at)
+    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.place.output(repacker),
+            DisplayOutput::Text(format!(" at {:?}", self.at)),
+        ])
     }
 }
 

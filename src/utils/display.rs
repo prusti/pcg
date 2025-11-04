@@ -24,6 +24,7 @@ use rustc_interface::{
 use crate::{
     rustc_interface::{self, middle::mir},
     utils::HasCompilerCtxt,
+    visualization::html::Html,
 };
 
 use super::{CompilerCtxt, Place};
@@ -49,8 +50,47 @@ impl PlaceDisplay<'_> {
     }
 }
 
+pub enum DisplayOutput {
+    Html(Html),
+    Text(String),
+    Both(Html, String),
+    Seq(Vec<DisplayOutput>),
+}
+
+impl DisplayOutput {
+    pub(crate) fn to_html(self) -> Html {
+        match self {
+            DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
+            DisplayOutput::Text(text) => Html::Text(text),
+            DisplayOutput::Seq(display_outputs) => {
+                Html::Seq(display_outputs.into_iter().map(|d| d.to_html()).collect())
+            }
+        }
+    }
+
+    pub(crate) fn to_text(self) -> String {
+        match self {
+            DisplayOutput::Html(html) => html.text(),
+            DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text,
+            DisplayOutput::Seq(display_outputs) => display_outputs
+                .into_iter()
+                .map(|d| d.to_text())
+                .collect::<Vec<_>>()
+                .join(""),
+        }
+    }
+}
+
 pub trait DisplayWithCtxt<Ctxt> {
-    fn to_short_string(&self, ctxt: Ctxt) -> String;
+    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
+        unimplemented!()
+    }
+    fn to_short_string(&self, ctxt: Ctxt) -> String {
+        self.output(ctxt).to_text()
+    }
+    fn to_html(&self, ctxt: Ctxt) -> Html {
+        self.output(ctxt).to_html()
+    }
 }
 
 pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =

@@ -1,4 +1,5 @@
 use crate::{
+    utils::display::DisplayOutput,
     borrow_pcg::{
         FunctionData,
         abstraction::{
@@ -191,8 +192,8 @@ pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for FunctionCallAbstractionEdgeMetadata<'tcx>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(format!(
             "call{} at {:?}",
             if let Some(function_data) = &self.function_data {
                 format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
@@ -200,7 +201,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 "".to_string()
             },
             self.location
-        )
+        ))
     }
 }
 impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
@@ -301,12 +302,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
 impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>
 {
-    fn to_short_string(&self, ctxt: Ctxt) -> String {
-        format!(
-            "{}: {}",
-            self.metadata.to_short_string(ctxt),
-            self.edge.to_short_string(ctxt)
-        )
+    fn output(&self, ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.metadata.output(ctxt),
+            DisplayOutput::Text(": ".to_string()),
+            self.edge.output(ctxt),
+        ])
     }
 }
 

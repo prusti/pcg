@@ -21,7 +21,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation, display::DisplayWithCtxt, json::ToJsonWithCtxt,
+        SnapshotLocation, display::{DisplayOutput, DisplayWithCtxt}, json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
     },
 };
@@ -218,17 +218,16 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeLabelledPlace<'tcx>
 {
-    fn to_short_string(&self, repacker: Ctxt) -> String {
-        let p = self.place().to_short_string(repacker);
-        format!(
-            "{}{}",
-            p,
-            if let Some(location) = self.location() {
-                format!(" {location}")
-            } else {
-                "".to_string()
-            }
-        )
+    fn output(&self, repacker: Ctxt) -> DisplayOutput {
+        let location_part = if let Some(location) = self.location() {
+            DisplayOutput::Text(format!(" {location}"))
+        } else {
+            DisplayOutput::Text(String::new())
+        };
+        DisplayOutput::Seq(vec![
+            self.place().output(repacker),
+            location_part,
+        ])
     }
 }
 

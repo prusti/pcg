@@ -2,6 +2,7 @@ use derive_more::From;
 
 use super::AbstractionBlockEdge;
 use crate::{
+    utils::display::DisplayOutput,
     borrow_pcg::{
         borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge},
         domain::LoopAbstractionOutput,
@@ -37,8 +38,8 @@ impl LoopAbstractionEdgeMetadata {
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
-    fn to_short_string(&self, _ctxt: Ctxt) -> String {
-        format!("Loop({:?})", self.0)
+    fn output(&self, _ctxt: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(format!("Loop({:?})", self.0))
     }
 }
 

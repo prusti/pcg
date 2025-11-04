@@ -9,7 +9,7 @@ use crate::{
         middle::{mir, ty},
     },
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
+        self, CompilerCtxt, HasCompilerCtxt, display::{DisplayOutput, DisplayWithCtxt}, json::ToJsonWithCtxt,
         validity::HasValidityCheck,
     },
 };
@@ -40,8 +40,8 @@ impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemoteP
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
-    fn to_short_string(&self, _repacker: Ctxt) -> String {
-        format!("Remote({:?})", self.local)
+    fn output(&self, _repacker: Ctxt) -> DisplayOutput {
+        DisplayOutput::Text(format!("Remote({:?})", self.local))
     }
 }
 

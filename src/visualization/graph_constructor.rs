@@ -10,7 +10,7 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
-    utils::{CompilerCtxt, HasPlace, Place, SnapshotLocation, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, HasPlace, Place, SnapshotLocation, display::{DisplayWithCompilerCtxt, DisplayWithCtxt}},
 };
 
 use super::{
@@ -144,7 +144,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 );
                 format!(
                     "Loans in {} - before: {}, mid: {}",
-                    projection.region(self.ctxt).to_short_string(self.ctxt),
+                    DisplayWithCtxt::<_>::to_short_string(&projection.region(self.ctxt), self.ctxt),
                     loans_before,
                     loans_after
                 )
@@ -157,7 +157,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node = GraphNode {
             id,
             node_type: NodeType::RegionProjectionNode {
-                label: projection.to_short_string(self.ctxt),
+                label: projection.to_html(self.ctxt),
                 base_ty,
                 loans,
             },

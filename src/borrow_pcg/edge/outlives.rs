@@ -76,7 +76,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     fn to_short_string(&self, ctxt: Ctxt) -> String {
         format!(
             "{} -> {}",
-            self.long.to_short_string(ctxt),
+            DisplayWithCtxt::<_>::to_short_string(&self.long, ctxt),
             self.short.to_short_string(ctxt)
         )
     }
