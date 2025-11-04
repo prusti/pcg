@@ -101,23 +101,16 @@ export default function PCGNavigator({
     }
   }, [isMinimized, navigatorWidth, onNavigatorStateChange]);
 
-  // Build navigation items list: for each iteration, render it and its actions
+  // Build navigation items list: for each iteration, render actions first then the phase
   const buildNavigationItems = (): NavigationItem[] => {
     const items: NavigationItem[] = [];
 
     // For each iteration in at_phase
     iterations.at_phase.forEach((at_phase) => {
-      // Add the iteration
-      items.push({
-        type: "iteration",
-        name: at_phase.phase,
-        filename: at_phase.filename,
-      });
-
       // Check if this iteration name corresponds to an EvalStmtPhase with actions
       const phase = at_phase.phase as EvalStmtPhase;
       if (phase in pcgData.actions) {
-        // Add all actions for this phase
+        // Add all actions for this phase first
         pcgData.actions[phase].forEach((action, index) => {
           if (
             action.data.kind.type !== "MakePlaceOld" &&
@@ -127,6 +120,13 @@ export default function PCGNavigator({
           }
         });
       }
+
+      // Add the iteration after its actions
+      items.push({
+        type: "iteration",
+        name: at_phase.phase,
+        filename: at_phase.filename,
+      });
     });
 
     return items;
