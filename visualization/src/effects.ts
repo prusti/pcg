@@ -128,7 +128,7 @@ function keydown(
             type: "stmt",
             block: filteredNodes[nextBlockIdx].block,
             stmt: getNextStmtIdx(data, -1),
-            selectedAction: null,
+            navigatorPoint: { type: "phase", index: 0 },
           };
         } else {
           const nextBlockIdx =
@@ -138,7 +138,7 @@ function keydown(
             type: "stmt",
             block: data.block,
             stmt: data.stmts.length,
-            selectedAction: null,
+            navigatorPoint: { type: "phase", index: 0 },
           };
         }
       }
@@ -149,7 +149,7 @@ function keydown(
       type: "stmt",
       block: newBlock,
       stmt: 0,
-      selectedAction: null,
+      navigatorPoint: { type: "phase", index: 0 },
     });
   }
 }

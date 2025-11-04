@@ -67,5 +67,22 @@ fn ex7_function_call(c: bool) {
     *r = 3;
 }
 
+pub type Node<T> = Option<Box<List<T>>>;
+
+struct List<T> {
+    head: T,
+    tail: Node<T>,
+}
+
+fn ex8_penultimate<'a>(list: &'a mut List<i32>) -> Option<&'a mut i32> {
+    let mut current = &mut *list;
+    let mut prev = None;
+    while let Some(next) = &mut current.tail {
+        prev = Some(&mut current.head);
+        current = &mut *next;
+    }
+    prev
+}
+
 fn main() {
 }

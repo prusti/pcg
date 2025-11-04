@@ -3,12 +3,20 @@ export type SelectedAction = {
   index: number;
 };
 
+export type NavigatorPoint = {
+  type: "action";
+  action: SelectedAction;
+} | {
+  type: "phase";
+  index: number;
+};
+
 export type CurrentPoint =
   | {
       type: "stmt";
       block: number;
       stmt: number;
-      selectedAction: SelectedAction | null;
+      navigatorPoint: NavigatorPoint;
     }
   | {
       type: "terminator";
@@ -86,3 +94,5 @@ export type {
 export type FunctionsMetadata = {
   [slug: FunctionSlug]: FunctionMetadata;
 };
+
+export type StringOf<T> = string & { __brand: T };

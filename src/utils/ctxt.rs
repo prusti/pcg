@@ -1,7 +1,3 @@
-use std::path::PathBuf;
-
-use serde_derive::Serialize;
-
 use crate::{
     HasSettings,
     borrow_checker::BorrowCheckerInterface,
@@ -11,21 +7,21 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
-    pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
+    pcg::ctxt::AnalysisCtxt,
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
         middle::{
             mir::{
-                self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
-                PlaceElem, ProjectionElem, VarDebugInfoContents,
+                BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace, PlaceElem,
+                ProjectionElem, VarDebugInfoContents,
             },
             ty::{self, TyCtxt, TyKind, TypeVisitable},
         },
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{DebugRepr, eval_stmt_data::EvalStmtData, place::Place, validity::HasValidityCheck},
+    utils::{place::Place, validity::HasValidityCheck},
     validity_checks_enabled,
 };
 
@@ -293,84 +289,6 @@ pub trait HasCompilerCtxt<'a, 'tcx>: Copy {
         'tcx: 'a,
     {
         self.ctxt().tcx()
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) enum ToGraph {
-    Phase(DataflowStmtPhase),
-    Action(EvalStmtPhase, usize),
-}
-
-#[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
-    at_phase: Vec<(PhaseKey, PathBuf)>,
-    actions: EvalStmtData<Vec<PathBuf>>,
-}
-
-impl Default for StmtGraphs {
-    fn default() -> Self {
-        Self {
-            at_phase: Vec::new(),
-            actions: EvalStmtData::default(),
-        }
-    }
-}
-
-impl DebugRepr for StmtGraphs {
-    type Repr = StmtGraphs<String>;
-
-    fn debug_repr(&self, _ctxt: ()) -> StmtGraphs<String> {
-        StmtGraphs {
-            at_phase: self
-                .at_phase
-                .iter()
-                .map(|(phase, filename)| (phase.to_string(), filename.clone()))
-                .collect(),
-            actions: self.actions.clone(),
-        }
-    }
-}
-
-impl StmtGraphs {
-    pub(crate) fn relative_filename(location: mir::Location, to_graph: ToGraph) -> PathBuf {
-        let path_str = match to_graph {
-            ToGraph::Phase(phase) => {
-                format!(
-                    "{:?}_stmt_{}_{}.dot",
-                    location.block,
-                    location.statement_index,
-                    phase.to_filename_str_part()
-                )
-            }
-            ToGraph::Action(phase, action_idx) => {
-                format!(
-                    "{:?}_stmt_{}_{:?}_action_{}.dot",
-                    location.block, location.statement_index, phase, action_idx,
-                )
-            }
-        };
-        PathBuf::from(path_str)
-    }
-
-    pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: PathBuf) {
-        self.at_phase.push((phase, filename));
-    }
-
-    pub(crate) fn insert_for_action(
-        &mut self,
-        phase: EvalStmtPhase,
-        action_idx: usize,
-        filename: PathBuf,
-    ) {
-        let within_phase = &mut self.actions[phase];
-        assert_eq!(
-            within_phase.len(),
-            action_idx,
-            "Action index {action_idx} isn't equal to number of existing actions for {phase:?}"
-        );
-        within_phase.push(filename);
     }
 }
 

@@ -7,7 +7,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 mod domain;
-mod dot_graphs;
 mod engine;
 mod node;
 mod successor;

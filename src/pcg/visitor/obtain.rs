@@ -24,7 +24,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, HasPlace, ToGraph, data_structures::HashSet,
+        CompilerCtxt, DataflowCtxt, HasPlace, data_structures::HashSet,
         display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
@@ -522,7 +522,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
                 analysis_ctxt.generate_pcg_debug_visualization_graph(
                     location,
-                    ToGraph::Action(phase, actions.len()),
+                    crate::visualization::stmt_graphs::ToGraph::Action(phase, actions.len()),
                     pcg_ref,
                 );
             }

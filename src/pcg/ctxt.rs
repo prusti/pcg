@@ -1,12 +1,10 @@
-use std::path::{Path, PathBuf};
-
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::validity_conditions::effective_successors,
     pcg::{
         BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
-        CapabilityVar, Choice, DataflowStmtPhase, IntroduceConstraints, PcgArena,
-        PcgBlockDebugVisualizationGraphs, PcgRef, SymbolicCapability, SymbolicCapabilityCtxt,
+        CapabilityVar, Choice, IntroduceConstraints, PcgArena, SymbolicCapability,
+        SymbolicCapabilityCtxt,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
@@ -14,13 +12,9 @@ use crate::{
     rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, Place,
-        SETTINGS, SnapshotLocation, StmtGraphs, ToGraph, data_structures::HashMap,
-        logging::LogPredicate,
+        SETTINGS, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
     },
 };
-
-#[cfg(feature = "visualization")]
-use crate::visualization::write_pcg_dot_graph_to_file;
 
 impl<'a, 'tcx: 'a> std::fmt::Debug for AnalysisCtxt<'a, 'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -46,7 +40,7 @@ pub trait HasSettings<'a> {
 
 mod private {
     use crate::{
-        pcg::{BodyAnalysis, PcgArena, PcgBlockDebugVisualizationGraphs, SymbolicCapabilityCtxt},
+        pcg::{BodyAnalysis, PcgArena, SymbolicCapabilityCtxt},
         rustc_interface::middle::mir,
         utils::{CompilerCtxt, PcgSettings},
     };
@@ -61,53 +55,14 @@ mod private {
         pub(crate) block: mir::BasicBlock,
         pub(crate) arena: PcgArena<'a>,
         #[cfg(feature = "visualization")]
-        pub(crate) graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
+        pub(crate) graphs:
+            Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
     }
-}
-
-fn dot_filename_for(output_dir: &Path, relative_filename: &Path) -> PathBuf {
-    output_dir.join(relative_filename)
 }
 
 pub use private::*;
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
-    #[cfg(feature = "visualization")]
-    pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
-        self,
-        location: mir::Location,
-        to_graph: ToGraph,
-        pcg: PcgRef<'pcg, 'tcx>,
-    ) {
-        if location.block.as_usize() == 0 {
-            assert!(!matches!(
-                to_graph,
-                ToGraph::Phase(DataflowStmtPhase::Join(_))
-            ));
-        }
-        if let Some(debug_data) = self.graphs {
-            let relative_filename = StmtGraphs::relative_filename(location, to_graph);
-            let filename = dot_filename_for(debug_data.dot_output_dir, &relative_filename);
-            match to_graph {
-                ToGraph::Action(phase, action_idx) => {
-                    debug_data.dot_graphs.borrow_mut().insert_for_action(
-                        location,
-                        phase,
-                        action_idx,
-                        relative_filename,
-                    );
-                }
-                ToGraph::Phase(phase) => debug_data.dot_graphs.borrow_mut().insert_for_phase(
-                    location.statement_index,
-                    phase,
-                    relative_filename,
-                ),
-            }
-
-            write_pcg_dot_graph_to_file(pcg, self, location, &filename).unwrap();
-        }
-    }
-
     #[allow(dead_code)]
     pub(crate) fn create_place_capability_inference_vars(
         self,
@@ -261,7 +216,9 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         body_analysis: &'a BodyAnalysis<'a, 'tcx>,
         symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         arena: PcgArena<'a>,
-        #[cfg(feature = "visualization")] graphs: Option<PcgBlockDebugVisualizationGraphs<'a>>,
+        #[cfg(feature = "visualization")] graphs: Option<
+            crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>,
+        >,
     ) -> Self {
         Self {
             ctxt,
