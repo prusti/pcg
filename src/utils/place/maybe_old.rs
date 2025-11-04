@@ -75,19 +75,19 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         match self {
-            MaybeLabelledPlace::Current(place) => place.to_local_node(repacker),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_local_node(repacker),
+            MaybeLabelledPlace::Current(place) => place.to_local_node(ctxt),
+            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_local_node(ctxt),
         }
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
-            MaybeLabelledPlace::Current(place) => place.to_pcg_node(repacker),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(repacker),
+            MaybeLabelledPlace::Current(place) => place.to_pcg_node(ctxt),
+            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(ctxt),
         }
     }
 }
@@ -117,10 +117,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeLabelledPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     for MaybeLabelledPlace<'tcx>
 {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         match self {
-            MaybeLabelledPlace::Current(place) => place.to_json(repacker),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_json(repacker),
+            MaybeLabelledPlace::Current(place) => place.to_json(ctxt),
+            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_json(ctxt),
         }
     }
 }
@@ -184,16 +184,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         })
     }
 
-    fn iter_projections(&self, repacker: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         match self {
             MaybeLabelledPlace::Current(place) => place
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (p.into(), e))
                 .collect(),
             MaybeLabelledPlace::Labelled(old_place) => old_place
                 .place
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (p.into(), e))
                 .collect(),
@@ -223,16 +223,13 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for MaybeLabelledPlace<'tcx>
 {
-    fn display_output(&self, repacker: Ctxt, mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {
             DisplayOutput::Text(format!(" {location}").into())
         } else {
             DisplayOutput::Text(Cow::Borrowed(""))
         };
-        DisplayOutput::Seq(vec![
-            self.place().display_output(repacker, mode),
-            location_part,
-        ])
+        DisplayOutput::Seq(vec![self.place().display_output(ctxt, mode), location_part])
     }
 }
 
@@ -255,10 +252,10 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
     pub(crate) fn deref_to_rp<C: Copy>(
         &self,
-        repacker: CompilerCtxt<'_, 'tcx, C>,
+        ctxt: CompilerCtxt<'_, 'tcx, C>,
     ) -> Option<LifetimeProjection<'tcx, Self>> {
         if let Some((place, PlaceElem::Deref)) = self.last_projection() {
-            place.base_lifetime_projection(repacker)
+            place.base_lifetime_projection(ctxt)
         } else {
             None
         }
@@ -266,26 +263,26 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
     pub(crate) fn base_lifetime_projection<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Option<LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
     {
         self.place()
-            .base_lifetime_projection(repacker)
+            .base_lifetime_projection(ctxt)
             .map(|rp| rp.with_base(*self))
     }
 
-    pub(crate) fn is_owned<C: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
-        self.place().is_owned(repacker)
+    pub(crate) fn is_owned<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
+        self.place().is_owned(ctxt)
     }
 
     pub(crate) fn local(&self) -> mir::Local {
         self.place().local
     }
 
-    pub(crate) fn ty_region(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
-        self.place().ty_region(repacker)
+    pub(crate) fn ty_region(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
+        self.place().ty_region(ctxt)
     }
 
     pub fn last_projection(&self) -> Option<(MaybeLabelledPlace<'tcx>, PlaceElem<'tcx>)> {
@@ -302,16 +299,14 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
     pub(crate) fn with_inherent_region<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> MaybeLabelledPlace<'tcx>
     where
         'tcx: 'a,
     {
         match self {
-            MaybeLabelledPlace::Current(place) => place.with_inherent_region(repacker).into(),
-            MaybeLabelledPlace::Labelled(snapshot) => {
-                snapshot.with_inherent_region(repacker).into()
-            }
+            MaybeLabelledPlace::Current(place) => place.with_inherent_region(ctxt).into(),
+            MaybeLabelledPlace::Labelled(snapshot) => snapshot.with_inherent_region(ctxt).into(),
         }
     }
 
@@ -355,9 +350,9 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         matches!(self, MaybeLabelledPlace::Current { .. })
     }
 
-    pub fn to_json<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
+    pub fn to_json<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> serde_json::Value {
         json!({
-            "place": self.place().to_json(repacker),
+            "place": self.place().to_json(ctxt),
             "at": self.location().map(|loc| format!("{loc:?}")),
         })
     }

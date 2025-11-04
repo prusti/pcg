@@ -296,9 +296,9 @@ impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'p
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'_, 'tcx> {
-    fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut lines = Vec::new();
-        lines.extend(self.graph.debug_lines(repacker));
+        lines.extend(self.graph.debug_lines(ctxt));
         lines
     }
 }
@@ -446,9 +446,9 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
     pub(crate) fn edges_blocking<'slf, 'mir: 'slf, 'bc: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
-        repacker: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> Vec<BorrowPcgEdgeRef<'tcx, 'slf>> {
-        self.graph.edges_blocking(node, repacker).collect()
+        self.graph.edges_blocking(node, ctxt).collect()
     }
 
     #[allow(clippy::too_many_arguments)]

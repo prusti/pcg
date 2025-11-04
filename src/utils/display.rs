@@ -147,12 +147,12 @@ impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Place<'tcx> {
-    fn display_output(&self, repacker: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(self.display_string(repacker).into())
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(self.display_string(ctxt).into())
     }
 
-    fn display_string(&self, repacker: Ctxt) -> String {
-        match self.to_string(repacker.ctxt()) {
+    fn display_string(&self, ctxt: Ctxt) -> String {
+        match self.to_string(ctxt.ctxt()) {
             PlaceDisplay::Temporary(p) => format!("{p:?}"),
             PlaceDisplay::User(_p, s) => s,
         }
@@ -164,7 +164,7 @@ impl<'tcx> Place<'tcx> {
         serde_json::Value::String(self.display_string(ctxt))
     }
 
-    pub fn to_string<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> PlaceDisplay<'tcx> {
+    pub fn to_string<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> PlaceDisplay<'tcx> {
         // Get the local's debug name from the Body's VarDebugInfo
         let local_name = if self.local == RETURN_PLACE {
             Cow::Borrowed("RETURN")
@@ -187,13 +187,11 @@ impl<'tcx> Place<'tcx> {
 
             let get_local_name = |info: &VarDebugInfo<'tcx>| match info.value {
                 VarDebugInfoContents::Place(place) if place.local == self.local => {
-                    as_local(info.source_info.span, repacker.mir.span)
-                        .map(|_| info.name.to_string())
+                    as_local(info.source_info.span, ctxt.mir.span).map(|_| info.name.to_string())
                 }
                 _ => None,
             };
-            let Some(local_name) = repacker.mir.var_debug_info.iter().find_map(get_local_name)
-            else {
+            let Some(local_name) = ctxt.mir.var_debug_info.iter().find_map(get_local_name) else {
                 return PlaceDisplay::Temporary(*self);
             };
             Cow::Owned(local_name)
@@ -216,7 +214,7 @@ impl<'tcx> Place<'tcx> {
                 ProjectionElem::Deref => (ElemPosition::Prefix, "*".into()),
 
                 ProjectionElem::Field(field, _) => {
-                    let ty = place.ty(&repacker.mir.local_decls, repacker.tcx()).ty;
+                    let ty = place.ty(&ctxt.mir.local_decls, ctxt.tcx()).ty;
 
                     let field_name = match ty.kind() {
                         TyKind::Adt(def, _substs) => {
@@ -232,14 +230,14 @@ impl<'tcx> Place<'tcx> {
                                 }
                             };
 
-                            fields[field].ident(repacker.tcx()).to_string()
+                            fields[field].ident(ctxt.tcx()).to_string()
                         }
 
                         TyKind::Tuple(_) => field.as_usize().to_string(),
 
                         TyKind::Closure(def_id, _substs) => match def_id.as_local() {
                             Some(local_def_id) => {
-                                let captures = repacker.tcx().closure_captures(local_def_id);
+                                let captures = ctxt.tcx().closure_captures(local_def_id);
                                 captures[field.as_usize()].var_ident.to_string()
                             }
                             None => field.as_usize().to_string(),

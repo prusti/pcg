@@ -351,15 +351,15 @@ where
 impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
     pub fn new(
         pcg: PcgRef<'pcg, 'tcx>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
         location: mir::Location,
     ) -> Self {
         Self {
             summary: pcg.owned,
             borrows_domain: pcg.borrow,
             capabilities: pcg.capabilities,
-            constructor: GraphConstructor::new(repacker, Some(location)),
-            ctxt: repacker,
+            constructor: GraphConstructor::new(ctxt, Some(location)),
+            ctxt: ctxt,
         }
     }
 

@@ -51,34 +51,33 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstraction<'tcx> {
         &mut self,
         projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_lifetime_projection(projection, label, repacker)
+        self.edge.label_lifetime_projection(projection, label, ctxt)
     }
 }
 impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.edge.blocks_node(node, repacker)
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.edge.blocks_node(node, ctxt)
     }
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        self.edge.blocked_nodes(repacker)
+        self.edge.blocked_nodes(ctxt)
     }
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
-        repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        self.edge.blocked_by_nodes(repacker)
+        self.edge.blocked_by_nodes(ctxt)
     }
 }
 

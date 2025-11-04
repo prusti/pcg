@@ -272,8 +272,8 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
 }
 
 impl<'tcx> EdgeData<'tcx> for BorrowPcgExpansion<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.base.to_pcg_node(repacker) == node
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.base.to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -315,9 +315,9 @@ impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
-    pub(crate) fn is_deref<C: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, C>) -> bool {
+    pub(crate) fn is_deref<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
         if let BlockingNode::Place(p) = self.base {
-            p.place().is_ref(repacker)
+            p.place().is_ref(ctxt)
         } else {
             false
         }

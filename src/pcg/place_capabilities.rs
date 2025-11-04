@@ -291,12 +291,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for SymbolicPlaceCapabilities<'tcx> {
-    fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.iter()
             .map(|(node, capability)| {
                 format!(
                     "{}: {:?}",
-                    node.display_string(repacker),
+                    node.display_string(ctxt),
                     capability.expect_concrete()
                 )
             })

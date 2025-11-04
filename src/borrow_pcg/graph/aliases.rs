@@ -21,17 +21,17 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn ancestor_edges<'graph, 'mir: 'graph, 'bc: 'graph>(
         &'graph self,
         node: LocalNode<'tcx>,
-        repacker: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> {
         let mut result: FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> = FxHashSet::default();
         let mut stack = vec![node];
         let mut seen: FxHashSet<PcgNode<'tcx>> = FxHashSet::default();
         while let Some(node) = stack.pop() {
             if seen.insert(node.into()) {
-                for edge in self.edges_blocked_by(node, repacker) {
+                for edge in self.edges_blocked_by(node, ctxt) {
                     result.insert(edge);
-                    for node in edge.blocked_nodes(repacker) {
-                        if let Some(local_node) = node.try_to_local_node(repacker) {
+                    for node in edge.blocked_nodes(ctxt) {
+                        if let Some(local_node) = node.try_to_local_node(ctxt) {
                             stack.push(local_node);
                         }
                     }
@@ -114,11 +114,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
         results.into_iter().map(|a| a.node).collect()
     }
 
-    #[tracing::instrument(skip(self, repacker, seen, direct))]
+    #[tracing::instrument(skip(self, ctxt, seen, direct))]
     fn direct_aliases<BC: Copy>(
         &self,
         node: LocalNode<'tcx>,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
         seen: &mut FxHashSet<PcgNode<'tcx>>,
         direct: bool,
     ) -> FxHashSet<Alias<'tcx>> {
@@ -137,13 +137,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     node: blocked,
                     exact_alias,
                 });
-                if let Some(local_node) = blocked.try_to_local_node(repacker) {
-                    result.extend(self.direct_aliases(local_node, repacker, seen, exact_alias));
+                if let Some(local_node) = blocked.try_to_local_node(ctxt) {
+                    result.extend(self.direct_aliases(local_node, ctxt, seen, exact_alias));
                 }
             }
         };
 
-        for edge in self.edges_blocked_by(node, repacker) {
+        for edge in self.edges_blocked_by(node, ctxt) {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
                     let blocked = deref_edge.deref_place;
@@ -154,20 +154,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     extend(blocked.into(), seen, &mut result, direct);
                 }
                 BorrowPcgEdgeKind::BorrowPcgExpansion(e) => {
-                    for node in e.blocked_nodes(repacker) {
+                    for node in e.blocked_nodes(ctxt) {
                         if let PcgNode::LifetimeProjection(p) = node {
-                            extend(
-                                p.to_pcg_node(repacker),
-                                seen,
-                                &mut result,
-                                e.is_deref(repacker),
-                            );
+                            extend(p.to_pcg_node(ctxt), seen, &mut result, e.is_deref(ctxt));
                         }
                     }
                 }
                 BorrowPcgEdgeKind::Abstraction(abstraction_type) => {
                     extend(
-                        abstraction_type.input(repacker).to_pcg_node(repacker),
+                        abstraction_type.input(ctxt).to_pcg_node(ctxt),
                         seen,
                         &mut result,
                         false,
@@ -175,26 +170,16 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 }
                 BorrowPcgEdgeKind::BorrowFlow(outlives) => match &outlives.kind {
                     BorrowFlowEdgeKind::Move => {
-                        extend(
-                            outlives.long().to_pcg_node(repacker),
-                            seen,
-                            &mut result,
-                            true,
-                        );
+                        extend(outlives.long().to_pcg_node(ctxt), seen, &mut result, true);
                     }
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal }
                         if !regions_equal || direct => {}
                     _ => {
-                        extend(
-                            outlives.long().to_pcg_node(repacker),
-                            seen,
-                            &mut result,
-                            false,
-                        );
+                        extend(outlives.long().to_pcg_node(ctxt), seen, &mut result, false);
                     }
                 },
                 BorrowPcgEdgeKind::Coupled(edges) => {
-                    for input in edges.inputs(repacker) {
+                    for input in edges.inputs(ctxt) {
                         extend(input.0, seen, &mut result, false);
                     }
                 }

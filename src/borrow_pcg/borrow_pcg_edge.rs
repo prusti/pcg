@@ -222,15 +222,15 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         })
     }
 
-    fn iter_projections(&self, repacker: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
         match self {
             LocalNode::Place(p) => p
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (p.into(), e))
                 .collect(),
             LocalNode::LifetimeProjection(rp) => rp
-                .iter_projections(repacker)
+                .iter_projections(ctxt)
                 .into_iter()
                 .map(|(p, e)| (LocalNode::LifetimeProjection(p), e))
                 .collect(),
@@ -397,20 +397,20 @@ impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> EdgeData<'tcx> for T {
 
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
-        repacker: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        self.kind().blocked_nodes(repacker)
+        self.kind().blocked_nodes(ctxt)
     }
 
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().blocks_node(node, repacker)
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.kind().blocks_node(node, ctxt)
     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().is_blocked_by(node, repacker)
+    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.kind().is_blocked_by(node, ctxt)
     }
 }
 

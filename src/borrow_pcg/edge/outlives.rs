@@ -86,8 +86,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
-    fn blocks_node<'slf>(&self, node: PcgNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.long.to_pcg_node(repacker) == node
+    fn blocks_node<'slf>(&self, node: PcgNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.long.to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -102,7 +102,7 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        _repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,

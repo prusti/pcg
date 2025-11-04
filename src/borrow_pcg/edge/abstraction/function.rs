@@ -245,10 +245,9 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tc
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_lifetime_projection(predicate, label, repacker)
+        self.edge.label_lifetime_projection(predicate, label, ctxt)
     }
 }
 
@@ -273,8 +272,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
 }
 
 impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.edge.blocks_node(node, repacker)
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.edge.blocks_node(node, ctxt)
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
@@ -289,12 +288,12 @@ impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
-        repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
     {
-        self.edge.blocked_by_nodes(repacker)
+        self.edge.blocked_by_nodes(ctxt)
     }
 }
 

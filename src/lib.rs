@@ -151,10 +151,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     }
 }
 impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn debug_line<BC: Copy>(&self, repacker: CompilerCtxt<'_, 'tcx, BC>) -> String {
+    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         format!(
             "Restore {} to {:?}",
-            self.place.display_string(repacker),
+            self.place.display_string(ctxt),
             self.capability,
         )
     }
@@ -173,9 +173,9 @@ impl<'tcx> RestoreCapability<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker.ctxt()),
+            "place": self.place.to_json(ctxt.ctxt()),
             "old": format!("{:?}", self.from),
             "new": format!("{:?}", self.to),
         })
@@ -183,10 +183,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Wea
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
-    fn debug_lines(&self, repacker: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         self.0
             .iter()
-            .map(|action| action.debug_line(repacker))
+            .map(|action| action.debug_line(ctxt))
             .collect()
     }
 }

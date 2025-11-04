@@ -114,20 +114,20 @@ fn format_bin_op(op: &BinOp) -> String {
     }
 }
 
-fn format_local<'tcx>(local: &Local, repacker: CompilerCtxt<'_, 'tcx>) -> String {
+fn format_local<'tcx>(local: &Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     let place: Place<'tcx> = (*local).into();
-    place.display_string(repacker)
+    place.display_string(ctxt)
 }
 
-fn format_place<'tcx>(place: &mir::Place<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> String {
+fn format_place<'tcx>(place: &mir::Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     let place: Place<'tcx> = (*place).into();
-    place.display_string(repacker)
+    place.display_string(ctxt)
 }
 
-fn format_operand<'tcx>(operand: &Operand<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> String {
+fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     match operand {
-        Operand::Copy(p) => format_place(p, repacker),
-        Operand::Move(p) => format!("move {}", format_place(p, repacker)),
+        Operand::Copy(p) => format_place(p, ctxt),
+        Operand::Move(p) => format!("move {}", format_place(p, ctxt)),
         Operand::Constant(c) => format!("{c}"),
     }
 }
@@ -243,36 +243,36 @@ fn format_terminator<'tcx>(
     }
 }
 
-fn format_stmt<'tcx>(stmt: &Statement<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> String {
+fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     match &stmt.kind {
         mir::StatementKind::Assign(box (place, rvalue)) => {
             format!(
                 "{} = {}",
-                format_place(place, repacker),
-                format_rvalue(rvalue, repacker)
+                format_place(place, ctxt),
+                format_rvalue(rvalue, ctxt)
             )
         }
         mir::StatementKind::FakeRead(box (_, place)) => {
-            format!("FakeRead({})", format_place(place, repacker))
+            format!("FakeRead({})", format_place(place, ctxt))
         }
         mir::StatementKind::SetDiscriminant {
             place,
             variant_index,
         } => format!(
             "SetDiscriminant({} {:?})",
-            format_place(place, repacker),
+            format_place(place, ctxt),
             variant_index
         ),
         mir::StatementKind::Deinit(_) => todo!(),
         mir::StatementKind::StorageLive(local) => {
-            format!("StorageLive({})", format_local(local, repacker))
+            format!("StorageLive({})", format_local(local, ctxt))
         }
         mir::StatementKind::StorageDead(local) => {
-            format!("StorageDead({})", format_local(local, repacker))
+            format!("StorageDead({})", format_local(local, ctxt))
         }
         mir::StatementKind::Retag(_, _) => todo!(),
         mir::StatementKind::PlaceMention(place) => {
-            format!("PlaceMention({})", format_place(place, repacker))
+            format!("PlaceMention({})", format_place(place, ctxt))
         }
         mir::StatementKind::AscribeUserType(_, _) => "AscribeUserType(...)".to_string(),
         mir::StatementKind::Coverage(_) => "coverage".to_string(),

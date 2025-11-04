@@ -120,10 +120,10 @@ where
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         if let PcgNode::LifetimeProjection(this_projection) = self {
-            this_projection.label_lifetime_projection(predicate, label, repacker)
+            this_projection.label_lifetime_projection(predicate, label, ctxt)
         } else {
             LabelLifetimeProjectionResult::Unchanged
         }
@@ -157,10 +157,10 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for PcgNode<
 impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
     for PcgNode<'tcx, T, U>
 {
-    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
-            PcgNode::Place(p) => p.to_pcg_node(repacker),
-            PcgNode::LifetimeProjection(rp) => rp.to_pcg_node(repacker),
+            PcgNode::Place(p) => p.to_pcg_node(ctxt),
+            PcgNode::LifetimeProjection(rp) => rp.to_pcg_node(ctxt),
         }
     }
 }
@@ -249,7 +249,7 @@ pub trait PcgNodeLike<'tcx>:
 }
 
 pub(crate) trait LocalNodeLike<'tcx> {
-    fn to_local_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx>;
+    fn to_local_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx>;
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for mir::Place<'tcx> {

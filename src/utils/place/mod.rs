@@ -101,19 +101,19 @@ impl Ord for Place<'_> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Place<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
-        serde_json::Value::String(self.display_string(repacker))
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
+        serde_json::Value::String(self.display_string(ctxt))
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
-    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }
@@ -333,12 +333,12 @@ impl<'tcx> Place<'tcx> {
         self.0.projection
     }
 
-    pub(crate) fn contains_unsafe_deref<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    pub(crate) fn contains_unsafe_deref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
     {
-        for (p, proj) in self.iter_projections(repacker.ctxt()) {
-            if p.is_raw_ptr(repacker) && matches!(proj, PlaceElem::Deref) {
+        for (p, proj) in self.iter_projections(ctxt.ctxt()) {
+            if p.is_raw_ptr(ctxt) && matches!(proj, PlaceElem::Deref) {
                 return true;
             }
         }
@@ -444,18 +444,18 @@ impl<'tcx> Place<'tcx> {
     /// This function converts the Place into a canonical form by re-projecting the place
     /// from its local, and using types derived from the root place as the types associated
     /// with Field region projections.
-    pub fn with_inherent_region<'a>(self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> Self
+    pub fn with_inherent_region<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,
     {
-        let mut proj_iter = self.iter_projections(repacker.ctxt()).into_iter();
+        let mut proj_iter = self.iter_projections(ctxt.ctxt()).into_iter();
         let mut place = if let Some((place, elem)) = proj_iter.next() {
-            place.project_deeper(elem, repacker).unwrap()
+            place.project_deeper(elem, ctxt).unwrap()
         } else {
             return self;
         };
         for (_, elem) in proj_iter {
-            if let Ok(next_place) = place.project_deeper(elem, repacker) {
+            if let Ok(next_place) = place.project_deeper(elem, ctxt) {
                 place = next_place;
             } else {
                 // We cannot normalize the place (probably due to indexing of an
@@ -470,9 +470,9 @@ impl<'tcx> Place<'tcx> {
     pub fn region_projection(
         &self,
         idx: RegionIdx,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LifetimeProjection<'tcx, Self> {
-        self.lifetime_projections(repacker)[idx]
+        self.lifetime_projections(ctxt)[idx]
     }
 
     pub fn regions<'a>(
@@ -502,30 +502,30 @@ impl<'tcx> Place<'tcx> {
     pub fn projection_index(
         &self,
         region: PcgRegion,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Option<RegionIdx> {
-        extract_regions(self.rust_ty(repacker))
+        extract_regions(self.rust_ty(ctxt))
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)
             .map(|(idx, _)| idx)
     }
 
-    pub fn is_owned<'a>(self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    pub fn is_owned<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
     {
         !self
-            .iter_projections(repacker.ctxt())
+            .iter_projections(ctxt.ctxt())
             .into_iter()
-            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(repacker).ty.is_box())
+            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
     }
 
-    pub fn is_mut_ref<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    pub fn is_mut_ref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
     {
         matches!(
-            self.0.ty(repacker.body(), repacker.tcx()).ty.kind(),
+            self.0.ty(ctxt.body(), ctxt.tcx()).ty.kind(),
             TyKind::Ref(_, _, Mutability::Mut)
         )
     }
@@ -544,29 +544,26 @@ impl<'tcx> Place<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty.is_ref()
     }
 
-    pub fn ref_mutability<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> Option<Mutability>
+    pub fn ref_mutability<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<Mutability>
     where
         'tcx: 'a,
     {
-        self.0
-            .ty(repacker.body(), repacker.tcx())
-            .ty
-            .ref_mutability()
+        self.0.ty(ctxt.body(), ctxt.tcx()).ty.ref_mutability()
     }
 
-    pub fn project_deref<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> Self
+    pub fn project_deref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,
     {
         assert!(
-            self.rust_ty(repacker).is_ref() || self.rust_ty(repacker).is_box(),
+            self.rust_ty(ctxt).is_ref() || self.rust_ty(ctxt).is_box(),
             "Expected ref or box, got {:?}",
-            self.rust_ty(repacker)
+            self.rust_ty(ctxt)
         );
         Place::new(
             self.0.local,
             self.0
-                .project_deeper(&[PlaceElem::Deref], repacker.tcx())
+                .project_deeper(&[PlaceElem::Deref], ctxt.tcx())
                 .projection,
         )
     }
@@ -763,12 +760,12 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
-    pub fn nearest_owned_place(self, repacker: CompilerCtxt<'_, 'tcx>) -> Self {
-        if self.is_owned(repacker) {
+    pub fn nearest_owned_place(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Self {
+        if self.is_owned(ctxt) {
             return self;
         }
-        for (place, _) in self.iter_projections(repacker).into_iter().rev() {
-            if place.is_owned(repacker) {
+        for (place, _) in self.iter_projections(ctxt).into_iter().rev() {
+            if place.is_owned(ctxt) {
                 return place;
             }
         }

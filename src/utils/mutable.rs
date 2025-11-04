@@ -58,13 +58,13 @@ impl<'tcx> Place<'tcx> {
     pub fn is_mutable<'a>(
         self,
         is_local_mutation_allowed: LocalMutationIsAllowed,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Result<RootPlace<'tcx>, Self>
     where
         'tcx: 'a,
     {
-        let upvars = repacker.ctxt().upvars();
-        self.is_mutable_helper(is_local_mutation_allowed, &upvars, repacker)
+        let upvars = ctxt.ctxt().upvars();
+        self.is_mutable_helper(is_local_mutation_allowed, &upvars, ctxt)
     }
 
     /// Whether this value can be written or borrowed mutably.
@@ -73,14 +73,14 @@ impl<'tcx> Place<'tcx> {
         self,
         is_local_mutation_allowed: LocalMutationIsAllowed,
         upvars: &[Upvar<'tcx>],
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Result<RootPlace<'tcx>, Self>
     where
         'tcx: 'a,
     {
         match self.last_projection() {
             None => {
-                let local = &repacker.body().local_decls[self.local];
+                let local = &ctxt.body().local_decls[self.local];
                 match local.mutability {
                     Mutability::Not => match is_local_mutation_allowed {
                         LocalMutationIsAllowed::Yes => Ok(RootPlace {
@@ -102,7 +102,7 @@ impl<'tcx> Place<'tcx> {
             Some((place_base, elem)) => {
                 match elem {
                     ProjectionElem::Deref => {
-                        let base_ty = place_base.ty(repacker).ty;
+                        let base_ty = place_base.ty(ctxt).ty;
 
                         // Check the kind of deref to decide
                         match base_ty.kind() {
@@ -113,16 +113,15 @@ impl<'tcx> Place<'tcx> {
                                     // Mutably borrowed data is mutable, but only if we have a
                                     // unique path to the `&mut`
                                     hir::Mutability::Mut => {
-                                        let mode = match self
-                                            .is_upvar_field_projection(upvars, repacker)
-                                        {
-                                            Some(field) if upvars[field.index()].by_ref => {
-                                                is_local_mutation_allowed
-                                            }
-                                            _ => LocalMutationIsAllowed::Yes,
-                                        };
+                                        let mode =
+                                            match self.is_upvar_field_projection(upvars, ctxt) {
+                                                Some(field) if upvars[field.index()].by_ref => {
+                                                    is_local_mutation_allowed
+                                                }
+                                                _ => LocalMutationIsAllowed::Yes,
+                                            };
 
-                                        place_base.is_mutable_helper(mode, upvars, repacker)
+                                        place_base.is_mutable_helper(mode, upvars, ctxt)
                                     }
                                 }
                             }
@@ -142,7 +141,7 @@ impl<'tcx> Place<'tcx> {
                             _ if base_ty.is_box() => place_base.is_mutable_helper(
                                 is_local_mutation_allowed,
                                 upvars,
-                                repacker,
+                                ctxt,
                             ),
                             // Deref should only be for reference, pointers or boxes
                             _ => panic!("Deref of unexpected type: {base_ty:?}"),
@@ -156,8 +155,7 @@ impl<'tcx> Place<'tcx> {
                     | ProjectionElem::Subslice { .. }
                     | ProjectionElem::OpaqueCast { .. }
                     | ProjectionElem::Downcast(..) => {
-                        let upvar_field_projection =
-                            self.is_upvar_field_projection(upvars, repacker);
+                        let upvar_field_projection = self.is_upvar_field_projection(upvars, ctxt);
                         if let Some(field) = upvar_field_projection {
                             let upvar = &upvars[field.index()];
                             match (upvar.place.mutability, is_local_mutation_allowed) {
@@ -197,7 +195,7 @@ impl<'tcx> Place<'tcx> {
                                     let _ = place_base.is_mutable_helper(
                                         is_local_mutation_allowed,
                                         upvars,
-                                        repacker,
+                                        ctxt,
                                     )?;
                                     Ok(RootPlace {
                                         place: self,
@@ -206,11 +204,7 @@ impl<'tcx> Place<'tcx> {
                                 }
                             }
                         } else {
-                            place_base.is_mutable_helper(
-                                is_local_mutation_allowed,
-                                upvars,
-                                repacker,
-                            )
+                            place_base.is_mutable_helper(is_local_mutation_allowed, upvars, ctxt)
                         }
                     }
                     _ => todo!(),
@@ -226,7 +220,7 @@ impl<'tcx> Place<'tcx> {
     fn is_upvar_field_projection<'a>(
         self,
         upvars: &[Upvar<'tcx>],
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Option<FieldIdx>
     where
         'tcx: 'a,
@@ -241,7 +235,7 @@ impl<'tcx> Place<'tcx> {
 
         match place_ref.last_projection() {
             Some((place_base, ProjectionElem::Field(field, _ty))) => {
-                let base_ty = place_base.ty(repacker.body(), repacker.tcx()).ty;
+                let base_ty = place_base.ty(ctxt.body(), ctxt.tcx()).ty;
                 if (base_ty.is_closure()) && (!by_ref || upvars[field.index()].by_ref) {
                     Some(field)
                 } else {

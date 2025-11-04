@@ -378,10 +378,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
-    pub(crate) fn debug_lines(&self, repacker: CompilerCtxt<'a, 'tcx>) -> Vec<String> {
-        let mut result = self.borrow.debug_lines(repacker);
+    pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<String> {
+        let mut result = self.borrow.debug_lines(ctxt);
         result.sort();
-        let mut capabilities = self.capabilities.debug_lines(repacker);
+        let mut capabilities = self.capabilities.debug_lines(ctxt);
         capabilities.sort();
         result.extend(capabilities);
         result

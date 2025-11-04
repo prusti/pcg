@@ -64,13 +64,13 @@ impl<'tcx> PlaceCondition<'tcx> {
 
     fn exclusive<T: Into<Place<'tcx>>>(
         place: T,
-        repacker: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> PlaceCondition<'tcx> {
         let place = place.into();
         pcg_validity_assert!(
-            !place.projects_shared_ref(repacker),
+            !place.projects_shared_ref(ctxt),
             "Cannot get exclusive on projection of shared ref {}",
-            place.display_string(repacker)
+            place.display_string(ctxt)
         );
         Self::new(place, CapabilityKind::Exclusive)
     }
@@ -93,11 +93,11 @@ pub(crate) struct TripleWalker<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx> TripleWalker<'a, 'tcx> {
-    pub(crate) fn new(repacker: CompilerCtxt<'a, 'tcx>) -> Self {
+    pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>) -> Self {
         Self {
             operand_triples: Vec::new(),
             main_triples: Vec::new(),
-            ctxt: repacker,
+            ctxt: ctxt,
         }
     }
 }

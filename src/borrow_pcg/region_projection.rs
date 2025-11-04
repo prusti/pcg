@@ -616,7 +616,7 @@ impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, Place<'tcx>> {
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
-    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self)
     }
 }

@@ -36,19 +36,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for R
 }
 
 impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemotePlace {
-    fn to_json(&self, _repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
-    fn display_output(&self, _repacker: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(format!("Remote({:?})", self.local).into())
     }
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for RemotePlace {
-    fn to_pcg_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
     }
 }

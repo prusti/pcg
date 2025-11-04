@@ -62,13 +62,10 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LocalBorrow<'tcx> {
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
-        if predicate.matches(
-            self.assigned_lifetime_projection(repacker).rebase(),
-            repacker,
-        ) {
+        if predicate.matches(self.assigned_lifetime_projection(ctxt).rebase(), ctxt) {
             self.assigned_lifetime_projection_label = label;
             changed = LabelLifetimeProjectionResult::Changed;
         }
@@ -128,12 +125,9 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for RemoteBorrow<'tcx> {
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        repacker: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        if predicate.matches(
-            self.assigned_lifetime_projection(repacker).rebase(),
-            repacker,
-        ) {
+        if predicate.matches(self.assigned_lifetime_projection(ctxt).rebase(), ctxt) {
             self.rp_snapshot_location = label;
             LabelLifetimeProjectionResult::Changed
         } else {
@@ -168,8 +162,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for RemoteBorrow<'tcx> {
 }
 
 impl<'tcx> RemoteBorrow<'tcx> {
-    pub(crate) fn deref_place(&self, repacker: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
-        self.assigned_ref.project_deref(repacker)
+    pub(crate) fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
+        self.assigned_ref.project_deref(ctxt)
     }
 
     pub(crate) fn blocked_place(&self) -> RemotePlace {
@@ -195,8 +189,8 @@ impl<'tcx> RemoteBorrow<'tcx> {
         }
     }
 
-    pub(crate) fn is_mut(&self, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.assigned_ref.place().is_mut_ref(repacker)
+    pub(crate) fn is_mut(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+        self.assigned_ref.place().is_mut_ref(ctxt)
     }
 }
 
@@ -223,11 +217,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for RemoteBorrow<'tcx> {
 }
 
 impl<'tcx> EdgeData<'tcx> for RemoteBorrow<'tcx> {
-    fn blocks_node<'slf>(
-        &self,
-        node: BlockedNode<'tcx>,
-        _repacker: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         if let BlockedNode::Place(MaybeRemotePlace::Remote(rp)) = node {
             self.blocked_place() == rp
         } else {
@@ -247,13 +237,13 @@ impl<'tcx> EdgeData<'tcx> for RemoteBorrow<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
     {
         Box::new(std::iter::once(
-            self.assigned_lifetime_projection(repacker).into(),
+            self.assigned_lifetime_projection(ctxt).into(),
         ))
     }
 }
@@ -295,10 +285,10 @@ impl<'tcx> BorrowEdge<'tcx> {
         }
     }
 
-    pub fn is_mut(&self, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
+    pub fn is_mut(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         match self {
             BorrowEdge::Local(borrow) => borrow.is_mut(),
-            BorrowEdge::Remote(borrow) => borrow.is_mut(repacker),
+            BorrowEdge::Remote(borrow) => borrow.is_mut(ctxt),
         }
     }
 
@@ -336,10 +326,10 @@ impl<'tcx> BorrowEdge<'tcx> {
         }
     }
 
-    pub fn deref_place(&self, repacker: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
+    pub fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
         match self {
-            BorrowEdge::Local(borrow) => borrow.deref_place(repacker),
-            BorrowEdge::Remote(borrow) => borrow.deref_place(repacker),
+            BorrowEdge::Local(borrow) => borrow.deref_place(ctxt),
+            BorrowEdge::Remote(borrow) => borrow.deref_place(ctxt),
         }
     }
 
@@ -383,22 +373,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Lo
 }
 
 impl<'tcx> EdgeData<'tcx> for LocalBorrow<'tcx> {
-    fn blocks_node<'slf>(
-        &self,
-        node: BlockedNode<'tcx>,
-        _repacker: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         match node {
             PcgNode::Place(MaybeRemotePlace::Local(p)) => self.blocked_place == p,
             _ => false,
         }
     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, repacker: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         match node {
             PcgNode::Place(_) => false,
             PcgNode::LifetimeProjection(region_projection) => {
-                region_projection == self.assigned_lifetime_projection(repacker)
+                region_projection == self.assigned_lifetime_projection(ctxt)
             }
         }
     }
@@ -415,12 +401,12 @@ impl<'tcx> EdgeData<'tcx> for LocalBorrow<'tcx> {
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        repacker: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
     {
-        let rp = self.assigned_lifetime_projection(repacker);
+        let rp = self.assigned_lifetime_projection(ctxt);
         Box::new(std::iter::once(LocalNode::LifetimeProjection(rp)))
     }
 }
@@ -461,8 +447,8 @@ impl<'tcx> LocalBorrow<'tcx> {
 
     /// The deref of the assigned place of the borrow. For example, if the borrow is
     /// `let x = &mut y;`, then the deref place is `*x`.
-    pub fn deref_place(&self, repacker: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
-        self.assigned_ref.project_deref(repacker)
+    pub fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
+        self.assigned_ref.project_deref(ctxt)
     }
 
     /// The region projection associated with the *type* of the assigned place
@@ -470,17 +456,17 @@ impl<'tcx> LocalBorrow<'tcx> {
     /// region projection is `x↓'x`.
     pub(crate) fn assigned_lifetime_projection<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>
     where
         'tcx: 'a,
     {
-        match self.assigned_ref.ty(repacker).ty.kind() {
+        match self.assigned_ref.ty(ctxt).ty.kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
                 self.assigned_ref,
                 (*region).into(),
                 self.assigned_lifetime_projection_label,
-                repacker.ctxt(),
+                ctxt.ctxt(),
             )
             .unwrap(),
             other => unreachable!("{:?}", other),

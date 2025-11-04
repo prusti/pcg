@@ -8,7 +8,7 @@
 
 pub mod arena;
 pub mod callbacks;
-mod ctxt;
+pub(crate) mod ctxt;
 mod debug;
 pub mod display;
 pub mod eval_stmt_data;
@@ -30,10 +30,8 @@ pub(crate) use debug::*;
 pub use mutable::*;
 pub use place::*;
 pub use place_snapshot::*;
-pub use repacker::*;
 pub(crate) mod data_structures;
 pub(crate) mod domain_data;
-pub(crate) mod repacker;
 use crate::rustc_interface::middle::mir::BasicBlock;
 
 use lazy_static::lazy_static;

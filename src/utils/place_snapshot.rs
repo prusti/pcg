@@ -228,13 +228,13 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
 }
 
 impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, repacker: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.to_local_node(repacker).into()
+    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+        self.to_local_node(ctxt).into()
     }
 }
 
 impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, _repacker: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
@@ -252,18 +252,18 @@ impl std::fmt::Display for LabelledPlace<'_> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn display_output(&self, repacker: Ctxt, mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Seq(vec![
-            self.place.display_output(repacker, mode),
+            self.place.display_output(ctxt, mode),
             DisplayOutput::Text(format!(" at {:?}", self.at).into()),
         ])
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for LabelledPlace<'tcx> {
-    fn to_json(&self, repacker: Ctxt) -> serde_json::Value {
+    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
-            "place": self.place.to_json(repacker.ctxt()),
+            "place": self.place.to_json(ctxt.ctxt()),
             "at": self.at.to_json(),
         })
     }
@@ -287,13 +287,13 @@ impl<'tcx> LabelledPlace<'tcx> {
 
     pub(crate) fn with_inherent_region<'a>(
         &self,
-        repacker: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> LabelledPlace<'tcx>
     where
         'tcx: 'a,
     {
         LabelledPlace {
-            place: self.place.with_inherent_region(repacker),
+            place: self.place.with_inherent_region(ctxt),
             at: self.at,
         }
     }

@@ -6,7 +6,7 @@ use crate::{pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle
 use super::CompilerCtxt;
 
 pub trait HasValidityCheck<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> = CompilerCtxt<'a, 'tcx>> {
-    fn check_validity(&self, repacker: Ctxt) -> Result<(), String>;
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String>;
 
     fn assert_validity(&self, ctxt: Ctxt) {
         pcg_validity_expect_ok!(self.check_validity(ctxt), fallback: (), [ctxt], "Validity check failed");

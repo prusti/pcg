@@ -159,7 +159,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
 
     pub fn leaf_edges<'slf, 'a: 'graph, 'bc: 'graph>(
         &'slf self,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> CachedLeafEdges<'graph, 'tcx>
     where
         'tcx: 'a,
@@ -170,42 +170,42 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
                 return edges.as_ref().unwrap().clone();
             }
         }
-        let edges: CachedLeafEdges<'graph, 'tcx> = self.graph.leaf_edges_set(repacker, self);
+        let edges: CachedLeafEdges<'graph, 'tcx> = self.graph.leaf_edges_set(ctxt, self);
         self.leaf_edges_cache.replace(Some(edges.clone()));
         edges
     }
 
     pub fn leaf_nodes<'slf, 'a: 'graph>(
         &'slf self,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Vec<LocalNode<'tcx>>
     where
         'tcx: 'a,
     {
-        self.nodes(repacker)
+        self.nodes(ctxt)
             .iter()
-            .filter_map(|node| node.try_to_local_node(repacker))
-            .filter(|node| self.is_leaf(*node, repacker))
+            .filter_map(|node| node.try_to_local_node(ctxt))
+            .filter(|node| self.is_leaf(*node, ctxt))
             .collect()
     }
 
     pub(crate) fn is_leaf<'slf, 'a: 'graph>(
         &'slf self,
         node: LocalNode<'tcx>,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
     where
         'tcx: 'a,
     {
         self.graph
             .edges()
-            .all(|edge| !edge.blocks_node(node.into(), repacker.bc_ctxt()))
+            .all(|edge| !edge.blocks_node(node.into(), ctxt.bc_ctxt()))
     }
 
     pub fn get_edges_blocking<'slf, 'mir: 'graph, 'bc: 'graph>(
         &'slf self,
         node: PcgNode<'tcx>,
-        repacker: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> CachedBlockingEdges<'graph, 'tcx> {
         {
             let map = self.edges_blocking_cache.borrow();
@@ -213,7 +213,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
                 return map[&node].clone();
             }
         }
-        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, repacker));
+        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
         self.edges_blocking_cache
             .borrow_mut()
             .insert(node, edges.clone());
@@ -223,7 +223,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     pub fn has_edge_blocking<'slf, 'a: 'graph, 'bc: 'graph>(
         &'slf self,
         node: PcgNode<'tcx>,
-        repacker: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
     where
         'tcx: 'a,
@@ -234,7 +234,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
                 return !map[&node].is_empty();
             }
         }
-        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, repacker));
+        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
         let result = !edges.is_empty();
         self.edges_blocking_cache.borrow_mut().insert(node, edges);
         result

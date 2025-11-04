@@ -180,7 +180,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         self.leaf_places(ctxt).contains(&place)
     }
 
-    pub fn leaf_places<'a>(&self, repacker: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
+    pub fn leaf_places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
     {
@@ -189,7 +189,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         }
         self.expansions
             .iter()
-            .flat_map(|e| e.expansion_places(repacker).unwrap())
+            .flat_map(|e| e.expansion_places(ctxt).unwrap())
             .filter(|p| !self.contains_expansion_from(*p))
             .collect::<HashSet<_>>()
     }
