@@ -96,11 +96,15 @@ pub trait DisplayWithCtxt<Ctxt> {
     }
 
     fn display_string(&self, ctxt: Ctxt) -> String {
-        self.display_output(ctxt, OutputMode::Normal).into_text().into_owned()
+        self.display_output(ctxt, OutputMode::Normal)
+            .into_text()
+            .into_owned()
     }
 
     fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.display_output(ctxt, OutputMode::Short).into_text().into_owned()
+        self.display_output(ctxt, OutputMode::Short)
+            .into_text()
+            .into_owned()
     }
 }
 

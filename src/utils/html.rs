@@ -1,5 +1,5 @@
-use std::borrow::Cow;
 use dot::escape_html;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Html {
@@ -22,7 +22,12 @@ impl Html {
         match self {
             Html::Text(text) => text.clone(),
             Html::Subscript(text) => text.clone(),
-            Html::Seq(seq) => seq.iter().map(|h| h.text()).collect::<Vec<_>>().join("").into(),
+            Html::Seq(seq) => seq
+                .iter()
+                .map(|h| h.text())
+                .collect::<Vec<_>>()
+                .join("")
+                .into(),
             Html::Font(_, html) => html.text(),
         }
     }
@@ -34,7 +39,7 @@ impl From<String> for Html {
     }
 }
 
-impl<'a> From<&'static str> for Html {
+impl From<&'static str> for Html {
     fn from(s: &'static str) -> Self {
         Html::Text(s.into())
     }
