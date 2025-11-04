@@ -14,7 +14,7 @@ use crate::{
     pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{
-        PlaceTy, FieldIdx, RustBitSet,
+        FieldIdx, PlaceTy, RustBitSet,
         middle::{
             mir::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,

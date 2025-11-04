@@ -97,7 +97,7 @@ impl<'a, 'tcx> TripleWalker<'a, 'tcx> {
         Self {
             operand_triples: Vec::new(),
             main_triples: Vec::new(),
-            ctxt
+            ctxt,
         }
     }
 }

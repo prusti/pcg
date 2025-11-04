@@ -359,7 +359,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
             borrows_domain: pcg.borrow,
             capabilities: pcg.capabilities,
             constructor: GraphConstructor::new(ctxt, Some(location)),
-            ctxt
+            ctxt,
         }
     }
 
