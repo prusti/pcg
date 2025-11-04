@@ -23,6 +23,7 @@ pub mod place_snapshot;
 mod root_place;
 pub mod validity;
 pub mod visitor;
+pub mod html;
 
 pub use ctxt::*;
 pub(crate) use debug::*;

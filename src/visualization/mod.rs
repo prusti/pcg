@@ -17,7 +17,6 @@ pub mod mir_graph;
 mod node;
 mod settings;
 pub(crate) use functions_metadata::*;
-pub(crate) mod html;
 
 #[cfg(feature = "type-export")]
 pub use mir_graph::SourcePos;
@@ -29,7 +28,7 @@ use crate::{
     },
     rustc_interface::middle::mir::Location,
     utils::{HasBorrowCheckerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt},
-    visualization::html::Html,
+    utils::html::Html,
 };
 use std::{
     collections::HashSet,

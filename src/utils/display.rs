@@ -24,7 +24,7 @@ use rustc_interface::{
 use crate::{
     rustc_interface::{self, middle::mir},
     utils::HasCompilerCtxt,
-    visualization::html::Html,
+    utils::html::Html,
 };
 
 use super::{CompilerCtxt, Place};

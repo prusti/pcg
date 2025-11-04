@@ -7,7 +7,7 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::visualization::html::Html;
+use crate::utils::html::Html;
 
 type NodeId = String;
 
