@@ -1,10 +1,9 @@
 use std::marker::PhantomData;
 
-use serde::Serialize;
 use serde_derive::Serialize;
 
 pub(crate) trait DebugRepr<Ctxt = ()> {
-    type Repr: Serialize;
+    type Repr: serde::Serialize;
 
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr;
 }

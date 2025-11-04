@@ -182,8 +182,6 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             .get_used_places(block)
     }
 
-    #[cfg(feature = "visualization")]
-
     pub(crate) fn analysis_ctxt(&self, block: BasicBlock) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt::new(
             self.ctxt,
