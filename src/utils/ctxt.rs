@@ -14,11 +14,11 @@ use crate::{
     pcg::{DataflowStmtPhase, EvalStmtPhase, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{
-        FieldIdx, RustBitSet,
+        PlaceTy, FieldIdx, RustBitSet,
         middle::{
             mir::{
                 self, BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace,
-                PlaceElem, PlaceTy, ProjectionElem, VarDebugInfoContents,
+                PlaceElem, ProjectionElem, VarDebugInfoContents,
             },
             ty::{self, TyCtxt, TyKind, TypeVisitable},
         },
