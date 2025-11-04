@@ -36,10 +36,11 @@ fn ex4_expiry(mut x: i32, mut y: i32, mut z: i32) {
 fn ex5_path_sensitive(c: bool) {
     let mut x = 1;
     let mut y = 2;
-    let r: &mut i32 = if c {
-        &mut x
+    let r: &mut i32;
+    if c {
+        r = &mut x;
     } else {
-        &mut y
+        r = &mut y;
     };
     *r = 3;
 }

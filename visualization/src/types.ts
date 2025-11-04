@@ -1,14 +1,10 @@
-export type SelectedAction = {
-  phase: EvalStmtPhase;
-  index: number;
-};
-
 export type NavigatorPoint = {
   type: "action";
-  action: SelectedAction;
-} | {
-  type: "phase";
+  phase: EvalStmtPhase;
   index: number;
+} | {
+  type: "iteration";
+  name: string;
 };
 
 export type CurrentPoint =

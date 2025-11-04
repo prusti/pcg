@@ -76,7 +76,7 @@ export default function BasicBlockTable({
                   type: "stmt",
                   block: data.block,
                   stmt: i,
-                  navigatorPoint: { type: "phase", index: 0 },
+                  navigatorPoint: { type: "iteration", name: "post_main" },
                 })
               }
             />
@@ -95,7 +95,7 @@ export default function BasicBlockTable({
               type: "stmt",
               block: data.block,
               stmt: data.stmts.length,
-              navigatorPoint: { type: "phase", index: 0 },
+              navigatorPoint: { type: "iteration", name: "post_main" },
             })
           }
         />
@@ -113,7 +113,7 @@ export function computeTableHeight(data: BasicBlockData): number {
         type: "stmt",
         block: 0,
         stmt: 0,
-        navigatorPoint: { type: "phase", index: 0 },
+        navigatorPoint: { type: "iteration", name: "post_main" },
       },
       data: {
         block: data.block,

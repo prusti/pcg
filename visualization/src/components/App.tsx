@@ -66,30 +66,34 @@ function getPCGDotGraphFilename(
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
-    const selectedAction = currentPoint.navigatorPoint.action;
     const iterationActions = getIterationActions(graphs, currentPoint);
-    const actionGraphFilenames = iterationActions[selectedAction.phase];
+    const actionGraphFilenames = iterationActions[currentPoint.navigatorPoint.phase];
     return getActionGraphFilename(
       selectedFunction,
       actionGraphFilenames,
-      selectedAction.index
+      currentPoint.navigatorPoint.index
     );
+  }
+
+  // For iteration type, find the phase by name
+  const navPoint = currentPoint.navigatorPoint;
+  if (navPoint.type !== "iteration") {
+    return null;
   }
 
   const phases: DotFileAtPhase<StringOf<"DataflowStmtPhase">>[] =
     graphs[currentPoint.stmt].at_phase;
 
-  const selected = currentPoint.navigatorPoint.index;
+  // Find the phase by name
+  const phaseIndex = phases.findIndex(
+    (p) => p.phase === navPoint.name
+  );
 
-  // Handle invalid selection
-  if (selected < 0 || phases.length === 0) {
+  if (phaseIndex === -1 || phases.length === 0) {
     return null;
   }
 
-  const filename: string =
-    selected >= phases.length
-      ? phases[phases.length - 1].filename
-      : phases[selected].filename;
+  const filename: string = phases[phaseIndex].filename;
   return `data/${selectedFunction}/${filename}`;
 }
 
@@ -113,7 +117,6 @@ export const App: React.FC<AppProps> = ({
   onApiChange,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [selected, setSelected] = useState<number | null>(null);
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
@@ -122,8 +125,8 @@ export const App: React.FC<AppProps> = ({
     block: 0,
     stmt: 0,
     navigatorPoint: {
-      type: "phase",
-      index: 0,
+      type: "iteration",
+      name: "pre_operands",
     },
   });
 
@@ -260,41 +263,10 @@ export const App: React.FC<AppProps> = ({
     fetchPcgStmtVisualizationData();
   }, [api, selectedFunction, selectedPath, currentPoint, paths]);
 
-  const currentBlock = currentPoint.type === "stmt" ? currentPoint.block : null;
-  const currentStmt = currentPoint.type === "stmt" ? currentPoint.stmt : null;
-
   useEffect(() => {
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
   }, [api, selectedFunction, currentPoint]);
 
-  useEffect(() => {
-    // Reset selected phase when changing function/block/stmt
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelected(null);
-  }, [selectedFunction, currentBlock, currentStmt]);
-
-  const [selectFirstItem, setSelectFirstItem] = useState(false);
-
-  useEffect(() => {
-    if (
-      currentPoint.type === "stmt" &&
-      iterations.length > currentPoint.stmt &&
-      selected === null &&
-      !selectFirstItem
-    ) {
-      const phases = iterations[currentPoint.stmt].at_phase;
-      const postMainIndex = phases.findIndex(
-        (phase) => phase.phase === "post_main"
-      );
-      // Initialize selected phase based on available phases
-      if (postMainIndex !== -1) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSelected(postMainIndex);
-      } else if (phases.length > 0) {
-        setSelected(phases.length - 1);
-      }
-    }
-  }, [iterations, currentPoint, selected, selectFirstItem]);
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
@@ -661,16 +633,12 @@ export const App: React.FC<AppProps> = ({
               iterations={iterations[currentPoint.stmt]}
               pcgData={pcgProgramPointData as PcgStmtVisualizationData}
               selectedPoint={currentPoint.navigatorPoint}
-              selectFirstItem={selectFirstItem}
               onSelectPoint={(point: NavigatorPoint) => {
                 if (currentPoint.type === "stmt") {
                   setCurrentPoint({
                     ...currentPoint,
                     navigatorPoint: point,
                   });
-                  if (point.type === "phase") {
-                    setSelected(point.index);
-                  }
                 }
               }}
               onNavigatorStateChange={handleNavigatorStateChange}
@@ -682,14 +650,11 @@ export const App: React.FC<AppProps> = ({
                   if (currentNode) {
                     const nextStmt = currentPoint.stmt + 1;
                     if (nextStmt <= currentNode.stmts.length) {
-                      // Move to next statement in same block
                       setCurrentPoint({
                         ...currentPoint,
                         stmt: nextStmt,
-                        navigatorPoint: { type: "phase", index: 0 },
+                        navigatorPoint: { type: "iteration", name: "pre_operands" },
                       });
-                      setSelected(null);
-                      setSelectFirstItem(true);
                     } else {
                       // At last statement, move to next block
                       const currBlockIdx = filteredNodes.findIndex(
@@ -703,10 +668,8 @@ export const App: React.FC<AppProps> = ({
                           type: "stmt",
                           block: nextNode.block,
                           stmt: 0,
-                          navigatorPoint: { type: "phase", index: 0 },
+                          navigatorPoint: { type: "iteration", name: "pre_operands" },
                         });
-                        setSelected(null);
-                        setSelectFirstItem(true);
                       }
                     }
                   }
@@ -714,38 +677,37 @@ export const App: React.FC<AppProps> = ({
               }}
               onGoToPreviousStatement={() => {
                 if (currentPoint.type === "stmt") {
+                  let targetBlock: number;
+                  let targetStmt: number;
+
                   if (currentPoint.stmt > 0) {
                     // Move to previous statement in same block
-                    setCurrentPoint({
-                      ...currentPoint,
-                      stmt: currentPoint.stmt - 1,
-                      navigatorPoint: { type: "phase", index: 0 },
-                    });
-                    setSelected(null);
-                    setSelectFirstItem(true);
+                    targetBlock = currentPoint.block;
+                    targetStmt = currentPoint.stmt - 1;
                   } else {
                     // At first statement, move to previous block
                     const currBlockIdx = filteredNodes.findIndex(
                       (node) => node.block === currentPoint.block
                     );
-                    if (currBlockIdx !== -1) {
-                      const prevBlockIdx =
-                        (currBlockIdx - 1 + filteredNodes.length) %
-                        filteredNodes.length;
-                      const prevNode = filteredNodes[prevBlockIdx];
-                      setCurrentPoint({
-                        type: "stmt",
-                        block: prevNode.block,
-                        stmt: prevNode.stmts.length,
-                        navigatorPoint: { type: "phase", index: 0 },
-                      });
-                      setSelected(null);
-                      setSelectFirstItem(true);
-                    }
+                    if (currBlockIdx === -1) return;
+
+                    const prevBlockIdx =
+                      (currBlockIdx - 1 + filteredNodes.length) %
+                      filteredNodes.length;
+                    const prevNode = filteredNodes[prevBlockIdx];
+                    targetBlock = prevNode.block;
+                    targetStmt = prevNode.stmts.length;
                   }
+
+                  // Set to post_main when going to previous statement
+                  setCurrentPoint({
+                    type: "stmt",
+                    block: targetBlock,
+                    stmt: targetStmt,
+                    navigatorPoint: { type: "iteration", name: "post_main" },
+                  });
                 }
               }}
-              onClearSelectFirstItem={() => setSelectFirstItem(false)}
             />
           )}
         {pathData && (

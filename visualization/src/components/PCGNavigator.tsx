@@ -15,7 +15,7 @@ import {
 import { storage } from "../storage";
 
 type NavigationItem =
-  | { type: "phase"; index: number; name: string; filename: string }
+  | { type: "iteration"; name: string; filename: string }
   | {
       type: "action";
       phase: EvalStmtPhase;
@@ -65,22 +65,18 @@ export default function PCGNavigator({
   iterations,
   pcgData,
   selectedPoint,
-  selectFirstItem,
   onSelectPoint,
   onNavigatorStateChange,
   onAdvanceToNextStatement,
   onGoToPreviousStatement,
-  onClearSelectFirstItem,
 }: {
   iterations: StmtGraphs<StringOf<"DataflowStmtPhase">>;
   pcgData: PcgStmtVisualizationData;
   selectedPoint: NavigatorPoint | null;
-  selectFirstItem: boolean;
   onSelectPoint: (point: NavigatorPoint) => void;
   onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
   onAdvanceToNextStatement?: () => void;
   onGoToPreviousStatement?: () => void;
-  onClearSelectFirstItem: () => void;
 }) {
   const [isMinimized, setIsMinimized] = useState(() => {
     return storage.getBool("pcgNavigatorMinimized", false);
@@ -105,56 +101,30 @@ export default function PCGNavigator({
     }
   }, [isMinimized, navigatorWidth, onNavigatorStateChange]);
 
-  // Build navigation items list with interleaving
+  // Build navigation items list: for each iteration, render it and its actions
   const buildNavigationItems = (): NavigationItem[] => {
     const items: NavigationItem[] = [];
-    const phases: EvalStmtPhase[] = [
-      "pre_operands",
-      "post_operands",
-      "pre_main",
-      "post_main",
-    ];
 
-    // Map phase names to their indices in iterations.at_phase
-    const phaseNameToIndex = new Map<string, number>();
-    iterations.at_phase.forEach((at_phase, index) => {
-      phaseNameToIndex.set(at_phase.phase, index);
-    });
-
-    // Add phases that appear before pre_operands
-    let currentPhaseIdx = 0;
-    while (currentPhaseIdx < iterations.at_phase.length) {
-      const at_phase = iterations.at_phase[currentPhaseIdx];
-      if (at_phase.phase === "pre_operands") break;
+    // For each iteration in at_phase
+    iterations.at_phase.forEach((at_phase) => {
+      // Add the iteration
       items.push({
-        type: "phase",
-        index: currentPhaseIdx,
+        type: "iteration",
         name: at_phase.phase,
-        filename: iterations.at_phase[currentPhaseIdx].filename,
-      });
-      currentPhaseIdx++;
-    }
-
-    // Interleave actions and phases for each eval phase
-    phases.forEach((phase) => {
-      // Add actions for this phase
-      pcgData.actions[phase].forEach((action, index) => {
-        if (
-          action.data.kind.type !== "MakePlaceOld" &&
-          action.data.kind.type !== "LabelLifetimeProjection"
-        ) {
-          items.push({ type: "action", phase, index, action });
-        }
+        filename: at_phase.filename,
       });
 
-      // Add the phase selector for this phase
-      const phaseIdx = phaseNameToIndex.get(phase);
-      if (phaseIdx !== undefined) {
-        items.push({
-          type: "phase",
-          index: phaseIdx,
-          name: phase,
-          filename: iterations.at_phase[phaseIdx].filename,
+      // Check if this iteration name corresponds to an EvalStmtPhase with actions
+      const phase = at_phase.phase as EvalStmtPhase;
+      if (phase in pcgData.actions) {
+        // Add all actions for this phase
+        pcgData.actions[phase].forEach((action, index) => {
+          if (
+            action.data.kind.type !== "MakePlaceOld" &&
+            action.data.kind.type !== "LabelLifetimeProjection"
+          ) {
+            items.push({ type: "action", phase, index, action });
+          }
         });
       }
     });
@@ -163,22 +133,6 @@ export default function PCGNavigator({
   };
 
   const navigationItems = buildNavigationItems();
-
-  // Handle selectFirstItem flag
-  useEffect(() => {
-    if (selectFirstItem && navigationItems.length > 0) {
-      const firstItem = navigationItems[0];
-      if (firstItem.type === "phase") {
-        onSelectPoint({ type: "phase", index: firstItem.index });
-      } else {
-        onSelectPoint({
-          type: "action",
-          action: { phase: firstItem.phase, index: firstItem.index },
-        });
-      }
-      onClearSelectFirstItem();
-    }
-  }, [selectFirstItem, navigationItems, onSelectPoint, onClearSelectFirstItem]);
 
   // Resize handlers
   const handleResizeStart = (event: React.MouseEvent) => {
@@ -227,13 +181,13 @@ export default function PCGNavigator({
             currentIndex = navigationItems.findIndex(
               (item) =>
                 item.type === "action" &&
-                item.phase === selectedPoint.action.phase &&
-                item.index === selectedPoint.action.index
+                item.phase === selectedPoint.phase &&
+                item.index === selectedPoint.index
             );
           } else {
             currentIndex = navigationItems.findIndex(
               (item) =>
-                item.type === "phase" && item.index === selectedPoint.index
+                item.type === "iteration" && item.name === selectedPoint.name
             );
           }
         }
@@ -272,12 +226,13 @@ export default function PCGNavigator({
 
         // Select the item
         const item = navigationItems[newIndex];
-        if (item.type === "phase") {
-          onSelectPoint({ type: "phase", index: item.index });
+        if (item.type === "iteration") {
+          onSelectPoint({ type: "iteration", name: item.name });
         } else {
           onSelectPoint({
             type: "action",
-            action: { phase: item.phase, index: item.index },
+            phase: item.phase,
+            index: item.index,
           });
         }
       }
@@ -293,15 +248,15 @@ export default function PCGNavigator({
     onGoToPreviousStatement,
   ]);
 
-  // Render navigation items in order (interleaved)
+  // Render navigation items in order
   const renderItems = () => {
     return navigationItems.map((item, idx) => {
-      if (item.type === "phase") {
+      if (item.type === "iteration") {
         const isSelected =
-          selectedPoint?.type === "phase" && selectedPoint.index === item.index;
+          selectedPoint?.type === "iteration" && selectedPoint.name === item.name;
         return (
           <div
-            key={`phase-${item.index}-${idx}`}
+            key={`iteration-${item.name}-${idx}`}
             style={{
               border: "1px solid #000",
               padding: "8px",
@@ -311,7 +266,7 @@ export default function PCGNavigator({
               fontWeight: "bold",
             }}
             onClick={() => {
-              onSelectPoint({ type: "phase", index: item.index });
+              onSelectPoint({ type: "iteration", name: item.name });
             }}
           >
             {item.name}
@@ -321,8 +276,8 @@ export default function PCGNavigator({
         // action
         const isSelected =
           selectedPoint?.type === "action" &&
-          selectedPoint.action.phase === item.phase &&
-          selectedPoint.action.index === item.index;
+          selectedPoint.phase === item.phase &&
+          selectedPoint.index === item.index;
         return (
           <div
             key={`action-${item.phase}-${item.index}-${idx}`}
@@ -338,7 +293,8 @@ export default function PCGNavigator({
             onClick={() => {
               onSelectPoint({
                 type: "action",
-                action: { phase: item.phase, index: item.index },
+                phase: item.phase,
+                index: item.index,
               });
             }}
             title={item.action.data.debug_context || undefined}

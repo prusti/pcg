@@ -1,4 +1,4 @@
-const LOCALSTORAGE_VERSION = "v1";
+const LOCALSTORAGE_VERSION = "v2";
 
 class VersionedStorage {
   private prefix: string;
