@@ -33,9 +33,6 @@ fn main() {
         rustc_args.push("-Zpolonius".to_string());
     }
 
-    if GLOBAL_SETTINGS.allow_borrowck_errors {
-        borrowck_body_storage::allow_borrowck_errors();
-    }
 
     if GLOBAL_SETTINGS.be_rustc {
         // Behaves exactly like rustc, but also runs PCG on all functions
@@ -77,8 +74,12 @@ fn main() {
         let sess = &compiler.sess;
         let krate = interface::passes::parse(sess);
         interface::passes::create_and_enter_global_ctxt(compiler, krate, |tcx| {
+            if GLOBAL_SETTINGS.allow_borrowck_errors {
+                borrowck_body_storage::allow_borrowck_errors();
+            }
             // Make sure name resolution and macro expansion is run.
             let _ = tcx.resolver_for_lowering();
+            tracing::info!("Aborting if errors");
             tcx.dcx().abort_if_errors();
             let _ = tcx.ensure_ok().analysis(());
             // Safety: `config` has `override_queries` set to [`set_mir_borrowck`], and the `tcx`

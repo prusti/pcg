@@ -26,6 +26,7 @@ thread_local! {
 }
 
 pub fn allow_borrowck_errors() {
+    tracing::info!("Allowing borrowck errors");
     ALLOW_BORROWCK_ERRORS.set(true);
 }
 
