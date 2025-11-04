@@ -1,19 +1,33 @@
 use dot::escape_html;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Html {
-    Text(String),
-    Subscript(String),
+    Text(Cow<'static, str>),
+    Subscript(Cow<'static, str>),
     Seq(Vec<Html>),
     Font(&'static str, Box<Html>),
 }
 
 impl Html {
-    pub(crate) fn text(&self) -> String {
+    pub(crate) fn space() -> Self {
+        Html::Text(Cow::Borrowed(" "))
+    }
+
+    pub(crate) fn empty() -> Self {
+        Html::Text(Cow::Borrowed(""))
+    }
+
+    pub(crate) fn text(&self) -> Cow<'static, str> {
         match self {
             Html::Text(text) => text.clone(),
             Html::Subscript(text) => text.clone(),
-            Html::Seq(seq) => seq.iter().map(|h| h.text()).collect::<Vec<_>>().join(""),
+            Html::Seq(seq) => seq
+                .iter()
+                .map(|h| h.text())
+                .collect::<Vec<_>>()
+                .join("")
+                .into(),
             Html::Font(_, html) => html.text(),
         }
     }
@@ -21,13 +35,13 @@ impl Html {
 
 impl From<String> for Html {
     fn from(s: String) -> Self {
-        Html::Text(s)
+        Html::Text(s.into())
     }
 }
 
-impl<'a> From<&'a str> for Html {
-    fn from(s: &'a str) -> Self {
-        Html::Text(s.to_string())
+impl From<&'static str> for Html {
+    fn from(s: &'static str) -> Self {
+        Html::Text(s.into())
     }
 }
 

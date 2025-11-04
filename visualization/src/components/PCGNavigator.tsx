@@ -5,7 +5,12 @@ import {
   PcgStmtVisualizationData,
   SelectedAction,
 } from "../types";
-import { BorrowPcgActionKindDebugRepr, RepackOp, StmtGraphs } from "../generated/types";
+import {
+  BorrowPcgActionKindDebugRepr,
+  CapabilityKind,
+  RepackOp,
+  StmtGraphs,
+} from "../generated/types";
 import { storage } from "../storage";
 
 type NavigationItem =
@@ -17,24 +22,44 @@ type NavigationItem =
       action: PcgAction;
     };
 
+export const NAVIGATOR_DEFAULT_WIDTH = 200;
+export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
 
-function actionLine(action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr): string {
+function capabilityLetter(capability: CapabilityKind): string {
+  switch (capability) {
+    case "Read":
+      return "R";
+    case "Write":
+      return "W";
+    case "Exclusive":
+      return "E";
+    case "ShallowExclusive":
+      return "e";
+  }
+}
+
+function actionLine(
+  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+): string {
   switch (action.type) {
     case "Expand":
-      return `unpack ${action.data.from}`;
+      return `Unpack ${action.data.from}`;
     case "Collapse":
-      return `pack ${action.data.to}`;
+      return `Pack ${action.data.to}`;
     case "AddEdge":
     case "RemoveEdge":
     case "Restore":
     case "Weaken":
       return String(action.data);
+    case "RegainLoanedCapability":
+      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
     default:
       return JSON.stringify(action);
   }
 }
+
 
 export default function PCGNavigator({
   iterations,
@@ -51,7 +76,11 @@ export default function PCGNavigator({
   selectedAction: SelectedAction | null;
   onSelectPhase: (index: number) => void;
   onSelectAction: (action: SelectedAction | null) => void;
-  onNavigatorStateChange?: (isDocked: boolean, isMinimized: boolean) => void;
+  onNavigatorStateChange?: (
+    isDocked: boolean,
+    isMinimized: boolean,
+    width: number
+  ) => void;
 }) {
   const [isDocked, setIsDocked] = useState(() => {
     return storage.getBool("pcgNavigatorDocked", true);
@@ -63,6 +92,11 @@ export default function PCGNavigator({
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [initialized, setInitialized] = useState(false);
+  const [navigatorWidth, setNavigatorWidth] = useState(() => {
+    const stored = storage.getItem("pcgNavigatorWidth");
+    return stored ? parseInt(stored, 10) : NAVIGATOR_DEFAULT_WIDTH;
+  });
+  const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
     storage.setItem("pcgNavigatorDocked", isDocked.toString());
@@ -72,12 +106,16 @@ export default function PCGNavigator({
     storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
   }, [isMinimized]);
 
+  useEffect(() => {
+    storage.setItem("pcgNavigatorWidth", navigatorWidth.toString());
+  }, [navigatorWidth]);
+
   // Notify parent of state changes
   useEffect(() => {
     if (onNavigatorStateChange) {
-      onNavigatorStateChange(isDocked, isMinimized);
+      onNavigatorStateChange(isDocked, isMinimized, navigatorWidth);
     }
-  }, [isDocked, isMinimized, onNavigatorStateChange]);
+  }, [isDocked, isMinimized, navigatorWidth, onNavigatorStateChange]);
 
   // Build navigation items list with interleaving
   const buildNavigationItems = (): NavigationItem[] => {
@@ -113,7 +151,10 @@ export default function PCGNavigator({
     phases.forEach((phase) => {
       // Add actions for this phase
       pcgData.actions[phase].forEach((action, index) => {
-        if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
+        if (
+          action.data.kind.type !== "MakePlaceOld" &&
+          action.data.kind.type !== "LabelLifetimeProjection"
+        ) {
           items.push({ type: "action", phase, index, action });
         }
       });
@@ -138,6 +179,8 @@ export default function PCGNavigator({
   // Initialize position
   useEffect(() => {
     if (!initialized) {
+      // Initial position setup only on first render
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPosition({
         x: window.innerWidth - 320,
         y: window.innerHeight - 200,
@@ -180,6 +223,38 @@ export default function PCGNavigator({
       };
     }
   }, [isDragging, dragStart, isDocked]);
+
+  // Resize handlers for docked mode
+  const handleResizeStart = (event: React.MouseEvent) => {
+    event.preventDefault();
+    setIsResizing(true);
+  };
+
+  useEffect(() => {
+    const handleResizeMove = (event: MouseEvent) => {
+      if (isResizing && isDocked) {
+        const newWidth = window.innerWidth - event.clientX;
+        const clampedWidth = Math.max(
+          NAVIGATOR_MIN_WIDTH_NUM,
+          Math.min(600, newWidth)
+        );
+        setNavigatorWidth(clampedWidth);
+      }
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener("mousemove", handleResizeMove);
+      window.addEventListener("mouseup", handleResizeEnd);
+      return () => {
+        window.removeEventListener("mousemove", handleResizeMove);
+        window.removeEventListener("mouseup", handleResizeEnd);
+      };
+    }
+  }, [isResizing, isDocked]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -231,7 +306,13 @@ export default function PCGNavigator({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigationItems, selectedPhase, selectedAction, onSelectPhase, onSelectAction]);
+  }, [
+    navigationItems,
+    selectedPhase,
+    selectedAction,
+    onSelectPhase,
+    onSelectAction,
+  ]);
 
   // Render navigation items in order (interleaved)
   const renderItems = () => {
@@ -273,9 +354,7 @@ export default function PCGNavigator({
               borderRadius: "4px",
               backgroundColor: isSelected ? "#007acc" : "#f5f5f5",
               color: isSelected ? "white" : "inherit",
-              border: isSelected
-                ? "1px solid #007acc"
-                : "1px solid #ddd",
+              border: isSelected ? "1px solid #007acc" : "1px solid #ddd",
             }}
             onClick={() => {
               onSelectAction({ phase: item.phase, index: item.index });
@@ -297,7 +376,7 @@ export default function PCGNavigator({
           right: 0,
           top: 0,
           bottom: 0,
-          width: isMinimized ? NAVIGATOR_MIN_WIDTH : NAVIGATOR_MAX_WIDTH,
+          width: isMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`,
           backgroundColor: "white",
           boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
           display: "flex",
@@ -305,6 +384,30 @@ export default function PCGNavigator({
           zIndex: 1000,
         }}
       >
+        {!isMinimized && (
+          <div
+            onMouseDown={handleResizeStart}
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: "5px",
+              cursor: "ew-resize",
+              backgroundColor: isResizing ? "#007acc" : "transparent",
+              transition: "background-color 0.2s",
+              zIndex: 1001,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "#007acc";
+            }}
+            onMouseLeave={(e) => {
+              if (!isResizing) {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }
+            }}
+          />
+        )}
         <div
           style={{
             display: "flex",
@@ -375,7 +478,8 @@ export default function PCGNavigator({
                 flexShrink: 0,
               }}
             >
-              Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
+              Press &apos;q&apos;/&apos;a&apos; to navigate between phases and
+              actions
             </div>
           </>
         )}
@@ -460,4 +564,3 @@ export default function PCGNavigator({
     </div>
   );
 }
-

@@ -32,7 +32,7 @@ import {
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
 import FunctionSelector from "./FunctionSelector";
-import PCGNavigator, { NAVIGATOR_MAX_WIDTH, NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
+import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
   addKeyDownListener,
@@ -158,6 +158,10 @@ export const App: React.FC<AppProps> = ({
   const [navigatorMinimized, setNavigatorMinimized] = useState(
     storage.getBool("pcgNavigatorMinimized", false)
   );
+  const [navigatorWidth, setNavigatorWidth] = useState(() => {
+    const stored = storage.getItem("pcgNavigatorWidth");
+    return stored ? parseInt(stored, 10) : 200;
+  });
 
   // State for panel resizing
   const [leftPanelWidth, setLeftPanelWidth] = useState<string>(
@@ -263,6 +267,8 @@ export const App: React.FC<AppProps> = ({
   }, [api, selectedFunction, currentPoint]);
 
   useEffect(() => {
+    // Reset selected phase when changing function/block/stmt
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelected(null);
   }, [selectedFunction, currentBlock, currentStmt]);
 
@@ -274,7 +280,9 @@ export const App: React.FC<AppProps> = ({
     ) {
       const phases = iterations[currentPoint.stmt].at_phase;
       const postMainIndex = phases.findIndex(([name]) => name === "post_main");
+      // Initialize selected phase based on available phases
       if (postMainIndex !== -1) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelected(postMainIndex);
       } else if (phases.length > 0) {
         setSelected(phases.length - 1);
@@ -330,9 +338,10 @@ export const App: React.FC<AppProps> = ({
     [paths, selectedPath]
   );
 
-  const handleNavigatorStateChange = useCallback((isDocked: boolean, isMinimized: boolean) => {
+  const handleNavigatorStateChange = useCallback((isDocked: boolean, isMinimized: boolean, width: number) => {
     setNavigatorDocked(isDocked);
     setNavigatorMinimized(isMinimized);
+    setNavigatorWidth(width);
   }, []);
 
   // Calculate the width to reserve for the navigator when it's docked
@@ -340,8 +349,8 @@ export const App: React.FC<AppProps> = ({
     if (!showPCGNavigator || !navigatorDocked) {
       return "0px";
     }
-    return navigatorMinimized ? NAVIGATOR_MIN_WIDTH : NAVIGATOR_MAX_WIDTH;
-  }, [showPCGNavigator, navigatorDocked, navigatorMinimized]);
+    return navigatorMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`;
+  }, [showPCGNavigator, navigatorDocked, navigatorMinimized, navigatorWidth]);
 
   const highlightSpan = useMemo(() => {
     const selectedStmt = getSelectedStmt(nodes, currentPoint);

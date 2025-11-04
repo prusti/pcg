@@ -29,6 +29,10 @@ fn main() {
         rustc_args.push("--edition=2018".to_string());
     }
 
+    if !rustc_args.iter().any(|arg| arg.starts_with("--crate-type")) {
+        rustc_args.push("--crate-type=lib".to_string());
+    }
+
     if SETTINGS.polonius {
         rustc_args.push("-Zpolonius".to_string());
     }

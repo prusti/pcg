@@ -8,7 +8,6 @@ fn main() {
     let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("Failed to get parent directory")
-        .join("pcg-bin")
         .join("visualization")
         .join("src")
         .join("generated");

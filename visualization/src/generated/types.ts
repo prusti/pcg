@@ -70,6 +70,8 @@ export type PcgStmtVisualizationData = { actions: EvalStmtData<PcgActionDebugRep
 
 export type PcgSuccessorVisualizationData = { actions: PcgActionDebugRepr[] }
 
+export type RegainedCapability<Place> = { place: Place; capability: CapabilityKind }
+
 export type RepackCollapse<Place, Guide> = { to: Place; capability: CapabilityKind; guide: Guide | null }
 
 export type RepackExpand<Place, Guide> = { from: Place; guide: Guide | null; capability: CapabilityKind }
@@ -133,7 +135,7 @@ export type RepackOp<Local, Place, Guide> =
  * borrowed places) or `Read` (for shared borrow places), to the given
  * capability, because it is no longer lent out.
  */
-{ type: "RegainLoanedCapability"; data: [Place, CapabilityKind] }
+{ type: "RegainLoanedCapability"; data: RegainedCapability<Place> }
 
 export type SourcePos = { line: number; column: number }
 

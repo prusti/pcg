@@ -180,6 +180,10 @@ jobs:
       working-directory: visualization
       run: npm ci
 
+    - name: Check for deprecated packages
+      working-directory: visualization
+      run: npm run check-deprecated
+
     - name: Check for unused .tsx files
       working-directory: visualization
       run: npm run check-unused

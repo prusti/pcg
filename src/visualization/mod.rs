@@ -17,6 +17,7 @@ pub mod mir_graph;
 mod node;
 mod settings;
 pub(crate) use functions_metadata::*;
+use std::borrow::Cow;
 
 #[cfg(feature = "type-export")]
 pub use mir_graph::SourcePos;
@@ -73,9 +74,9 @@ pub struct GraphNode {
 }
 
 impl GraphNode {
-    pub(crate) fn label_text(&self) -> String {
+    pub(crate) fn label_text(&self) -> Cow<'_, str> {
         match &self.node_type {
-            NodeType::PlaceNode { label, .. } => label.clone(),
+            NodeType::PlaceNode { label, .. } => label.into(),
             NodeType::RegionProjectionNode { label, .. } => label.text(),
         }
     }
@@ -91,10 +92,10 @@ impl GraphNode {
             } => {
                 let location_html: Html = match location {
                     Some(l) => Html::Seq(vec![
-                        " at ".into(),
-                        l.display_output((), OutputMode::Normal).into_html(),
+                        Html::space(),
+                        l.display_output((), OutputMode::Short).into_html(),
                     ]),
-                    None => Html::Text(String::new()),
+                    None => Html::empty(),
                 };
                 let color = if location.is_some()
                     || capability.is_none()
@@ -121,7 +122,7 @@ impl GraphNode {
                 let label_html = Html::Font(
                     "courier",
                     Box::new(Html::Seq(vec![
-                        Html::Text(format!("{label}{capability_text}")),
+                        Html::Text(format!("{label}{capability_text}").into()),
                         location_html,
                     ])),
                 );

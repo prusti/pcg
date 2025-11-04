@@ -61,22 +61,23 @@ impl DisplayOutput {
     pub(crate) fn into_html(self) -> Html {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
-            DisplayOutput::Text(text) => Html::Text(text.into_owned()),
+            DisplayOutput::Text(text) => Html::Text(text),
             DisplayOutput::Seq(display_outputs) => {
                 Html::Seq(display_outputs.into_iter().map(|d| d.into_html()).collect())
             }
         }
     }
 
-    pub(crate) fn into_text(self) -> String {
+    pub(crate) fn into_text(self) -> Cow<'static, str> {
         match self {
             DisplayOutput::Html(html) => html.text(),
-            DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text.into_owned(),
+            DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text,
             DisplayOutput::Seq(display_outputs) => display_outputs
                 .into_iter()
                 .map(|d| d.into_text())
                 .collect::<Vec<_>>()
-                .join(""),
+                .join("")
+                .into(),
         }
     }
 }
@@ -95,11 +96,15 @@ pub trait DisplayWithCtxt<Ctxt> {
     }
 
     fn display_string(&self, ctxt: Ctxt) -> String {
-        self.display_output(ctxt, OutputMode::Normal).into_text()
+        self.display_output(ctxt, OutputMode::Normal)
+            .into_text()
+            .into_owned()
     }
 
     fn to_short_string(&self, ctxt: Ctxt) -> String {
-        self.display_output(ctxt, OutputMode::Short).into_text()
+        self.display_output(ctxt, OutputMode::Short)
+            .into_text()
+            .into_owned()
     }
 }
 
