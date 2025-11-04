@@ -9,7 +9,9 @@ use crate::{
         middle::{mir, ty},
     },
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, display::{DisplayOutput, DisplayWithCtxt}, json::ToJsonWithCtxt,
+        self, CompilerCtxt, HasCompilerCtxt,
+        display::{DisplayOutput, DisplayWithCtxt},
+        json::ToJsonWithCtxt,
         validity::HasValidityCheck,
     },
 };

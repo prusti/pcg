@@ -266,10 +266,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
             RepackOp::Weaken(weaken) => RepackOp::Weaken(weaken.debug_repr(ctxt)),
             RepackOp::Expand(expand) => RepackOp::Expand(expand.debug_repr(ctxt)),
             RepackOp::Collapse(collapse) => RepackOp::Collapse(collapse.debug_repr(ctxt)),
-            RepackOp::DerefShallowInit(place, place2) => RepackOp::DerefShallowInit(
-                place.display_string(ctxt),
-                place2.display_string(ctxt),
-            ),
+            RepackOp::DerefShallowInit(place, place2) => {
+                RepackOp::DerefShallowInit(place.display_string(ctxt), place2.display_string(ctxt))
+            }
         }
     }
 }

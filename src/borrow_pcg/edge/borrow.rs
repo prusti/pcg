@@ -206,8 +206,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
         format!(
             "{} -> {}",
             self.blocked_place().display_string(ctxt),
-            self.assigned_lifetime_projection(ctxt)
-                .display_string(ctxt)
+            self.assigned_lifetime_projection(ctxt).display_string(ctxt)
         )
     }
 }

@@ -145,9 +145,7 @@ impl PcgRegion {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for PcgRegion
-{
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
     fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         DisplayOutput::Text(self.display_string(Some(ctxt.bc_ctxt())))
     }
@@ -371,8 +369,7 @@ pub enum LifetimeProjectionLabel {
     Future,
 }
 
-impl DisplayWithCtxt<()> for LifetimeProjectionLabel
-{
+impl DisplayWithCtxt<()> for LifetimeProjectionLabel {
     fn output(&self, ctxt: ()) -> DisplayOutput {
         match self {
             LifetimeProjectionLabel::Location(location) => location.output(ctxt),
@@ -684,10 +681,9 @@ impl<
 {
     fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         let label_part = match self.label {
-            Some(label) => DisplayOutput::Seq(vec![
-                DisplayOutput::Text(" ".to_string()),
-                label.output(())
-            ]),
+            Some(label) => {
+                DisplayOutput::Seq(vec![DisplayOutput::Text(" ".to_string()), label.output(())])
+            }
             _ => DisplayOutput::Text(String::new()),
         };
         DisplayOutput::Seq(vec![

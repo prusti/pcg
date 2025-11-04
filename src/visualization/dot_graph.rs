@@ -117,7 +117,7 @@ impl DotAttr for DotLabel {}
 
 pub struct DotNode {
     pub id: NodeId,
-    pub (crate) label: DotLabel,
+    pub(crate) label: DotLabel,
     pub font_color: DotStringAttr,
     pub color: DotStringAttr,
     pub shape: DotStringAttr,

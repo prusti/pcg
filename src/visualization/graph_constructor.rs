@@ -10,7 +10,10 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
-    utils::{CompilerCtxt, HasPlace, Place, SnapshotLocation, display::{DisplayWithCompilerCtxt, DisplayWithCtxt}},
+    utils::{
+        CompilerCtxt, HasPlace, Place, SnapshotLocation,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use super::{

@@ -17,7 +17,10 @@ use crate::{
         },
         span::def_id::{DefId, LocalDefId},
     },
-    utils::{self, CompilerCtxt, HasTyCtxt, display::{DisplayOutput, DisplayWithCtxt}},
+    utils::{
+        self, CompilerCtxt, HasTyCtxt,
+        display::{DisplayOutput, DisplayWithCtxt},
+    },
 };
 
 use crate::coupling::{CoupleInputError, CoupledEdgesData};
@@ -328,7 +331,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
                 .map(|edge| format!("{edge}"))
                 .sorted()
                 .collect::<Vec<_>>()
-                .join("\n, ")
+                .join("\n, "),
         )
     }
 }

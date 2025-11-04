@@ -1,8 +1,6 @@
 use serde_derive::Serialize;
 
-use crate::{
-    utils::display::{DisplayOutput, DisplayWithCtxt},
-};
+use crate::utils::display::{DisplayOutput, DisplayWithCtxt};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]

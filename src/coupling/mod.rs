@@ -464,9 +464,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 {
     fn output(&self, ctxt: Ctxt) -> DisplayOutput {
         match self {
-            PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => {
-                function.output(ctxt)
-            }
+            PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(function)) => function.output(ctxt),
             PcgCoupledEdgeKind(FunctionCallOrLoop::Loop(loop_)) => loop_.output(ctxt),
         }
     }

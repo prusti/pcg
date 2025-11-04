@@ -21,8 +21,11 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation, display::{DisplayOutput, DisplayWithCtxt}, json::ToJsonWithCtxt,
-        maybe_remote::MaybeRemotePlace, validity::HasValidityCheck,
+        SnapshotLocation,
+        display::{DisplayOutput, DisplayWithCtxt},
+        json::ToJsonWithCtxt,
+        maybe_remote::MaybeRemotePlace,
+        validity::HasValidityCheck,
     },
 };
 use derive_more::{From, TryInto};
@@ -224,10 +227,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
         } else {
             DisplayOutput::Text(String::new())
         };
-        DisplayOutput::Seq(vec![
-            self.place().output(repacker),
-            location_part,
-        ])
+        DisplayOutput::Seq(vec![self.place().output(repacker), location_part])
     }
 }
 

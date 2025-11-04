@@ -28,10 +28,7 @@ use crate::{
         CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Location,
-    utils::{
-        HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        display::DisplayWithCtxt,
-    },
+    utils::{HasBorrowCheckerCtxt, Place, SnapshotLocation, display::DisplayWithCtxt},
     visualization::html::Html,
 };
 use std::{
@@ -95,10 +92,7 @@ impl GraphNode {
                     None => "".to_string(),
                 };
                 let location_html: Html = match location {
-                    Some(l) => Html::Seq(vec![
-                        " at ".into(),
-                        l.display_html(()),
-                    ]),
+                    Some(l) => Html::Seq(vec![" at ".into(), l.display_html(())]),
                     None => Html::Text(String::new()),
                 };
                 let color = if location.is_some()
@@ -125,7 +119,7 @@ impl GraphNode {
                         Html::Text(label.clone()),
                         Html::Text(": ".to_string()),
                         capability_text.into(),
-                        location_html
+                        location_html,
                     ])),
                 );
                 DotNode {

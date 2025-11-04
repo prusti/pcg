@@ -1,5 +1,4 @@
 use crate::{
-    utils::display::DisplayOutput,
     borrow_pcg::{
         FunctionData,
         abstraction::{
@@ -27,6 +26,7 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
+    utils::display::DisplayOutput,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck,
     },

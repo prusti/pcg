@@ -17,8 +17,10 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, display::{DisplayOutput, DisplayWithCtxt},
-        maybe_remote::MaybeRemotePlace, place::maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        display::{DisplayOutput, DisplayWithCtxt},
+        maybe_remote::MaybeRemotePlace,
+        place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
