@@ -8,6 +8,42 @@ export type FilterOptions = {
   path: number[] | null;
 };
 
+function computeReachableBlocks(
+  nodes: MirNode[],
+  edges: MirEdge[]
+): Set<number> {
+  const reachable = new Set<number>();
+  const queue: string[] = [];
+
+  const bb0Node = nodes.find((n) => n.block === 0);
+  if (!bb0Node) {
+    return reachable;
+  }
+
+  queue.push(bb0Node.id);
+  reachable.add(0);
+
+  const nodeIdToBlock = new Map<string, number>();
+  nodes.forEach((node) => {
+    nodeIdToBlock.set(node.id, node.block);
+  });
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const outgoingEdges = edges.filter((e) => e.source === currentId);
+
+    for (const edge of outgoingEdges) {
+      const targetBlock = nodeIdToBlock.get(edge.target);
+      if (targetBlock !== undefined && !reachable.has(targetBlock)) {
+        reachable.add(targetBlock);
+        queue.push(edge.target);
+      }
+    }
+  }
+
+  return reachable;
+}
+
 export function filterNodesAndEdges(
   nodes: MirNode[],
   edges: MirEdge[],
@@ -38,17 +74,25 @@ export function filterNodesAndEdges(
     });
   }
 
+  const reachableBlocks = computeReachableBlocks(filteredNodes, filteredEdges);
+  filteredNodes = filteredNodes.filter((node) => reachableBlocks.has(node.block));
+  filteredEdges = filteredEdges.filter((edge) => {
+    const sourceNode = filteredNodes.find((n) => n.id === edge.source);
+    const targetNode = filteredNodes.find((n) => n.id === edge.target);
+    return sourceNode && targetNode;
+  });
+
   return { filteredNodes, filteredEdges };
 }
 
 export function layoutSizedNodes(
   nodes: DagreInputNode<BasicBlockData>[],
-  edges: any
+  edges: DagreEdge[]
 ) {
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ ranksep: 100, rankdir: "TB", marginy: 100 });
 
-  edges.forEach((edge: any) => g.setEdge(edge.source, edge.target));
+  edges.forEach((edge) => g.setEdge(edge.source, edge.target));
   nodes.forEach((node) => g.setNode(node.id, node));
 
   dagre.layout(g);

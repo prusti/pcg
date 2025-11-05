@@ -1,5 +1,5 @@
 import React from "react";
-import type { BasicBlockData, DagreNode } from "../types";
+import type { BasicBlockData, DagreEdge, DagreNode } from "../types";
 
 export default function Edge({
   edge,
@@ -8,7 +8,7 @@ export default function Edge({
   onSelect,
 }: {
   selected: boolean;
-  edge: any;
+  edge: DagreEdge;
   nodes: DagreNode<BasicBlockData>[];
   onSelect: () => void;
 }) {

@@ -16,7 +16,6 @@ import {
   NavigatorPoint,
   PathData,
   PcgProgramPointData,
-  PcgStmtVisualizationData,
   SourcePos,
   StringOf,
 } from "../types";
@@ -134,7 +133,7 @@ export const App: React.FC<AppProps> = ({
     initialFunction || (Object.keys(functions)[0] as FunctionSlug)
   );
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
-  const [paths, setPaths] = useState<number[][]>([]);
+  const [paths] = useState<number[][]>([]);
   const [assertions] = useState<Assertion[]>([]);
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
