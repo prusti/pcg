@@ -1,13 +1,19 @@
-# Build stage for Node.js visualization
+# Build stage for Node.js assets
 FROM node:20 AS node-builder
 
+# Build visualization assets
 WORKDIR /usr/src/app/visualization
-
-# Copy visualization project files
 COPY visualization/package*.json ./
 RUN npm install
-
 COPY visualization/ ./
+RUN npm run build
+
+# Build pcg-server JavaScript assets
+WORKDIR /usr/src/app/pcg-server
+COPY pcg-server/package*.json ./
+RUN npm install
+COPY pcg-server/tsconfig.json pcg-server/webpack.config.js ./
+COPY pcg-server/src ./src
 RUN npm run build
 
 # Backend stage - build and run with Rust
@@ -32,10 +38,11 @@ COPY . .
 # Add the target for the platform we're running on (after files are copied)
 RUN rustup target add $(rustc -vV | grep 'host:' | awk '{print $2}')
 
-# Copy built visualization from node-builder
-RUN mkdir -p /usr/src/app/visualization/dist
+# Copy built assets from node-builder
+RUN mkdir -p /usr/src/app/visualization/dist /usr/src/app/pcg-server/static
 COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualization/dist/
 COPY --from=node-builder /usr/src/app/visualization/index.html /usr/src/app/visualization/index.html
+COPY --from=node-builder /usr/src/app/pcg-server/static /usr/src/app/pcg-server/static/
 
 # Create tmp directory with proper permissions
 RUN mkdir -p pcg-server/tmp && chmod 777 pcg-server/tmp
@@ -51,7 +58,7 @@ EXPOSE 4000
 WORKDIR /usr/src/app/pcg-bin
 RUN cargo build --release
 
-# Build and run pcg-server
+# Build pcg-server
 WORKDIR /usr/src/app/pcg-server
 RUN cargo build --release
 

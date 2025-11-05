@@ -15,6 +15,17 @@ let editorInstance: EditorView | null = null;
 let vimCompartment: Compartment | null = null;
 let vimEnabled = false;
 
+const VIM_MODE_STORAGE_KEY = 'pcg-server-vim-mode';
+
+function getVimModePreference(): boolean {
+    const stored = localStorage.getItem(VIM_MODE_STORAGE_KEY);
+    return stored === 'true';
+}
+
+function setVimModePreference(enabled: boolean): void {
+    localStorage.setItem(VIM_MODE_STORAGE_KEY, enabled.toString());
+}
+
 async function initializeCodeEditor(): Promise<void> {
     if (editorInstance) {
         return;
@@ -67,7 +78,7 @@ async function initializeCodeEditor(): Promise<void> {
         const vimToggleCheckbox = document.createElement('input');
         vimToggleCheckbox.type = 'checkbox';
         vimToggleCheckbox.id = 'vim-toggle';
-        vimToggleCheckbox.checked = false;
+        vimToggleCheckbox.checked = getVimModePreference();
         vimToggleCheckbox.style.cursor = 'pointer';
 
         const vimToggleText = document.createElement('span');
@@ -130,6 +141,7 @@ async function initializeCodeEditor(): Promise<void> {
             if (!vimCompartment || !editorInstance) return;
 
             vimEnabled = enabled;
+            setVimModePreference(enabled);
             if (enabled) {
                 editorInstance.dispatch({
                     effects: vimCompartment.reconfigure(vim())
@@ -171,7 +183,11 @@ async function initializeCodeEditor(): Promise<void> {
         editorInstance = editor;
         (window as any).rustEditor = editor;
 
-        editor.focus();
+        if (vimToggleCheckbox.checked) {
+            toggleVimMode(true);
+        } else {
+            editor.focus();
+        }
 
         console.log('CodeMirror editor initialized with Rust syntax highlighting and Vim mode');
     } catch (error) {

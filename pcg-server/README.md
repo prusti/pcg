@@ -4,23 +4,25 @@ A web server for visualizing PCG outputs. This server allows users to upload Rus
 
 ## Prerequisites
 
-- Rust and Cargo installed
-- Access to the parent PCG project with `pcg_bin` and visualization files
+- NPM, Rust and Cargo installed
 
 ## Setup
 
-1. Make sure this project is in the same parent directory as the main PCS project
-2. Build the project:
-   ```bash
-   cargo build
-   ```
+Run the following commands to build the project:
+
+```bash
+npm install
+cargo build
+```
 
 ## Running the Server
 
 1. Start the server:
-   ```bash
-   cargo run
-   ```
+
+```bash
+cargo run
+```
+
 2. Open your web browser and navigate to `http://localhost:4000`
 3. Upload a Rust file through the web interface
 4. After successful processing, you'll be automatically redirected to view the PCG visualization
