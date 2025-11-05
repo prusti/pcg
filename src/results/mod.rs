@@ -234,6 +234,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         Ok(Some(PcgBasicBlock {
             statements,
             terminator,
+            block,
         }))
     }
 }
@@ -280,6 +281,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
 pub struct PcgBasicBlock<'a, 'tcx> {
     pub statements: Vec<PcgLocation<'a, 'tcx>>,
     pub terminator: PcgTerminator<'a, 'tcx>,
+    pub(crate) block: BasicBlock,
 }
 
 impl<'tcx> PcgBasicBlock<'_, 'tcx> {
@@ -319,7 +321,12 @@ impl<'tcx> PcgBasicBlock<'_, 'tcx> {
         }
         for term_succ in self.terminator.succs.iter() {
             for line in term_succ.debug_lines(ctxt) {
-                result.push(format!("Terminator({:?}): {}", term_succ.block(), line));
+                result.push(format!(
+                    "{:?} -> {:?}: {}",
+                    self.block,
+                    term_succ.block(),
+                    line
+                ));
             }
         }
         result

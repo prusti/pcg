@@ -41,7 +41,6 @@ impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for PcgSuccessor<'_, 'tcx> {
     fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
-        result.push(format!("Block: {}", self.block().index()));
         result.extend(self.actions.iter().map(|a| a.debug_line(ctxt)));
         result
     }
