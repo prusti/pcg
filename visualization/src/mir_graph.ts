@@ -87,7 +87,7 @@ export function filterNodesAndEdges(
 
 export function layoutSizedNodes(
   nodes: DagreInputNode<BasicBlockData>[],
-  edges: DagreEdge[]
+  edges: { source: string; target: string }[]
 ) {
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ ranksep: 100, rankdir: "TB", marginy: 100 });
