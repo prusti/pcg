@@ -3,7 +3,8 @@ import {
   EvalStmtPhase,
   PcgAction,
   PcgStmtVisualizationData,
-  SelectedAction,
+  StringOf,
+  NavigatorPoint,
 } from "../types";
 import {
   BorrowPcgActionKindDebugRepr,
@@ -14,7 +15,7 @@ import {
 import { storage } from "../storage";
 
 type NavigationItem =
-  | { type: "phase"; index: number; name: string; filename: string }
+  | { type: "iteration"; name: string; filename: string }
   | {
       type: "action";
       phase: EvalStmtPhase;
@@ -60,115 +61,72 @@ function actionLine(
   }
 }
 
-
 export default function PCGNavigator({
   iterations,
   pcgData,
-  selectedPhase,
-  selectedAction,
-  onSelectPhase,
-  onSelectAction,
+  selectedPoint,
+  onSelectPoint,
   onNavigatorStateChange,
+  onAdvanceToNextStatement,
+  onGoToPreviousStatement,
 }: {
-  iterations: StmtGraphs<string>;
+  iterations: StmtGraphs<StringOf<"DataflowStmtPhase">>;
   pcgData: PcgStmtVisualizationData;
-  selectedPhase: number | null;
-  selectedAction: SelectedAction | null;
-  onSelectPhase: (index: number) => void;
-  onSelectAction: (action: SelectedAction | null) => void;
-  onNavigatorStateChange?: (
-    isDocked: boolean,
-    isMinimized: boolean,
-    width: number
-  ) => void;
+  selectedPoint: NavigatorPoint | null;
+  onSelectPoint: (point: NavigatorPoint) => void;
+  onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
+  onAdvanceToNextStatement?: () => void;
+  onGoToPreviousStatement?: () => void;
 }) {
-  const [isDocked, setIsDocked] = useState(() => {
-    return storage.getBool("pcgNavigatorDocked", true);
-  });
   const [isMinimized, setIsMinimized] = useState(() => {
     return storage.getBool("pcgNavigatorMinimized", false);
   });
-  const [isDragging, setIsDragging] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [initialized, setInitialized] = useState(false);
   const [navigatorWidth, setNavigatorWidth] = useState(() => {
-    const stored = storage.getItem("pcgNavigatorWidth");
-    return stored ? parseInt(stored, 10) : NAVIGATOR_DEFAULT_WIDTH;
+    return storage.getNumber("pcgNavigatorWidth", NAVIGATOR_DEFAULT_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
 
   useEffect(() => {
-    storage.setItem("pcgNavigatorDocked", isDocked.toString());
-  }, [isDocked]);
-
-  useEffect(() => {
-    storage.setItem("pcgNavigatorMinimized", isMinimized.toString());
+    storage.setBool("pcgNavigatorMinimized", isMinimized);
   }, [isMinimized]);
 
   useEffect(() => {
-    storage.setItem("pcgNavigatorWidth", navigatorWidth.toString());
+    storage.setNumber("pcgNavigatorWidth", navigatorWidth);
   }, [navigatorWidth]);
 
   // Notify parent of state changes
   useEffect(() => {
     if (onNavigatorStateChange) {
-      onNavigatorStateChange(isDocked, isMinimized, navigatorWidth);
+      onNavigatorStateChange(isMinimized, navigatorWidth);
     }
-  }, [isDocked, isMinimized, navigatorWidth, onNavigatorStateChange]);
+  }, [isMinimized, navigatorWidth, onNavigatorStateChange]);
 
-  // Build navigation items list with interleaving
+  // Build navigation items list: for each iteration, render actions first then the phase
   const buildNavigationItems = (): NavigationItem[] => {
     const items: NavigationItem[] = [];
-    const phases: EvalStmtPhase[] = [
-      "pre_operands",
-      "post_operands",
-      "pre_main",
-      "post_main",
-    ];
 
-    // Map phase names to their indices in iterations.at_phase
-    const phaseNameToIndex = new Map<string, number>();
-    iterations.at_phase.forEach(([name, _filename], index) => {
-      phaseNameToIndex.set(name, index);
-    });
-
-    // Add phases that appear before pre_operands
-    let currentPhaseIdx = 0;
-    while (currentPhaseIdx < iterations.at_phase.length) {
-      const [name] = iterations.at_phase[currentPhaseIdx];
-      if (name === "pre_operands") break;
-      items.push({
-        type: "phase",
-        index: currentPhaseIdx,
-        name,
-        filename: iterations.at_phase[currentPhaseIdx][1],
-      });
-      currentPhaseIdx++;
-    }
-
-    // Interleave actions and phases for each eval phase
-    phases.forEach((phase) => {
-      // Add actions for this phase
-      pcgData.actions[phase].forEach((action, index) => {
-        if (
-          action.data.kind.type !== "MakePlaceOld" &&
-          action.data.kind.type !== "LabelLifetimeProjection"
-        ) {
-          items.push({ type: "action", phase, index, action });
-        }
-      });
-
-      // Add the phase selector for this phase
-      const phaseIdx = phaseNameToIndex.get(phase);
-      if (phaseIdx !== undefined) {
-        items.push({
-          type: "phase",
-          index: phaseIdx,
-          name: phase,
-          filename: iterations.at_phase[phaseIdx][1],
+    // For each iteration in at_phase
+    iterations.at_phase.forEach((at_phase) => {
+      // Check if this iteration name corresponds to an EvalStmtPhase with actions
+      const phase = at_phase.phase as EvalStmtPhase;
+      if (phase in pcgData.actions) {
+        // Add all actions for this phase first
+        pcgData.actions[phase].forEach((action, index) => {
+          if (
+            action.data.kind.type !== "MakePlaceOld" &&
+            action.data.kind.type !== "LabelLifetimeProjection"
+          ) {
+            items.push({ type: "action", phase, index, action });
+          }
         });
       }
+
+      // Add the iteration after its actions
+      items.push({
+        type: "iteration",
+        name: at_phase.phase,
+        filename: at_phase.filename,
+      });
     });
 
     return items;
@@ -176,55 +134,7 @@ export default function PCGNavigator({
 
   const navigationItems = buildNavigationItems();
 
-  // Initialize position
-  useEffect(() => {
-    if (!initialized) {
-      // Initial position setup only on first render
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPosition({
-        x: window.innerWidth - 320,
-        y: window.innerHeight - 200,
-      });
-      setInitialized(true);
-    }
-  }, [initialized]);
-
-  // Drag handlers (only for floating mode)
-  const handleMouseDown = (event: React.MouseEvent) => {
-    if (!isDocked) {
-      setIsDragging(true);
-      setDragStart({
-        x: event.clientX - position.x,
-        y: event.clientY - position.y,
-      });
-    }
-  };
-
-  useEffect(() => {
-    const handleMouseMove = (event: MouseEvent) => {
-      if (isDragging && !isDocked) {
-        setPosition({
-          x: event.clientX - dragStart.x,
-          y: event.clientY - dragStart.y,
-        });
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    if (isDragging) {
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-      return () => {
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-    }
-  }, [isDragging, dragStart, isDocked]);
-
-  // Resize handlers for docked mode
+  // Resize handlers
   const handleResizeStart = (event: React.MouseEvent) => {
     event.preventDefault();
     setIsResizing(true);
@@ -232,7 +142,7 @@ export default function PCGNavigator({
 
   useEffect(() => {
     const handleResizeMove = (event: MouseEvent) => {
-      if (isResizing && isDocked) {
+      if (isResizing) {
         const newWidth = window.innerWidth - event.clientX;
         const clampedWidth = Math.max(
           NAVIGATOR_MIN_WIDTH_NUM,
@@ -254,7 +164,7 @@ export default function PCGNavigator({
         window.removeEventListener("mouseup", handleResizeEnd);
       };
     }
-  }, [isResizing, isDocked]);
+  }, [isResizing]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -266,17 +176,20 @@ export default function PCGNavigator({
 
         // Find current index
         let currentIndex = -1;
-        if (selectedAction) {
-          currentIndex = navigationItems.findIndex(
-            (item) =>
-              item.type === "action" &&
-              item.phase === selectedAction.phase &&
-              item.index === selectedAction.index
-          );
-        } else if (selectedPhase !== null) {
-          currentIndex = navigationItems.findIndex(
-            (item) => item.type === "phase" && item.index === selectedPhase
-          );
+        if (selectedPoint) {
+          if (selectedPoint.type === "action") {
+            currentIndex = navigationItems.findIndex(
+              (item) =>
+                item.type === "action" &&
+                item.phase === selectedPoint.phase &&
+                item.index === selectedPoint.index
+            );
+          } else {
+            currentIndex = navigationItems.findIndex(
+              (item) =>
+                item.type === "iteration" && item.name === selectedPoint.name
+            );
+          }
         }
 
         // Calculate new index
@@ -285,21 +198,42 @@ export default function PCGNavigator({
           newIndex = event.key === "q" ? navigationItems.length - 1 : 0;
         } else {
           if (event.key === "q") {
-            newIndex =
-              currentIndex > 0 ? currentIndex - 1 : navigationItems.length - 1;
+            // Pressing 'q' to go back
+            if (currentIndex === 0) {
+              // At the first step, go to previous statement instead of wrapping
+              if (onGoToPreviousStatement) {
+                onGoToPreviousStatement();
+                return;
+              }
+              newIndex = navigationItems.length - 1;
+            } else {
+              newIndex = currentIndex - 1;
+            }
           } else {
-            newIndex =
-              currentIndex < navigationItems.length - 1 ? currentIndex + 1 : 0;
+            // Pressing 'a' to advance
+            if (currentIndex === navigationItems.length - 1) {
+              // At the final step, advance to next statement instead of wrapping
+              if (onAdvanceToNextStatement) {
+                onAdvanceToNextStatement();
+                return;
+              }
+              newIndex = 0;
+            } else {
+              newIndex = currentIndex + 1;
+            }
           }
         }
 
         // Select the item
         const item = navigationItems[newIndex];
-        if (item.type === "phase") {
-          onSelectPhase(item.index);
-          onSelectAction(null);
+        if (item.type === "iteration") {
+          onSelectPoint({ type: "iteration", name: item.name });
         } else {
-          onSelectAction({ phase: item.phase, index: item.index });
+          onSelectPoint({
+            type: "action",
+            phase: item.phase,
+            index: item.index,
+          });
         }
       }
     };
@@ -308,21 +242,21 @@ export default function PCGNavigator({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     navigationItems,
-    selectedPhase,
-    selectedAction,
-    onSelectPhase,
-    onSelectAction,
+    selectedPoint,
+    onSelectPoint,
+    onAdvanceToNextStatement,
+    onGoToPreviousStatement,
   ]);
 
-  // Render navigation items in order (interleaved)
+  // Render navigation items in order
   const renderItems = () => {
     return navigationItems.map((item, idx) => {
-      if (item.type === "phase") {
+      if (item.type === "iteration") {
         const isSelected =
-          selectedAction === null && selectedPhase === item.index;
+          selectedPoint?.type === "iteration" && selectedPoint.name === item.name;
         return (
           <div
-            key={`phase-${item.index}-${idx}`}
+            key={`iteration-${item.name}-${idx}`}
             style={{
               border: "1px solid #000",
               padding: "8px",
@@ -332,8 +266,7 @@ export default function PCGNavigator({
               fontWeight: "bold",
             }}
             onClick={() => {
-              onSelectPhase(item.index);
-              onSelectAction(null);
+              onSelectPoint({ type: "iteration", name: item.name });
             }}
           >
             {item.name}
@@ -342,8 +275,9 @@ export default function PCGNavigator({
       } else {
         // action
         const isSelected =
-          selectedAction?.phase === item.phase &&
-          selectedAction?.index === item.index;
+          selectedPoint?.type === "action" &&
+          selectedPoint.phase === item.phase &&
+          selectedPoint.index === item.index;
         return (
           <div
             key={`action-${item.phase}-${item.index}-${idx}`}
@@ -357,7 +291,11 @@ export default function PCGNavigator({
               border: isSelected ? "1px solid #007acc" : "1px solid #ddd",
             }}
             onClick={() => {
-              onSelectAction({ phase: item.phase, index: item.index });
+              onSelectPoint({
+                type: "action",
+                phase: item.phase,
+                index: item.index,
+              });
             }}
             title={item.action.data.debug_context || undefined}
           >
@@ -368,199 +306,120 @@ export default function PCGNavigator({
     });
   };
 
-  if (isDocked) {
-    return (
-      <div
-        style={{
-          position: "fixed",
-          right: 0,
-          top: 0,
-          bottom: 0,
-          width: isMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`,
-          backgroundColor: "white",
-          boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
-          display: "flex",
-          flexDirection: "column",
-          zIndex: 1000,
-        }}
-      >
-        {!isMinimized && (
-          <div
-            onMouseDown={handleResizeStart}
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: "5px",
-              cursor: "ew-resize",
-              backgroundColor: isResizing ? "#007acc" : "transparent",
-              transition: "background-color 0.2s",
-              zIndex: 1001,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#007acc";
-            }}
-            onMouseLeave={(e) => {
-              if (!isResizing) {
-                e.currentTarget.style.backgroundColor = "transparent";
-              }
-            }}
-          />
-        )}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "10px",
-            borderBottom: "1px solid #ddd",
-            backgroundColor: "#f5f5f5",
-            flexShrink: 0,
-          }}
-        >
-          {!isMinimized && (
-            <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
-              Navigator
-            </h3>
-          )}
-          <div style={{ display: "flex", gap: "5px", marginLeft: "auto" }}>
-            <button
-              onClick={() => setIsMinimized(!isMinimized)}
-              style={{
-                cursor: "pointer",
-                backgroundColor: "#888",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                padding: "5px 8px",
-                fontSize: "12px",
-              }}
-              title={isMinimized ? "Maximize" : "Minimize"}
-            >
-              {isMinimized ? "▶" : "◀"}
-            </button>
-            <button
-              onClick={() => setIsDocked(false)}
-              style={{
-                cursor: "pointer",
-                backgroundColor: "#4CAF50",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                padding: "5px 8px",
-                fontSize: "12px",
-              }}
-              title="Detach"
-            >
-              ⤢
-            </button>
-          </div>
-        </div>
-        {!isMinimized && (
-          <>
-            <div
-              style={{
-                flex: 1,
-                overflowY: "auto",
-                padding: "15px",
-              }}
-            >
-              {renderItems()}
-            </div>
-            <div
-              style={{
-                padding: "10px",
-                fontSize: "12px",
-                color: "#666",
-                borderTop: "1px solid #ddd",
-                backgroundColor: "#f5f5f5",
-                flexShrink: 0,
-              }}
-            >
-              Press &apos;q&apos;/&apos;a&apos; to navigate between phases and
-              actions
-            </div>
-          </>
-        )}
-        {isMinimized && (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              writingMode: "vertical-rl",
-              fontSize: "12px",
-              color: "#666",
-            }}
-          >
-            Navigator
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div
       style={{
         position: "fixed",
-        top: `${position.y}px`,
-        left: `${position.x}px`,
+        right: 0,
+        top: 0,
+        bottom: 0,
+        width: isMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`,
         backgroundColor: "white",
-        boxShadow: "0 0 10px rgba(0,0,0,0.1)",
-        padding: "15px",
-        maxWidth: NAVIGATOR_MAX_WIDTH,
-        overflowY: "auto",
-        maxHeight: "80vh",
-        cursor: isDragging ? "grabbing" : "grab",
-        userSelect: "none",
+        boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
+        display: "flex",
+        flexDirection: "column",
         zIndex: 1000,
       }}
-      onMouseDown={handleMouseDown}
     >
+      {!isMinimized && (
+        <div
+          onMouseDown={handleResizeStart}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: "5px",
+            cursor: "ew-resize",
+            backgroundColor: isResizing ? "#007acc" : "transparent",
+            transition: "background-color 0.2s",
+            zIndex: 1001,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "#007acc";
+          }}
+          onMouseLeave={(e) => {
+            if (!isResizing) {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }
+          }}
+        />
+      )}
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "10px",
-          paddingBottom: "10px",
+          justifyContent: "space-between",
+          padding: "10px",
           borderBottom: "1px solid #ddd",
+          backgroundColor: "#f5f5f5",
+          flexShrink: 0,
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
-          Navigator
-        </h3>
-        <button
-          onClick={() => setIsDocked(true)}
+        {!isMinimized && (
+          <h3 style={{ margin: 0, fontSize: "14px", fontWeight: "bold" }}>
+            Navigator
+          </h3>
+        )}
+        <div style={{ display: "flex", gap: "5px", marginLeft: "auto" }}>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            style={{
+              cursor: "pointer",
+              backgroundColor: "#888",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              padding: "5px 8px",
+              fontSize: "12px",
+            }}
+            title={isMinimized ? "Maximize" : "Minimize"}
+          >
+            {isMinimized ? "▶" : "◀"}
+          </button>
+        </div>
+      </div>
+      {!isMinimized && (
+        <>
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "15px",
+            }}
+          >
+            {renderItems()}
+          </div>
+          <div
+            style={{
+              padding: "10px",
+              fontSize: "12px",
+              color: "#666",
+              borderTop: "1px solid #ddd",
+              backgroundColor: "#f5f5f5",
+              flexShrink: 0,
+            }}
+          >
+            Press &apos;q&apos;/&apos;a&apos; to navigate between phases and
+            actions
+          </div>
+        </>
+      )}
+      {isMinimized && (
+        <div
           style={{
-            cursor: "pointer",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            padding: "5px 8px",
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            writingMode: "vertical-rl",
             fontSize: "12px",
+            color: "#666",
           }}
-          title="Dock to right"
         >
-          ⤢
-        </button>
-      </div>
-      <div style={{ marginBottom: "10px" }}>{renderItems()}</div>
-      <div
-        style={{
-          marginTop: "10px",
-          fontSize: "12px",
-          color: "#666",
-          borderTop: "1px solid #ddd",
-          paddingTop: "10px",
-        }}
-      >
-        Press &apos;q&apos;/&apos;a&apos; to navigate between phases and actions
-      </div>
+          Navigator
+        </div>
+      )}
     </div>
   );
 }

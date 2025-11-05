@@ -4,28 +4,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{
-    cell::RefCell,
-    fs::create_dir_all,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{path::PathBuf, rc::Rc};
 
 use bit_set::BitSet;
 use derive_more::From;
 
-use super::{
-    DataflowStmtPhase, ErrorState, EvalStmtPhase, PcgBlockDebugVisualizationGraphs,
-    domain::PcgDomain, visitor::PcgVisitor,
-};
+use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
 use crate::{
     BodyAndBorrows,
     error::PcgError,
     r#loop::{LoopAnalysis, PlaceUsages},
     pcg::{
         BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
-        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, dot_graphs::PcgDotGraphsForBlock,
-        triple::TripleWalker,
+        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, triple::TripleWalker,
     },
     pcg_validity_assert,
     rustc_interface::{
@@ -116,11 +107,6 @@ impl<'tcx> From<borrowck::BodyWithBorrowckFacts<'tcx>> for BodyWithBorrowckFacts
     }
 }
 
-struct PCGEngineDebugData<'a> {
-    debug_output_dir: &'a Path,
-    dot_graphs: IndexVec<BasicBlock, &'a RefCell<PcgDotGraphsForBlock>>,
-}
-
 type Block = usize;
 
 pub(crate) type PcgArenaStore = bumpalo::Bump;
@@ -130,7 +116,7 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
     pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
     #[cfg(feature = "visualization")]
-    debug_graphs: Option<PCGEngineDebugData<'a>>,
+    pub(crate) debug_graphs: Option<crate::visualization::stmt_graphs::PcgEngineDebugData<'a>>,
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: BitSet<Block>,
     pub(crate) analyzed_blocks: BitSet<Block>,
@@ -194,17 +180,6 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         self.body_analysis
             .loop_place_usage_analysis
             .get_used_places(block)
-    }
-
-    #[cfg(feature = "visualization")]
-    fn dot_graphs(&self, block: BasicBlock) -> Option<PcgBlockDebugVisualizationGraphs<'a>> {
-        self.debug_graphs.as_ref().map(|data| {
-            PcgBlockDebugVisualizationGraphs::new(
-                block,
-                data.debug_output_dir,
-                data.dot_graphs[block],
-            )
-        })
     }
 
     pub(crate) fn analysis_ctxt(&self, block: BasicBlock) -> AnalysisCtxt<'a, 'tcx> {
@@ -312,23 +287,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
     ) -> Self {
         #[cfg(feature = "visualization")]
         let debug_data = debug_output_dir.map(|dir_path| {
-            if dir_path.exists() {
-                std::fs::remove_dir_all(&dir_path).expect("Failed to delete directory contents");
-            }
-            create_dir_all(&dir_path).expect("Failed to create directory for DOT files");
-            let dot_graphs: IndexVec<BasicBlock, &'a RefCell<PcgDotGraphsForBlock>> =
-                IndexVec::from_fn_n(
-                    |b| {
-                        let blocks: &'a RefCell<PcgDotGraphsForBlock> =
-                            arena.alloc(RefCell::new(PcgDotGraphsForBlock::new(b, ctxt)));
-                        blocks
-                    },
-                    ctxt.body().basic_blocks.len(),
-                );
-            PCGEngineDebugData {
-                debug_output_dir: arena.alloc(dir_path),
-                dot_graphs,
-            }
+            crate::visualization::stmt_graphs::PcgEngineDebugData::new(dir_path, arena, ctxt)
         });
         let mut reachable_blocks = BitSet::default();
         reachable_blocks.reserve_len(ctxt.body().basic_blocks.len());

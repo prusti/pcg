@@ -5,9 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    cell::RefCell,
     fmt::{Debug, Formatter},
-    path::Path,
     rc::Rc,
 };
 
@@ -20,7 +18,6 @@ use crate::{
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
         ctxt::{AnalysisCtxt, HasSettings},
-        dot_graphs::PcgDotGraphsForBlock,
         place_capabilities::SymbolicPlaceCapabilities,
     },
     pcg_validity_assert,
@@ -30,7 +27,6 @@ use crate::{
     },
     utils::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
-        ToGraph,
         arena::PcgArenaRef,
         domain_data::{DomainData, DomainDataIndex},
         eval_stmt_data::EvalStmtData,
@@ -52,28 +48,6 @@ use super::PcgEngine;
 #[derive(Copy, Clone)]
 pub struct DataflowIterationDebugInfo {
     pub join_with: BasicBlock,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct PcgBlockDebugVisualizationGraphs<'a> {
-    #[allow(dead_code)]
-    block: BasicBlock,
-    pub(crate) dot_output_dir: &'a Path,
-    pub(crate) dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
-}
-
-impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
-    pub(crate) fn new(
-        block: BasicBlock,
-        dot_output_dir: &'a Path,
-        dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
-    ) -> Self {
-        Self {
-            block,
-            dot_output_dir,
-            dot_graphs,
-        }
-    }
 }
 
 #[derive(Clone, Eq, Debug)]
@@ -508,7 +482,7 @@ pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
         };
         ctxt.generate_pcg_debug_visualization_graph(
             location,
-            ToGraph::Phase(phase),
+            crate::visualization::stmt_graphs::ToGraph::Phase(phase),
             self.pcg(index).into(),
         );
     }

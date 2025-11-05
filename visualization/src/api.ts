@@ -4,11 +4,12 @@ import {
   CurrentPoint,
   FunctionsMetadata,
   PcgProgramPointData,
+  StringOf,
 } from "./types";
 import * as JSZip from "jszip";
 import { loadCachedZip, cacheZip } from "./zipCache";
 
-export type PcgBlockDotGraphs = StmtGraphs<string>[];
+export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[];
 
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;

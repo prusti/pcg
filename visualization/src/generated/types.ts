@@ -48,6 +48,8 @@ export type CapabilityKind =
 
 export type Conditioned<T, Conditions> = { conditions: Conditions; value: T }
 
+export type DotFileAtPhase<PhaseKey> = { phase: PhaseKey; filename: PathToDotFile }
+
 export type EvalStmtData<T> = { pre_operands: T; post_operands: T; pre_main: T; post_main: T }
 
 export type EvalStmtPhase = "pre_operands" | "post_operands" | "pre_main" | "post_main"
@@ -63,6 +65,8 @@ export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator:
 export type MirStmt = { stmt: string; span: MirStmtSpan; loans_invalidated_start: string[]; loans_invalidated_mid: string[]; borrows_in_scope_start: string[]; borrows_in_scope_mid: string[] }
 
 export type MirStmtSpan = { low: SourcePos; high: SourcePos }
+
+export type PathToDotFile = string
 
 export type PcgActionDebugRepr = { type: "Owned"; data: ActionKindWithDebugCtxt<RepackOp<string, string, string>> } | { type: "Borrow"; data: ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr> }
 
@@ -139,7 +143,7 @@ export type RepackOp<Local, Place, Guide> =
 
 export type SourcePos = { line: number; column: number }
 
-export type StmtGraphs<PhaseKey> = { at_phase: ([PhaseKey, string])[]; actions: EvalStmtData<string[]> }
+export type StmtGraphs<PhaseKey> = { at_phase: DotFileAtPhase<PhaseKey>[]; actions: EvalStmtData<PathToDotFile[]> }
 
 /**
  * Instructs that the current capability to the place (first [`CapabilityKind`]) should

@@ -76,7 +76,7 @@ export default function BasicBlockTable({
                   type: "stmt",
                   block: data.block,
                   stmt: i,
-                  selectedAction: null,
+                  navigatorPoint: { type: "iteration", name: "post_main" },
                 })
               }
             />
@@ -95,7 +95,7 @@ export default function BasicBlockTable({
               type: "stmt",
               block: data.block,
               stmt: data.stmts.length,
-              selectedAction: null,
+              navigatorPoint: { type: "iteration", name: "post_main" },
             })
           }
         />
@@ -109,7 +109,12 @@ export function computeTableHeight(data: BasicBlockData): number {
   container.innerHTML = ReactDOMServer.renderToString(
     BasicBlockTable({
       isOnSelectedPath: false,
-      currentPoint: { type: "stmt", block: 0, stmt: 0, selectedAction: null },
+      currentPoint: {
+        type: "stmt",
+        block: 0,
+        stmt: 0,
+        navigatorPoint: { type: "iteration", name: "post_main" },
+      },
       data: {
         block: data.block,
         stmts: data.stmts,

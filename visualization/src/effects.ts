@@ -46,7 +46,7 @@ export async function reloadPathData(
   const pathToCurrentBlock = currentPath.slice(0, currentBlockIndex + 1);
 
   try {
-    const data = await api.getPathData(
+    const data = (await api.getPathData(
       selectedFunction,
       pathToCurrentBlock,
       currentPoint.type === "stmt"
@@ -56,7 +56,7 @@ export async function reloadPathData(
         : {
             terminator: currentPoint.block2,
           }
-    ) as PathData;
+    )) as PathData;
     setPathData(data);
   } catch (error) {
     console.error("Error fetching path data:", error);
@@ -116,7 +116,9 @@ function keydown(
 
       const nextStmtIdx = getNextStmtIdx(currentNode, prevPoint.stmt);
       if (nextStmtIdx !== null) {
-        return { ...prevPoint, stmt: nextStmtIdx };
+        const result = { ...prevPoint, stmt: nextStmtIdx };
+        result.navigatorPoint = { type: "iteration", name: "post_main" };
+        return result;
       } else {
         const currBlockIdx = filteredNodes.findIndex(
           (node) => node.block === prevPoint.block
@@ -128,7 +130,7 @@ function keydown(
             type: "stmt",
             block: filteredNodes[nextBlockIdx].block,
             stmt: getNextStmtIdx(data, -1),
-            selectedAction: null,
+            navigatorPoint: { type: "iteration", name: "post_main" },
           };
         } else {
           const nextBlockIdx =
@@ -138,7 +140,7 @@ function keydown(
             type: "stmt",
             block: data.block,
             stmt: data.stmts.length,
-            selectedAction: null,
+            navigatorPoint: { type: "iteration", name: "post_main" },
           };
         }
       }
@@ -149,7 +151,7 @@ function keydown(
       type: "stmt",
       block: newBlock,
       stmt: 0,
-      selectedAction: null,
+      navigatorPoint: { type: "iteration", name: "post_main" },
     });
   }
 }

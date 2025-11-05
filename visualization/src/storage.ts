@@ -1,4 +1,4 @@
-const LOCALSTORAGE_VERSION = "v1";
+const LOCALSTORAGE_VERSION = "v2";
 
 class VersionedStorage {
   private prefix: string;
@@ -15,12 +15,28 @@ class VersionedStorage {
     return localStorage.getItem(this.getKey(key));
   }
 
+  getNumber(key: string, defaultValue: number): number {
+    const value = this.getItem(key);
+    if (value === null) {
+      return defaultValue;
+    }
+    return parseInt(value, 10);
+  }
+
   setItem(key: string, value: string): void {
     localStorage.setItem(this.getKey(key), value);
   }
 
   removeItem(key: string): void {
     localStorage.removeItem(this.getKey(key));
+  }
+
+  setBool(key: string, value: boolean): void {
+    this.setItem(key, value.toString());
+  }
+
+  setNumber(key: string, value: number): void {
+    this.setItem(key, value.toString());
   }
 
   getBool(key: string, defaultValue: boolean): boolean {

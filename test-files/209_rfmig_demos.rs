@@ -36,10 +36,11 @@ fn ex4_expiry(mut x: i32, mut y: i32, mut z: i32) {
 fn ex5_path_sensitive(c: bool) {
     let mut x = 1;
     let mut y = 2;
-    let r: &mut i32 = if c {
-        &mut x
+    let r: &mut i32;
+    if c {
+        r = &mut x;
     } else {
-        &mut y
+        r = &mut y;
     };
     *r = 3;
 }
@@ -65,6 +66,23 @@ fn ex7_function_call(c: bool) {
     let mut y = 2;
     let r = choose(c, &mut x, &mut y);
     *r = 3;
+}
+
+pub type Node<T> = Option<Box<List<T>>>;
+
+struct List<T> {
+    head: T,
+    tail: Node<T>,
+}
+
+fn ex8_penultimate<'a>(list: &'a mut List<i32>) -> Option<&'a mut i32> {
+    let mut current = &mut *list;
+    let mut prev = None;
+    while let Some(next) = &mut current.tail {
+        prev = Some(&mut current.head);
+        current = &mut *next;
+    }
+    prev
 }
 
 fn main() {

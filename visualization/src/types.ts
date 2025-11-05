@@ -1,6 +1,10 @@
-export type SelectedAction = {
+export type NavigatorPoint = {
+  type: "action";
   phase: EvalStmtPhase;
   index: number;
+} | {
+  type: "iteration";
+  name: string;
 };
 
 export type CurrentPoint =
@@ -8,7 +12,7 @@ export type CurrentPoint =
       type: "stmt";
       block: number;
       stmt: number;
-      selectedAction: SelectedAction | null;
+      navigatorPoint: NavigatorPoint;
     }
   | {
       type: "terminator";
@@ -86,3 +90,5 @@ export type {
 export type FunctionsMetadata = {
   [slug: FunctionSlug]: FunctionMetadata;
 };
+
+export type StringOf<T> = string & { __brand: T };

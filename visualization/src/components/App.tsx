@@ -13,11 +13,12 @@ import {
   FunctionSlug,
   FunctionsMetadata,
   MirStmt,
+  NavigatorPoint,
   PathData,
   PcgProgramPointData,
   PcgStmtVisualizationData,
-  SelectedAction,
   SourcePos,
+  StringOf,
 } from "../types";
 import SymbolicHeap from "./SymbolicHeap";
 import PathConditions from "./PathConditions";
@@ -41,7 +42,12 @@ import {
 } from "../effects";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 import SourceCodeViewer from "./SourceCodeViewer";
-import { EvalStmtData, MirEdge, MirNode } from "../generated/types";
+import {
+  DotFileAtPhase,
+  EvalStmtData,
+  MirEdge,
+  MirNode,
+} from "../generated/types";
 
 const getActionGraphFilename = (
   selectedFunction: string,
@@ -54,34 +60,40 @@ const getActionGraphFilename = (
 function getPCGDotGraphFilename(
   currentPoint: CurrentPoint,
   selectedFunction: string,
-  selected: number | null,
   graphs: PcgBlockDotGraphs
 ): string | null {
   if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
     return null;
   }
-  const selectedAction = getSelectedAction(currentPoint);
-  if (selectedAction) {
+  if (currentPoint.navigatorPoint.type === "action") {
     const iterationActions = getIterationActions(graphs, currentPoint);
-    const actionGraphFilenames = iterationActions[selectedAction.phase];
+    const actionGraphFilenames = iterationActions[currentPoint.navigatorPoint.phase];
     return getActionGraphFilename(
       selectedFunction,
       actionGraphFilenames,
-      selectedAction.index
+      currentPoint.navigatorPoint.index
     );
   }
 
-  const phases: [string, string][] = graphs[currentPoint.stmt].at_phase;
-
-  // Handle deselection case or null selection
-  if (selected === null || selected < 0 || phases.length === 0) {
+  // For iteration type, find the phase by name
+  const navPoint = currentPoint.navigatorPoint;
+  if (navPoint.type !== "iteration") {
     return null;
   }
 
-  const filename: string =
-    selected >= phases.length
-      ? phases[phases.length - 1][1]
-      : phases[selected][1];
+  const phases: DotFileAtPhase<StringOf<"DataflowStmtPhase">>[] =
+    graphs[currentPoint.stmt].at_phase;
+
+  // Find the phase by name
+  const phaseIndex = phases.findIndex(
+    (p) => p.phase === navPoint.name
+  );
+
+  if (phaseIndex === -1 || phases.length === 0) {
+    return null;
+  }
+
+  const filename: string = phases[phaseIndex].filename;
   return `data/${selectedFunction}/${filename}`;
 }
 
@@ -95,13 +107,6 @@ interface AppProps {
   onApiChange: (newApi: Api) => void;
 }
 
-function getSelectedAction(currentPoint: CurrentPoint): SelectedAction | null {
-  if (currentPoint.type !== "stmt") {
-    return null;
-  }
-  return currentPoint.selectedAction;
-}
-
 export const App: React.FC<AppProps> = ({
   initialFunction,
   initialPaths,
@@ -112,7 +117,6 @@ export const App: React.FC<AppProps> = ({
   onApiChange,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [selected, setSelected] = useState<number | null>(null);
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
@@ -120,7 +124,10 @@ export const App: React.FC<AppProps> = ({
     type: "stmt",
     block: 0,
     stmt: 0,
-    selectedAction: null,
+    navigatorPoint: {
+      type: "iteration",
+      name: "initial",
+    },
   });
 
   const [selectedFunction, setSelectedFunction] = useState<FunctionSlug>(
@@ -135,9 +142,7 @@ export const App: React.FC<AppProps> = ({
     storage.getBool("showPathBlocksOnly", false)
   );
   const [showUnwindEdges] = useState(false);
-  const [showPCG, setShowPCG] = useState(
-    storage.getBool("showPCG", true)
-  );
+  const [showPCG, setShowPCG] = useState(storage.getBool("showPCG", true));
   const [showPCGNavigator, setShowPCGNavigator] = useState(
     storage.getBool("showPCGNavigator", true)
   );
@@ -152,7 +157,7 @@ export const App: React.FC<AppProps> = ({
   );
 
   // Track PCG Navigator state for layout adjustment
-  const [navigatorDocked, setNavigatorDocked] = useState(
+  const [navigatorDocked] = useState(
     storage.getBool("pcgNavigatorDocked", true)
   );
   const [navigatorMinimized, setNavigatorMinimized] = useState(
@@ -196,7 +201,6 @@ export const App: React.FC<AppProps> = ({
     const dotFilePath = getPCGDotGraphFilename(
       currentPoint,
       selectedFunction,
-      selected,
       iterations
     );
     if (!dotFilePath) {
@@ -209,7 +213,7 @@ export const App: React.FC<AppProps> = ({
         dotGraph.appendChild(viz.renderSVGElement(dotData));
       });
     }
-  }, [api, iterations, currentPoint, selectedFunction, selected]);
+  }, [api, iterations, currentPoint, selectedFunction]);
 
   useEffect(() => {
     const graph = document.getElementById("pcg-graph");
@@ -259,36 +263,10 @@ export const App: React.FC<AppProps> = ({
     fetchPcgStmtVisualizationData();
   }, [api, selectedFunction, selectedPath, currentPoint, paths]);
 
-  const currentBlock = currentPoint.type === "stmt" ? currentPoint.block : null;
-  const currentStmt = currentPoint.type === "stmt" ? currentPoint.stmt : null;
-
   useEffect(() => {
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
   }, [api, selectedFunction, currentPoint]);
 
-  useEffect(() => {
-    // Reset selected phase when changing function/block/stmt
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelected(null);
-  }, [selectedFunction, currentBlock, currentStmt]);
-
-  useEffect(() => {
-    if (
-      currentPoint.type === "stmt" &&
-      iterations.length > currentPoint.stmt &&
-      selected === null
-    ) {
-      const phases = iterations[currentPoint.stmt].at_phase;
-      const postMainIndex = phases.findIndex(([name]) => name === "post_main");
-      // Initialize selected phase based on available phases
-      if (postMainIndex !== -1) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSelected(postMainIndex);
-      } else if (phases.length > 0) {
-        setSelected(phases.length - 1);
-      }
-    }
-  }, [iterations, currentPoint, selected]);
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
@@ -338,11 +316,13 @@ export const App: React.FC<AppProps> = ({
     [paths, selectedPath]
   );
 
-  const handleNavigatorStateChange = useCallback((isDocked: boolean, isMinimized: boolean, width: number) => {
-    setNavigatorDocked(isDocked);
-    setNavigatorMinimized(isMinimized);
-    setNavigatorWidth(width);
-  }, []);
+  const handleNavigatorStateChange = useCallback(
+    (isMinimized: boolean, width: number) => {
+      setNavigatorMinimized(isMinimized);
+      setNavigatorWidth(width);
+    },
+    []
+  );
 
   // Calculate the width to reserve for the navigator when it's docked
   const navigatorReservedWidth = useMemo(() => {
@@ -541,7 +521,9 @@ export const App: React.FC<AppProps> = ({
             </button>
 
             <div style={{ marginBottom: "20px" }}>
-              <h4 style={{ marginTop: 0, marginBottom: "10px" }}>Data Source</h4>
+              <h4 style={{ marginTop: 0, marginBottom: "10px" }}>
+                Data Source
+              </h4>
               <input
                 type="file"
                 accept=".zip"
@@ -590,8 +572,8 @@ export const App: React.FC<AppProps> = ({
                   type="checkbox"
                   checked={showPCG}
                   onChange={(e) => setShowPCG(e.target.checked)}
-                />
-                {" "}Show PCG
+                />{" "}
+                Show PCG
               </label>
               <button
                 style={{
@@ -604,7 +586,6 @@ export const App: React.FC<AppProps> = ({
                   const dotFilePath = getPCGDotGraphFilename(
                     currentPoint,
                     selectedFunction,
-                    selected,
                     iterations
                   );
                   if (dotFilePath) {
@@ -619,8 +600,8 @@ export const App: React.FC<AppProps> = ({
                   type="checkbox"
                   checked={showPCGNavigator}
                   onChange={(e) => setShowPCGNavigator(e.target.checked)}
-                />
-                {" "}Show PCG Navigator
+                />{" "}
+                Show PCG Navigator
               </label>
             </div>
 
@@ -651,28 +632,82 @@ export const App: React.FC<AppProps> = ({
             <PCGNavigator
               iterations={iterations[currentPoint.stmt]}
               pcgData={pcgProgramPointData as PcgStmtVisualizationData}
-              selectedPhase={
-                getSelectedAction(currentPoint) === null ? selected : null
-              }
-              selectedAction={getSelectedAction(currentPoint)}
-              onSelectPhase={(index) => {
+              selectedPoint={currentPoint.navigatorPoint}
+              onSelectPoint={(point: NavigatorPoint) => {
                 if (currentPoint.type === "stmt") {
                   setCurrentPoint({
                     ...currentPoint,
-                    selectedAction: null,
-                  });
-                  setSelected(index);
-                }
-              }}
-              onSelectAction={(action) => {
-                if (currentPoint.type === "stmt") {
-                  setCurrentPoint({
-                    ...currentPoint,
-                    selectedAction: action,
+                    navigatorPoint: point,
                   });
                 }
               }}
               onNavigatorStateChange={handleNavigatorStateChange}
+              onAdvanceToNextStatement={() => {
+                if (currentPoint.type === "stmt") {
+                  const currentNode = nodes.find(
+                    (node) => node.block === currentPoint.block
+                  );
+                  if (currentNode) {
+                    const nextStmt = currentPoint.stmt + 1;
+                    if (nextStmt <= currentNode.stmts.length) {
+                      setCurrentPoint({
+                        ...currentPoint,
+                        stmt: nextStmt,
+                        navigatorPoint: { type: "iteration", name: "initial" },
+                      });
+                    } else {
+                      // At last statement, move to next block
+                      const currBlockIdx = filteredNodes.findIndex(
+                        (node) => node.block === currentPoint.block
+                      );
+                      if (currBlockIdx !== -1) {
+                        const nextBlockIdx =
+                          (currBlockIdx + 1) % filteredNodes.length;
+                        const nextNode = filteredNodes[nextBlockIdx];
+                        setCurrentPoint({
+                          type: "stmt",
+                          block: nextNode.block,
+                          stmt: 0,
+                          navigatorPoint: { type: "iteration", name: "initial" },
+                        });
+                      }
+                    }
+                  }
+                }
+              }}
+              onGoToPreviousStatement={() => {
+                if (currentPoint.type === "stmt") {
+                  let targetBlock: number;
+                  let targetStmt: number;
+
+                  if (currentPoint.stmt > 0) {
+                    // Move to previous statement in same block
+                    targetBlock = currentPoint.block;
+                    targetStmt = currentPoint.stmt - 1;
+                  } else {
+                    // At first statement, move to previous block
+                    const currBlockIdx = filteredNodes.findIndex(
+                      (node) => node.block === currentPoint.block
+                    );
+                    if (currBlockIdx === -1) return;
+
+                    const prevBlockIdx =
+                      (currBlockIdx - 1 + filteredNodes.length) %
+                      filteredNodes.length;
+                    const prevNode = filteredNodes[prevBlockIdx];
+                    targetBlock = prevNode.block;
+                    targetStmt = prevNode.stmts.length;
+                  }
+
+                  // Set to post_main when going to previous statement
+                  setCurrentPoint({
+                    type: "stmt",
+                    block: targetBlock,
+                    stmt: targetStmt,
+                    navigatorPoint: { type: "iteration", name: "post_main" },
+                  });
+                }
+              }}
             />
           )}
         {pathData && (

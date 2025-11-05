@@ -18,6 +18,7 @@ mod node;
 mod settings;
 pub(crate) use functions_metadata::*;
 use std::borrow::Cow;
+pub(crate) mod stmt_graphs;
 
 #[cfg(feature = "type-export")]
 pub use mir_graph::SourcePos;
