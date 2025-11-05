@@ -1,7 +1,19 @@
 struct Pair { fst: String, snd: String }
 
+fn rand_bool() -> bool {
+    true
+}
+
 fn ex1_replace_fst(mut p: Pair, s: String) -> Pair {
     let tmp = p.fst;
+    p.fst = s;
+    p
+}
+
+fn ex1_replace_fst_cond(mut p: Pair, s: String) -> Pair {
+    if rand_bool() {
+        drop(p.fst);
+    }
     p.fst = s;
     p
 }
