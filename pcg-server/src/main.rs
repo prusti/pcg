@@ -17,6 +17,17 @@ async fn main() {
     // Initialize tracing with debug level
     FmtSubscriber::builder().with_max_level(Level::DEBUG).init();
 
+    // Verify required JavaScript assets exist
+    let required_assets = ["static/editor.bundle.js"];
+    for asset in &required_assets {
+        if !PathBuf::from(asset).exists() {
+            eprintln!("ERROR: Required JavaScript asset not found: {}", asset);
+            eprintln!("Please build the assets by running 'npm install && npm run build' in the pcg-server directory.");
+            std::process::exit(1);
+        }
+    }
+    info!("All required JavaScript assets verified");
+
     // Ensure tmp directory exists
     fs::create_dir_all("tmp").expect("Failed to create tmp directory");
 
@@ -24,7 +35,8 @@ async fn main() {
         .route("/", get(serve_upload_form))
         .route("/upload", post(handle_upload))
         .nest_service("/visualization", ServeDir::new("../visualization"))
-        .nest_service("/tmp", ServeDir::new("./tmp"));
+        .nest_service("/tmp", ServeDir::new("./tmp"))
+        .nest_service("/static", ServeDir::new("./static"));
 
     info!("Starting server on 0.0.0.0:4000");
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));

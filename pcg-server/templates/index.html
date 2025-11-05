@@ -75,6 +75,18 @@
             #file-input {
                 display: none;
             }
+            .cm-editor {
+                font-size: 14px;
+                height: 100%;
+                background-color: #ffffff;
+            }
+            .cm-scroller {
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            }
+            .cm-gutters {
+                background-color: #f9fafb;
+                border-right: 1px solid #e5e7eb;
+            }
         </style>
         <script>
             function toggleInputMethod() {
@@ -115,5 +127,6 @@
             // Initialize the visibility
             toggleInputMethod();
         </script>
+        <script src="/static/editor.bundle.js"></script>
     </body>
 </html>
