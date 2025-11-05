@@ -1,4 +1,3 @@
-import { Assertion } from "./components/Assertions";
 import { MirGraph, StmtGraphs } from "./generated/types";
 import {
   CurrentPoint,
@@ -29,28 +28,6 @@ export abstract class Api {
 
   async getFunctions(): Promise<FunctionsMetadata> {
     return await this.fetchJsonFile("data/functions.json") as Promise<FunctionsMetadata>;
-  }
-
-  async getPaths(functionName: string): Promise<number[][]> {
-    try {
-      const paths = await this.fetchJsonFile(
-        `data/${functionName}/paths.json`
-      );
-      return paths as number[][];
-    } catch {
-      return [];
-    }
-  }
-
-  async getAssertions(functionName: string): Promise<Assertion[]> {
-    try {
-      const assertions = await this.fetchJsonFile(
-        `data/${functionName}/assertions.json`
-      );
-      return assertions as Assertion[];
-    } catch {
-      return [];
-    }
   }
 
   async getPcgProgramPointData(

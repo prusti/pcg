@@ -66,6 +66,10 @@ function getPCGDotGraphFilename(
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
+    // Successor actions (from terminator edges) don't have PCG dot graphs
+    if (currentPoint.navigatorPoint.phase === "successor") {
+      return null;
+    }
     const iterationActions = getIterationActions(graphs, currentPoint);
     const actionGraphFilenames = iterationActions[currentPoint.navigatorPoint.phase];
     return getActionGraphFilename(
@@ -99,8 +103,6 @@ function getPCGDotGraphFilename(
 
 interface AppProps {
   initialFunction: FunctionSlug;
-  initialPaths: number[][];
-  initialAssertions: Assertion[];
   functions: FunctionsMetadata;
   initialPath?: number;
   api: Api;
@@ -109,8 +111,6 @@ interface AppProps {
 
 export const App: React.FC<AppProps> = ({
   initialFunction,
-  initialPaths,
-  initialAssertions,
   functions,
   initialPath = 0,
   api,
@@ -134,8 +134,8 @@ export const App: React.FC<AppProps> = ({
     initialFunction || (Object.keys(functions)[0] as FunctionSlug)
   );
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
-  const [paths, setPaths] = useState<number[][]>(initialPaths);
-  const [assertions] = useState<Assertion[]>(initialAssertions);
+  const [paths, setPaths] = useState<number[][]>([]);
+  const [assertions] = useState<Assertion[]>([]);
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
@@ -234,7 +234,6 @@ export const App: React.FC<AppProps> = ({
         const mirGraph = await api.getGraphData(selectedFunction);
         setNodes(mirGraph.nodes);
         setEdges(mirGraph.edges);
-        setPaths(await api.getPaths(selectedFunction));
       })();
     }
   }, [api, selectedFunction]);
@@ -625,16 +624,31 @@ export const App: React.FC<AppProps> = ({
           isBlockOnSelectedPath={isBlockOnSelectedPath}
         />
         {showPCGNavigator &&
-          currentPoint.type === "stmt" &&
-          iterations.length > currentPoint.stmt &&
           pcgProgramPointData &&
-          !Array.isArray(pcgProgramPointData.actions) && (
+          ((currentPoint.type === "stmt" &&
+            iterations.length > currentPoint.stmt &&
+            !Array.isArray(pcgProgramPointData.actions)) ||
+            (currentPoint.type === "terminator" &&
+              Array.isArray(pcgProgramPointData.actions))) && (
             <PCGNavigator
-              iterations={iterations[currentPoint.stmt]}
-              pcgData={pcgProgramPointData as PcgStmtVisualizationData}
-              selectedPoint={currentPoint.navigatorPoint}
+              iterations={
+                currentPoint.type === "stmt"
+                  ? iterations[currentPoint.stmt]
+                  : undefined
+              }
+              pcgData={pcgProgramPointData}
+              selectedPoint={
+                currentPoint.type === "stmt"
+                  ? currentPoint.navigatorPoint
+                  : currentPoint.navigatorPoint || null
+              }
               onSelectPoint={(point: NavigatorPoint) => {
                 if (currentPoint.type === "stmt") {
+                  setCurrentPoint({
+                    ...currentPoint,
+                    navigatorPoint: point,
+                  });
+                } else if (currentPoint.type === "terminator") {
                   setCurrentPoint({
                     ...currentPoint,
                     navigatorPoint: point,

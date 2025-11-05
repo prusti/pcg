@@ -7,13 +7,10 @@ import { App } from "./components/App";
 import { FunctionSlug, FunctionsMetadata } from "./types";
 import { cacheZip } from "./zipCache";
 import { storage } from "./storage";
-import { Assertion } from "./components/Assertions";
 
 function AppWrapper() {
   const [currentApi, setCurrentApi] = useState<Api | null>(null);
   const [initialFunction, setInitialFunction] = useState<FunctionSlug | null>(null);
-  const [initialPaths, setInitialPaths] = useState<number[][]>([]);
-  const [initialAssertions, setInitialAssertions] = useState<Assertion[]>([]);
   const [functions, setFunctions] = useState<FunctionsMetadata | null>(null);
   const [initialPath, setInitialPath] = useState<number>(0);
   const [dataUnavailable, setDataUnavailable] = useState<boolean>(false);
@@ -34,19 +31,10 @@ function AppWrapper() {
         }
         setInitialFunction(initFunc);
 
-        const paths = await api.getPaths(initFunc);
-        setInitialPaths(paths);
-
-        const assertions = await api.getAssertions(initFunc);
-        setInitialAssertions(assertions);
-
         let initPath = 0;
         const initialPathStr = storage.getItem("selectedPath");
         if (initialPathStr) {
           initPath = parseInt(initialPathStr);
-          if (initPath >= paths.length) {
-            initPath = 0;
-          }
         }
         setInitialPath(initPath);
       } catch {
@@ -111,8 +99,6 @@ function AppWrapper() {
   return (
     <App
       initialFunction={initialFunction}
-      initialPaths={initialPaths}
-      initialAssertions={initialAssertions}
       functions={functions}
       initialPath={initialPath}
       api={currentApi}

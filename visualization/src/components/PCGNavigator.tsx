@@ -3,6 +3,7 @@ import {
   EvalStmtPhase,
   PcgAction,
   PcgStmtVisualizationData,
+  PcgProgramPointData,
   StringOf,
   NavigatorPoint,
 } from "../types";
@@ -11,6 +12,7 @@ import {
   CapabilityKind,
   RepackOp,
   StmtGraphs,
+  PcgSuccessorVisualizationData,
 } from "../generated/types";
 import { storage } from "../storage";
 
@@ -18,7 +20,7 @@ type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
   | {
       type: "action";
-      phase: EvalStmtPhase;
+      phase: EvalStmtPhase | "successor";
       index: number;
       action: PcgAction;
     };
@@ -49,13 +51,19 @@ function actionLine(
       return `Unpack ${action.data.from}`;
     case "Collapse":
       return `Pack ${action.data.to}`;
+    case "Weaken":
+      // Check if data is a string (from BorrowPcgActionKindDebugRepr) or object (from RepackOp)
+      if (typeof action.data === "string") {
+        return action.data;
+      }
+      return `Weaken ${action.data.place} from ${action.data.from} to ${action.data.to}`;
+    case "RegainLoanedCapability":
+      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
     case "AddEdge":
     case "RemoveEdge":
     case "Restore":
-    case "Weaken":
-      return String(action.data);
-    case "RegainLoanedCapability":
-      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
+      // For these types, data should be a string
+      return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
     default:
       return JSON.stringify(action);
   }
@@ -70,8 +78,8 @@ export default function PCGNavigator({
   onAdvanceToNextStatement,
   onGoToPreviousStatement,
 }: {
-  iterations: StmtGraphs<StringOf<"DataflowStmtPhase">>;
-  pcgData: PcgStmtVisualizationData;
+  iterations?: StmtGraphs<StringOf<"DataflowStmtPhase">>;
+  pcgData: PcgProgramPointData;
   selectedPoint: NavigatorPoint | null;
   onSelectPoint: (point: NavigatorPoint) => void;
   onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
@@ -105,29 +113,46 @@ export default function PCGNavigator({
   const buildNavigationItems = (): NavigationItem[] => {
     const items: NavigationItem[] = [];
 
-    // For each iteration in at_phase
-    iterations.at_phase.forEach((at_phase) => {
-      // Check if this iteration name corresponds to an EvalStmtPhase with actions
-      const phase = at_phase.phase as EvalStmtPhase;
-      if (phase in pcgData.actions) {
-        // Add all actions for this phase first
-        pcgData.actions[phase].forEach((action, index) => {
-          if (
-            action.data.kind.type !== "MakePlaceOld" &&
-            action.data.kind.type !== "LabelLifetimeProjection"
-          ) {
-            items.push({ type: "action", phase, index, action });
-          }
-        });
-      }
-
-      // Add the iteration after its actions
-      items.push({
-        type: "iteration",
-        name: at_phase.phase,
-        filename: at_phase.filename,
+    // Check if this is successor (terminator) data - it has a flat actions array
+    if (Array.isArray(pcgData.actions)) {
+      // PcgSuccessorVisualizationData - just display actions without phases
+      const successorData = pcgData as PcgSuccessorVisualizationData;
+      successorData.actions.forEach((action, index) => {
+        if (
+          action.data.kind.type !== "MakePlaceOld" &&
+          action.data.kind.type !== "LabelLifetimeProjection"
+        ) {
+          items.push({ type: "action", phase: "successor", index, action });
+        }
       });
-    });
+    } else if (iterations) {
+      // PcgStmtVisualizationData - display actions organized by phases
+      const stmtData = pcgData as PcgStmtVisualizationData;
+
+      // For each iteration in at_phase
+      iterations.at_phase.forEach((at_phase) => {
+        // Check if this iteration name corresponds to an EvalStmtPhase with actions
+        const phase = at_phase.phase as EvalStmtPhase;
+        if (phase in stmtData.actions) {
+          // Add all actions for this phase first
+          stmtData.actions[phase].forEach((action, index) => {
+            if (
+              action.data.kind.type !== "MakePlaceOld" &&
+              action.data.kind.type !== "LabelLifetimeProjection"
+            ) {
+              items.push({ type: "action", phase, index, action });
+            }
+          });
+        }
+
+        // Add the iteration after its actions
+        items.push({
+          type: "iteration",
+          name: at_phase.phase,
+          filename: at_phase.filename,
+        });
+      });
+    }
 
     return items;
   };
