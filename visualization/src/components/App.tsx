@@ -154,6 +154,9 @@ export const App: React.FC<AppProps> = ({
   const [codeFontSize, setCodeFontSize] = useState<number>(
     parseInt(storage.getItem("codeFontSize") || "12")
   );
+  const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
+  const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
+  const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
   // Track PCG Navigator state for layout adjustment
   const [navigatorDocked] = useState(
@@ -341,6 +344,93 @@ export const App: React.FC<AppProps> = ({
     );
   }, [nodes, currentPoint, selectedFunction, functions]);
 
+  const getOverlappingStmts = useCallback((position: SourcePos) => {
+    const functionStart = functions[selectedFunction].start;
+    const absolutePosition: SourcePos = {
+      line: position.line + functionStart.line,
+      column: position.column + functionStart.column,
+    };
+
+    const overlappingStmts: Array<{block: number, stmt: number, stmtId: string}> = [];
+    nodes.forEach((node) => {
+      const checkStmt = (stmt: MirStmt, stmtIndex: number) => {
+        const span = stmt.span;
+
+        // Only consider statements whose span is contained within a single line
+        if (span.low.line !== span.high.line) {
+          return;
+        }
+
+        const spanOverlaps =
+          (absolutePosition.line > span.low.line ||
+           (absolutePosition.line === span.low.line && absolutePosition.column >= span.low.column)) &&
+          (absolutePosition.line < span.high.line ||
+           (absolutePosition.line === span.high.line && absolutePosition.column < span.high.column));
+
+        if (spanOverlaps) {
+          overlappingStmts.push({
+            block: node.block,
+            stmt: stmtIndex,
+            stmtId: `${node.block}-${stmtIndex}`
+          });
+        }
+      };
+
+      node.stmts.forEach((stmt, idx) => checkStmt(stmt, idx));
+      checkStmt(node.terminator, node.stmts.length);
+    });
+
+    return overlappingStmts;
+  }, [nodes, selectedFunction, functions]);
+
+  const hoveredStmts = useMemo(() => {
+    if (!hoverPosition) {
+      return new Set<string>();
+    }
+
+    const overlapping = getOverlappingStmts(hoverPosition);
+    return new Set(overlapping.map(s => s.stmtId));
+  }, [hoverPosition, getOverlappingStmts]);
+
+  const handleClickPosition = useCallback((position: SourcePos) => {
+    // Check if clicking at the same position
+    const isSamePosition = clickPosition &&
+      clickPosition.line === position.line &&
+      clickPosition.column === position.column;
+
+    if (isSamePosition) {
+      // Increment cycle index
+      const overlapping = getOverlappingStmts(position);
+      if (overlapping.length > 0) {
+        const nextIndex = (clickCycleIndex + 1) % overlapping.length;
+        setClickCycleIndex(nextIndex);
+
+        const selected = overlapping[nextIndex];
+        setCurrentPoint({
+          type: "stmt",
+          block: selected.block,
+          stmt: selected.stmt,
+          navigatorPoint: { type: "iteration", name: "post_main" },
+        });
+      }
+    } else {
+      // New position - select first overlapping statement
+      setClickPosition(position);
+      setClickCycleIndex(0);
+
+      const overlapping = getOverlappingStmts(position);
+      if (overlapping.length > 0) {
+        const selected = overlapping[0];
+        setCurrentPoint({
+          type: "stmt",
+          block: selected.block,
+          stmt: selected.stmt,
+          navigatorPoint: { type: "iteration", name: "post_main" },
+        });
+      }
+    }
+  }, [clickPosition, clickCycleIndex, getOverlappingStmts]);
+
   // Divider drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
@@ -480,6 +570,8 @@ export const App: React.FC<AppProps> = ({
               highlightSpan={highlightSpan}
               minimized={isSourceCodeMinimized}
               fontSize={codeFontSize}
+              onHoverPositionChange={setHoverPosition}
+              onClickPosition={handleClickPosition}
             />
           </div>
         </div>
@@ -621,6 +713,7 @@ export const App: React.FC<AppProps> = ({
           setCurrentPoint={setCurrentPoint}
           height={layoutResult.height}
           isBlockOnSelectedPath={isBlockOnSelectedPath}
+          hoveredStmts={hoveredStmts}
         />
         {showPCGNavigator &&
           pcgProgramPointData &&

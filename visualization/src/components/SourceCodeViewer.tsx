@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Highlight, themes } from "prism-react-renderer";
 import { FunctionMetadata, SourcePos } from "../types";
 
@@ -12,6 +12,8 @@ interface SourceCodeViewerProps {
   highlightSpan?: RelativeSpan | null;
   minimized?: boolean;
   fontSize?: number;
+  onHoverPositionChange?: (position: SourcePos | null) => void;
+  onClickPosition?: (position: SourcePos) => void;
 }
 
 const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
@@ -19,8 +21,11 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   highlightSpan,
   minimized = false,
   fontSize = 12,
+  onHoverPositionChange,
+  onClickPosition,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
 
   const isSingleLineSpan = (): boolean => {
     if (!highlightSpan) return false;
@@ -56,6 +61,22 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
     return true;
   };
 
+  const handleCharHover = (lineIndex: number, charIndex: number) => {
+    const newPosition = { line: lineIndex, column: charIndex };
+    setHoverPosition(newPosition);
+    onHoverPositionChange?.(newPosition);
+  };
+
+  const handleCharClick = (lineIndex: number, charIndex: number) => {
+    const position = { line: lineIndex, column: charIndex };
+    onClickPosition?.(position);
+  };
+
+  const handleMouseLeave = () => {
+    setHoverPosition(null);
+    onHoverPositionChange?.(null);
+  };
+
   return (
     <div
       style={{
@@ -65,6 +86,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
         maxHeight: "400px",
         overflow: "auto",
       }}
+      onMouseLeave={handleMouseLeave}
     >
       <h3
         style={{
@@ -135,14 +157,23 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                               lineIndex,
                               tokenStartChar + i
                             );
+                            const isHovered =
+                              !highlight &&
+                              hoverPosition?.line === lineIndex &&
+                              hoverPosition?.column === tokenStartChar + i;
                             chars.push(
                               <span
                                 key={i}
                                 style={{
                                   backgroundColor: highlight
                                     ? "#ffcc00"
+                                    : isHovered
+                                    ? "#e0e0e0"
                                     : "transparent",
+                                  cursor: "pointer",
                                 }}
+                                onMouseEnter={() => handleCharHover(lineIndex, tokenStartChar + i)}
+                                onClick={() => handleCharClick(lineIndex, tokenStartChar + i)}
                               >
                                 {char}
                               </span>

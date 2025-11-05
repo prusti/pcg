@@ -9,6 +9,7 @@ export default function BasicBlockNode({
   position,
   setCurrentPoint,
   isOnSelectedPath,
+  hoveredStmts,
 }: {
   height: number;
   data: BasicBlockData;
@@ -16,6 +17,7 @@ export default function BasicBlockNode({
   position: { x: number; y: number };
   setCurrentPoint: (point: CurrentPoint) => void;
   isOnSelectedPath: boolean;
+  hoveredStmts?: Set<string>;
 }) {
   return (
     <div
@@ -30,6 +32,7 @@ export default function BasicBlockNode({
         currentPoint={currentPoint}
         setCurrentPoint={setCurrentPoint}
         isOnSelectedPath={isOnSelectedPath}
+        hoveredStmts={hoveredStmts}
       />
     </div>
   );
