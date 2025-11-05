@@ -24,7 +24,8 @@ async fn main() {
         .route("/", get(serve_upload_form))
         .route("/upload", post(handle_upload))
         .nest_service("/visualization", ServeDir::new("../visualization"))
-        .nest_service("/tmp", ServeDir::new("./tmp"));
+        .nest_service("/tmp", ServeDir::new("./tmp"))
+        .nest_service("/static", ServeDir::new("./static"));
 
     info!("Starting server on 0.0.0.0:4000");
     let addr = SocketAddr::from(([0, 0, 0, 0], 4000));
