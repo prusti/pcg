@@ -346,14 +346,14 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if !place.is_owned(ctxt) {
                 continue;
             }
-            if let Some(other_cap) = other.capabilities.get(place, ctxt) {
-                if cap.expect_concrete() > other_cap.expect_concrete() {
-                    repacks.push(RepackOp::Weaken(Weaken::new(
-                        place,
-                        cap.expect_concrete(),
-                        other_cap.expect_concrete(),
-                    )));
-                }
+            if let Some(other_cap) = other.capabilities.get(place, ctxt)
+                && cap.expect_concrete() > other_cap.expect_concrete()
+            {
+                repacks.push(RepackOp::Weaken(Weaken::new(
+                    place,
+                    cap.expect_concrete(),
+                    other_cap.expect_concrete(),
+                )));
             }
         }
         Ok(repacks)
