@@ -37,6 +37,7 @@ interface SourceCodeViewerProps {
   showActionsInCode?: boolean;
   nodes?: MirNode[];
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
+  onActionClick?: (block: number, stmt: number) => void;
 }
 
 function capabilityLetter(capability: CapabilityKind): string {
@@ -90,13 +91,15 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   showActionsInCode = false,
   nodes = [],
   allPcgStmtData = new Map(),
+  onActionClick,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
 
   // Build a map from relative line numbers to actions for ALL statements in ALL blocks
+  type ActionInfo = { text: string; block: number; stmt: number };
   const lineActions = useMemo(() => {
-    const map = new Map<number, string[]>();
+    const map = new Map<number, ActionInfo[]>();
 
     if (!showActionsInCode) {
       return map;
@@ -149,11 +152,11 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
         });
       }
 
-      // Add all actions for this line
+      // Add all actions for this line with block and statement info
       allActions.forEach(({ action }) => {
         const actionText = actionLine(action.data.kind);
         const existing = map.get(relativeLine) || [];
-        existing.push(actionText);
+        existing.push({ text: actionText, block: node.block, stmt: stmtIndex });
         map.set(relativeLine, existing);
       });
     };
@@ -445,13 +448,32 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                           <span
                             style={{
                               marginLeft: "1em",
-                              color: "#0066cc",
                               fontSize: "0.85em",
                               fontStyle: "italic",
                               fontFamily: "monospace",
                             }}
                           >
-                            {lineActions.get(lineIndex)!.join(", ")}
+                            {lineActions.get(lineIndex)!.map((actionInfo, actionIdx) => (
+                              <React.Fragment key={actionIdx}>
+                                {actionIdx > 0 && <span style={{ color: "#0066cc" }}>, </span>}
+                                <span
+                                  style={{
+                                    color: "#0066cc",
+                                    cursor: onActionClick ? "pointer" : "default",
+                                    textDecoration: onActionClick ? "underline" : "none",
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onActionClick) {
+                                      onActionClick(actionInfo.block, actionInfo.stmt);
+                                    }
+                                  }}
+                                  title={`Block ${actionInfo.block}, Statement ${actionInfo.stmt}`}
+                                >
+                                  {actionInfo.text}
+                                </span>
+                              </React.Fragment>
+                            ))}
                           </span>
                         )}
                       </span>

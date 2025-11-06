@@ -560,6 +560,14 @@ export const App: React.FC<AppProps> = ({
             showActionsInCode={showActionsInCode}
             nodes={nodes}
             allPcgStmtData={allPcgStmtData}
+            onActionClick={(block, stmt) => {
+              setCurrentPoint({
+                type: "stmt",
+                block,
+                stmt,
+                navigatorPoint: { type: "iteration", name: "post_main" },
+              });
+            }}
           />
         </div>
 
