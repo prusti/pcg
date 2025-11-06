@@ -116,7 +116,7 @@ export default function BasicBlockTable({
       style={{
         borderCollapse: "collapse",
         width: "300px",
-        border: isOnSelectedPath ? "5px solid red" : "1px solid black",
+        boxShadow: isOnSelectedPath ? "0 0 0 3px red" : "0 0 0 2px black",
       }}
     >
       <tbody>
