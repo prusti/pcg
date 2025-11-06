@@ -1,6 +1,18 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { Highlight, themes } from "prism-react-renderer";
-import { FunctionMetadata, FunctionSlug, FunctionsMetadata, SourcePos } from "../types";
+import {
+  FunctionMetadata,
+  FunctionSlug,
+  FunctionsMetadata,
+  SourcePos,
+  PcgProgramPointData
+} from "../types";
+import type {
+  MirNode,
+  RepackOp,
+  BorrowPcgActionKindDebugRepr,
+  CapabilityKind
+} from "../generated/types";
 
 type RelativeSpan = {
   low: SourcePos;
@@ -22,6 +34,42 @@ interface SourceCodeViewerProps {
   onToggleSettings?: () => void;
   onFontSizeChange?: (fontSize: number) => void;
   onToggleMinimized?: () => void;
+  showActionsInCode?: boolean;
+  nodes?: MirNode[];
+  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
+}
+
+function capabilityLetter(capability: CapabilityKind): string {
+  switch (capability) {
+    case "Exclusive":
+      return "E";
+    case "ShallowExclusive":
+      return "e";
+  }
+}
+
+function actionLine(
+  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+): string {
+  switch (action.type) {
+    case "Expand":
+      return `Unpack ${action.data.from}`;
+    case "Collapse":
+      return `Pack ${action.data.to}`;
+    case "Weaken":
+      if (typeof action.data === "string") {
+        return action.data;
+      }
+      return `Weaken ${action.data.place} from ${action.data.from} to ${action.data.to}`;
+    case "RegainLoanedCapability":
+      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
+    case "AddEdge":
+    case "RemoveEdge":
+    case "Restore":
+      return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
+    default:
+      return JSON.stringify(action);
+  }
 }
 
 const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
@@ -39,9 +87,89 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   onToggleSettings,
   onFontSizeChange,
   onToggleMinimized,
+  showActionsInCode = false,
+  nodes = [],
+  allPcgStmtData = new Map(),
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
+
+  // Build a map from relative line numbers to actions for ALL statements in ALL blocks
+  const lineActions = useMemo(() => {
+    const map = new Map<number, string[]>();
+
+    if (!showActionsInCode) {
+      return map;
+    }
+
+    type ActionWithStmt = {
+      action: {
+        data: {
+          kind: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+        }
+      };
+      stmtIndex: number
+    };
+
+    // Helper to add actions for a given statement in a specific node
+    const addActionsForStmt = (node: MirNode, stmtIndex: number, stmtData: PcgProgramPointData) => {
+      const stmt = stmtIndex < node.stmts.length
+        ? node.stmts[stmtIndex]
+        : node.terminator;
+
+      if (!stmt || stmt.span.low.line !== stmt.span.high.line) {
+        return; // Only show actions for single-line statements
+      }
+
+      const absoluteLine = stmt.span.low.line;
+      const relativeLine = absoluteLine - metadata.start.line;
+
+      const allActions: ActionWithStmt[] = [];
+
+      if (Array.isArray(stmtData.actions)) {
+        // Terminator actions
+        stmtData.actions.forEach((action) => {
+          if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
+            allActions.push({ action, stmtIndex });
+          }
+        });
+      } else {
+        // Statement actions - iterate through all phases
+        const stmtActions = stmtData.actions;
+        const phases: Array<keyof typeof stmtActions> = ['pre_operands', 'post_operands', 'pre_main', 'post_main'];
+        phases.forEach((phase) => {
+          const phaseActions = stmtActions[phase];
+          if (Array.isArray(phaseActions)) {
+            phaseActions.forEach((action) => {
+              if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
+                allActions.push({ action, stmtIndex });
+              }
+            });
+          }
+        });
+      }
+
+      // Add all actions for this line
+      allActions.forEach(({ action }) => {
+        const actionText = actionLine(action.data.kind);
+        const existing = map.get(relativeLine) || [];
+        existing.push(actionText);
+        map.set(relativeLine, existing);
+      });
+    };
+
+    // Process all blocks and all statements in each block
+    nodes.forEach((node) => {
+      const blockStmtData = allPcgStmtData.get(node.block);
+      if (blockStmtData) {
+        blockStmtData.forEach((stmtData: PcgProgramPointData, stmtIndex: number) => {
+          addActionsForStmt(node, stmtIndex, stmtData);
+        });
+      }
+    });
+
+    return map;
+  }, [showActionsInCode, nodes, allPcgStmtData, metadata.start.line]);
 
   const isSingleLineSpan = (): boolean => {
     if (!highlightSpan) return false;
@@ -311,6 +439,19 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                             }}
                           >
                             ({selectionIndicator.index}/{selectionIndicator.total})
+                          </span>
+                        )}
+                        {lineActions.has(lineIndex) && (
+                          <span
+                            style={{
+                              marginLeft: "1em",
+                              color: "#0066cc",
+                              fontSize: "0.85em",
+                              fontStyle: "italic",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {lineActions.get(lineIndex)!.join(", ")}
                           </span>
                         )}
                       </span>

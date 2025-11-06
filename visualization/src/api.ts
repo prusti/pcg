@@ -39,6 +39,36 @@ export abstract class Api {
     return this.pcgDataCache.get(functionName)!;
   }
 
+  async getPcgBlockStmtData(
+    functionName: string,
+    block: number
+  ): Promise<PcgProgramPointData[]> {
+    const functionData = await this.getPcgFunctionData(functionName);
+    const blockData = functionData.blocks[block];
+    if (!blockData) {
+      throw new Error(`Block ${block} not found in PCG data`);
+    }
+    return blockData.statements;
+  }
+
+  async getAllPcgStmtData(
+    functionName: string
+  ): Promise<Map<number, Map<number, PcgProgramPointData>>> {
+    const functionData = await this.getPcgFunctionData(functionName);
+    const result = new Map<number, Map<number, PcgProgramPointData>>();
+
+    Object.entries(functionData.blocks).forEach(([blockId, blockData]) => {
+      const blockNum = parseInt(blockId);
+      const stmtMap = new Map<number, PcgProgramPointData>();
+      blockData.statements.forEach((stmtData, stmtIndex) => {
+        stmtMap.set(stmtIndex, stmtData);
+      });
+      result.set(blockNum, stmtMap);
+    });
+
+    return result;
+  }
+
   async getPcgProgramPointData(
     functionName: string,
     currentPoint: CurrentPoint

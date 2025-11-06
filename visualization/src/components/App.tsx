@@ -118,6 +118,8 @@ export const App: React.FC<AppProps> = ({
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
+  const [allPcgStmtData, setAllPcgStmtData] =
+    useState<Map<number, Map<number, PcgProgramPointData>>>(new Map());
   const [currentPoint, setCurrentPoint] = useState<CurrentPoint>({
     type: "stmt",
     block: 0,
@@ -266,6 +268,21 @@ export const App: React.FC<AppProps> = ({
     fetchPcgStmtVisualizationData();
   }, [api, selectedFunction, selectedPath, currentPoint, paths]);
 
+  // Load all PCG statement data for the function (for "show actions in code" feature)
+  useEffect(() => {
+    const fetchAllPcgStmtData = async () => {
+      try {
+        const allData = await api.getAllPcgStmtData(selectedFunction);
+        setAllPcgStmtData(allData);
+      } catch (error) {
+        console.error("Error fetching all pcg stmt data:", error);
+        setAllPcgStmtData(new Map());
+      }
+    };
+
+    fetchAllPcgStmtData();
+  }, [api, selectedFunction]);
+
   useEffect(() => {
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
   }, [api, selectedFunction, currentPoint]);
@@ -306,6 +323,10 @@ export const App: React.FC<AppProps> = ({
   useEffect(() => {
     storage.setItem("codeFontSize", codeFontSize.toString());
   }, [codeFontSize]);
+
+  useEffect(() => {
+    storage.setItem("showActionsInCode", showActionsInCode.toString());
+  }, [showActionsInCode]);
 
   useEffect(() => {
     storage.setItem("leftPanelWidth", leftPanelWidth.toString());
@@ -536,6 +557,9 @@ export const App: React.FC<AppProps> = ({
             onToggleSettings={() => setShowSettings(!showSettings)}
             onFontSizeChange={setCodeFontSize}
             onToggleMinimized={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
+            showActionsInCode={showActionsInCode}
+            nodes={nodes}
+            allPcgStmtData={allPcgStmtData}
           />
         </div>
 
@@ -620,6 +644,14 @@ export const App: React.FC<AppProps> = ({
             </div>
 
             <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", marginBottom: "10px" }}>
+                <input
+                  type="checkbox"
+                  checked={showActionsInCode}
+                  onChange={(e) => setShowActionsInCode(e.target.checked)}
+                />{" "}
+                Show Actions in Code
+              </label>
               <label style={{ display: "block", marginBottom: "10px" }}>
                 <input
                   type="checkbox"
