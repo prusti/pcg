@@ -27,8 +27,7 @@ import { Api, PcgBlockDotGraphs, ZipFileApi } from "../api";
 import { PcgFunctionData } from "../generated/types";
 import {
   filterNodesAndEdges,
-  layoutNodesWithElk,
-  PositionedLayoutNode,
+  layoutNodesWithDagre,
 } from "../mir_graph";
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
@@ -192,15 +191,12 @@ export const App: React.FC<AppProps> = ({
         : null,
   });
 
-  const [layoutNodes, setLayoutNodes] = useState<PositionedLayoutNode[]>([]);
-  const [graphHeight, setGraphHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    layoutNodesWithElk(filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData).then((result) => {
-      setLayoutNodes(result.nodes);
-      setGraphHeight(result.height);
-    });
+  const layoutResult = useMemo(() => {
+    return layoutNodesWithDagre(filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData);
   }, [filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData]);
+
+  const layoutNodes = layoutResult.nodes;
+  const graphHeight = layoutResult.height;
 
   const loadPCGDotGraph = useCallback(async () => {
     const dotGraph = document.getElementById("pcg-graph");

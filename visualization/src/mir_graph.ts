@@ -1,7 +1,7 @@
 import { MirEdge, MirNode, PcgFunctionData } from "./generated/types";
 import { computeTableHeight } from "./components/BasicBlockTable";
 import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "./types";
-import ELK from "elkjs/lib/elk.bundled.js";
+import * as dagre from "@dagrejs/dagre";
 import { Node as ReactFlowNode, Edge as ReactFlowEdge } from "reactflow";
 
 export type FilterOptions = {
@@ -98,15 +98,17 @@ export function filterNodesAndEdges(
   return { filteredNodes, filteredEdges };
 }
 
-export async function layoutNodesWithElk(
+export function layoutNodesWithDagre(
   nodes: MirNode[],
   edges: MirEdge[],
   showActionsInGraph?: boolean,
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
-): Promise<{ nodes: PositionedLayoutNode[]; height: number | null }> {
-  const elk = new ELK();
+): { nodes: PositionedLayoutNode[]; height: number | null } {
+  // Create Dagre graph
+  const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ ranksep: 100, rankdir: "TB", marginy: 100 });
 
-  // Prepare nodes with calculated dimensions
+  // Prepare nodes with calculated dimensions (accounting for action display)
   const layoutNodes: LayoutNode[] = nodes.map((node) => ({
     id: node.id,
     width: 300,
@@ -122,46 +124,25 @@ export async function layoutNodesWithElk(
     },
   }));
 
-  // Convert to ELK format
-  const elkGraph = {
-    id: "root",
-    layoutOptions: {
-      "elk.algorithm": "layered",
-      "elk.direction": "DOWN",
-      "elk.spacing.nodeNode": "80",
-      "elk.layered.spacing.nodeNodeBetweenLayers": "100",
-      "elk.layered.spacing.edgeNodeBetweenLayers": "50",
-      "elk.spacing.edgeNode": "40",
-      "elk.spacing.edgeEdge": "20",
-    },
-    children: layoutNodes.map((node) => ({
-      id: node.id,
-      width: node.width,
-      height: node.height,
-    })),
-    edges: edges.map((edge, idx) => ({
-      id: `${edge.source}-${edge.target}-${idx}`,
-      sources: [edge.source],
-      targets: [edge.target],
-    })),
-  };
+  // Add nodes and edges to Dagre
+  layoutNodes.forEach((node) => g.setNode(node.id, node));
+  edges.forEach((edge) => g.setEdge(edge.source, edge.target));
 
-  // Run ELK layout
-  const layoutedGraph = await elk.layout(elkGraph);
+  // Run layout
+  dagre.layout(g);
 
   // Extract positioned nodes
   const positionedNodes = layoutNodes.map((node) => {
-    const elkNode = layoutedGraph.children?.find((n) => n.id === node.id);
+    const position = g.node(node.id);
     return {
       ...node,
-      x: (elkNode?.x ?? 0) + node.width / 2,
-      y: (elkNode?.y ?? 0) + node.height / 2,
+      x: position.x,
+      y: position.y,
     };
   });
 
-  // Calculate total height from positioned nodes
-  const maxY = positionedNodes.reduce((max, node) => Math.max(max, node.y + node.height / 2), 0);
-  const height = maxY > 0 ? maxY : null;
+  const graphHeight = g.graph().height;
+  const height = isFinite(graphHeight) ? graphHeight : null;
 
   return { nodes: positionedNodes, height };
 }
