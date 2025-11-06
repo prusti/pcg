@@ -14,6 +14,7 @@ interface SourceCodeViewerProps {
   fontSize?: number;
   onHoverPositionChange?: (position: SourcePos | null) => void;
   onClickPosition?: (position: SourcePos) => void;
+  selectionIndicator?: { line: number; index: number; total: number } | null;
 }
 
 const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
@@ -23,6 +24,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   fontSize = 12,
   onHoverPositionChange,
   onClickPosition,
+  selectionIndicator,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
@@ -116,6 +118,11 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                 {tokens.map((line, lineIndex) => {
                   let charIndex = 0;
                   const lineHighlighted = shouldHighlightLine(lineIndex);
+                  const showIndicator =
+                    selectionIndicator?.line === lineIndex &&
+                    hoverPosition?.line === lineIndex &&
+                    highlightSpan &&
+                    highlightSpan.low.line === lineIndex;
                   return (
                     <div
                       key={lineIndex}
@@ -186,6 +193,18 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                             </span>
                           );
                         })}
+                        {showIndicator && (
+                          <span
+                            style={{
+                              marginLeft: "0.5em",
+                              color: "#666",
+                              fontSize: "0.9em",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            ({selectionIndicator.index}/{selectionIndicator.total})
+                          </span>
+                        )}
                       </span>
                     </div>
                   );

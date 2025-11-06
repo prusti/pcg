@@ -392,6 +392,36 @@ export const App: React.FC<AppProps> = ({
     return new Set(overlapping.map(s => s.stmtId));
   }, [hoverPosition, getOverlappingStmts]);
 
+  const selectionIndicator = useMemo(() => {
+    if (!clickPosition || !highlightSpan) {
+      return null;
+    }
+
+    const overlapping = getOverlappingStmts(clickPosition);
+    if (overlapping.length <= 1) {
+      return null;
+    }
+
+    const currentStmtId = currentPoint.type === "stmt"
+      ? `${currentPoint.block}-${currentPoint.stmt}`
+      : null;
+
+    if (!currentStmtId) {
+      return null;
+    }
+
+    const currentIndex = overlapping.findIndex(s => s.stmtId === currentStmtId);
+    if (currentIndex === -1) {
+      return null;
+    }
+
+    return {
+      line: clickPosition.line,
+      index: currentIndex + 1, // 1-based
+      total: overlapping.length,
+    };
+  }, [clickPosition, highlightSpan, getOverlappingStmts, currentPoint]);
+
   const handleClickPosition = useCallback((position: SourcePos) => {
     // Check if clicking at the same position
     const isSamePosition = clickPosition &&
@@ -572,6 +602,7 @@ export const App: React.FC<AppProps> = ({
               fontSize={codeFontSize}
               onHoverPositionChange={setHoverPosition}
               onClickPosition={handleClickPosition}
+              selectionIndicator={selectionIndicator}
             />
           </div>
         </div>
