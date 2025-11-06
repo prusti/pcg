@@ -5,14 +5,12 @@ import * as Viz from "@viz-js/viz";
 import { getDefaultApi, Api, ZipFileApi } from "./api";
 import { App } from "./components/App";
 import { FunctionSlug, FunctionsMetadata } from "./types";
-import { cacheZip } from "./zipCache";
 import { storage } from "./storage";
 
 function AppWrapper() {
   const [currentApi, setCurrentApi] = useState<Api | null>(null);
   const [initialFunction, setInitialFunction] = useState<FunctionSlug | null>(null);
   const [functions, setFunctions] = useState<FunctionsMetadata | null>(null);
-  const [initialPath, setInitialPath] = useState<number>(0);
   const [dataUnavailable, setDataUnavailable] = useState<boolean>(false);
 
   React.useEffect(() => {
@@ -30,13 +28,6 @@ function AppWrapper() {
           initFunc = Object.keys(funcs)[0] as FunctionSlug;
         }
         setInitialFunction(initFunc);
-
-        let initPath = 0;
-        const initialPathStr = storage.getItem("selectedPath");
-        if (initialPathStr) {
-          initPath = parseInt(initialPathStr);
-        }
-        setInitialPath(initPath);
       } catch {
         setDataUnavailable(true);
         setFunctions(null);
@@ -67,7 +58,6 @@ function AppWrapper() {
             const file = e.target.files?.[0];
             if (file) {
               const zipApi = await ZipFileApi.fromFile(file);
-              await cacheZip(zipApi);
               setCurrentApi(zipApi);
             }
           }}
@@ -100,7 +90,6 @@ function AppWrapper() {
     <App
       initialFunction={initialFunction}
       functions={functions}
-      initialPath={initialPath}
       api={currentApi}
       onApiChange={setCurrentApi}
     />

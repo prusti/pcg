@@ -1,12 +1,10 @@
 import { MirGraph, PcgFunctionData, StmtGraphs } from "./generated/types";
 import {
-  CurrentPoint,
   FunctionsMetadata,
   PcgProgramPointData,
   StringOf,
 } from "./types";
 import * as JSZip from "jszip";
-import { loadCachedZip, cacheZip } from "./zipCache";
 
 export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[];
 
@@ -39,18 +37,6 @@ export abstract class Api {
     return this.pcgDataCache.get(functionName)!;
   }
 
-  async getPcgBlockStmtData(
-    functionName: string,
-    block: number
-  ): Promise<PcgProgramPointData[]> {
-    const functionData = await this.getPcgFunctionData(functionName);
-    const blockData = functionData.blocks[block];
-    if (!blockData) {
-      throw new Error(`Block ${block} not found in PCG data`);
-    }
-    return blockData.statements;
-  }
-
   async getAllPcgStmtData(
     functionName: string
   ): Promise<Map<number, Map<number, PcgProgramPointData>>> {
@@ -67,52 +53,6 @@ export abstract class Api {
     });
 
     return result;
-  }
-
-  async getPcgProgramPointData(
-    functionName: string,
-    currentPoint: CurrentPoint
-  ): Promise<PcgProgramPointData> {
-    const functionData = await this.getPcgFunctionData(functionName);
-
-    if (currentPoint.type === "stmt") {
-      const blockData = functionData.blocks[currentPoint.block];
-      if (!blockData) {
-        throw new Error(`Block ${currentPoint.block} not found in PCG data`);
-      }
-      const stmtData = blockData.statements[currentPoint.stmt];
-      if (!stmtData) {
-        throw new Error(`Statement ${currentPoint.stmt} not found in block ${currentPoint.block}`);
-      }
-      return stmtData;
-    } else {
-      const blockData = functionData.blocks[currentPoint.block1];
-      if (!blockData) {
-        throw new Error(`Block ${currentPoint.block1} not found in PCG data`);
-      }
-      const succData = blockData.successors[currentPoint.block2];
-      if (!succData) {
-        throw new Error(`Successor to block ${currentPoint.block2} not found in block ${currentPoint.block1}`);
-      }
-      return succData;
-    }
-  }
-
-  async getPathData(
-    functionName: string,
-    path: number[],
-    point:
-      | {
-          stmt: number;
-        }
-      | {
-          terminator: number;
-        }
-  ) {
-    const last_component =
-      "stmt" in point ? `stmt_${point.stmt}` : `bb${point.terminator}_transition`;
-    const endpoint = `data/${functionName}/path_${path.map((block) => `bb${block}`).join("_")}_${last_component}.json`;
-    return await this.fetchJsonFile(endpoint);
   }
 
   async fetchDotFile(filePath: string): Promise<string> {
@@ -225,15 +165,9 @@ export async function getDefaultApi(): Promise<Api> {
   try {
     const zipUrl = getDataZipUrl();
     const zipApi = await ZipFileApi.fromUrl(zipUrl);
-    await cacheZip(zipApi);
     return zipApi;
   } catch {
-    console.log("Failed to load data.zip, trying cached ZIP");
-  }
-
-  const cachedZip = await loadCachedZip();
-  if (cachedZip) {
-    return cachedZip;
+    console.log("Failed to load data.zip");
   }
 
   throw new Error("No data source available");

@@ -8,8 +8,11 @@ import {
   NavigatorPoint,
 } from "../types";
 import { StmtGraphs, PcgSuccessorVisualizationData } from "../generated/types";
-import { storage } from "../storage";
 import { actionLine } from "../actionFormatting";
+import {
+  useLocalStorageBool,
+  useLocalStorageNumber,
+} from "../hooks/useLocalStorageState";
 
 type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
@@ -42,21 +45,15 @@ export default function PCGNavigator({
   onAdvanceToNextStatement?: () => void;
   onGoToPreviousStatement?: () => void;
 }) {
-  const [isMinimized, setIsMinimized] = useState(() => {
-    return storage.getBool("pcgNavigatorMinimized", false);
-  });
-  const [navigatorWidth, setNavigatorWidth] = useState(() => {
-    return storage.getNumber("pcgNavigatorWidth", NAVIGATOR_DEFAULT_WIDTH);
-  });
+  const [isMinimized, setIsMinimized] = useLocalStorageBool(
+    "pcgNavigatorMinimized",
+    false
+  );
+  const [navigatorWidth, setNavigatorWidth] = useLocalStorageNumber(
+    "pcgNavigatorWidth",
+    NAVIGATOR_DEFAULT_WIDTH
+  );
   const [isResizing, setIsResizing] = useState(false);
-
-  useEffect(() => {
-    storage.setBool("pcgNavigatorMinimized", isMinimized);
-  }, [isMinimized]);
-
-  useEffect(() => {
-    storage.setNumber("pcgNavigatorWidth", navigatorWidth);
-  }, [navigatorWidth]);
 
   // Notify parent of state changes
   useEffect(() => {

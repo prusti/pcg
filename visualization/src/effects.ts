@@ -1,6 +1,6 @@
 import { Api, PcgBlockDotGraphs } from "./api";
 import { MirNode } from "./generated/types";
-import { CurrentPoint, MirStmt, PathData } from "./types";
+import { CurrentPoint, MirStmt } from "./types";
 
 export function reloadIterations(
   api: Api,
@@ -21,46 +21,6 @@ export function reloadIterations(
   };
 
   fetchIterations();
-}
-
-export async function reloadPathData(
-  api: Api,
-  selectedFunction: string,
-  selectedPath: number,
-  currentPoint: CurrentPoint,
-  paths: number[][],
-  setPathData: React.Dispatch<React.SetStateAction<PathData>>
-) {
-  if (paths.length === 0 || selectedPath >= paths.length) return;
-
-  const currentPath = paths[selectedPath];
-  const currentBlockIndex = currentPath.indexOf(
-    currentPoint.type === "stmt" ? currentPoint.block : currentPoint.block1
-  );
-
-  if (currentBlockIndex === -1) {
-    setPathData(null);
-    return;
-  }
-
-  const pathToCurrentBlock = currentPath.slice(0, currentBlockIndex + 1);
-
-  try {
-    const data = (await api.getPathData(
-      selectedFunction,
-      pathToCurrentBlock,
-      currentPoint.type === "stmt"
-        ? {
-            stmt: currentPoint.stmt,
-          }
-        : {
-            terminator: currentPoint.block2,
-          }
-    )) as PathData;
-    setPathData(data);
-  } catch (error) {
-    console.error("Error fetching path data:", error);
-  }
 }
 
 export function addKeyDownListener(
