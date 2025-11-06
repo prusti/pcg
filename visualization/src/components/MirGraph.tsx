@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
+import ReactFlow, { Background, Controls, MarkerType, PanOnScrollMode } from "reactflow";
 import "reactflow/dist/style.css";
 import { CurrentPoint, PcgProgramPointData } from "../types";
 import { MirNode, MirEdge, PcgFunctionData } from "../generated/types";
@@ -95,7 +95,8 @@ const MirGraph: React.FC<MirGraphProps> = ({
         nodesConnectable={false}
         elementsSelectable={false}
         zoomOnScroll={true}
-        panOnScroll={false}
+        panOnScroll={true}
+        panOnScrollMode={PanOnScrollMode.Vertical}
         preventScrolling={true}
         fitView
         fitViewOptions={{ padding: 0.2 }}
