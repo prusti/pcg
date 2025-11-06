@@ -1,7 +1,9 @@
 import React from "react";
-import { BasicBlockData, CurrentPoint } from "../types";
+import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
+import { PcgActionDebugRepr } from "../generated/types";
+import { actionLine } from "../actionFormatting";
 
 interface BasicBlockTableProps {
   data: BasicBlockData;
@@ -9,6 +11,8 @@ interface BasicBlockTableProps {
   setCurrentPoint: (point: CurrentPoint) => void;
   isOnSelectedPath: boolean;
   hoveredStmts?: Set<string>;
+  showActionsInGraph?: boolean;
+  pcgStmtData?: Map<number, PcgProgramPointData>;
 }
 
 export function isStorageStmt(stmt: string) {
@@ -16,14 +20,15 @@ export function isStorageStmt(stmt: string) {
 }
 
 type TableRowProps = {
-  index: number | "T"; // Either the index of the statement or "T" for the terminator
+  index: number | "T";
   stmt: MirStmt;
   selected: boolean;
   hovered: boolean;
   onClick: () => void;
+  actions?: string[];
 };
 
-function TableRow({ selected, hovered, onClick, stmt, index }: TableRowProps) {
+function TableRow({ selected, hovered, onClick, stmt, index, actions }: TableRowProps) {
   const tooltip = `Loans invalidated at start: ${stmt.loans_invalidated_start.join(", ")}\nLoans invalidated at mid: ${stmt.loans_invalidated_mid.join(", ")}\nBorrows in scope at start: ${stmt.borrows_in_scope_start.join(", ")}\nBorrows in scope at mid: ${stmt.borrows_in_scope_mid.join(", ")}`;
   return (
     <tr
@@ -37,6 +42,24 @@ function TableRow({ selected, hovered, onClick, stmt, index }: TableRowProps) {
       <td>{index}</td>
       <td>
         <code>{stmt.stmt}</code>
+        {actions && actions.length > 0 && (
+          <div
+            style={{
+              marginTop: "4px",
+              fontSize: "0.85em",
+              fontStyle: "italic",
+              fontFamily: "monospace",
+              color: "#0066cc",
+            }}
+          >
+            {actions.map((action, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && <br />}
+                {action}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -48,7 +71,44 @@ export default function BasicBlockTable({
   setCurrentPoint,
   isOnSelectedPath,
   hoveredStmts,
+  showActionsInGraph,
+  pcgStmtData,
 }: BasicBlockTableProps) {
+  const getActionsForStmt = (stmtIndex: number): string[] => {
+    if (!showActionsInGraph || !pcgStmtData) {
+      return [];
+    }
+
+    const stmtData = pcgStmtData.get(stmtIndex);
+    if (!stmtData) {
+      return [];
+    }
+
+    const actions: string[] = [];
+
+    if (Array.isArray(stmtData.actions)) {
+      stmtData.actions.forEach((action: PcgActionDebugRepr) => {
+        if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
+          actions.push(actionLine(action.data.kind));
+        }
+      });
+    } else {
+      const evalStmtActions = stmtData.actions;
+      const phases: Array<'pre_operands' | 'post_operands' | 'pre_main' | 'post_main'> = ['pre_operands', 'post_operands', 'pre_main', 'post_main'];
+      phases.forEach((phase) => {
+        const phaseActions = evalStmtActions[phase];
+        if (Array.isArray(phaseActions)) {
+          phaseActions.forEach((action: PcgActionDebugRepr) => {
+            if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
+              actions.push(actionLine(action.data.kind));
+            }
+          });
+        }
+      });
+    }
+
+    return actions;
+  };
   return (
     <table
       cellSpacing={0}
@@ -56,7 +116,7 @@ export default function BasicBlockTable({
       style={{
         borderCollapse: "collapse",
         width: "300px",
-        border: isOnSelectedPath ? "5px solid red" : "1px solid black",
+        boxShadow: isOnSelectedPath ? "0 0 0 2px red" : "0 0 0 1px black",
       }}
     >
       <tbody>
@@ -87,6 +147,7 @@ export default function BasicBlockTable({
                   navigatorPoint: { type: "iteration", name: "post_main" },
                 })
               }
+              actions={getActionsForStmt(i)}
             />
           );
         })}
@@ -107,13 +168,18 @@ export default function BasicBlockTable({
               navigatorPoint: { type: "iteration", name: "post_main" },
             })
           }
+          actions={getActionsForStmt(data.stmts.length)}
         />
       </tbody>
     </table>
   );
 }
 
-export function computeTableHeight(data: BasicBlockData): number {
+export function computeTableHeight(
+  data: BasicBlockData,
+  showActionsInGraph?: boolean,
+  pcgStmtData?: Map<number, PcgProgramPointData>
+): number {
   const container = document.createElement("div");
   container.innerHTML = ReactDOMServer.renderToString(
     BasicBlockTable({
@@ -130,6 +196,8 @@ export function computeTableHeight(data: BasicBlockData): number {
         terminator: data.terminator,
       },
       setCurrentPoint: () => {},
+      showActionsInGraph,
+      pcgStmtData,
     })
   );
   document.body.appendChild(container);

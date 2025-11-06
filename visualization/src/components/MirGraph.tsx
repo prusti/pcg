@@ -1,27 +1,36 @@
-import React from "react";
-import BasicBlockNode from "./BasicBlockNode";
-import Edge from "./Edge";
-import {
-  CurrentPoint,
-  DagreEdge,
-  DagreNode,
-  BasicBlockData,
-} from "../types";
-import { MirNode } from "../generated/types";
+import React, { useMemo } from "react";
+import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
+import "reactflow/dist/style.css";
+import { CurrentPoint, PcgProgramPointData } from "../types";
+import { MirNode, MirEdge, PcgFunctionData } from "../generated/types";
+import { toReactFlowNodes, toReactFlowEdges, PositionedLayoutNode } from "../mir_graph";
+import ReactFlowBasicBlockNode from "./ReactFlowBasicBlockNode";
+import ReactFlowEdge from "./ReactFlowEdge";
+
+const nodeTypes = {
+  basicBlock: ReactFlowBasicBlockNode,
+};
+
+const edgeTypes = {
+  custom: ReactFlowEdge,
+};
 
 interface MirGraphProps {
-  nodes: DagreNode<BasicBlockData>[];
-  edges: DagreEdge[];
+  layoutNodes: PositionedLayoutNode[];
+  edges: MirEdge[];
   mirNodes: MirNode[];
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
   isBlockOnSelectedPath: (block: number) => boolean;
   height: number | null;
   hoveredStmts?: Set<string>;
+  showActionsInGraph?: boolean;
+  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
+  pcgFunctionData?: PcgFunctionData | null;
 }
 
 const MirGraph: React.FC<MirGraphProps> = ({
-  nodes,
+  layoutNodes,
   edges,
   mirNodes,
   currentPoint,
@@ -29,71 +38,71 @@ const MirGraph: React.FC<MirGraphProps> = ({
   isBlockOnSelectedPath,
   height,
   hoveredStmts,
+  showActionsInGraph = false,
+  allPcgStmtData = new Map(),
+  pcgFunctionData = null,
 }) => {
-  // Helper to find block number from node ID (like 'bb0')
-  const findBlockByNodeId = (nodeId: string): number | undefined => {
-    return mirNodes.find((n) => n.id === nodeId)?.block;
-  };
+  const reactFlowNodes = useMemo(
+    () =>
+      toReactFlowNodes(
+        layoutNodes,
+        currentPoint,
+        setCurrentPoint,
+        isBlockOnSelectedPath,
+        hoveredStmts,
+        showActionsInGraph,
+        allPcgStmtData
+      ),
+    [layoutNodes, currentPoint, setCurrentPoint, isBlockOnSelectedPath, hoveredStmts, showActionsInGraph, allPcgStmtData]
+  );
+
+  const reactFlowEdges = useMemo(
+    () =>
+      toReactFlowEdges(
+        edges,
+        mirNodes,
+        currentPoint,
+        setCurrentPoint,
+        showActionsInGraph,
+        pcgFunctionData
+      ),
+    [edges, mirNodes, currentPoint, setCurrentPoint, showActionsInGraph, pcgFunctionData]
+  );
+
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        width: 20,
+        height: 20,
+      },
+    }),
+    []
+  );
 
   return (
     <div
       className="graph-container"
-      style={{ height: height ? height + 100 : "auto", position: "relative" }}
+      style={{ height: height ? height + 100 : 600, width: "100%" }}
     >
-      <div id="mir-graph">
-        {nodes.map((node) => (
-          <BasicBlockNode
-            isOnSelectedPath={isBlockOnSelectedPath(node.data.block)}
-            key={node.id}
-            data={node.data}
-            height={node.height}
-            position={{
-              x: node.x,
-              y: node.y,
-            }}
-            currentPoint={currentPoint}
-            setCurrentPoint={setCurrentPoint}
-            hoveredStmts={hoveredStmts}
-          />
-        ))}
-      </div>
-      <svg
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          pointerEvents: "none",
-        }}
+      <ReactFlow
+        nodes={reactFlowNodes}
+        edges={reactFlowEdges}
+        nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        defaultEdgeOptions={defaultEdgeOptions}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        elementsSelectable={false}
+        zoomOnScroll={true}
+        panOnScroll={false}
+        preventScrolling={true}
+        fitView
+        fitViewOptions={{ padding: 0.2 }}
       >
-        {edges.map((edge) => {
-          const sourceBlock = findBlockByNodeId(edge.source);
-          const targetBlock = findBlockByNodeId(edge.target);
-          const isSelected =
-            currentPoint.type === "terminator" &&
-            currentPoint.block1 === sourceBlock &&
-            currentPoint.block2 === targetBlock;
-
-          return (
-            <Edge
-              key={edge.id}
-              edge={edge}
-              nodes={nodes}
-              selected={isSelected}
-              onSelect={() => {
-                if (sourceBlock !== undefined && targetBlock !== undefined) {
-                  setCurrentPoint({
-                    type: "terminator",
-                    block1: sourceBlock,
-                    block2: targetBlock,
-                  });
-                }
-              }}
-            />
-          );
-        })}
-      </svg>
+        <Background />
+        <Controls />
+      </ReactFlow>
     </div>
   );
 };
