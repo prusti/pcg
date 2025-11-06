@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import * as Viz from "@viz-js/viz";
+import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { Api, PcgBlockDotGraphs } from "../api";
 
@@ -65,6 +66,8 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   api
 }) => {
   const [svgContent, setSvgContent] = useState<string>("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const panzoomInstanceRef = useRef<PanZoom | null>(null);
 
   useEffect(() => {
     const loadGraph = async () => {
@@ -81,7 +84,6 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
       svg.setAttribute("width", "100%");
       svg.setAttribute("height", "100%");
-      svg.setAttribute("zoomAndPan", "magnify");
 
       setSvgContent(svg.outerHTML);
     };
@@ -89,12 +91,38 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
     loadGraph();
   }, [api, currentPoint, selectedFunction, iterations]);
 
+  useEffect(() => {
+    if (!containerRef.current || !svgContent) return;
+
+    const svgElement = containerRef.current.querySelector("svg");
+    if (!svgElement) return;
+
+    if (panzoomInstanceRef.current) {
+      panzoomInstanceRef.current.dispose();
+    }
+
+    panzoomInstanceRef.current = panzoom(svgElement, {
+      maxZoom: 10,
+      minZoom: 0.1,
+      bounds: true,
+      boundsPadding: 0.1,
+    });
+
+    return () => {
+      if (panzoomInstanceRef.current) {
+        panzoomInstanceRef.current.dispose();
+        panzoomInstanceRef.current = null;
+      }
+    };
+  }, [svgContent]);
+
   return (
     <div
       id="pcg-graph"
+      ref={containerRef}
       style={{
         flex: 1,
-        overflow: "auto",
+        overflow: "hidden",
         marginRight: navigatorReservedWidth,
         display: showPCG ? "block" : "none",
       }}
