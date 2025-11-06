@@ -153,6 +153,9 @@ export const App: React.FC<AppProps> = ({
   const [codeFontSize, setCodeFontSize] = useState<number>(
     parseInt(storage.getItem("codeFontSize") || "12")
   );
+  const [showActionsInCode, setShowActionsInCode] = useState(
+    storage.getBool("showActionsInCode", false)
+  );
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
   const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
   const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
