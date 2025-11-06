@@ -54,7 +54,6 @@ export type DagreNode<T> = {
 export type ReactFlowNodeData = BasicBlockData & {
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
-  isOnSelectedPath: boolean;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
   pcgStmtData?: Map<number, PcgProgramPointData>;

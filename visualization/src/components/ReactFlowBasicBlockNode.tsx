@@ -14,7 +14,6 @@ export default function ReactFlowBasicBlockNode({ data }: NodeProps<ReactFlowNod
         }}
         currentPoint={data.currentPoint}
         setCurrentPoint={data.setCurrentPoint}
-        isOnSelectedPath={data.isOnSelectedPath}
         hoveredStmts={data.hoveredStmts}
         showActionsInGraph={data.showActionsInGraph}
         pcgStmtData={data.pcgStmtData}

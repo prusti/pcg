@@ -300,13 +300,6 @@ export const App: React.FC<AppProps> = ({
     storage.setItem("leftPanelWidth", leftPanelWidth.toString());
   }, [leftPanelWidth]);
 
-  const isBlockOnSelectedPath = useCallback(
-    (block: number) => {
-      if (paths.length === 0 || selectedPath >= paths.length) return false;
-      return paths[selectedPath].includes(block);
-    },
-    [paths, selectedPath]
-  );
 
   const handleNavigatorStateChange = useCallback(
     (isMinimized: boolean, width: number) => {
@@ -672,7 +665,6 @@ export const App: React.FC<AppProps> = ({
           currentPoint={currentPoint}
           setCurrentPoint={setCurrentPoint}
           height={graphHeight}
-          isBlockOnSelectedPath={isBlockOnSelectedPath}
           hoveredStmts={hoveredStmts}
           showActionsInGraph={showActionsInCode}
           allPcgStmtData={allPcgStmtData}

@@ -21,7 +21,6 @@ interface MirGraphProps {
   mirNodes: MirNode[];
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
-  isBlockOnSelectedPath: (block: number) => boolean;
   height: number | null;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
@@ -35,7 +34,6 @@ const MirGraph: React.FC<MirGraphProps> = ({
   mirNodes,
   currentPoint,
   setCurrentPoint,
-  isBlockOnSelectedPath,
   height,
   hoveredStmts,
   showActionsInGraph = false,
@@ -48,12 +46,11 @@ const MirGraph: React.FC<MirGraphProps> = ({
         layoutNodes,
         currentPoint,
         setCurrentPoint,
-        isBlockOnSelectedPath,
         hoveredStmts,
         showActionsInGraph,
         allPcgStmtData
       ),
-    [layoutNodes, currentPoint, setCurrentPoint, isBlockOnSelectedPath, hoveredStmts, showActionsInGraph, allPcgStmtData]
+    [layoutNodes, currentPoint, setCurrentPoint, hoveredStmts, showActionsInGraph, allPcgStmtData]
   );
 
   const reactFlowEdges = useMemo(

@@ -9,7 +9,6 @@ interface BasicBlockTableProps {
   data: BasicBlockData;
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
-  isOnSelectedPath: boolean;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
   pcgStmtData?: Map<number, PcgProgramPointData>;
@@ -69,7 +68,6 @@ export default function BasicBlockTable({
   data,
   currentPoint,
   setCurrentPoint,
-  isOnSelectedPath,
   hoveredStmts,
   showActionsInGraph,
   pcgStmtData,
@@ -116,7 +114,7 @@ export default function BasicBlockTable({
       style={{
         borderCollapse: "collapse",
         width: "300px",
-        boxShadow: isOnSelectedPath ? "0 0 0 2px red" : "0 0 0 1px black",
+        boxShadow: "0 0 0 1px black",
       }}
     >
       <tbody>
@@ -183,7 +181,6 @@ export function computeTableHeight(
   const container = document.createElement("div");
   container.innerHTML = ReactDOMServer.renderToString(
     BasicBlockTable({
-      isOnSelectedPath: false,
       currentPoint: {
         type: "stmt",
         block: 0,
