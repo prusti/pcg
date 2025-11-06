@@ -29,15 +29,20 @@ export function actionLine(
       if (typeof action.data === "string") {
         return action.data;
       }
-      return `${action.data.place}: ${capabilityLetter(action.data.from)} -> ${action.data.to ? capabilityLetter(action.data.to) : "None"}`;
+      return `Weaken ${action.data.place}: ${capabilityLetter(action.data.from)} -> ${
+        action.data.to ? capabilityLetter(action.data.to) : "None"
+      }`;
     case "RegainLoanedCapability":
-      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
+      return `Restore capability ${capabilityLetter(
+        action.data.capability
+      )} to ${action.data.place}`;
     case "AddEdge":
     case "RemoveEdge":
     case "Restore":
-      return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
+      return typeof action.data === "string"
+        ? action.data
+        : JSON.stringify(action.data);
     default:
       return JSON.stringify(action);
   }
 }
-

@@ -1,7 +1,7 @@
 import React from "react";
 import {
   EdgeProps,
-  getBezierPath,
+  getSmoothStepPath,
   EdgeLabelRenderer,
 } from "reactflow";
 import { PcgActionDebugRepr } from "../generated/types";
@@ -27,13 +27,14 @@ export default function ReactFlowEdge({
   data,
   markerEnd,
 }: EdgeProps<ReactFlowEdgeData>) {
-  const [edgePath, labelX, labelY] = getBezierPath({
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
     targetPosition,
+    borderRadius: 8,
   });
 
   const actions: string[] = [];
@@ -59,6 +60,7 @@ export default function ReactFlowEdge({
           stroke: data?.selected ? "green" : "black",
           strokeWidth: 2,
           cursor: "pointer",
+          zIndex: -1,
         }}
         onClick={data?.onSelect}
       />
