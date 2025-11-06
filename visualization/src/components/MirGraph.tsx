@@ -3,7 +3,7 @@ import ReactFlow, { Background, Controls, MarkerType, PanOnScrollMode } from "re
 import "reactflow/dist/style.css";
 import { CurrentPoint, PcgProgramPointData } from "../types";
 import { MirNode, MirEdge, PcgFunctionData } from "../generated/types";
-import { toReactFlowNodes, toReactFlowEdges, PositionedLayoutNode } from "../mir_graph";
+import { toReactFlowNodes, toReactFlowEdges, filterNodesAndEdges, layoutNodesWithDagre } from "../mir_graph";
 import ReactFlowBasicBlockNode from "./ReactFlowBasicBlockNode";
 import ReactFlowEdge from "./ReactFlowEdge";
 
@@ -16,7 +16,6 @@ const edgeTypes = {
 };
 
 interface MirGraphProps {
-  layoutNodes: PositionedLayoutNode[];
   edges: MirEdge[];
   mirNodes: MirNode[];
   currentPoint: CurrentPoint;
@@ -28,7 +27,6 @@ interface MirGraphProps {
 }
 
 const MirGraph: React.FC<MirGraphProps> = ({
-  layoutNodes,
   edges,
   mirNodes,
   currentPoint,
@@ -38,6 +36,22 @@ const MirGraph: React.FC<MirGraphProps> = ({
   allPcgStmtData = new Map(),
   pcgFunctionData = null,
 }) => {
+  const { filteredNodes, filteredEdges } = useMemo(
+    () => filterNodesAndEdges(mirNodes, edges, {
+      showUnwindEdges: false,
+      path: null,
+    }),
+    [mirNodes, edges]
+  );
+
+  const layoutNodes = useMemo(() => {
+    return layoutNodesWithDagre(
+      filteredNodes,
+      filteredEdges,
+      showActionsInGraph,
+      allPcgStmtData
+    ).nodes;
+  }, [filteredNodes, filteredEdges, showActionsInGraph, allPcgStmtData]);
   const reactFlowNodes = useMemo(
     () =>
       toReactFlowNodes(

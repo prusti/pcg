@@ -25,7 +25,7 @@ import {
 import MirGraph from "./MirGraph";
 import { Api, PcgBlockDotGraphs } from "../api";
 import { PcgFunctionData } from "../generated/types";
-import { filterNodesAndEdges, layoutNodesWithDagre } from "../mir_graph";
+import { filterNodesAndEdges } from "../mir_graph";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import { addKeyDownListener, reloadIterations } from "../effects";
 import SourceCodeViewer from "./SourceCodeViewer";
@@ -113,21 +113,10 @@ export const App: React.FC<AppProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dividerRef = useRef<HTMLDivElement>(null);
 
-  const { filteredNodes, filteredEdges } = filterNodesAndEdges(nodes, edges, {
+  const { filteredNodes } = filterNodesAndEdges(nodes, edges, {
     showUnwindEdges,
     path: null,
   });
-
-  const layoutResult = useMemo(() => {
-    return layoutNodesWithDagre(
-      filteredNodes,
-      filteredEdges,
-      showActionsInCode,
-      allPcgStmtData
-    );
-  }, [filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData]);
-
-  const layoutNodes = layoutResult.nodes;
 
   useEffect(() => {
     if (selectedFunction) {
@@ -436,7 +425,6 @@ export const App: React.FC<AppProps> = ({
           api={api}
         />
         <MirGraph
-          layoutNodes={layoutNodes}
           edges={edges}
           mirNodes={nodes}
           currentPoint={currentPoint}
