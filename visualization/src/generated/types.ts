@@ -70,6 +70,10 @@ export type PathToDotFile = string
 
 export type PcgActionDebugRepr = { type: "Owned"; data: ActionKindWithDebugCtxt<RepackOp<string, string, string>> } | { type: "Borrow"; data: ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr> }
 
+export type PcgBlockData = { statements: PcgStmtVisualizationData[]; successors: Partial<{ [key in number]: PcgSuccessorVisualizationData }> }
+
+export type PcgFunctionData = { blocks: Partial<{ [key in number]: PcgBlockData }> }
+
 export type PcgStmtVisualizationData = { actions: EvalStmtData<PcgActionDebugRepr[]> }
 
 export type PcgSuccessorVisualizationData = { actions: PcgActionDebugRepr[] }

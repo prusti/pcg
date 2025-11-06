@@ -208,6 +208,19 @@ struct PcgSuccessorVisualizationData {
     actions: VisualizationActions,
 }
 
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgBlockData {
+    statements: Vec<PcgStmtVisualizationData>,
+    successors: std::collections::HashMap<usize, PcgSuccessorVisualizationData>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgFunctionData {
+    blocks: std::collections::HashMap<usize, PcgBlockData>,
+}
+
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
 /// Types that implement this trait are used as inputs to the PCG.
 ///
@@ -442,7 +455,10 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
             .expect("Failed to generate JSON from MIR");
 
-        // Iterate over each statement in the MIR
+        let mut function_data = PcgFunctionData {
+            blocks: std::collections::HashMap::new(),
+        };
+
         for (block, _data) in body.basic_blocks.iter_enumerated() {
             let pcs_block_option = if let Ok(opt) = analysis_results.get_all_for_bb(block) {
                 opt
@@ -453,33 +469,42 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 continue;
             }
             let pcs_block = pcs_block_option.unwrap();
-            for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
-                let data = PcgStmtVisualizationData {
+
+            let statements = pcs_block
+                .statements
+                .iter()
+                .map(|statement| PcgStmtVisualizationData {
                     actions: statement.actions.debug_repr(pcg_ctxt.compiler_ctxt),
-                };
-                let pcg_data_file_path = dir_path.join(format!(
-                    "block_{}_stmt_{}_pcg_data.json",
-                    block.index(),
-                    statement_index
-                ));
-                let pcg_data_json = serde_json::to_string(&data).unwrap();
-                std::fs::write(&pcg_data_file_path, pcg_data_json)
-                    .expect("Failed to write pcg data to JSON file");
-            }
-            for succ in pcs_block.terminator.succs {
-                let data = PcgSuccessorVisualizationData {
-                    actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
-                };
-                let pcg_data_file_path = dir_path.join(format!(
-                    "block_{}_term_block_{}_pcg_data.json",
-                    block.index(),
-                    succ.block().index()
-                ));
-                let pcg_data_json = serde_json::to_string(&data).unwrap();
-                std::fs::write(&pcg_data_file_path, pcg_data_json)
-                    .expect("Failed to write pcg data to JSON file");
-            }
+                })
+                .collect();
+
+            let successors = pcs_block
+                .terminator
+                .succs
+                .iter()
+                .map(|succ| {
+                    (
+                        succ.block().index(),
+                        PcgSuccessorVisualizationData {
+                            actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
+                        },
+                    )
+                })
+                .collect();
+
+            function_data.blocks.insert(
+                block.index(),
+                PcgBlockData {
+                    statements,
+                    successors,
+                },
+            );
         }
+
+        let pcg_data_file_path = dir_path.join("pcg_data.json");
+        let pcg_data_json = serde_json::to_string(&function_data).unwrap();
+        std::fs::write(&pcg_data_file_path, pcg_data_json)
+            .expect("Failed to write pcg data to JSON file");
     }
 
     analysis_results

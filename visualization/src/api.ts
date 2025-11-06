@@ -1,4 +1,4 @@
-import { MirGraph, StmtGraphs } from "./generated/types";
+import { MirGraph, PcgFunctionData, StmtGraphs } from "./generated/types";
 import {
   CurrentPoint,
   FunctionsMetadata,
@@ -13,6 +13,7 @@ export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[];
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;
   protected abstract fetchTextFile(filePath: string): Promise<string>;
+  private pcgDataCache: Map<string, PcgFunctionData> = new Map();
 
   async getPcgIterations(functionName: string, block: number): Promise<PcgBlockDotGraphs> {
     const iterations = await this.fetchJsonFile(
@@ -30,16 +31,41 @@ export abstract class Api {
     return await this.fetchJsonFile("data/functions.json") as Promise<FunctionsMetadata>;
   }
 
+  private async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
+    if (!this.pcgDataCache.has(functionName)) {
+      const data = await this.fetchJsonFile(`data/${functionName}/pcg_data.json`) as PcgFunctionData;
+      this.pcgDataCache.set(functionName, data);
+    }
+    return this.pcgDataCache.get(functionName)!;
+  }
+
   async getPcgProgramPointData(
     functionName: string,
     currentPoint: CurrentPoint
   ): Promise<PcgProgramPointData> {
-    const path =
-      currentPoint.type === "stmt"
-        ? `block_${currentPoint.block}_stmt_${currentPoint.stmt}`
-        : `block_${currentPoint.block1}_term_block_${currentPoint.block2}`;
+    const functionData = await this.getPcgFunctionData(functionName);
 
-    return await this.fetchJsonFile(`data/${functionName}/${path}_pcg_data.json`) as Promise<PcgProgramPointData>;
+    if (currentPoint.type === "stmt") {
+      const blockData = functionData.blocks[currentPoint.block];
+      if (!blockData) {
+        throw new Error(`Block ${currentPoint.block} not found in PCG data`);
+      }
+      const stmtData = blockData.statements[currentPoint.stmt];
+      if (!stmtData) {
+        throw new Error(`Statement ${currentPoint.stmt} not found in block ${currentPoint.block}`);
+      }
+      return stmtData;
+    } else {
+      const blockData = functionData.blocks[currentPoint.block1];
+      if (!blockData) {
+        throw new Error(`Block ${currentPoint.block1} not found in PCG data`);
+      }
+      const succData = blockData.successors[currentPoint.block2];
+      if (!succData) {
+        throw new Error(`Successor to block ${currentPoint.block2} not found in block ${currentPoint.block1}`);
+      }
+      return succData;
+    }
   }
 
   async getPathData(
