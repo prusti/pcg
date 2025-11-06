@@ -5,7 +5,6 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import * as Viz from "@viz-js/viz";
 import { openDotGraphInNewWindow } from "../dot_graph";
 
 import {
@@ -40,6 +39,7 @@ import {
 } from "../effects";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 import SourceCodeViewer from "./SourceCodeViewer";
+import PcgGraph from "./PcgGraph";
 import {
   DotFileAtPhase,
   EvalStmtData,
@@ -198,41 +198,6 @@ export const App: React.FC<AppProps> = ({
   const layoutNodes = layoutResult.nodes;
   const graphHeight = layoutResult.height;
 
-  const loadPCGDotGraph = useCallback(async () => {
-    const dotGraph = document.getElementById("pcg-graph");
-    if (!dotGraph) {
-      console.error("Dot graph element not found");
-      return;
-    }
-    const dotFilePath = getPCGDotGraphFilename(
-      currentPoint,
-      selectedFunction,
-      iterations
-    );
-    if (!dotFilePath) {
-      dotGraph.innerHTML = "";
-    } else {
-      const dotData = await api.fetchDotFile(dotFilePath);
-
-      Viz.instance().then(function (viz) {
-        dotGraph.innerHTML = "";
-        dotGraph.appendChild(viz.renderSVGElement(dotData));
-      });
-    }
-  }, [api, iterations, currentPoint, selectedFunction]);
-
-  useEffect(() => {
-    const graph = document.getElementById("pcg-graph");
-    if (showPCG) {
-      graph.style.display = "block";
-    } else {
-      graph.style.display = "none";
-    }
-  }, [showPCG]);
-
-  useEffect(() => {
-    loadPCGDotGraph();
-  }, [loadPCGDotGraph]);
 
   useEffect(() => {
     if (selectedFunction) {
@@ -526,7 +491,7 @@ export const App: React.FC<AppProps> = ({
   }, [handleMouseMove, handleMouseUp]);
 
   return (
-    <div style={{ display: "flex", width: "100%" }}>
+    <div style={{ display: "flex", width: "100%", height: "100vh" }}>
       <div
         style={{
           position: "relative",
@@ -850,14 +815,14 @@ export const App: React.FC<AppProps> = ({
         ></div>
       </div>
 
-      <div
-        id="pcg-graph"
-        style={{
-          flex: 1,
-          overflow: "auto",
-          marginRight: navigatorReservedWidth,
-        }}
-      ></div>
+      <PcgGraph
+        showPCG={showPCG}
+        navigatorReservedWidth={navigatorReservedWidth}
+        currentPoint={currentPoint}
+        selectedFunction={selectedFunction}
+        iterations={iterations}
+        api={api}
+      />
     </div>
   );
 };
