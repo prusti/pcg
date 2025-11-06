@@ -31,7 +31,7 @@ export abstract class Api {
     return await this.fetchJsonFile("data/functions.json") as Promise<FunctionsMetadata>;
   }
 
-  private async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
+  public async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
     if (!this.pcgDataCache.has(functionName)) {
       const data = await this.fetchJsonFile(`data/${functionName}/pcg_data.json`) as PcgFunctionData;
       this.pcgDataCache.set(functionName, data);

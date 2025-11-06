@@ -1,5 +1,5 @@
 import React from "react";
-import { BasicBlockData, CurrentPoint } from "../types";
+import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "../types";
 import BasicBlockTable from "./BasicBlockTable";
 
 export default function BasicBlockNode({
@@ -10,6 +10,8 @@ export default function BasicBlockNode({
   setCurrentPoint,
   isOnSelectedPath,
   hoveredStmts,
+  showActionsInGraph,
+  pcgStmtData,
 }: {
   height: number;
   data: BasicBlockData;
@@ -18,6 +20,8 @@ export default function BasicBlockNode({
   setCurrentPoint: (point: CurrentPoint) => void;
   isOnSelectedPath: boolean;
   hoveredStmts?: Set<string>;
+  showActionsInGraph?: boolean;
+  pcgStmtData?: Map<number, PcgProgramPointData>;
 }) {
   return (
     <div
@@ -33,6 +37,8 @@ export default function BasicBlockNode({
         setCurrentPoint={setCurrentPoint}
         isOnSelectedPath={isOnSelectedPath}
         hoveredStmts={hoveredStmts}
+        showActionsInGraph={showActionsInGraph}
+        pcgStmtData={pcgStmtData}
       />
     </div>
   );

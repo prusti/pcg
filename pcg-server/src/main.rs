@@ -1,14 +1,14 @@
 use axum::{
+    Router,
     extract::Multipart,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
-    Router,
 };
 use hyper::StatusCode;
 use std::{fs, net::SocketAddr, path::PathBuf};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
-use tracing::{debug, info, Level};
+use tracing::{Level, debug, info};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
@@ -22,7 +22,9 @@ async fn main() {
     for asset in &required_assets {
         if !PathBuf::from(asset).exists() {
             eprintln!("ERROR: Required JavaScript asset not found: {}", asset);
-            eprintln!("Please build the assets by running 'npm install && npm run build' in the pcg-server directory.");
+            eprintln!(
+                "Please build the assets by running 'npm install && npm run build' in the pcg-server directory."
+            );
             std::process::exit(1);
         }
     }
@@ -65,17 +67,16 @@ fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String>
     // Determine the path to the pcg_bin executable
     // In development: ../pcg-bin/target/release/pcg_bin (pcg-bin has its own workspace)
     // In Docker: ../target/release/pcg_bin (built in shared workspace)
-    let pcg_bin_path = std::env::var("PCG_BIN_PATH")
-        .unwrap_or_else(|_| {
-            // Try development path first, fall back to Docker path
-            let dev_path = "../pcg-bin/target/release/pcg_bin";
-            let docker_path = "../target/release/pcg_bin";
-            if std::path::Path::new(dev_path).exists() {
-                dev_path.to_string()
-            } else {
-                docker_path.to_string()
-            }
-        });
+    let pcg_bin_path = std::env::var("PCG_BIN_PATH").unwrap_or_else(|_| {
+        // Try development path first, fall back to Docker path
+        let dev_path = "../pcg-bin/target/release/pcg_bin";
+        let docker_path = "../target/release/pcg_bin";
+        if std::path::Path::new(dev_path).exists() {
+            dev_path.to_string()
+        } else {
+            docker_path.to_string()
+        }
+    });
 
     info!("Running PCG analysis using pcg-bin at: {}", pcg_bin_path);
 
@@ -162,7 +163,10 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
                     code = code_text;
                     debug!("Using code from textarea");
                 } else {
-                    debug!("Ignoring code field because input method is: {}", input_method);
+                    debug!(
+                        "Ignoring code field because input method is: {}",
+                        input_method
+                    );
                 }
             }
             "file" => {
@@ -216,21 +220,11 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     let result = run_pcg_analysis(abs_file_path, abs_data_dir);
 
     if let Err(e) = result {
-        let error_message = format!("PCG analysis failed: {}", e);
-        return Ok((StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response());
+        return Ok((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response());
     }
-
-    // Zip the data directory
-    let data_zip_path = unique_dir.join("data.zip");
-    zip_directory(&data_dir, &data_zip_path)?;
-    info!("Created data.zip at {:?}", data_zip_path);
 
     // Redirect to local visualization with data source URL
     let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
-    let redirect_url = format!(
-        "/visualization/?datasrc=/tmp/{}",
-        unique_dir_name
-    );
+    let redirect_url = format!("/visualization/?datasrc=/tmp/{}", unique_dir_name);
     Ok(Redirect::to(&redirect_url).into_response())
 }
-

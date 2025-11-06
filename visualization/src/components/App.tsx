@@ -24,10 +24,10 @@ import PathConditions from "./PathConditions";
 import MirGraph from "./MirGraph";
 import Assertions, { Assertion } from "./Assertions";
 import { Api, PcgBlockDotGraphs, ZipFileApi } from "../api";
+import { PcgFunctionData } from "../generated/types";
 import {
   filterNodesAndEdges,
-  layoutUnsizedNodes,
-  toDagreEdges,
+  layoutNodesWithDagre,
 } from "../mir_graph";
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
@@ -120,6 +120,8 @@ export const App: React.FC<AppProps> = ({
     useState<PcgProgramPointData | null>(null);
   const [allPcgStmtData, setAllPcgStmtData] =
     useState<Map<number, Map<number, PcgProgramPointData>>>(new Map());
+  const [pcgFunctionData, setPcgFunctionData] =
+    useState<PcgFunctionData | null>(null);
   const [currentPoint, setCurrentPoint] = useState<CurrentPoint>({
     type: "stmt",
     block: 0,
@@ -190,13 +192,11 @@ export const App: React.FC<AppProps> = ({
   });
 
   const layoutResult = useMemo(() => {
-    return layoutUnsizedNodes(filteredNodes, filteredEdges);
-  }, [filteredNodes, filteredEdges]);
+    return layoutNodesWithDagre(filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData);
+  }, [filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData]);
 
-  const dagreNodes = layoutResult.nodes;
-  const dagreEdges = useMemo(() => {
-    return toDagreEdges(filteredEdges);
-  }, [filteredEdges]);
+  const layoutNodes = layoutResult.nodes;
+  const graphHeight = layoutResult.height;
 
   const loadPCGDotGraph = useCallback(async () => {
     const dotGraph = document.getElementById("pcg-graph");
@@ -274,9 +274,12 @@ export const App: React.FC<AppProps> = ({
       try {
         const allData = await api.getAllPcgStmtData(selectedFunction);
         setAllPcgStmtData(allData);
+        const functionData = await api.getPcgFunctionData(selectedFunction);
+        setPcgFunctionData(functionData);
       } catch (error) {
         console.error("Error fetching all pcg stmt data:", error);
         setAllPcgStmtData(new Map());
+        setPcgFunctionData(null);
       }
     };
 
@@ -557,17 +560,6 @@ export const App: React.FC<AppProps> = ({
             onToggleSettings={() => setShowSettings(!showSettings)}
             onFontSizeChange={setCodeFontSize}
             onToggleMinimized={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
-            showActionsInCode={showActionsInCode}
-            nodes={nodes}
-            allPcgStmtData={allPcgStmtData}
-            onActionClick={(block, stmt) => {
-              setCurrentPoint({
-                type: "stmt",
-                block,
-                stmt,
-                navigatorPoint: { type: "iteration", name: "post_main" },
-              });
-            }}
           />
         </div>
 
@@ -658,7 +650,7 @@ export const App: React.FC<AppProps> = ({
                   checked={showActionsInCode}
                   onChange={(e) => setShowActionsInCode(e.target.checked)}
                 />{" "}
-                Show Actions in Code
+                Show Actions in MIR Graph
               </label>
               <label style={{ display: "block", marginBottom: "10px" }}>
                 <input
@@ -709,14 +701,17 @@ export const App: React.FC<AppProps> = ({
           </div>
         )}
         <MirGraph
-          nodes={dagreNodes}
-          edges={dagreEdges}
+          layoutNodes={layoutNodes}
+          edges={edges}
           mirNodes={nodes}
           currentPoint={currentPoint}
           setCurrentPoint={setCurrentPoint}
-          height={layoutResult.height}
+          height={graphHeight}
           isBlockOnSelectedPath={isBlockOnSelectedPath}
           hoveredStmts={hoveredStmts}
+          showActionsInGraph={showActionsInCode}
+          allPcgStmtData={allPcgStmtData}
+          pcgFunctionData={pcgFunctionData}
         />
         {showPCGNavigator &&
           pcgProgramPointData &&

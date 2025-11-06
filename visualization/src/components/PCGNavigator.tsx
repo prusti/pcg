@@ -7,14 +7,9 @@ import {
   StringOf,
   NavigatorPoint,
 } from "../types";
-import {
-  BorrowPcgActionKindDebugRepr,
-  CapabilityKind,
-  RepackOp,
-  StmtGraphs,
-  PcgSuccessorVisualizationData,
-} from "../generated/types";
+import { StmtGraphs, PcgSuccessorVisualizationData } from "../generated/types";
 import { storage } from "../storage";
+import { actionLine } from "../actionFormatting";
 
 type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
@@ -29,45 +24,6 @@ export const NAVIGATOR_DEFAULT_WIDTH = 200;
 export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
-
-function capabilityLetter(capability: CapabilityKind): string {
-  switch (capability) {
-    case "Read":
-      return "R";
-    case "Write":
-      return "W";
-    case "Exclusive":
-      return "E";
-    case "ShallowExclusive":
-      return "e";
-  }
-}
-
-function actionLine(
-  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
-): string {
-  switch (action.type) {
-    case "Expand":
-      return `Unpack ${action.data.from}`;
-    case "Collapse":
-      return `Pack ${action.data.to}`;
-    case "Weaken":
-      // Check if data is a string (from BorrowPcgActionKindDebugRepr) or object (from RepackOp)
-      if (typeof action.data === "string") {
-        return action.data;
-      }
-      return `Weaken ${action.data.place} from ${action.data.from} to ${action.data.to}`;
-    case "RegainLoanedCapability":
-      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
-    case "AddEdge":
-    case "RemoveEdge":
-    case "Restore":
-      // For these types, data should be a string
-      return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
-    default:
-      return JSON.stringify(action);
-  }
-}
 
 export default function PCGNavigator({
   iterations,

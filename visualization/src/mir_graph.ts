@@ -1,11 +1,24 @@
-import { MirEdge, MirNode } from "./generated/types";
+import { MirEdge, MirNode, PcgFunctionData } from "./generated/types";
 import { computeTableHeight } from "./components/BasicBlockTable";
-import { BasicBlockData, DagreEdge, DagreInputNode, DagreNode } from "./types";
+import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "./types";
 import * as dagre from "@dagrejs/dagre";
+import { Node as ReactFlowNode, Edge as ReactFlowEdge } from "reactflow";
 
 export type FilterOptions = {
   showUnwindEdges: boolean;
   path: number[] | null;
+};
+
+export type LayoutNode = {
+  id: string;
+  width: number;
+  height: number;
+  data: BasicBlockData;
+};
+
+export type PositionedLayoutNode = LayoutNode & {
+  x: number;
+  y: number;
 };
 
 function computeReachableBlocks(
@@ -85,62 +98,126 @@ export function filterNodesAndEdges(
   return { filteredNodes, filteredEdges };
 }
 
-export function layoutSizedNodes(
-  nodes: DagreInputNode<BasicBlockData>[],
-  edges: { source: string; target: string }[]
-) {
+export function layoutNodesWithDagre(
+  nodes: MirNode[],
+  edges: MirEdge[],
+  showActionsInGraph?: boolean,
+  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
+): { nodes: PositionedLayoutNode[]; height: number | null } {
+  // Create Dagre graph
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ ranksep: 100, rankdir: "TB", marginy: 100 });
 
-  edges.forEach((edge) => g.setEdge(edge.source, edge.target));
-  nodes.forEach((node) => g.setNode(node.id, node));
+  // Prepare nodes with calculated dimensions (accounting for action display)
+  const layoutNodes: LayoutNode[] = nodes.map((node) => ({
+    id: node.id,
+    width: 300,
+    height: computeTableHeight(
+      node,
+      showActionsInGraph,
+      allPcgStmtData?.get(node.block)
+    ),
+    data: {
+      block: node.block,
+      stmts: node.stmts,
+      terminator: node.terminator,
+    },
+  }));
 
+  // Add nodes and edges to Dagre
+  layoutNodes.forEach((node) => g.setNode(node.id, node));
+  edges.forEach((edge) => g.setEdge(edge.source, edge.target));
+
+  // Run layout
   dagre.layout(g);
 
-  let height = g.graph().height;
-  if (!isFinite(height)) {
-    height = null;
-  }
-
-  return {
-    nodes: nodes as DagreNode<BasicBlockData>[],
-    edges,
-    height,
-  };
-}
-
-export function layoutUnsizedNodes(
-  nodes: MirNode[],
-  edges: { source: string; target: string }[]
-): {
-  nodes: DagreNode<BasicBlockData>[];
-  height: number;
-} {
-  const heightCalculatedNodes = nodes.map((node) => {
+  // Extract positioned nodes
+  const positionedNodes = layoutNodes.map((node) => {
+    const position = g.node(node.id);
     return {
-      id: node.id,
-      data: {
-        block: node.block,
-        stmts: node.stmts,
-        terminator: node.terminator,
-      },
-      height: computeTableHeight(node),
-      width: 300,
+      ...node,
+      x: position.x,
+      y: position.y,
     };
   });
-  const g = layoutSizedNodes(heightCalculatedNodes, edges);
-  return {
-    nodes: g.nodes,
-    height: g.height,
-  };
+
+  const graphHeight = g.graph().height;
+  const height = isFinite(graphHeight) ? graphHeight : null;
+
+  return { nodes: positionedNodes, height };
 }
 
-export function toDagreEdges(edges: MirEdge[]): DagreEdge[] {
-  return edges.map((edge, idx) => ({
-    id: `${edge.source}-${edge.target}-${idx}`,
-    source: edge.source,
-    target: edge.target,
-    data: { label: edge.label },
-    type: "straight",
+export function toReactFlowNodes(
+  layoutNodes: PositionedLayoutNode[],
+  currentPoint: CurrentPoint,
+  setCurrentPoint: (point: CurrentPoint) => void,
+  isBlockOnSelectedPath: (block: number) => boolean,
+  hoveredStmts?: Set<string>,
+  showActionsInGraph?: boolean,
+  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
+): ReactFlowNode[] {
+  return layoutNodes.map((node) => ({
+    id: node.id,
+    type: "basicBlock",
+    position: {
+      x: node.x - node.width / 2,
+      y: node.y - node.height / 2,
+    },
+    data: {
+      ...node.data,
+      currentPoint,
+      setCurrentPoint,
+      isOnSelectedPath: isBlockOnSelectedPath(node.data.block),
+      hoveredStmts,
+      showActionsInGraph,
+      pcgStmtData: allPcgStmtData?.get(node.data.block),
+    },
   }));
+}
+
+export function toReactFlowEdges(
+  mirEdges: MirEdge[],
+  mirNodes: MirNode[],
+  currentPoint: CurrentPoint,
+  setCurrentPoint: (point: CurrentPoint) => void,
+  showActionsInGraph: boolean,
+  pcgFunctionData: PcgFunctionData | null
+): ReactFlowEdge[] {
+  const nodeIdToBlock = new Map(mirNodes.map((n) => [n.id, n.block]));
+
+  return mirEdges.map((edge, idx) => {
+    const sourceBlock = nodeIdToBlock.get(edge.source);
+    const targetBlock = nodeIdToBlock.get(edge.target);
+    const isSelected =
+      currentPoint.type === "terminator" &&
+      currentPoint.block1 === sourceBlock &&
+      currentPoint.block2 === targetBlock;
+
+    const terminatorActions =
+      showActionsInGraph && sourceBlock !== undefined && targetBlock !== undefined && pcgFunctionData
+        ? pcgFunctionData.blocks[sourceBlock]?.successors[targetBlock]
+        : undefined;
+
+    return {
+      id: `${edge.source}-${edge.target}-${idx}`,
+      source: edge.source,
+      target: edge.target,
+      type: "custom",
+      data: {
+        label: edge.label,
+        selected: isSelected,
+        onSelect: () => {
+          if (sourceBlock !== undefined && targetBlock !== undefined) {
+            setCurrentPoint({
+              type: "terminator",
+              block1: sourceBlock,
+              block2: targetBlock,
+            });
+          }
+        },
+        showActions: showActionsInGraph,
+        terminatorActions,
+      },
+    };
+  });
 }
