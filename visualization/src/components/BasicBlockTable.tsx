@@ -8,6 +8,7 @@ interface BasicBlockTableProps {
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
   isOnSelectedPath: boolean;
+  hoveredStmts?: Set<string>;
 }
 
 export function isStorageStmt(stmt: string) {
@@ -18,16 +19,20 @@ type TableRowProps = {
   index: number | "T"; // Either the index of the statement or "T" for the terminator
   stmt: MirStmt;
   selected: boolean;
+  hovered: boolean;
   onClick: () => void;
 };
 
-function TableRow({ selected, onClick, stmt, index }: TableRowProps) {
+function TableRow({ selected, hovered, onClick, stmt, index }: TableRowProps) {
   const tooltip = `Loans invalidated at start: ${stmt.loans_invalidated_start.join(", ")}\nLoans invalidated at mid: ${stmt.loans_invalidated_mid.join(", ")}\nBorrows in scope at start: ${stmt.borrows_in_scope_start.join(", ")}\nBorrows in scope at mid: ${stmt.borrows_in_scope_mid.join(", ")}`;
   return (
     <tr
       className={selected ? "highlight" : ""}
       onClick={onClick}
       title={tooltip}
+      style={{
+        backgroundColor: selected ? undefined : (hovered ? "#add8e6" : undefined),
+      }}
     >
       <td>{index}</td>
       <td>
@@ -42,6 +47,7 @@ export default function BasicBlockTable({
   currentPoint,
   setCurrentPoint,
   isOnSelectedPath,
+  hoveredStmts,
 }: BasicBlockTableProps) {
   return (
     <table
@@ -61,6 +67,7 @@ export default function BasicBlockTable({
           </td>
         </tr>
         {data.stmts.map((stmt, i) => {
+          const stmtId = `${data.block}-${i}`;
           return (
             <TableRow
               key={i}
@@ -71,6 +78,7 @@ export default function BasicBlockTable({
                 i === currentPoint.stmt &&
                 data.block === currentPoint.block
               }
+              hovered={hoveredStmts?.has(stmtId) || false}
               onClick={() =>
                 setCurrentPoint({
                   type: "stmt",
@@ -90,6 +98,7 @@ export default function BasicBlockTable({
             currentPoint.stmt == data.stmts.length &&
             data.block === currentPoint.block
           }
+          hovered={hoveredStmts?.has(`${data.block}-${data.stmts.length}`) || false}
           onClick={() =>
             setCurrentPoint({
               type: "stmt",

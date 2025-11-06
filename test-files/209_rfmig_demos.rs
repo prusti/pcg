@@ -10,13 +10,6 @@ fn ex1_replace_fst(mut p: Pair, s: String) -> Pair {
     p
 }
 
-fn ex1_replace_fst_cond(mut p: Pair, s: String) -> Pair {
-    if rand_bool() {
-        drop(p.fst);
-    }
-    p.fst = s;
-    p
-}
 
 fn ex2_borrow() {
    let mut x = 1;
@@ -44,8 +37,24 @@ fn ex4_expiry(mut x: i32, mut y: i32, mut z: i32) {
     *r2 = 5;
 }
 
+fn ex5_function_call(c: bool) {
+    let mut x = 1;
+    let mut y = 2;
+    let r = choose(c, &mut x, &mut y);
+    *r = 3;
+}
 
-fn ex5_path_sensitive(c: bool) {
+fn ex6_loop<'a>(list: &'a mut List<i32>) -> Option<&'a mut i32> {
+    let mut current = &mut *list;
+    let mut prev = None;
+    while let Some(next) = &mut current.tail {
+        prev = Some(&mut current.head);
+        current = &mut *next;
+    }
+    prev
+}
+
+fn ex7_path_sensitive(c: bool) {
     let mut x = 1;
     let mut y = 2;
     let r: &mut i32;
@@ -59,7 +68,7 @@ fn ex5_path_sensitive(c: bool) {
 
 fn g<T>(x1: &mut T, x2: &mut T){}
 
-fn ex6_nested<'a>() {
+fn ex8_nested<'a>() {
     let mut x = 1;
     let mut y = 2;
     let mut r1 = &mut x;
@@ -69,16 +78,18 @@ fn ex6_nested<'a>() {
     assert!(x == 0);
 }
 
+fn ex9_replace_head(mut list: List<String>, new_head: String, early_drop: bool) -> List<String> {
+    if early_drop {
+        drop(list.head);
+    }
+    list.head = new_head;
+    list
+}
+
 fn choose<'a>(c: bool, x: &'a mut i32, y: &'a mut i32) -> &'a mut i32 {
     if c { x } else { y }
 }
 
-fn ex7_function_call(c: bool) {
-    let mut x = 1;
-    let mut y = 2;
-    let r = choose(c, &mut x, &mut y);
-    *r = 3;
-}
 
 pub type Node<T> = Option<Box<List<T>>>;
 
@@ -87,15 +98,6 @@ struct List<T> {
     tail: Node<T>,
 }
 
-fn ex8_penultimate<'a>(list: &'a mut List<i32>) -> Option<&'a mut i32> {
-    let mut current = &mut *list;
-    let mut prev = None;
-    while let Some(next) = &mut current.tail {
-        prev = Some(&mut current.head);
-        current = &mut *next;
-    }
-    prev
-}
 
 fn main() {
 }

@@ -146,8 +146,7 @@ async function initializeCodeEditor(): Promise<void> {
                 editorInstance.dispatch({
                     effects: vimCompartment.reconfigure(vim())
                 });
-                vimStatus.style.display = 'inline-block';
-                vimStatus.textContent = '-- NORMAL --';
+                vimStatus.style.display = 'none';
             } else {
                 editorInstance.dispatch({
                     effects: vimCompartment.reconfigure([])
@@ -166,15 +165,15 @@ async function initializeCodeEditor(): Promise<void> {
 
             const mode = e.detail.mode;
             if (mode === 'normal') {
-                vimStatus.textContent = '-- NORMAL --';
-                vimStatus.style.backgroundColor = '#e5e7eb';
-                vimStatus.style.color = '#6b7280';
+                vimStatus.style.display = 'none';
             } else if (mode === 'insert') {
                 vimStatus.textContent = '-- INSERT --';
+                vimStatus.style.display = 'inline-block';
                 vimStatus.style.backgroundColor = '#dbeafe';
                 vimStatus.style.color = '#1e40af';
             } else if (mode === 'visual') {
                 vimStatus.textContent = '-- VISUAL --';
+                vimStatus.style.display = 'inline-block';
                 vimStatus.style.backgroundColor = '#fef3c7';
                 vimStatus.style.color = '#92400e';
             }

@@ -16,7 +16,6 @@ import {
   NavigatorPoint,
   PathData,
   PcgProgramPointData,
-  PcgStmtVisualizationData,
   SourcePos,
   StringOf,
 } from "../types";
@@ -32,7 +31,6 @@ import {
 } from "../mir_graph";
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
-import FunctionSelector from "./FunctionSelector";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
@@ -66,6 +64,10 @@ function getPCGDotGraphFilename(
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
+    // Successor actions (from terminator edges) don't have PCG dot graphs
+    if (currentPoint.navigatorPoint.phase === "successor") {
+      return null;
+    }
     const iterationActions = getIterationActions(graphs, currentPoint);
     const actionGraphFilenames = iterationActions[currentPoint.navigatorPoint.phase];
     return getActionGraphFilename(
@@ -99,8 +101,6 @@ function getPCGDotGraphFilename(
 
 interface AppProps {
   initialFunction: FunctionSlug;
-  initialPaths: number[][];
-  initialAssertions: Assertion[];
   functions: FunctionsMetadata;
   initialPath?: number;
   api: Api;
@@ -109,8 +109,6 @@ interface AppProps {
 
 export const App: React.FC<AppProps> = ({
   initialFunction,
-  initialPaths,
-  initialAssertions,
   functions,
   initialPath = 0,
   api,
@@ -120,6 +118,8 @@ export const App: React.FC<AppProps> = ({
   const [pathData, setPathData] = useState<PathData | null>(null);
   const [pcgProgramPointData, setPcgProgramPointData] =
     useState<PcgProgramPointData | null>(null);
+  const [allPcgStmtData, setAllPcgStmtData] =
+    useState<Map<number, Map<number, PcgProgramPointData>>>(new Map());
   const [currentPoint, setCurrentPoint] = useState<CurrentPoint>({
     type: "stmt",
     block: 0,
@@ -134,8 +134,8 @@ export const App: React.FC<AppProps> = ({
     initialFunction || (Object.keys(functions)[0] as FunctionSlug)
   );
   const [selectedPath, setSelectedPath] = useState<number>(initialPath);
-  const [paths, setPaths] = useState<number[][]>(initialPaths);
-  const [assertions] = useState<Assertion[]>(initialAssertions);
+  const [paths] = useState<number[][]>([]);
+  const [assertions] = useState<Assertion[]>([]);
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
@@ -155,6 +155,12 @@ export const App: React.FC<AppProps> = ({
   const [codeFontSize, setCodeFontSize] = useState<number>(
     parseInt(storage.getItem("codeFontSize") || "12")
   );
+  const [showActionsInCode, setShowActionsInCode] = useState(
+    storage.getBool("showActionsInCode", false)
+  );
+  const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
+  const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
+  const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
   // Track PCG Navigator state for layout adjustment
   const [navigatorDocked] = useState(
@@ -234,7 +240,6 @@ export const App: React.FC<AppProps> = ({
         const mirGraph = await api.getGraphData(selectedFunction);
         setNodes(mirGraph.nodes);
         setEdges(mirGraph.edges);
-        setPaths(await api.getPaths(selectedFunction));
       })();
     }
   }, [api, selectedFunction]);
@@ -262,6 +267,21 @@ export const App: React.FC<AppProps> = ({
     );
     fetchPcgStmtVisualizationData();
   }, [api, selectedFunction, selectedPath, currentPoint, paths]);
+
+  // Load all PCG statement data for the function (for "show actions in code" feature)
+  useEffect(() => {
+    const fetchAllPcgStmtData = async () => {
+      try {
+        const allData = await api.getAllPcgStmtData(selectedFunction);
+        setAllPcgStmtData(allData);
+      } catch (error) {
+        console.error("Error fetching all pcg stmt data:", error);
+        setAllPcgStmtData(new Map());
+      }
+    };
+
+    fetchAllPcgStmtData();
+  }, [api, selectedFunction]);
 
   useEffect(() => {
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
@@ -305,6 +325,10 @@ export const App: React.FC<AppProps> = ({
   }, [codeFontSize]);
 
   useEffect(() => {
+    storage.setItem("showActionsInCode", showActionsInCode.toString());
+  }, [showActionsInCode]);
+
+  useEffect(() => {
     storage.setItem("leftPanelWidth", leftPanelWidth.toString());
   }, [leftPanelWidth]);
 
@@ -342,6 +366,123 @@ export const App: React.FC<AppProps> = ({
       functions[selectedFunction].start
     );
   }, [nodes, currentPoint, selectedFunction, functions]);
+
+  const getOverlappingStmts = useCallback((position: SourcePos) => {
+    const functionStart = functions[selectedFunction].start;
+    const absolutePosition: SourcePos = {
+      line: position.line + functionStart.line,
+      column: position.column + functionStart.column,
+    };
+
+    const overlappingStmts: Array<{block: number, stmt: number, stmtId: string}> = [];
+    nodes.forEach((node) => {
+      const checkStmt = (stmt: MirStmt, stmtIndex: number) => {
+        const span = stmt.span;
+
+        // Only consider statements whose span is contained within a single line
+        if (span.low.line !== span.high.line) {
+          return;
+        }
+
+        const spanOverlaps =
+          (absolutePosition.line > span.low.line ||
+           (absolutePosition.line === span.low.line && absolutePosition.column >= span.low.column)) &&
+          (absolutePosition.line < span.high.line ||
+           (absolutePosition.line === span.high.line && absolutePosition.column < span.high.column));
+
+        if (spanOverlaps) {
+          overlappingStmts.push({
+            block: node.block,
+            stmt: stmtIndex,
+            stmtId: `${node.block}-${stmtIndex}`
+          });
+        }
+      };
+
+      node.stmts.forEach((stmt, idx) => checkStmt(stmt, idx));
+      checkStmt(node.terminator, node.stmts.length);
+    });
+
+    return overlappingStmts;
+  }, [nodes, selectedFunction, functions]);
+
+  const hoveredStmts = useMemo(() => {
+    if (!hoverPosition) {
+      return new Set<string>();
+    }
+
+    const overlapping = getOverlappingStmts(hoverPosition);
+    return new Set(overlapping.map(s => s.stmtId));
+  }, [hoverPosition, getOverlappingStmts]);
+
+  const selectionIndicator = useMemo(() => {
+    if (!clickPosition || !highlightSpan) {
+      return null;
+    }
+
+    const overlapping = getOverlappingStmts(clickPosition);
+    if (overlapping.length <= 1) {
+      return null;
+    }
+
+    const currentStmtId = currentPoint.type === "stmt"
+      ? `${currentPoint.block}-${currentPoint.stmt}`
+      : null;
+
+    if (!currentStmtId) {
+      return null;
+    }
+
+    const currentIndex = overlapping.findIndex(s => s.stmtId === currentStmtId);
+    if (currentIndex === -1) {
+      return null;
+    }
+
+    return {
+      line: clickPosition.line,
+      index: currentIndex + 1, // 1-based
+      total: overlapping.length,
+    };
+  }, [clickPosition, highlightSpan, getOverlappingStmts, currentPoint]);
+
+  const handleClickPosition = useCallback((position: SourcePos) => {
+    // Check if clicking at the same position
+    const isSamePosition = clickPosition &&
+      clickPosition.line === position.line &&
+      clickPosition.column === position.column;
+
+    if (isSamePosition) {
+      // Increment cycle index
+      const overlapping = getOverlappingStmts(position);
+      if (overlapping.length > 0) {
+        const nextIndex = (clickCycleIndex + 1) % overlapping.length;
+        setClickCycleIndex(nextIndex);
+
+        const selected = overlapping[nextIndex];
+        setCurrentPoint({
+          type: "stmt",
+          block: selected.block,
+          stmt: selected.stmt,
+          navigatorPoint: { type: "iteration", name: "post_main" },
+        });
+      }
+    } else {
+      // New position - select first overlapping statement
+      setClickPosition(position);
+      setClickCycleIndex(0);
+
+      const overlapping = getOverlappingStmts(position);
+      if (overlapping.length > 0) {
+        const selected = overlapping[0];
+        setCurrentPoint({
+          type: "stmt",
+          block: selected.block,
+          stmt: selected.stmt,
+          navigatorPoint: { type: "iteration", name: "post_main" },
+        });
+      }
+    }
+  }, [clickPosition, clickCycleIndex, getOverlappingStmts]);
 
   // Divider drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -401,89 +542,33 @@ export const App: React.FC<AppProps> = ({
             paddingBottom: "10px",
           }}
         >
-          <FunctionSelector
+          <SourceCodeViewer
+            metadata={functions[selectedFunction]}
             functions={functions}
             selectedFunction={selectedFunction}
-            onChange={setSelectedFunction}
-          />
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              margin: "10px",
-              padding: "8px 16px",
-              cursor: "pointer",
-              backgroundColor: "#4CAF50",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
+            onFunctionChange={setSelectedFunction}
+            highlightSpan={highlightSpan}
+            minimized={isSourceCodeMinimized}
+            fontSize={codeFontSize}
+            onHoverPositionChange={setHoverPosition}
+            onClickPosition={handleClickPosition}
+            selectionIndicator={selectionIndicator}
+            showSettings={showSettings}
+            onToggleSettings={() => setShowSettings(!showSettings)}
+            onFontSizeChange={setCodeFontSize}
+            onToggleMinimized={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
+            showActionsInCode={showActionsInCode}
+            nodes={nodes}
+            allPcgStmtData={allPcgStmtData}
+            onActionClick={(block, stmt) => {
+              setCurrentPoint({
+                type: "stmt",
+                block,
+                stmt,
+                navigatorPoint: { type: "iteration", name: "post_main" },
+              });
             }}
-          >
-            {showSettings ? "Hide Settings" : "Show Settings"}
-          </button>
-          <div style={{ position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                zIndex: 10,
-                display: "flex",
-                gap: "5px",
-              }}
-            >
-              <button
-                onClick={() => setCodeFontSize(Math.max(8, codeFontSize - 1))}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title="Decrease font size"
-              >
-                A−
-              </button>
-              <button
-                onClick={() => setCodeFontSize(Math.min(24, codeFontSize + 1))}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title="Increase font size"
-              >
-                A+
-              </button>
-              <button
-                onClick={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title={isSourceCodeMinimized ? "Maximize" : "Minimize"}
-              >
-                {isSourceCodeMinimized ? "▼" : "▲"}
-              </button>
-            </div>
-            <SourceCodeViewer
-              metadata={functions[selectedFunction]}
-              highlightSpan={highlightSpan}
-              minimized={isSourceCodeMinimized}
-              fontSize={codeFontSize}
-            />
-          </div>
+          />
         </div>
 
         {showSettings && (
@@ -570,6 +655,14 @@ export const App: React.FC<AppProps> = ({
               <label style={{ display: "block", marginBottom: "10px" }}>
                 <input
                   type="checkbox"
+                  checked={showActionsInCode}
+                  onChange={(e) => setShowActionsInCode(e.target.checked)}
+                />{" "}
+                Show Actions in Code
+              </label>
+              <label style={{ display: "block", marginBottom: "10px" }}>
+                <input
+                  type="checkbox"
                   checked={showPCG}
                   onChange={(e) => setShowPCG(e.target.checked)}
                 />{" "}
@@ -623,18 +716,34 @@ export const App: React.FC<AppProps> = ({
           setCurrentPoint={setCurrentPoint}
           height={layoutResult.height}
           isBlockOnSelectedPath={isBlockOnSelectedPath}
+          hoveredStmts={hoveredStmts}
         />
         {showPCGNavigator &&
-          currentPoint.type === "stmt" &&
-          iterations.length > currentPoint.stmt &&
           pcgProgramPointData &&
-          !Array.isArray(pcgProgramPointData.actions) && (
+          ((currentPoint.type === "stmt" &&
+            iterations.length > currentPoint.stmt &&
+            !Array.isArray(pcgProgramPointData.actions)) ||
+            (currentPoint.type === "terminator" &&
+              Array.isArray(pcgProgramPointData.actions))) && (
             <PCGNavigator
-              iterations={iterations[currentPoint.stmt]}
-              pcgData={pcgProgramPointData as PcgStmtVisualizationData}
-              selectedPoint={currentPoint.navigatorPoint}
+              iterations={
+                currentPoint.type === "stmt"
+                  ? iterations[currentPoint.stmt]
+                  : undefined
+              }
+              pcgData={pcgProgramPointData}
+              selectedPoint={
+                currentPoint.type === "stmt"
+                  ? currentPoint.navigatorPoint
+                  : currentPoint.navigatorPoint || null
+              }
               onSelectPoint={(point: NavigatorPoint) => {
                 if (currentPoint.type === "stmt") {
+                  setCurrentPoint({
+                    ...currentPoint,
+                    navigatorPoint: point,
+                  });
+                } else if (currentPoint.type === "terminator") {
                   setCurrentPoint({
                     ...currentPoint,
                     navigatorPoint: point,

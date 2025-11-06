@@ -1,6 +1,6 @@
 export type NavigatorPoint = {
   type: "action";
-  phase: EvalStmtPhase;
+  phase: EvalStmtPhase | "successor";
   index: number;
 } | {
   type: "iteration";
@@ -18,6 +18,7 @@ export type CurrentPoint =
       type: "terminator";
       block1: number;
       block2: number;
+      navigatorPoint?: NavigatorPoint;
     };
 
 export type BasicBlockData = {

@@ -17,6 +17,7 @@ interface MirGraphProps {
   setCurrentPoint: (point: CurrentPoint) => void;
   isBlockOnSelectedPath: (block: number) => boolean;
   height: number | null;
+  hoveredStmts?: Set<string>;
 }
 
 const MirGraph: React.FC<MirGraphProps> = ({
@@ -27,6 +28,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
   setCurrentPoint,
   isBlockOnSelectedPath,
   height,
+  hoveredStmts,
 }) => {
   // Helper to find block number from node ID (like 'bb0')
   const findBlockByNodeId = (nodeId: string): number | undefined => {
@@ -51,6 +53,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
             }}
             currentPoint={currentPoint}
             setCurrentPoint={setCurrentPoint}
+            hoveredStmts={hoveredStmts}
           />
         ))}
       </div>
