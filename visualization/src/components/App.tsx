@@ -31,7 +31,6 @@ import {
 } from "../mir_graph";
 import { cacheZip } from "../zipCache";
 import { storage } from "../storage";
-import FunctionSelector from "./FunctionSelector";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import PathSelector from "./PathSelector";
 import {
@@ -519,92 +518,22 @@ export const App: React.FC<AppProps> = ({
             paddingBottom: "10px",
           }}
         >
-          <FunctionSelector
+          <SourceCodeViewer
+            metadata={functions[selectedFunction]}
             functions={functions}
             selectedFunction={selectedFunction}
-            onChange={setSelectedFunction}
+            onFunctionChange={setSelectedFunction}
+            highlightSpan={highlightSpan}
+            minimized={isSourceCodeMinimized}
+            fontSize={codeFontSize}
+            onHoverPositionChange={setHoverPosition}
+            onClickPosition={handleClickPosition}
+            selectionIndicator={selectionIndicator}
+            showSettings={showSettings}
+            onToggleSettings={() => setShowSettings(!showSettings)}
+            onFontSizeChange={setCodeFontSize}
+            onToggleMinimized={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
           />
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            style={{
-              margin: "10px",
-              padding: "8px 16px",
-              cursor: "pointer",
-              backgroundColor: "#4CAF50",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-            }}
-          >
-            {showSettings ? "Hide Settings" : "Show Settings"}
-          </button>
-          <div style={{ position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                zIndex: 10,
-                display: "flex",
-                gap: "5px",
-              }}
-            >
-              <button
-                onClick={() => setCodeFontSize(Math.max(8, codeFontSize - 1))}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title="Decrease font size"
-              >
-                A−
-              </button>
-              <button
-                onClick={() => setCodeFontSize(Math.min(24, codeFontSize + 1))}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title="Increase font size"
-              >
-                A+
-              </button>
-              <button
-                onClick={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#888",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                  padding: "5px 10px",
-                  fontSize: "12px",
-                }}
-                title={isSourceCodeMinimized ? "Maximize" : "Minimize"}
-              >
-                {isSourceCodeMinimized ? "▼" : "▲"}
-              </button>
-            </div>
-            <SourceCodeViewer
-              metadata={functions[selectedFunction]}
-              highlightSpan={highlightSpan}
-              minimized={isSourceCodeMinimized}
-              fontSize={codeFontSize}
-              onHoverPositionChange={setHoverPosition}
-              onClickPosition={handleClickPosition}
-              selectionIndicator={selectionIndicator}
-            />
-          </div>
         </div>
 
         {showSettings && (

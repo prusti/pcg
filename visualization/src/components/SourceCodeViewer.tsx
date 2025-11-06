@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Highlight, themes } from "prism-react-renderer";
-import { FunctionMetadata, SourcePos } from "../types";
+import { FunctionMetadata, FunctionSlug, FunctionsMetadata, SourcePos } from "../types";
 
 type RelativeSpan = {
   low: SourcePos;
@@ -9,22 +9,36 @@ type RelativeSpan = {
 
 interface SourceCodeViewerProps {
   metadata: FunctionMetadata;
+  functions: FunctionsMetadata;
+  selectedFunction: FunctionSlug;
+  onFunctionChange: (selectedFunction: FunctionSlug) => void;
   highlightSpan?: RelativeSpan | null;
   minimized?: boolean;
   fontSize?: number;
   onHoverPositionChange?: (position: SourcePos | null) => void;
   onClickPosition?: (position: SourcePos) => void;
   selectionIndicator?: { line: number; index: number; total: number } | null;
+  showSettings?: boolean;
+  onToggleSettings?: () => void;
+  onFontSizeChange?: (fontSize: number) => void;
+  onToggleMinimized?: () => void;
 }
 
 const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
   metadata,
+  functions,
+  selectedFunction,
+  onFunctionChange,
   highlightSpan,
   minimized = false,
   fontSize = 12,
   onHoverPositionChange,
   onClickPosition,
   selectionIndicator,
+  showSettings = false,
+  onToggleSettings,
+  onFontSizeChange,
+  onToggleMinimized,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
@@ -90,17 +104,111 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
       }}
       onMouseLeave={handleMouseLeave}
     >
-      <h3
+      <div
         style={{
-          marginTop: 0,
-          marginBottom: 0,
-          padding: "12px 16px",
           backgroundColor: "#f5f5f5",
           borderBottom: minimized ? "none" : "1px solid #ccc",
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
         }}
       >
-        {metadata.name}
-      </h3>
+        <label htmlFor="function-select" style={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
+          Function:
+        </label>
+        <select
+          id="function-select"
+          value={selectedFunction}
+          onChange={(e) => {
+            onFunctionChange(e.target.value as FunctionSlug);
+          }}
+          style={{
+            flex: 1,
+            padding: "4px 8px",
+            fontSize: "14px",
+            borderRadius: "4px",
+            border: "1px solid #ccc",
+            minWidth: "150px",
+          }}
+        >
+          {Object.keys(functions)
+            .sort((a, b) => functions[a as FunctionSlug].name.localeCompare(functions[b as FunctionSlug].name))
+            .map((func) => (
+              <option key={func} value={func}>
+                {functions[func as FunctionSlug].name}
+              </option>
+            ))}
+        </select>
+        {onToggleSettings && (
+          <button
+            onClick={onToggleSettings}
+            style={{
+              padding: "5px 12px",
+              cursor: "pointer",
+              backgroundColor: "#4CAF50",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "12px",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {showSettings ? "Hide Settings" : "Show Settings"}
+          </button>
+        )}
+        {onFontSizeChange && (
+          <>
+            <button
+              onClick={() => onFontSizeChange(Math.max(8, fontSize - 1))}
+              style={{
+                cursor: "pointer",
+                backgroundColor: "#888",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                padding: "5px 10px",
+                fontSize: "12px",
+              }}
+              title="Decrease font size"
+            >
+              A−
+            </button>
+            <button
+              onClick={() => onFontSizeChange(Math.min(24, fontSize + 1))}
+              style={{
+                cursor: "pointer",
+                backgroundColor: "#888",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                padding: "5px 10px",
+                fontSize: "12px",
+              }}
+              title="Increase font size"
+            >
+              A+
+            </button>
+          </>
+        )}
+        {onToggleMinimized && (
+          <button
+            onClick={onToggleMinimized}
+            style={{
+              cursor: "pointer",
+              backgroundColor: "#888",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              padding: "5px 10px",
+              fontSize: "12px",
+            }}
+            title={minimized ? "Maximize" : "Minimize"}
+          >
+            {minimized ? "▼" : "▲"}
+          </button>
+        )}
+      </div>
       {!minimized && (
         <div ref={containerRef}>
           <Highlight theme={themes.github} code={metadata.source} language="rust">
