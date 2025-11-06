@@ -128,7 +128,6 @@ export const App: React.FC<AppProps> = ({
   }, [filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData]);
 
   const layoutNodes = layoutResult.nodes;
-  const graphHeight = layoutResult.height;
 
   useEffect(() => {
     if (selectedFunction) {
@@ -442,7 +441,6 @@ export const App: React.FC<AppProps> = ({
           mirNodes={nodes}
           currentPoint={currentPoint}
           setCurrentPoint={setCurrentPoint}
-          height={graphHeight}
           hoveredStmts={hoveredStmts}
           showActionsInGraph={showActionsInCode}
           allPcgStmtData={allPcgStmtData}

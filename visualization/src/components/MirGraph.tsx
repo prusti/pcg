@@ -21,7 +21,6 @@ interface MirGraphProps {
   mirNodes: MirNode[];
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
-  height: number | null;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
@@ -34,7 +33,6 @@ const MirGraph: React.FC<MirGraphProps> = ({
   mirNodes,
   currentPoint,
   setCurrentPoint,
-  height,
   hoveredStmts,
   showActionsInGraph = false,
   allPcgStmtData = new Map(),
@@ -80,7 +78,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
   return (
     <div
       className="graph-container"
-      style={{ height: height ? height + 100 : 600, width: "100%" }}
+      style={{ width: "100%", height: "100%" }}
     >
       <ReactFlow
         nodes={reactFlowNodes}
