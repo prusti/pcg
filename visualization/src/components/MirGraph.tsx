@@ -1,9 +1,9 @@
 import React, { useMemo } from "react";
-import ReactFlow, { Background, Controls, MarkerType } from "reactflow";
+import ReactFlow, { Background, Controls, MarkerType, PanOnScrollMode } from "reactflow";
 import "reactflow/dist/style.css";
 import { CurrentPoint, PcgProgramPointData } from "../types";
 import { MirNode, MirEdge, PcgFunctionData } from "../generated/types";
-import { toReactFlowNodes, toReactFlowEdges, PositionedLayoutNode } from "../mir_graph";
+import { toReactFlowNodes, toReactFlowEdges, filterNodesAndEdges, layoutNodesWithDagre } from "../mir_graph";
 import ReactFlowBasicBlockNode from "./ReactFlowBasicBlockNode";
 import ReactFlowEdge from "./ReactFlowEdge";
 
@@ -16,13 +16,10 @@ const edgeTypes = {
 };
 
 interface MirGraphProps {
-  layoutNodes: PositionedLayoutNode[];
   edges: MirEdge[];
   mirNodes: MirNode[];
   currentPoint: CurrentPoint;
   setCurrentPoint: (point: CurrentPoint) => void;
-  isBlockOnSelectedPath: (block: number) => boolean;
-  height: number | null;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
@@ -30,30 +27,42 @@ interface MirGraphProps {
 }
 
 const MirGraph: React.FC<MirGraphProps> = ({
-  layoutNodes,
   edges,
   mirNodes,
   currentPoint,
   setCurrentPoint,
-  isBlockOnSelectedPath,
-  height,
   hoveredStmts,
   showActionsInGraph = false,
   allPcgStmtData = new Map(),
   pcgFunctionData = null,
 }) => {
+  const { filteredNodes, filteredEdges } = useMemo(
+    () => filterNodesAndEdges(mirNodes, edges, {
+      showUnwindEdges: false,
+      path: null,
+    }),
+    [mirNodes, edges]
+  );
+
+  const layoutNodes = useMemo(() => {
+    return layoutNodesWithDagre(
+      filteredNodes,
+      filteredEdges,
+      showActionsInGraph,
+      allPcgStmtData
+    ).nodes;
+  }, [filteredNodes, filteredEdges, showActionsInGraph, allPcgStmtData]);
   const reactFlowNodes = useMemo(
     () =>
       toReactFlowNodes(
         layoutNodes,
         currentPoint,
         setCurrentPoint,
-        isBlockOnSelectedPath,
         hoveredStmts,
         showActionsInGraph,
         allPcgStmtData
       ),
-    [layoutNodes, currentPoint, setCurrentPoint, isBlockOnSelectedPath, hoveredStmts, showActionsInGraph, allPcgStmtData]
+    [layoutNodes, currentPoint, setCurrentPoint, hoveredStmts, showActionsInGraph, allPcgStmtData]
   );
 
   const reactFlowEdges = useMemo(
@@ -83,7 +92,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
   return (
     <div
       className="graph-container"
-      style={{ height: height ? height + 100 : 600, width: "100%" }}
+      style={{ width: "100%", height: "100%" }}
     >
       <ReactFlow
         nodes={reactFlowNodes}
@@ -95,7 +104,8 @@ const MirGraph: React.FC<MirGraphProps> = ({
         nodesConnectable={false}
         elementsSelectable={false}
         zoomOnScroll={true}
-        panOnScroll={false}
+        panOnScroll={true}
+        panOnScrollMode={PanOnScrollMode.Vertical}
         preventScrolling={true}
         fitView
         fitViewOptions={{ padding: 0.2 }}

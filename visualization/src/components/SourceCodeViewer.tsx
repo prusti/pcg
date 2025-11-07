@@ -103,7 +103,6 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
       style={{
         border: "1px solid #ccc",
         borderRadius: "4px",
-        marginTop: "16px",
         maxHeight: "400px",
         overflow: "auto",
       }}

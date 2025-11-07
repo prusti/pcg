@@ -4,9 +4,14 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  Dispatch,
+  SetStateAction,
 } from "react";
-import * as Viz from "@viz-js/viz";
-import { openDotGraphInNewWindow } from "../dot_graph";
+import {
+  useLocalStorageBool,
+  useLocalStorageString,
+  useLocalStorageNumber,
+} from "../hooks/useLocalStorageState";
 
 import {
   CurrentPoint,
@@ -14,95 +19,23 @@ import {
   FunctionsMetadata,
   MirStmt,
   NavigatorPoint,
-  PathData,
   PcgProgramPointData,
   SourcePos,
-  StringOf,
 } from "../types";
-import SymbolicHeap from "./SymbolicHeap";
-import PathConditions from "./PathConditions";
 import MirGraph from "./MirGraph";
-import Assertions, { Assertion } from "./Assertions";
-import { Api, PcgBlockDotGraphs, ZipFileApi } from "../api";
+import { Api, PcgBlockDotGraphs } from "../api";
 import { PcgFunctionData } from "../generated/types";
-import {
-  filterNodesAndEdges,
-  layoutNodesWithDagre,
-} from "../mir_graph";
-import { cacheZip } from "../zipCache";
-import { storage } from "../storage";
+import { filterNodesAndEdges } from "../mir_graph";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
-import PathSelector from "./PathSelector";
-import {
-  addKeyDownListener,
-  reloadPathData,
-  reloadIterations,
-} from "../effects";
-import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
+import { addKeyDownListener, reloadIterations } from "../effects";
 import SourceCodeViewer from "./SourceCodeViewer";
-import {
-  DotFileAtPhase,
-  EvalStmtData,
-  MirEdge,
-  MirNode,
-} from "../generated/types";
-
-const getActionGraphFilename = (
-  selectedFunction: string,
-  actionGraphFilenames: string[],
-  actionIndex: number
-): string | null => {
-  return `data/${selectedFunction}/${actionGraphFilenames[actionIndex]}`;
-};
-
-function getPCGDotGraphFilename(
-  currentPoint: CurrentPoint,
-  selectedFunction: string,
-  graphs: PcgBlockDotGraphs
-): string | null {
-  if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
-    return null;
-  }
-  if (currentPoint.navigatorPoint.type === "action") {
-    // Successor actions (from terminator edges) don't have PCG dot graphs
-    if (currentPoint.navigatorPoint.phase === "successor") {
-      return null;
-    }
-    const iterationActions = getIterationActions(graphs, currentPoint);
-    const actionGraphFilenames = iterationActions[currentPoint.navigatorPoint.phase];
-    return getActionGraphFilename(
-      selectedFunction,
-      actionGraphFilenames,
-      currentPoint.navigatorPoint.index
-    );
-  }
-
-  // For iteration type, find the phase by name
-  const navPoint = currentPoint.navigatorPoint;
-  if (navPoint.type !== "iteration") {
-    return null;
-  }
-
-  const phases: DotFileAtPhase<StringOf<"DataflowStmtPhase">>[] =
-    graphs[currentPoint.stmt].at_phase;
-
-  // Find the phase by name
-  const phaseIndex = phases.findIndex(
-    (p) => p.phase === navPoint.name
-  );
-
-  if (phaseIndex === -1 || phases.length === 0) {
-    return null;
-  }
-
-  const filename: string = phases[phaseIndex].filename;
-  return `data/${selectedFunction}/${filename}`;
-}
+import PcgGraph from "./PcgGraph";
+import Settings from "./Settings";
+import { MirEdge, MirNode } from "../generated/types";
 
 interface AppProps {
   initialFunction: FunctionSlug;
   functions: FunctionsMetadata;
-  initialPath?: number;
   api: Api;
   onApiChange: (newApi: Api) => void;
 }
@@ -110,16 +43,13 @@ interface AppProps {
 export const App: React.FC<AppProps> = ({
   initialFunction,
   functions,
-  initialPath = 0,
   api,
   onApiChange,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [pathData, setPathData] = useState<PathData | null>(null);
-  const [pcgProgramPointData, setPcgProgramPointData] =
-    useState<PcgProgramPointData | null>(null);
-  const [allPcgStmtData, setAllPcgStmtData] =
-    useState<Map<number, Map<number, PcgProgramPointData>>>(new Map());
+  const [allPcgStmtData, setAllPcgStmtData] = useState<
+    Map<number, Map<number, PcgProgramPointData>>
+  >(new Map());
   const [pcgFunctionData, setPcgFunctionData] =
     useState<PcgFunctionData | null>(null);
   const [currentPoint, setCurrentPoint] = useState<CurrentPoint>({
@@ -132,107 +62,61 @@ export const App: React.FC<AppProps> = ({
     },
   });
 
-  const [selectedFunction, setSelectedFunction] = useState<FunctionSlug>(
+  const [selectedFunction, setSelectedFunction] = useLocalStorageString(
+    "selectedFunction",
     initialFunction || (Object.keys(functions)[0] as FunctionSlug)
-  );
-  const [selectedPath, setSelectedPath] = useState<number>(initialPath);
-  const [paths] = useState<number[][]>([]);
-  const [assertions] = useState<Assertion[]>([]);
+  ) as [FunctionSlug, Dispatch<SetStateAction<FunctionSlug>>];
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
-  const [showPathBlocksOnly, setShowPathBlocksOnly] = useState(
-    storage.getBool("showPathBlocksOnly", false)
-  );
   const [showUnwindEdges] = useState(false);
-  const [showPCG, setShowPCG] = useState(storage.getBool("showPCG", true));
-  const [showPCGNavigator, setShowPCGNavigator] = useState(
-    storage.getBool("showPCGNavigator", true)
+  const [showPCG, setShowPCG] = useLocalStorageBool("showPCG", true);
+  const [showPCGNavigator, setShowPCGNavigator] = useLocalStorageBool(
+    "showPCGNavigator",
+    true
   );
-  const [showSettings, setShowSettings] = useState(
-    storage.getBool("showSettings", false)
+  const [showSettings, setShowSettings] = useLocalStorageBool(
+    "showSettings",
+    false
   );
-  const [isSourceCodeMinimized, setIsSourceCodeMinimized] = useState(
-    storage.getBool("isSourceCodeMinimized", false)
+  const [isSourceCodeMinimized, setIsSourceCodeMinimized] = useLocalStorageBool(
+    "isSourceCodeMinimized",
+    false
   );
-  const [codeFontSize, setCodeFontSize] = useState<number>(
-    parseInt(storage.getItem("codeFontSize") || "12")
+  const [codeFontSize, setCodeFontSize] = useLocalStorageNumber(
+    "codeFontSize",
+    12
   );
-  const [showActionsInCode, setShowActionsInCode] = useState(
-    storage.getBool("showActionsInCode", false)
+  const [showActionsInCode, setShowActionsInCode] = useLocalStorageBool(
+    "showActionsInCode",
+    false
   );
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
   const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
   const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
   // Track PCG Navigator state for layout adjustment
-  const [navigatorDocked] = useState(
-    storage.getBool("pcgNavigatorDocked", true)
+  const [navigatorDocked] = useLocalStorageBool("pcgNavigatorDocked", true);
+  const [navigatorMinimized, setNavigatorMinimized] = useLocalStorageBool(
+    "pcgNavigatorMinimized",
+    false
   );
-  const [navigatorMinimized, setNavigatorMinimized] = useState(
-    storage.getBool("pcgNavigatorMinimized", false)
+  const [navigatorWidth, setNavigatorWidth] = useLocalStorageNumber(
+    "pcgNavigatorWidth",
+    200
   );
-  const [navigatorWidth, setNavigatorWidth] = useState(() => {
-    const stored = storage.getItem("pcgNavigatorWidth");
-    return stored ? parseInt(stored, 10) : 200;
-  });
 
   // State for panel resizing
-  const [leftPanelWidth, setLeftPanelWidth] = useState<string>(
-    storage.getItem("leftPanelWidth") || "50%"
+  const [leftPanelWidth, setLeftPanelWidth] = useLocalStorageString(
+    "leftPanelWidth",
+    "50%"
   );
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dividerRef = useRef<HTMLDivElement>(null);
 
-  const { filteredNodes, filteredEdges } = filterNodesAndEdges(nodes, edges, {
+  const { filteredNodes } = filterNodesAndEdges(nodes, edges, {
     showUnwindEdges,
-    path:
-      showPathBlocksOnly && selectedPath < paths.length
-        ? paths[selectedPath]
-        : null,
+    path: null,
   });
-
-  const layoutResult = useMemo(() => {
-    return layoutNodesWithDagre(filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData);
-  }, [filteredNodes, filteredEdges, showActionsInCode, allPcgStmtData]);
-
-  const layoutNodes = layoutResult.nodes;
-  const graphHeight = layoutResult.height;
-
-  const loadPCGDotGraph = useCallback(async () => {
-    const dotGraph = document.getElementById("pcg-graph");
-    if (!dotGraph) {
-      console.error("Dot graph element not found");
-      return;
-    }
-    const dotFilePath = getPCGDotGraphFilename(
-      currentPoint,
-      selectedFunction,
-      iterations
-    );
-    if (!dotFilePath) {
-      dotGraph.innerHTML = "";
-    } else {
-      const dotData = await api.fetchDotFile(dotFilePath);
-
-      Viz.instance().then(function (viz) {
-        dotGraph.innerHTML = "";
-        dotGraph.appendChild(viz.renderSVGElement(dotData));
-      });
-    }
-  }, [api, iterations, currentPoint, selectedFunction]);
-
-  useEffect(() => {
-    const graph = document.getElementById("pcg-graph");
-    if (showPCG) {
-      graph.style.display = "block";
-    } else {
-      graph.style.display = "none";
-    }
-  }, [showPCG]);
-
-  useEffect(() => {
-    loadPCGDotGraph();
-  }, [loadPCGDotGraph]);
 
   useEffect(() => {
     if (selectedFunction) {
@@ -244,43 +128,36 @@ export const App: React.FC<AppProps> = ({
     }
   }, [api, selectedFunction]);
 
-  useEffect(() => {
-    const fetchPcgStmtVisualizationData = async () => {
-      try {
-        const pcgStmtVisualizationData = await api.getPcgProgramPointData(
-          selectedFunction,
-          currentPoint
-        );
-        setPcgProgramPointData(pcgStmtVisualizationData);
-      } catch (error) {
-        console.error("Error fetching pcg stmt visualization data:", error);
+  const pcgProgramPointData = useMemo(() => {
+    if (!pcgFunctionData) {
+      return null;
+    }
+
+    let pcgStmtVisualizationData: PcgProgramPointData | null = null;
+
+    if (currentPoint.type === "stmt") {
+      const blockData = pcgFunctionData.blocks[currentPoint.block];
+      if (blockData) {
+        pcgStmtVisualizationData =
+          blockData.statements[currentPoint.stmt] || null;
       }
-    };
+    } else {
+      const blockData = pcgFunctionData.blocks[currentPoint.block1];
+      if (blockData) {
+        pcgStmtVisualizationData =
+          blockData.successors[currentPoint.block2] || null;
+      }
+    }
 
-    reloadPathData(
-      api,
-      selectedFunction,
-      selectedPath,
-      currentPoint,
-      paths,
-      setPathData
-    );
-    fetchPcgStmtVisualizationData();
-  }, [api, selectedFunction, selectedPath, currentPoint, paths]);
+    return pcgStmtVisualizationData;
+  }, [pcgFunctionData, currentPoint]);
 
-  // Load all PCG statement data for the function (for "show actions in code" feature)
   useEffect(() => {
     const fetchAllPcgStmtData = async () => {
-      try {
-        const allData = await api.getAllPcgStmtData(selectedFunction);
-        setAllPcgStmtData(allData);
-        const functionData = await api.getPcgFunctionData(selectedFunction);
-        setPcgFunctionData(functionData);
-      } catch (error) {
-        console.error("Error fetching all pcg stmt data:", error);
-        setAllPcgStmtData(new Map());
-        setPcgFunctionData(null);
-      }
+      const allData = await api.getAllPcgStmtData(selectedFunction);
+      setAllPcgStmtData(allData);
+      const functionData = await api.getPcgFunctionData(selectedFunction);
+      setPcgFunctionData(functionData);
     };
 
     fetchAllPcgStmtData();
@@ -290,65 +167,16 @@ export const App: React.FC<AppProps> = ({
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
   }, [api, selectedFunction, currentPoint]);
 
-
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
-  }, [nodes, filteredNodes, showPathBlocksOnly, setCurrentPoint]);
-
-  useEffect(() => {
-    storage.setItem("selectedFunction", selectedFunction.toString());
-  }, [selectedFunction]);
-
-  useEffect(() => {
-    storage.setItem("selectedPath", selectedPath.toString());
-  }, [selectedPath]);
-
-  useEffect(() => {
-    storage.setItem("showPathBlocksOnly", showPathBlocksOnly.toString());
-  }, [showPathBlocksOnly]);
-
-  useEffect(() => {
-    storage.setItem("showPCG", showPCG.toString());
-  }, [showPCG]);
-
-  useEffect(() => {
-    storage.setItem("showPCGNavigator", showPCGNavigator.toString());
-  }, [showPCGNavigator]);
-
-  useEffect(() => {
-    storage.setItem("showSettings", showSettings.toString());
-  }, [showSettings]);
-
-  useEffect(() => {
-    storage.setItem("isSourceCodeMinimized", isSourceCodeMinimized.toString());
-  }, [isSourceCodeMinimized]);
-
-  useEffect(() => {
-    storage.setItem("codeFontSize", codeFontSize.toString());
-  }, [codeFontSize]);
-
-  useEffect(() => {
-    storage.setItem("showActionsInCode", showActionsInCode.toString());
-  }, [showActionsInCode]);
-
-  useEffect(() => {
-    storage.setItem("leftPanelWidth", leftPanelWidth.toString());
-  }, [leftPanelWidth]);
-
-  const isBlockOnSelectedPath = useCallback(
-    (block: number) => {
-      if (paths.length === 0 || selectedPath >= paths.length) return false;
-      return paths[selectedPath].includes(block);
-    },
-    [paths, selectedPath]
-  );
+  }, [nodes, filteredNodes, setCurrentPoint]);
 
   const handleNavigatorStateChange = useCallback(
     (isMinimized: boolean, width: number) => {
       setNavigatorMinimized(isMinimized);
       setNavigatorWidth(width);
     },
-    []
+    [setNavigatorMinimized, setNavigatorWidth]
   );
 
   // Calculate the width to reserve for the navigator when it's docked
@@ -370,44 +198,53 @@ export const App: React.FC<AppProps> = ({
     );
   }, [nodes, currentPoint, selectedFunction, functions]);
 
-  const getOverlappingStmts = useCallback((position: SourcePos) => {
-    const functionStart = functions[selectedFunction].start;
-    const absolutePosition: SourcePos = {
-      line: position.line + functionStart.line,
-      column: position.column + functionStart.column,
-    };
-
-    const overlappingStmts: Array<{block: number, stmt: number, stmtId: string}> = [];
-    nodes.forEach((node) => {
-      const checkStmt = (stmt: MirStmt, stmtIndex: number) => {
-        const span = stmt.span;
-
-        // Only consider statements whose span is contained within a single line
-        if (span.low.line !== span.high.line) {
-          return;
-        }
-
-        const spanOverlaps =
-          (absolutePosition.line > span.low.line ||
-           (absolutePosition.line === span.low.line && absolutePosition.column >= span.low.column)) &&
-          (absolutePosition.line < span.high.line ||
-           (absolutePosition.line === span.high.line && absolutePosition.column < span.high.column));
-
-        if (spanOverlaps) {
-          overlappingStmts.push({
-            block: node.block,
-            stmt: stmtIndex,
-            stmtId: `${node.block}-${stmtIndex}`
-          });
-        }
+  const getOverlappingStmts = useCallback(
+    (position: SourcePos) => {
+      const functionStart = functions[selectedFunction].start;
+      const absolutePosition: SourcePos = {
+        line: position.line + functionStart.line,
+        column: position.column + functionStart.column,
       };
 
-      node.stmts.forEach((stmt, idx) => checkStmt(stmt, idx));
-      checkStmt(node.terminator, node.stmts.length);
-    });
+      const overlappingStmts: Array<{
+        block: number;
+        stmt: number;
+        stmtId: string;
+      }> = [];
+      nodes.forEach((node) => {
+        const checkStmt = (stmt: MirStmt, stmtIndex: number) => {
+          const span = stmt.span;
 
-    return overlappingStmts;
-  }, [nodes, selectedFunction, functions]);
+          // Only consider statements whose span is contained within a single line
+          if (span.low.line !== span.high.line) {
+            return;
+          }
+
+          const spanOverlaps =
+            (absolutePosition.line > span.low.line ||
+              (absolutePosition.line === span.low.line &&
+                absolutePosition.column >= span.low.column)) &&
+            (absolutePosition.line < span.high.line ||
+              (absolutePosition.line === span.high.line &&
+                absolutePosition.column < span.high.column));
+
+          if (spanOverlaps) {
+            overlappingStmts.push({
+              block: node.block,
+              stmt: stmtIndex,
+              stmtId: `${node.block}-${stmtIndex}`,
+            });
+          }
+        };
+
+        node.stmts.forEach((stmt, idx) => checkStmt(stmt, idx));
+        checkStmt(node.terminator, node.stmts.length);
+      });
+
+      return overlappingStmts;
+    },
+    [nodes, selectedFunction, functions]
+  );
 
   const hoveredStmts = useMemo(() => {
     if (!hoverPosition) {
@@ -415,7 +252,7 @@ export const App: React.FC<AppProps> = ({
     }
 
     const overlapping = getOverlappingStmts(hoverPosition);
-    return new Set(overlapping.map(s => s.stmtId));
+    return new Set(overlapping.map((s) => s.stmtId));
   }, [hoverPosition, getOverlappingStmts]);
 
   const selectionIndicator = useMemo(() => {
@@ -428,15 +265,18 @@ export const App: React.FC<AppProps> = ({
       return null;
     }
 
-    const currentStmtId = currentPoint.type === "stmt"
-      ? `${currentPoint.block}-${currentPoint.stmt}`
-      : null;
+    const currentStmtId =
+      currentPoint.type === "stmt"
+        ? `${currentPoint.block}-${currentPoint.stmt}`
+        : null;
 
     if (!currentStmtId) {
       return null;
     }
 
-    const currentIndex = overlapping.findIndex(s => s.stmtId === currentStmtId);
+    const currentIndex = overlapping.findIndex(
+      (s) => s.stmtId === currentStmtId
+    );
     if (currentIndex === -1) {
       return null;
     }
@@ -448,44 +288,48 @@ export const App: React.FC<AppProps> = ({
     };
   }, [clickPosition, highlightSpan, getOverlappingStmts, currentPoint]);
 
-  const handleClickPosition = useCallback((position: SourcePos) => {
-    // Check if clicking at the same position
-    const isSamePosition = clickPosition &&
-      clickPosition.line === position.line &&
-      clickPosition.column === position.column;
+  const handleClickPosition = useCallback(
+    (position: SourcePos) => {
+      // Check if clicking at the same position
+      const isSamePosition =
+        clickPosition &&
+        clickPosition.line === position.line &&
+        clickPosition.column === position.column;
 
-    if (isSamePosition) {
-      // Increment cycle index
-      const overlapping = getOverlappingStmts(position);
-      if (overlapping.length > 0) {
-        const nextIndex = (clickCycleIndex + 1) % overlapping.length;
-        setClickCycleIndex(nextIndex);
+      if (isSamePosition) {
+        // Increment cycle index
+        const overlapping = getOverlappingStmts(position);
+        if (overlapping.length > 0) {
+          const nextIndex = (clickCycleIndex + 1) % overlapping.length;
+          setClickCycleIndex(nextIndex);
 
-        const selected = overlapping[nextIndex];
-        setCurrentPoint({
-          type: "stmt",
-          block: selected.block,
-          stmt: selected.stmt,
-          navigatorPoint: { type: "iteration", name: "post_main" },
-        });
+          const selected = overlapping[nextIndex];
+          setCurrentPoint({
+            type: "stmt",
+            block: selected.block,
+            stmt: selected.stmt,
+            navigatorPoint: { type: "iteration", name: "post_main" },
+          });
+        }
+      } else {
+        // New position - select first overlapping statement
+        setClickPosition(position);
+        setClickCycleIndex(0);
+
+        const overlapping = getOverlappingStmts(position);
+        if (overlapping.length > 0) {
+          const selected = overlapping[0];
+          setCurrentPoint({
+            type: "stmt",
+            block: selected.block,
+            stmt: selected.stmt,
+            navigatorPoint: { type: "iteration", name: "post_main" },
+          });
+        }
       }
-    } else {
-      // New position - select first overlapping statement
-      setClickPosition(position);
-      setClickCycleIndex(0);
-
-      const overlapping = getOverlappingStmts(position);
-      if (overlapping.length > 0) {
-        const selected = overlapping[0];
-        setCurrentPoint({
-          type: "stmt",
-          block: selected.block,
-          stmt: selected.stmt,
-          navigatorPoint: { type: "iteration", name: "post_main" },
-        });
-      }
-    }
-  }, [clickPosition, clickCycleIndex, getOverlappingStmts]);
+    },
+    [clickPosition, clickCycleIndex, getOverlappingStmts]
+  );
 
   // Divider drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -511,7 +355,7 @@ export const App: React.FC<AppProps> = ({
       const clampedWidth = Math.min(Math.max(newLeftWidth, 20), 80);
       setLeftPanelWidth(`${clampedWidth}%`);
     },
-    [isDragging]
+    [isDragging, setLeftPanelWidth]
   );
 
   // Add and remove event listeners for dragging
@@ -526,7 +370,7 @@ export const App: React.FC<AppProps> = ({
   }, [handleMouseMove, handleMouseUp]);
 
   return (
-    <div style={{ display: "flex", width: "100%" }}>
+    <div style={{ display: "flex", width: "100%", height: "100vh" }}>
       <div
         style={{
           position: "relative",
@@ -559,155 +403,32 @@ export const App: React.FC<AppProps> = ({
             showSettings={showSettings}
             onToggleSettings={() => setShowSettings(!showSettings)}
             onFontSizeChange={setCodeFontSize}
-            onToggleMinimized={() => setIsSourceCodeMinimized(!isSourceCodeMinimized)}
+            onToggleMinimized={() =>
+              setIsSourceCodeMinimized(!isSourceCodeMinimized)
+            }
           />
         </div>
 
-        {showSettings && (
-          <div
-            style={{
-              position: "fixed",
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: "300px",
-              backgroundColor: "#f5f5f5",
-              borderLeft: "2px solid #ccc",
-              padding: "20px",
-              overflowY: "auto",
-              zIndex: 1100,
-              boxShadow: "-2px 0 5px rgba(0,0,0,0.1)",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>Settings</h3>
-            <button
-              onClick={() => setShowSettings(false)}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "10px",
-                cursor: "pointer",
-                backgroundColor: "#f44336",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                padding: "5px 10px",
-              }}
-            >
-              ✕
-            </button>
-
-            <div style={{ marginBottom: "20px" }}>
-              <h4 style={{ marginTop: 0, marginBottom: "10px" }}>
-                Data Source
-              </h4>
-              <input
-                type="file"
-                accept=".zip"
-                id="zip-file-input"
-                style={{ display: "none" }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const zipApi = await ZipFileApi.fromFile(file);
-                    await cacheZip(zipApi);
-                    onApiChange(zipApi);
-                  }
-                }}
-              />
-              <button
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  cursor: "pointer",
-                  backgroundColor: "#4CAF50",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "4px",
-                }}
-                onClick={() => {
-                  document.getElementById("zip-file-input")?.click();
-                }}
-              >
-                Upload Zip File
-              </button>
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <PathSelector
-                paths={paths}
-                selectedPath={selectedPath}
-                setSelectedPath={setSelectedPath}
-                showPathBlocksOnly={showPathBlocksOnly}
-                setShowPathBlocksOnly={setShowPathBlocksOnly}
-              />
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{ display: "block", marginBottom: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={showActionsInCode}
-                  onChange={(e) => setShowActionsInCode(e.target.checked)}
-                />{" "}
-                Show Actions in MIR Graph
-              </label>
-              <label style={{ display: "block", marginBottom: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={showPCG}
-                  onChange={(e) => setShowPCG(e.target.checked)}
-                />{" "}
-                Show PCG
-              </label>
-              <button
-                style={{
-                  width: "100%",
-                  padding: "8px",
-                  marginBottom: "10px",
-                  cursor: "pointer",
-                }}
-                onClick={async () => {
-                  const dotFilePath = getPCGDotGraphFilename(
-                    currentPoint,
-                    selectedFunction,
-                    iterations
-                  );
-                  if (dotFilePath) {
-                    openDotGraphInNewWindow(api, dotFilePath);
-                  }
-                }}
-              >
-                Open Current PCG in New Window
-              </button>
-              <label style={{ display: "block", marginBottom: "10px" }}>
-                <input
-                  type="checkbox"
-                  checked={showPCGNavigator}
-                  onChange={(e) => setShowPCGNavigator(e.target.checked)}
-                />{" "}
-                Show PCG Navigator
-              </label>
-            </div>
-
-            <div style={{ marginBottom: "20px" }}>
-              <h4>Borrow Checker</h4>
-              <BorrowCheckerGraphs
-                currentPoint={currentPoint}
-                selectedFunction={selectedFunction}
-                api={api}
-              />
-            </div>
-          </div>
-        )}
+        <Settings
+          showSettings={showSettings}
+          onClose={() => setShowSettings(false)}
+          onApiChange={onApiChange}
+          showActionsInCode={showActionsInCode}
+          setShowActionsInCode={setShowActionsInCode}
+          showPCG={showPCG}
+          setShowPCG={setShowPCG}
+          showPCGNavigator={showPCGNavigator}
+          setShowPCGNavigator={setShowPCGNavigator}
+          currentPoint={currentPoint}
+          selectedFunction={selectedFunction}
+          iterations={iterations}
+          api={api}
+        />
         <MirGraph
-          layoutNodes={layoutNodes}
           edges={edges}
           mirNodes={nodes}
           currentPoint={currentPoint}
           setCurrentPoint={setCurrentPoint}
-          height={graphHeight}
-          isBlockOnSelectedPath={isBlockOnSelectedPath}
           hoveredStmts={hoveredStmts}
           showActionsInGraph={showActionsInCode}
           allPcgStmtData={allPcgStmtData}
@@ -772,7 +493,10 @@ export const App: React.FC<AppProps> = ({
                           type: "stmt",
                           block: nextNode.block,
                           stmt: 0,
-                          navigatorPoint: { type: "iteration", name: "initial" },
+                          navigatorPoint: {
+                            type: "iteration",
+                            name: "initial",
+                          },
                         });
                       }
                     }
@@ -814,13 +538,6 @@ export const App: React.FC<AppProps> = ({
               }}
             />
           )}
-        {pathData && (
-          <div style={{ position: "absolute", top: "20px", right: "20px" }}>
-            <SymbolicHeap heap={pathData.heap} />
-            <PathConditions pcs={pathData.pcs} />
-            <Assertions assertions={assertions} />
-          </div>
-        )}
       </div>
 
       {/* Draggable divider */}
@@ -850,28 +567,17 @@ export const App: React.FC<AppProps> = ({
         ></div>
       </div>
 
-      <div
-        id="pcg-graph"
-        style={{
-          flex: 1,
-          overflow: "auto",
-          marginRight: navigatorReservedWidth,
-        }}
-      ></div>
+      <PcgGraph
+        showPCG={showPCG}
+        navigatorReservedWidth={navigatorReservedWidth}
+        currentPoint={currentPoint}
+        selectedFunction={selectedFunction}
+        iterations={iterations}
+        api={api}
+      />
     </div>
   );
 };
-
-function getIterationActions(
-  dotGraphs: PcgBlockDotGraphs,
-  currentPoint: CurrentPoint
-): EvalStmtData<string[]> {
-  if (currentPoint.type !== "stmt" || dotGraphs.length <= currentPoint.stmt) {
-    return { pre_operands: [], post_operands: [], pre_main: [], post_main: [] };
-  }
-  const stmt = dotGraphs[currentPoint.stmt];
-  return stmt.actions;
-}
 
 function getSelectedStmt(
   nodes: MirNode[],

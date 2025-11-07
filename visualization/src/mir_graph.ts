@@ -151,7 +151,6 @@ export function toReactFlowNodes(
   layoutNodes: PositionedLayoutNode[],
   currentPoint: CurrentPoint,
   setCurrentPoint: (point: CurrentPoint) => void,
-  isBlockOnSelectedPath: (block: number) => boolean,
   hoveredStmts?: Set<string>,
   showActionsInGraph?: boolean,
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
@@ -167,7 +166,6 @@ export function toReactFlowNodes(
       ...node.data,
       currentPoint,
       setCurrentPoint,
-      isOnSelectedPath: isBlockOnSelectedPath(node.data.block),
       hoveredStmts,
       showActionsInGraph,
       pcgStmtData: allPcgStmtData?.get(node.data.block),
