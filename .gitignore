@@ -3,6 +3,7 @@
 *.log
 .plandex
 tmp/
+vis-data/
 visualization/data
 target
 .envrc
