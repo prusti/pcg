@@ -150,33 +150,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 } else {
                     (from.into(), BorrowFlowEdgeKind::CopyRef)
                 };
-                for (source_proj, target_proj) in from
-                    .lifetime_projections(self.ctxt)
-                    .into_iter()
-                    .zip(target.lifetime_projections(self.ctxt).into_iter())
-                {
-                    self.record_and_apply_action(
-                        BorrowPcgAction::add_edge(
-                            BorrowPcgEdge::new(
-                                BorrowFlowEdge::new(
-                                    source_proj.into(),
-                                    target_proj.into(),
-                                    kind,
-                                    self.ctxt,
-                                )
-                                .into(),
-                                self.pcg.borrow.validity_conditions.clone(),
-                            ),
-                            "assign_post_main",
-                            self.ctxt,
-                        )
-                        .into(),
-                    )?;
-                    // Redirect all future edges from `from` to now be from `target`
-                    self.place_obtainer().redirect_source_of_future_edges(
-                        source_proj,
-                        target_proj.into(),
-                        ctxt,
+                for source_proj in from.lifetime_projections(self.ctxt) {
+                    self.connect_outliving_projections(
+                        source_proj.with_base(PlaceOrConst::Place(from.with_inherent_region(ctxt))),
+                        target,
+                        |_| kind,
                     )?;
                 }
             }
