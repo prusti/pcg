@@ -59,6 +59,7 @@ struct MirStmtSpan {
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct MirStmt {
     stmt: String,
+    debug_stmt: String,
     span: MirStmtSpan,
     loans_invalidated_start: Vec<String>,
     loans_invalidated_mid: Vec<String>,
@@ -287,6 +288,7 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
 
 fn mk_mir_stmt(
     stmt: String,
+    debug_stmt: String,
     span: Span,
     location: mir::Location,
     ctxt: CompilerCtxt<'_, '_>,
@@ -330,6 +332,7 @@ fn mk_mir_stmt(
     let source_pos_high = SourcePos::new(span.hi(), ctxt.tcx());
     MirStmt {
         stmt,
+        debug_stmt,
         span: MirStmtSpan {
             low: source_pos_low,
             high: source_pos_high,
@@ -352,7 +355,13 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 block: bb,
                 statement_index: idx,
             };
-            mk_mir_stmt(stmt_text, stmt.source_info.span, location, ctxt)
+            mk_mir_stmt(
+                stmt_text,
+                format!("{stmt:?}"),
+                stmt.source_info.span,
+                location,
+                ctxt,
+            )
         });
 
         let terminator_text = format_terminator(&data.terminator().kind, ctxt);
@@ -362,6 +371,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
         };
         let terminator = mk_mir_stmt(
             terminator_text,
+            format!("{:?}", data.terminator()),
             data.terminator().source_info.span,
             terminator_location,
             ctxt,

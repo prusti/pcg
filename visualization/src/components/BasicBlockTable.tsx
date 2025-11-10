@@ -28,7 +28,7 @@ type TableRowProps = {
 };
 
 function TableRow({ selected, hovered, onClick, stmt, index, actions }: TableRowProps) {
-  const tooltip = `Loans invalidated at start: ${stmt.loans_invalidated_start.join(", ")}\nLoans invalidated at mid: ${stmt.loans_invalidated_mid.join(", ")}\nBorrows in scope at start: ${stmt.borrows_in_scope_start.join(", ")}\nBorrows in scope at mid: ${stmt.borrows_in_scope_mid.join(", ")}`;
+  const tooltip = `${stmt.debug_stmt}\nLoans invalidated at start: ${stmt.loans_invalidated_start.join(", ")}\nLoans invalidated at mid: ${stmt.loans_invalidated_mid.join(", ")}\nBorrows in scope at start: ${stmt.borrows_in_scope_start.join(", ")}\nBorrows in scope at mid: ${stmt.borrows_in_scope_mid.join(", ")}`;
   return (
     <tr
       className={selected ? "highlight" : ""}

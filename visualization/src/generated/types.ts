@@ -62,7 +62,7 @@ export type MirGraph = { nodes: MirNode[]; edges: MirEdge[] }
 
 export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator: MirStmt }
 
-export type MirStmt = { stmt: string; span: MirStmtSpan; loans_invalidated_start: string[]; loans_invalidated_mid: string[]; borrows_in_scope_start: string[]; borrows_in_scope_mid: string[] }
+export type MirStmt = { stmt: string; debug_stmt: string; span: MirStmtSpan; loans_invalidated_start: string[]; loans_invalidated_mid: string[]; borrows_in_scope_start: string[]; borrows_in_scope_mid: string[] }
 
 export type MirStmtSpan = { low: SourcePos; high: SourcePos }
 

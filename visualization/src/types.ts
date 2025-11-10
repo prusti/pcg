@@ -100,4 +100,8 @@ export type FunctionsMetadata = {
   [slug: FunctionSlug]: FunctionMetadata;
 };
 
+export type GetFunctionsResult =
+  | { type: "found"; data: FunctionsMetadata }
+  | { type: "not_found" };
+
 export type StringOf<T> = string & { __brand: T };

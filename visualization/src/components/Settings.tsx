@@ -1,5 +1,5 @@
 import React from "react";
-import { Api, PcgBlockDotGraphs, ZipFileApi } from "../api";
+import { Api, PcgBlockDotGraphs } from "../api";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { openDotGraphInNewWindow } from "../dot_graph";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
@@ -7,7 +7,6 @@ import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 interface SettingsProps {
   showSettings: boolean;
   onClose: () => void;
-  onApiChange: (api: Api) => void;
   showActionsInCode: boolean;
   setShowActionsInCode: (value: boolean) => void;
   showPCG: boolean;
@@ -58,7 +57,6 @@ const getPCGDotGraphFilename = (
 export default function Settings({
   showSettings,
   onClose,
-  onApiChange,
   showActionsInCode,
   setShowActionsInCode,
   showPCG,
@@ -107,39 +105,6 @@ export default function Settings({
       >
         ✕
       </button>
-
-      <div style={{ marginBottom: "20px" }}>
-        <h4 style={{ marginTop: 0, marginBottom: "10px" }}>Data Source</h4>
-        <input
-          type="file"
-          accept=".zip"
-          id="zip-file-input"
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const file = e.target.files?.[0];
-            if (file) {
-              const zipApi = await ZipFileApi.fromFile(file);
-              onApiChange(zipApi);
-            }
-          }}
-        />
-        <button
-          style={{
-            width: "100%",
-            padding: "8px",
-            cursor: "pointer",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-          }}
-          onClick={() => {
-            document.getElementById("zip-file-input")?.click();
-          }}
-        >
-          Upload Zip File
-        </button>
-      </div>
 
       <div style={{ marginBottom: "20px" }}>
         <label style={{ display: "block", marginBottom: "10px" }}>
