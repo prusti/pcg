@@ -23,7 +23,7 @@ import {
   SourcePos,
 } from "../types";
 import MirGraph from "./MirGraph";
-import { Api, PcgBlockDotGraphs } from "../api";
+import { PcgBlockDotGraphs } from "../api";
 import { PcgFunctionData } from "../generated/types";
 import { filterNodesAndEdges } from "../mir_graph";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
@@ -32,19 +32,14 @@ import SourceCodeViewer from "./SourceCodeViewer";
 import PcgGraph from "./PcgGraph";
 import Settings from "./Settings";
 import { MirEdge, MirNode } from "../generated/types";
+import { api } from "../api";
 
 interface AppProps {
-  initialFunction: FunctionSlug;
   functions: FunctionsMetadata;
-  api: Api;
-  onApiChange: (newApi: Api) => void;
 }
 
 export const App: React.FC<AppProps> = ({
-  initialFunction,
   functions,
-  api,
-  onApiChange,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
   const [allPcgStmtData, setAllPcgStmtData] = useState<
@@ -64,7 +59,7 @@ export const App: React.FC<AppProps> = ({
 
   const [selectedFunction, setSelectedFunction] = useLocalStorageString(
     "selectedFunction",
-    initialFunction || (Object.keys(functions)[0] as FunctionSlug)
+    Object.keys(functions)[0] as FunctionSlug
   ) as [FunctionSlug, Dispatch<SetStateAction<FunctionSlug>>];
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
@@ -126,7 +121,7 @@ export const App: React.FC<AppProps> = ({
         setEdges(mirGraph.edges);
       })();
     }
-  }, [api, selectedFunction]);
+  }, [selectedFunction]);
 
   const pcgProgramPointData = useMemo(() => {
     if (!pcgFunctionData) {
@@ -161,11 +156,11 @@ export const App: React.FC<AppProps> = ({
     };
 
     fetchAllPcgStmtData();
-  }, [api, selectedFunction]);
+  }, [selectedFunction]);
 
   useEffect(() => {
     reloadIterations(api, selectedFunction, currentPoint, setIterations);
-  }, [api, selectedFunction, currentPoint]);
+  }, [selectedFunction, currentPoint]);
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
@@ -412,7 +407,6 @@ export const App: React.FC<AppProps> = ({
         <Settings
           showSettings={showSettings}
           onClose={() => setShowSettings(false)}
-          onApiChange={onApiChange}
           showActionsInCode={showActionsInCode}
           setShowActionsInCode={setShowActionsInCode}
           showPCG={showPCG}

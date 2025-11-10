@@ -1,6 +1,7 @@
 import { MirGraph, PcgFunctionData, StmtGraphs } from "./generated/types";
 import {
   FunctionsMetadata,
+  GetFunctionsResult,
   PcgProgramPointData,
   StringOf,
 } from "./types";
@@ -25,8 +26,13 @@ export abstract class Api {
     return await this.fetchJsonFile(graphFilePath) as Promise<MirGraph>;
   }
 
-  async getFunctions(): Promise<FunctionsMetadata> {
-    return await this.fetchJsonFile("data/functions.json") as Promise<FunctionsMetadata>;
+  async getFunctions(): Promise<GetFunctionsResult> {
+    try {
+      const data = await this.fetchJsonFile("data/functions.json") as FunctionsMetadata;
+      return { type: "found", data };
+    } catch {
+      return { type: "not_found" };
+    }
   }
 
   public async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
@@ -138,39 +144,6 @@ function createDefaultApi(): Api {
   const datasrc = params.get('datasrc');
 
   return new FetchApi(datasrc || undefined);
-}
-
-function getDataZipUrl(): string {
-  const params = new URLSearchParams(window.location.search);
-  const datasrc = params.get('datasrc');
-
-  if (datasrc) {
-    const prefix = datasrc.endsWith('/') ? datasrc : `${datasrc}/`;
-    return `${prefix}data.zip`;
-  }
-
-  return "data.zip";
-}
-
-export async function getDefaultApi(): Promise<Api> {
-  const fetchApi = createDefaultApi();
-
-  try {
-    await fetchApi.getFunctions();
-    return fetchApi;
-  } catch {
-    console.log("Failed to load data/functions.json, trying data.zip");
-  }
-
-  try {
-    const zipUrl = getDataZipUrl();
-    const zipApi = await ZipFileApi.fromUrl(zipUrl);
-    return zipApi;
-  } catch {
-    console.log("Failed to load data.zip");
-  }
-
-  throw new Error("No data source available");
 }
 
 export const api = createDefaultApi();
