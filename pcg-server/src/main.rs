@@ -30,14 +30,17 @@ async fn main() {
     }
     info!("All required JavaScript assets verified");
 
-    // Ensure tmp directory exists
-    fs::create_dir_all("tmp").expect("Failed to create tmp directory");
+    // Ensure visualization storage directory exists
+    // Use /data/vis in production (fly.dev mounted volume), fall back to ./vis-data for local development
+    let vis_data_dir = std::env::var("VIS_DATA_DIR").unwrap_or_else(|_| "./vis-data".to_string());
+    fs::create_dir_all(&vis_data_dir).expect("Failed to create visualization data directory");
+    info!("Using visualization data directory: {}", vis_data_dir);
 
     let app = Router::new()
         .route("/", get(serve_upload_form))
         .route("/upload", post(handle_upload))
         .nest_service("/visualization", ServeDir::new("../visualization"))
-        .nest_service("/tmp", ServeDir::new("./tmp"))
+        .nest_service("/vis-data", ServeDir::new(&vis_data_dir))
         .nest_service("/static", ServeDir::new("./static"));
 
     info!("Starting server on 0.0.0.0:4000");
@@ -133,11 +136,12 @@ fn zip_directory(src_dir: &PathBuf, dst_file: &PathBuf) -> Result<(), String> {
 }
 
 async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, String> {
-    // Create a new directory in ./tmp with a unique name
-    let tmp_dir = PathBuf::from("tmp");
-    let unique_dir = tmp_dir.join(Uuid::new_v4().to_string());
+    // Create a new directory with a unique name in the visualization data directory
+    let vis_data_dir = std::env::var("VIS_DATA_DIR").unwrap_or_else(|_| "./vis-data".to_string());
+    let base_dir = PathBuf::from(&vis_data_dir);
+    let unique_dir = base_dir.join(Uuid::new_v4().to_string());
     fs::create_dir_all(&unique_dir).map_err(|e| e.to_string())?;
-    debug!("Created temporary directory: {:?}", unique_dir);
+    debug!("Created visualization directory: {:?}", unique_dir);
 
     // Create data directory
     let data_dir = unique_dir.join("data");
@@ -225,6 +229,6 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
     // Redirect to local visualization with data source URL
     let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
-    let redirect_url = format!("/visualization/?datasrc=/tmp/{}", unique_dir_name);
+    let redirect_url = format!("/visualization/?datasrc=/vis-data/{}", unique_dir_name);
     Ok(Redirect::to(&redirect_url).into_response())
 }

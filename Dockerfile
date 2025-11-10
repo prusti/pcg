@@ -44,11 +44,15 @@ COPY --from=node-builder /usr/src/app/visualization/dist /usr/src/app/visualizat
 COPY --from=node-builder /usr/src/app/visualization/index.html /usr/src/app/visualization/index.html
 COPY --from=node-builder /usr/src/app/pcg-server/static /usr/src/app/pcg-server/static/
 
-# Create tmp directory with proper permissions
-RUN mkdir -p pcg-server/tmp && chmod 777 pcg-server/tmp
+# Create data directory for persistent storage with proper permissions
+# In production, this will be replaced by the mounted volume
+RUN mkdir -p /data && chmod 777 /data
 
 # Enable full backtraces
 ENV RUST_BACKTRACE=1
+
+# Set visualization data directory (uses mounted volume in production)
+ENV VIS_DATA_DIR=/data
 
 # Expose port for pcg-server
 EXPOSE 4000
