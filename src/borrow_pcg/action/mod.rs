@@ -228,7 +228,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         BorrowPcgActionKindDebugRepr {
             r#type: BorrowPcgActionKindDiscriminants::from(self),
-            data: self.display_string(ctxt),
+            data: self.to_short_string(ctxt),
         }
     }
 }
@@ -236,7 +236,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
                 BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
@@ -251,11 +251,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                     restore_capability.debug_line(ctxt.ctxt())
                 }
                 BorrowPcgActionKind::MakePlaceOld(action) => action.display_string(ctxt),
-                BorrowPcgActionKind::RemoveEdge(borrow_pcgedge) => {
-                    format!("Remove Edge {}", borrow_pcgedge.display_string(ctxt))
+                BorrowPcgActionKind::RemoveEdge(edge) => {
+                    format!(
+                        "Remove Edge {}",
+                        edge.display_output(ctxt, mode).into_text()
+                    )
                 }
                 BorrowPcgActionKind::AddEdge { edge } => {
-                    format!("Add Edge: {}", edge.display_string(ctxt),)
+                    format!("Add Edge {}", edge.display_output(ctxt, mode).into_text())
                 }
             }
             .into(),

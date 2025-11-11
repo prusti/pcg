@@ -179,7 +179,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
               A−
             </button>
             <button
-              onClick={() => onFontSizeChange(Math.min(24, fontSize + 1))}
+              onClick={() => onFontSizeChange(Math.min(48, fontSize + 1))}
               style={{
                 cursor: "pointer",
                 backgroundColor: "#888",
