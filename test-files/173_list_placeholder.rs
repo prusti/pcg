@@ -20,7 +20,7 @@ fn f<'a>(mut list: List<&'a mut i32>, s: &'a mut i32) -> List<&'a mut i32> {
 // PCG: bb0[6] pre_operands: list.tail before bb0[6]:PreOperands↓'?7 -> list↓'?7
 // PCG: bb0[6] pre_operands: {list↓'?7 before bb0[1]:PreOperands} -> {list.head before bb0[1]:PostOperands↓'?7, list.tail before bb0[6]:PreOperands↓'?7}
 
-    // PCG: bb0[7] post_main: Add Edge: list before bb0[7]:PostOperands↓'?7 -> RETURN↓'?6
+    // PCG: bb0[7] post_main: Add Edge list before bb0[7]:PostOperands↓'?7 -> RETURN↓'?6
     list
 }
 
