@@ -12,7 +12,7 @@ use crate::{
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
-        obtain::{PlaceCollapser, PlaceObtainer},
+        obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::TripleWalker,
     },
@@ -190,10 +190,11 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         target: Place<'tcx>,
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind,
     ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
             if self.outlives(
-                source_proj.region(self.ctxt.ctxt()),
-                target_proj.region(self.ctxt.ctxt()),
+                source_proj.region(ctxt.ctxt()),
+                target_proj.region(ctxt.ctxt()),
             ) {
                 self.record_and_apply_action(
                     BorrowPcgAction::add_edge(
@@ -211,6 +212,14 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                         self.ctxt,
                     )
                     .into(),
+                )?;
+            }
+            if let PlaceOrConst::Place(base) = source_proj.base {
+                let local_source_proj = source_proj.with_base(base);
+                self.place_obtainer().redirect_source_of_future_edges(
+                    local_source_proj,
+                    target_proj.into(),
+                    ctxt,
                 )?;
             }
         }
