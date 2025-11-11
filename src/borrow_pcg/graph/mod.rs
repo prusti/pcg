@@ -487,8 +487,13 @@ pub struct Conditioned<T, Conditions = ValidityConditions> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for Conditioned<T>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(self.conditions.conditional_string(&self.value, ctxt).into())
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        match mode {
+            OutputMode::Normal => {
+                DisplayOutput::Text(self.conditions.conditional_string(&self.value, ctxt).into())
+            }
+            OutputMode::Short => self.value.display_output(ctxt, mode),
+        }
     }
 }
 
