@@ -61,7 +61,11 @@ async fn handle_upload(multipart: Multipart) -> Response {
 
 // We call pcg-bin instead of using the PCG library directly so that we can
 // capture all stdout/stderr output when compilation or analysis fails.
-fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String> {
+fn run_pcg_analysis(
+    file_path: PathBuf,
+    data_dir: PathBuf,
+    use_polonius: bool,
+) -> Result<(), String> {
     use std::process::Command;
 
     // Determine the path to the pcg_bin executable
@@ -78,14 +82,23 @@ fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String>
         }
     });
 
-    info!("Running PCG analysis using pcg-bin at: {}", pcg_bin_path);
+    info!(
+        "Running PCG analysis using pcg-bin at: {} (polonius={})",
+        pcg_bin_path, use_polonius
+    );
 
-    let output = Command::new(&pcg_bin_path)
-        .arg(&file_path)
+    let mut cmd = Command::new(&pcg_bin_path);
+    cmd.arg(&file_path)
         .arg("--edition=2018")
         .env("PCG_VISUALIZATION", "true")
         .env("PCG_VISUALIZATION_DATA_DIR", &data_dir)
-        .env("PCG_COUPLING", "true")
+        .env("PCG_COUPLING", "true");
+
+    if use_polonius {
+        cmd.env("PCG_POLONIUS", "true");
+    }
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to execute pcg-bin at {}: {}", pcg_bin_path, e))?;
 
@@ -146,6 +159,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     // Debug all fields
     let mut code = String::new();
     let mut input_method = String::new();
+    let mut borrow_checker = String::from("nll");
 
     while let Some(field) = multipart.next_field().await.map_err(|e| e.to_string())? {
         let name = field.name().ok_or("Field missing name")?.to_string();
@@ -155,6 +169,10 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
             "input-method" => {
                 input_method = field.text().await.map_err(|e| e.to_string())?;
                 debug!("Got input method: {}", input_method);
+            }
+            "borrow-checker" => {
+                borrow_checker = field.text().await.map_err(|e| e.to_string())?;
+                debug!("Got borrow checker: {}", borrow_checker);
             }
             "code" => {
                 let code_text = field.text().await.map_err(|e| e.to_string())?;
@@ -217,7 +235,8 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     info!("Using absolute data dir: {:?}", abs_data_dir);
 
     // Run PCG analysis using pcg-bin
-    let result = run_pcg_analysis(abs_file_path, abs_data_dir);
+    let use_polonius = borrow_checker == "polonius";
+    let result = run_pcg_analysis(abs_file_path, abs_data_dir, use_polonius);
 
     if let Err(e) = result {
         return Ok((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response());

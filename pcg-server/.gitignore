@@ -3,6 +3,4 @@ dist
 *.log
 static/editor.bundle.js
 static/editor.bundle.js.map
-
-
-
+vis-data
