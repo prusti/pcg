@@ -162,7 +162,8 @@ mod private {
     use crate::{
         borrow_checker::BorrowCheckerInterface,
         pcg::DomainDataWithCtxt,
-        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings},
+        rustc_interface::middle::ty::TyCtxt,
+        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings},
     };
 
     #[derive(Clone, From, Eq)]
@@ -215,6 +216,12 @@ mod private {
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
         pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {
             Self { ctxt, settings }
+        }
+    }
+
+    impl<'a, 'tcx: 'a> HasTyCtxt<'tcx> for ResultsCtxt<'a, 'tcx> {
+        fn tcx(&self) -> TyCtxt<'tcx> {
+            self.ctxt.tcx
         }
     }
 

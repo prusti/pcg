@@ -20,7 +20,7 @@ use crate::{
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::{
-            mir::{Const, Local, PlaceElem},
+            mir::{Const, Local, PlaceElem, interpret::Scalar},
             ty::{
                 self, DebruijnIndex, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable,
                 TypeVisitor,
@@ -28,8 +28,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
-        SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, Place,
+        PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
@@ -215,15 +215,27 @@ impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasRegions<'tcx, Ctxt> for PlaceOrConst<'
     }
 }
 
-impl<'tcx, T, Ctxt> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
+impl<'tcx, T, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for PlaceOrConst<'tcx, T>
 where
     T: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             PlaceOrConst::Place(p) => p.display_output(ctxt, mode),
-            PlaceOrConst::Const(c) => DisplayOutput::Text(format!("Const({c:?})").into()),
+            PlaceOrConst::Const(c) => c.display_output(ctxt, mode),
         }
+    }
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for Const<'tcx> {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{self}").into())
+    }
+}
+
+impl DisplayWithCtxt<()> for Scalar {
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Text(format!("{self}").into())
     }
 }
 
@@ -674,15 +686,14 @@ impl<
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
-            Some(label) => DisplayOutput::Seq(vec![
-                DisplayOutput::Text(Cow::Borrowed(" ")),
-                label.display_output((), mode),
-            ]),
-            _ => DisplayOutput::Text(Cow::Borrowed("")),
+            Some(label) => {
+                DisplayOutput::Seq(vec![DisplayOutput::SPACE, label.display_output((), mode)])
+            }
+            _ => DisplayOutput::EMPTY,
         };
         DisplayOutput::Seq(vec![
             self.base.display_output(ctxt, mode),
-            DisplayOutput::Text(Cow::Borrowed("↓")),
+            DisplayOutput::DOWN_ARROW,
             self.region(ctxt).display_output(ctxt.bc_ctxt(), mode),
             label_part,
         ])

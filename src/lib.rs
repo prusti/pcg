@@ -335,6 +335,12 @@ impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
     }
 }
 
+impl<'mir, 'tcx> HasTyCtxt<'tcx> for &PcgCtxt<'mir, 'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.compiler_ctxt.tcx
+    }
+}
+
 impl<'a, 'mir, 'tcx> HasSettings<'a> for &'a PcgCtxt<'mir, 'tcx> {
     fn settings(&self) -> &'a PcgSettings {
         &self.settings
@@ -668,7 +674,10 @@ pub(crate) use pcg_validity_expect_some;
 use crate::{
     action::PcgActionDebugRepr,
     borrow_checker::r#impl::NllBorrowCheckerImpl,
-    utils::{DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, json::ToJsonWithCtxt},
+    utils::{
+        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        json::ToJsonWithCtxt,
+    },
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {
