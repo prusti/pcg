@@ -242,7 +242,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
                     format!(
                         "Label Region Projection: {} with {:?}",
-                        rp.display_string(ctxt),
+                        rp.display_output(ctxt, mode).into_text(),
                         label
                     )
                 }

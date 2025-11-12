@@ -11,8 +11,8 @@ use crate::{
     },
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgSettings, Place,
-        SETTINGS, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        Place, SETTINGS, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
     },
 };
 
@@ -61,6 +61,12 @@ mod private {
 }
 
 pub use private::*;
+
+impl<'a, 'tcx: 'a> HasTyCtxt<'tcx> for AnalysisCtxt<'a, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.ctxt.tcx
+    }
+}
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
     #[allow(dead_code)]

@@ -32,7 +32,7 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) bc: T,
 }
 
-impl<'a, 'tcx> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx> {
+impl<'a, 'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
@@ -144,10 +144,6 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
 
     fn body(self) -> &'a Body<'tcx> {
         self.mir
-    }
-
-    fn tcx(self) -> TyCtxt<'tcx> {
-        self.tcx
     }
 }
 
@@ -279,16 +275,10 @@ impl ProjectionKind {
     }
 }
 
-pub trait HasCompilerCtxt<'a, 'tcx>: Copy {
+pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
     fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
-    }
-    fn tcx(self) -> TyCtxt<'tcx>
-    where
-        'tcx: 'a,
-    {
-        self.ctxt().tcx()
     }
 }
 
@@ -304,7 +294,7 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;
 }
 
-pub(crate) trait HasTyCtxt<'tcx> {
+pub trait HasTyCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
 
     fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {

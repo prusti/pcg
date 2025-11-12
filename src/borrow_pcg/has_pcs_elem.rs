@@ -32,11 +32,14 @@ pub enum LabelLifetimeProjectionPredicate<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelLifetimeProjectionPredicate<'tcx>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
                 LabelLifetimeProjectionPredicate::Postfix(region_projection) => {
-                    format!("postfixes of {}", region_projection.display_string(ctxt))
+                    format!(
+                        "postfixes of {}",
+                        region_projection.display_output(ctxt, mode).into_text()
+                    )
                 }
                 LabelLifetimeProjectionPredicate::Equals(region_projection) => {
                     region_projection.display_string(ctxt)
