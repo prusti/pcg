@@ -36,7 +36,7 @@ use crate::{
         HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCtxt, OutputMode},
         html::Html,
-    },
+    }, visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
 };
 use std::{
     collections::HashSet,
@@ -58,9 +58,6 @@ pub fn place_id(place: &Place<'_>) -> String {
     format!("{place:?}")
 }
 
-pub struct GraphDrawer<T: io::Write> {
-    out: T,
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct NodeId(char, usize);
@@ -217,12 +214,22 @@ pub(crate) enum GraphEdge<'a> {
 }
 
 impl<'a> GraphEdge<'a> {
+    pub(crate) fn validity_conditions(&self) -> Option<&'a ValidityConditions> {
+        match self {
+            GraphEdge::Projection { .. } => None,
+            GraphEdge::Alias { .. } => None,
+            GraphEdge::Borrow { validity_conditions, .. } => Some(validity_conditions),
+            GraphEdge::DerefExpansion { validity_conditions, .. } => Some(validity_conditions),
+            GraphEdge::Abstract { .. } => None,
+            GraphEdge::BorrowFlow { .. } => None,
+            GraphEdge::Coupled { .. } => None,
+        }
+    }
     pub(super) fn to_dot_edge<'tcx: 'a>(
         &self,
-        edge_id: Option<usize>,
+        edge_id: Option<DotEdgeId>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> DotEdge {
-        let edge_id = edge_id.map(|id| format!("edge_{id}"));
         match self {
             GraphEdge::Projection { source, target } => DotEdge {
                 id: edge_id,
@@ -383,7 +390,7 @@ pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
     let graph = constructor.construct_graph();
     let mut buf = vec![];
-    let drawer = GraphDrawer::new(&mut buf);
+    let drawer = GraphDrawer::new(&mut buf, None);
     drawer.draw(graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
@@ -396,7 +403,7 @@ pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
     let mut buf = vec![];
-    let drawer = GraphDrawer::new(&mut buf);
+    let drawer = GraphDrawer::new(&mut buf, None);
     drawer.draw(graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
@@ -409,8 +416,8 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
 ) -> io::Result<()> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
-    let drawer = GraphDrawer::new(File::create(file_path).unwrap_or_else(|e| {
-        panic!("Failed to create file at path: {file_path:?}: {e}");
-    }));
+    let dot_file = File::create(file_path).unwrap();
+    let ctxt_file = File::create(file_path.with_extension("json")).unwrap();
+    let drawer = GraphDrawer::new(dot_file, Some(ctxt_file));
     drawer.draw(graph, ctxt)
 }

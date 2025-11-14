@@ -1,11 +1,43 @@
 use std::{
-    borrow::Cow, collections::BTreeSet, fmt::Display, fs::File, io::Write, path::Path, process::{Command, Stdio}
+    borrow::Cow, collections::{BTreeSet, HashMap}, fmt::Display, fs::File, io::Write, path::Path, process::{Command, Stdio}
 };
 
-use crate::utils::html::Html;
+use serde_derive::Serialize;
+
+use crate::{borrow_pcg::validity_conditions::ValidityConditionsDebugRepr, utils::{DebugRepr, HasCompilerCtxt, html::Html}, visualization::Graph};
 
 type NodeId = String;
-type EdgeId = String;
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub(crate) struct DotEdgeId(String);
+
+pub struct DotGraphWithEdgeCtxt<Ctxt> {
+    pub(crate) graph: DotGraph,
+    pub(crate) edge_ctxt: HashMap<DotEdgeId, Ctxt>,
+}
+
+impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
+    pub(crate) fn from_graph<'a, 'tcx: 'a>(graph: Graph<'a>, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self {
+        let nodes = graph.nodes.iter().map(|g| g.to_dot_node()).collect();
+        let mut edges = Vec::new();
+        let mut edge_ctxt = HashMap::new();
+        for (i, edge) in graph.edges.iter().enumerate() {
+            let edge_id = DotEdgeId(format!("edge_{i}"));
+            if let Some(validity_conditions) = edge.validity_conditions() {
+                edge_ctxt.insert(edge_id.clone(), validity_conditions.debug_repr(ctxt));
+            }
+            edges.push(edge.to_dot_edge(Some(edge_id), ctxt));
+        }
+        Self {
+            graph: DotGraph {
+                name: Cow::Borrowed("graph"),
+                nodes,
+                edges,
+            },
+            edge_ctxt,
+        }
+    }
+}
 
 pub struct DotGraph {
     pub(crate) name: Cow<'static, str>,
@@ -266,7 +298,7 @@ impl EdgeOptions {
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct DotEdge {
-    pub id: Option<EdgeId>,
+    pub id: Option<DotEdgeId>,
     pub from: NodeId,
     pub to: NodeId,
     pub options: EdgeOptions,
