@@ -11,6 +11,7 @@ import { actionLine } from "../actionFormatting";
 export type ReactFlowEdgeData = {
   label?: string;
   selected: boolean;
+  highlighted?: boolean;
   onSelect: () => void;
   showActions?: boolean;
   terminatorActions?: PcgProgramPointData;
@@ -48,6 +49,9 @@ export default function ReactFlowEdge({
   const hasLabel = data?.label && data.label.length > 0;
   const hasActions = actions.length > 0;
 
+  const strokeColor = data?.selected ? "green" : data?.highlighted ? "#ff6b00" : "black";
+  const strokeWidth = data?.highlighted ? 4 : 2;
+
   return (
     <>
       <path
@@ -56,9 +60,10 @@ export default function ReactFlowEdge({
         d={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: data?.selected ? "green" : "black",
-          strokeWidth: 2,
+          stroke: strokeColor,
+          strokeWidth: strokeWidth,
           cursor: "pointer",
+          transition: "stroke 0.2s, stroke-width 0.2s",
         }}
         onClick={data?.onSelect}
       />

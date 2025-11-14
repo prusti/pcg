@@ -89,6 +89,9 @@ export const App: React.FC<AppProps> = ({
   const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
   const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
+  // Track highlighted MIR edges based on PCG edge hover
+  const [highlightedMirEdges, setHighlightedMirEdges] = useState<Set<string>>(new Set());
+
   // Track PCG Navigator state for layout adjustment
   const [navigatorDocked] = useLocalStorageBool("pcgNavigatorDocked", true);
   const [navigatorMinimized, setNavigatorMinimized] = useLocalStorageBool(
@@ -427,6 +430,7 @@ export const App: React.FC<AppProps> = ({
           showActionsInGraph={showActionsInCode}
           allPcgStmtData={allPcgStmtData}
           pcgFunctionData={pcgFunctionData}
+          highlightedEdges={highlightedMirEdges}
         />
         {showPCGNavigator &&
           pcgProgramPointData &&
@@ -568,6 +572,7 @@ export const App: React.FC<AppProps> = ({
         selectedFunction={selectedFunction}
         iterations={iterations}
         api={api}
+        onHighlightMirEdges={setHighlightedMirEdges}
       />
     </div>
   );

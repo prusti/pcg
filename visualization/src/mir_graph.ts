@@ -179,7 +179,8 @@ export function toReactFlowEdges(
   currentPoint: CurrentPoint,
   setCurrentPoint: (point: CurrentPoint) => void,
   showActionsInGraph: boolean,
-  pcgFunctionData: PcgFunctionData | null
+  pcgFunctionData: PcgFunctionData | null,
+  highlightedEdges?: Set<string>
 ): ReactFlowEdge[] {
   const nodeIdToBlock = new Map(mirNodes.map((n) => [n.id, n.block]));
 
@@ -190,6 +191,14 @@ export function toReactFlowEdges(
       currentPoint.type === "terminator" &&
       currentPoint.block1 === sourceBlock &&
       currentPoint.block2 === targetBlock;
+
+    // Check if this edge should be highlighted based on PCG hover
+    const edgeKey = `${sourceBlock}-${targetBlock}`;
+    const isHighlighted = highlightedEdges?.has(edgeKey) || false;
+
+    if (highlightedEdges && highlightedEdges.size > 0) {
+      console.log(`MIR Edge ${edgeKey}: highlighted=${isHighlighted}, available keys:`, Array.from(highlightedEdges));
+    }
 
     const terminatorActions =
       showActionsInGraph && sourceBlock !== undefined && targetBlock !== undefined && pcgFunctionData
@@ -204,6 +213,7 @@ export function toReactFlowEdges(
       data: {
         label: edge.label,
         selected: isSelected,
+        highlighted: isHighlighted,
         onSelect: () => {
           if (sourceBlock !== undefined && targetBlock !== undefined) {
             setCurrentPoint({

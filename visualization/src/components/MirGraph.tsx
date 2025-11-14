@@ -24,6 +24,7 @@ interface MirGraphProps {
   showActionsInGraph?: boolean;
   allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>;
   pcgFunctionData?: PcgFunctionData | null;
+  highlightedEdges?: Set<string>;
 }
 
 const MirGraph: React.FC<MirGraphProps> = ({
@@ -35,6 +36,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
   showActionsInGraph = false,
   allPcgStmtData = new Map(),
   pcgFunctionData = null,
+  highlightedEdges = new Set(),
 }) => {
   const { filteredNodes, filteredEdges } = useMemo(
     () => filterNodesAndEdges(mirNodes, edges, {
@@ -73,9 +75,10 @@ const MirGraph: React.FC<MirGraphProps> = ({
         currentPoint,
         setCurrentPoint,
         showActionsInGraph,
-        pcgFunctionData
+        pcgFunctionData,
+        highlightedEdges
       ),
-    [edges, mirNodes, currentPoint, setCurrentPoint, showActionsInGraph, pcgFunctionData]
+    [edges, mirNodes, currentPoint, setCurrentPoint, showActionsInGraph, pcgFunctionData, highlightedEdges]
   );
 
   const defaultEdgeOptions = useMemo(

@@ -44,8 +44,26 @@ export async function openDotGraphInNewWindow(api: Api, filename: string) {
         gElements.forEach((gElement) => {
           const id = gElement.getAttribute('id');
           if (id && edgeMetadata![id]) {
+            const pathElement = gElement.querySelector('path');
+            const originalStroke = pathElement?.getAttribute('stroke');
+            const originalStrokeWidth = pathElement?.getAttribute('stroke-width');
+
             gElement.addEventListener('mouseenter', () => {
               console.log(`Edge ${id} metadata:`, edgeMetadata![id]);
+
+              // Highlight this edge in the SVG
+              if (pathElement) {
+                pathElement.setAttribute('stroke', '#ff6b00');
+                pathElement.setAttribute('stroke-width', '3');
+              }
+            });
+
+            gElement.addEventListener('mouseleave', () => {
+              // Restore original edge styling
+              if (pathElement && originalStroke && originalStrokeWidth) {
+                pathElement.setAttribute('stroke', originalStroke);
+                pathElement.setAttribute('stroke-width', originalStrokeWidth);
+              }
             });
           }
         });
