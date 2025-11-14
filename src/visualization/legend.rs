@@ -44,9 +44,9 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "reborrow_b",
         "Reborrow Edge",
         EdgeOptions::directed(EdgeDirection::Forward)
-            .with_color("orange".to_string())
+            .with_color("orange".into())
             .with_label("region".to_string())
-            .with_tooltip("conditions".to_string()),
+            .with_tooltip("conditions".into()),
     )?;
 
     // Deref Expansion Edge
@@ -56,8 +56,8 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "deref_b",
         "Deref Expansion Edge",
         EdgeOptions::undirected()
-            .with_color("green".to_string())
-            .with_tooltip("conditions".to_string()),
+            .with_color("green".into())
+            .with_tooltip("conditions".into()),
     )?;
 
     // Abstract Edge
@@ -75,7 +75,7 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "region_a",
         "region_b",
         "Region Projection Edge",
-        EdgeOptions::directed(EdgeDirection::Forward).with_color("purple".to_string()),
+        EdgeOptions::directed(EdgeDirection::Forward).with_color("purple".into()),
     )?;
 
     // Coupled Edge
@@ -85,7 +85,7 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "coupled_b",
         "Coupled Edge",
         EdgeOptions::undirected()
-            .with_color("red".to_string())
+            .with_color("red".into())
             .with_style("dashed".to_string()),
     )?;
 
@@ -176,6 +176,7 @@ fn write_edge<T: Write>(
     };
 
     let edge = DotEdge {
+        id: None,
         from: from.to_string(),
         to: to.to_string(),
         options,

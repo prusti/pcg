@@ -1,18 +1,14 @@
 use std::{
-    collections::BTreeSet,
-    fmt::Display,
-    fs::File,
-    io::Write,
-    path::Path,
-    process::{Command, Stdio},
+    borrow::Cow, collections::BTreeSet, fmt::Display, fs::File, io::Write, path::Path, process::{Command, Stdio}
 };
 
 use crate::utils::html::Html;
 
 type NodeId = String;
+type EdgeId = String;
 
 pub struct DotGraph {
-    pub(crate) name: String,
+    pub(crate) name: Cow<'static, str>,
     pub(crate) nodes: Vec<DotNode>,
     pub(crate) edges: Vec<DotEdge>,
 }
@@ -209,10 +205,10 @@ pub enum EdgeDirection {
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct EdgeOptions {
     label: String,
-    color: Option<String>,
+    color: Option<Cow<'static, str>>,
     style: Option<String>,
     direction: Option<EdgeDirection>,
-    tooltip: Option<String>,
+    tooltip: Option<Cow<'static, str>>,
     penwidth: Option<String>,
     weight: Option<String>,
 }
@@ -252,7 +248,7 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_color(mut self, color: String) -> Self {
+    pub fn with_color(mut self, color: Cow<'static, str>) -> Self {
         self.color = Some(color);
         self
     }
@@ -262,7 +258,7 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_tooltip(mut self, tooltip: String) -> Self {
+    pub fn with_tooltip(mut self, tooltip: Cow<'static, str>) -> Self {
         self.tooltip = Some(tooltip);
         self
     }
@@ -270,6 +266,7 @@ impl EdgeOptions {
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct DotEdge {
+    pub id: Option<EdgeId>,
     pub from: NodeId,
     pub to: NodeId,
     pub options: EdgeOptions,

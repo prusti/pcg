@@ -8,11 +8,17 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr;
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Hash, PartialEq, Eq)]
 pub(crate) struct StringOf<T>(pub String, PhantomData<T>);
 
 impl<T: std::fmt::Display> StringOf<T> {
-    pub fn new(value: T) -> Self {
+    pub(crate) fn new(value: T) -> Self {
         Self(value.to_string(), PhantomData)
+    }
+}
+
+impl<T: std::fmt::Debug> StringOf<T> {
+    pub(crate) fn new_debug(value: T) -> Self {
+        Self(format!("{:?}", value), PhantomData)
     }
 }

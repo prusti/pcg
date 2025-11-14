@@ -24,15 +24,18 @@ pub(crate) mod stmt_graphs;
 pub use mir_graph::SourcePos;
 
 use crate::{
-    borrow_pcg::{edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph},
+    borrow_pcg::{
+        edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph,
+        validity_conditions::ValidityConditions,
+    },
     pcg::{
         CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Location,
-    utils::html::Html,
     utils::{
-        HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCtxt, OutputMode},
+        html::Html,
     },
 };
 use std::{
@@ -173,7 +176,7 @@ enum NodeType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum GraphEdge {
+pub(crate) enum GraphEdge<'a> {
     Abstract {
         blocked: NodeId,
         blocking: NodeId,
@@ -190,7 +193,7 @@ pub(crate) enum GraphEdge {
         kind: String,
         location: Option<Location>,
         region: Option<String>,
-        path_conditions: String,
+        validity_conditions: &'a ValidityConditions,
         borrow_index: Option<String>,
     },
     Projection {
@@ -200,7 +203,7 @@ pub(crate) enum GraphEdge {
     DerefExpansion {
         source: NodeId,
         target: NodeId,
-        path_conditions: String,
+        validity_conditions: &'a ValidityConditions,
     },
     BorrowFlow {
         source: NodeId,
@@ -213,10 +216,16 @@ pub(crate) enum GraphEdge {
     },
 }
 
-impl GraphEdge {
-    pub(super) fn to_dot_edge(&self) -> DotEdge {
+impl<'a> GraphEdge<'a> {
+    pub(super) fn to_dot_edge<'tcx: 'a>(
+        &self,
+        edge_id: Option<usize>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> DotEdge {
+        let edge_id = edge_id.map(|id| format!("edge_{id}"));
         match self {
             GraphEdge::Projection { source, target } => DotEdge {
+                id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward),
@@ -225,10 +234,11 @@ impl GraphEdge {
                 blocked_place,
                 blocking_place,
             } => DotEdge {
+                id: edge_id,
                 from: blocked_place.to_string(),
                 to: blocking_place.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_color("grey".to_string())
+                    .with_color("grey".into())
                     .with_style("dashed".to_string()),
             },
             GraphEdge::Borrow {
@@ -237,13 +247,14 @@ impl GraphEdge {
                 location: _,
                 region,
                 kind,
-                path_conditions,
+                validity_conditions,
                 borrow_index,
             } => DotEdge {
+                id: edge_id,
                 to: assigned_place.to_string(),
                 from: borrowed_place.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_color("orange".to_string())
+                    .with_color("orange".into())
                     .with_label(format!(
                         "{}{} {}",
                         if let Some(borrow_index) = borrow_index {
@@ -254,24 +265,34 @@ impl GraphEdge {
                         kind,
                         region.as_ref().cloned().unwrap_or("".to_string())
                     ))
-                    .with_tooltip(path_conditions.clone()),
+                    .with_tooltip(
+                        validity_conditions
+                            .display_output(ctxt, OutputMode::Short)
+                            .into_text(),
+                    ),
             },
             GraphEdge::DerefExpansion {
                 source,
                 target,
-                path_conditions,
+                validity_conditions,
             } => DotEdge {
+                id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_color("green".to_string())
-                    .with_tooltip(path_conditions.clone()),
+                    .with_color("green".into())
+                    .with_tooltip(
+                        validity_conditions
+                            .display_output(ctxt, OutputMode::Short)
+                            .into_text(),
+                    ),
             },
             GraphEdge::Abstract {
                 blocked,
                 blocking,
                 label,
             } => DotEdge {
+                id: edge_id,
                 from: blocked.to_string(),
                 to: blocking.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
@@ -285,7 +306,7 @@ impl GraphEdge {
             } => {
                 let options = EdgeOptions::directed(EdgeDirection::Forward)
                     .with_label(format!("{kind}"))
-                    .with_color("purple".to_string());
+                    .with_color("purple".into());
                 let options = match kind {
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal } => {
                         if *regions_equal {
@@ -297,33 +318,40 @@ impl GraphEdge {
                     _ => options,
                 };
                 DotEdge {
+                    id: edge_id,
                     from: source.to_string(),
                     to: target.to_string(),
                     options,
                 }
             }
             GraphEdge::Coupled { source, target } => DotEdge {
+                id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_color("red".to_string())
+                    .with_color("red".into())
                     .with_style("dashed".to_string()),
             },
         }
     }
 }
 
-pub struct Graph {
+pub struct Graph<'a> {
     nodes: Vec<GraphNode>,
-    edges: HashSet<GraphEdge>,
+    edges: HashSet<GraphEdge<'a>>,
 }
 
-impl Graph {
-    fn new(nodes: Vec<GraphNode>, edges: HashSet<GraphEdge>) -> Self {
+impl<'a> Graph<'a> {
+    fn new(nodes: Vec<GraphNode>, edges: HashSet<GraphEdge<'a>>) -> Self {
         Self { nodes, edges }
     }
 
-    pub fn has_edge_between_labelled_nodes(&self, label1: &str, label2: &str) -> bool {
+    pub fn has_edge_between_labelled_nodes<'tcx: 'a>(
+        &self,
+        label1: &str,
+        label2: &str,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool {
         let Some(label_1_id) = self
             .nodes
             .iter()
@@ -341,27 +369,27 @@ impl Graph {
             return false;
         };
         self.edges.iter().any(|edge| {
-            let dot_edge = edge.to_dot_edge();
+            let dot_edge = edge.to_dot_edge(None, ctxt);
             dot_edge.from == label_1_id.to_string() && dot_edge.to == label_2_id.to_string()
         })
     }
 }
 
-pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a, 'bc>(
+pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-    borrows_domain: &BorrowsGraph<'tcx>,
+    capabilities: &'a impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    borrows_domain: &'a BorrowsGraph<'tcx>,
 ) -> io::Result<String> {
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
     let graph = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf);
-    drawer.draw(graph)?;
+    drawer.draw(graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
 
-pub(crate) fn generate_pcg_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
-    pcg: PcgRef<'pcg, 'tcx>,
+pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
+    pcg: PcgRef<'a, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
 ) -> io::Result<String> {
@@ -369,12 +397,12 @@ pub(crate) fn generate_pcg_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
     let graph = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf);
-    drawer.draw(graph)?;
+    drawer.draw(graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
 
 pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
-    pcg: PcgRef<'_, 'tcx>,
+    pcg: PcgRef<'a, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
     file_path: &Path,
@@ -384,5 +412,5 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     let drawer = GraphDrawer::new(File::create(file_path).unwrap_or_else(|e| {
         panic!("Failed to create file at path: {file_path:?}: {e}");
     }));
-    drawer.draw(graph)
+    drawer.draw(graph, ctxt)
 }
