@@ -7,11 +7,14 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
 }
 
 #[derive(Hash, PartialEq, Eq)]
-pub(crate) struct StringOf<T>(pub String, PhantomData<T>);
+pub struct StringOf<T>(pub String, PhantomData<T>);
 
 #[cfg(feature = "type-export")]
 impl<T> specta::Type for StringOf<T> {
-    fn inline(type_map: &mut specta::TypeCollection, _generics: specta::Generics) -> specta::DataType {
+    fn inline(
+        type_map: &mut specta::TypeCollection,
+        _generics: specta::Generics,
+    ) -> specta::DataType {
         <String as specta::Type>::inline(type_map, specta::Generics::Provided(&[]))
     }
 }

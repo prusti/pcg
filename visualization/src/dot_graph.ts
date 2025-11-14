@@ -1,16 +1,17 @@
 import * as Viz from "@viz-js/viz";
 import { Api } from "./api";
+import { ValidityConditionsDebugRepr } from "./generated/types";
 
 export async function openDotGraphInNewWindow(api: Api, filename: string) {
     const dotData = await api.fetchDotFile(filename);
 
     // Try to load corresponding JSON file
     const jsonFilename = filename.replace(/\.dot$/, '.json');
-    let edgeMetadata: Record<string, any> | null = null;
+    let edgeMetadata: Record<string, ValidityConditionsDebugRepr> | null = null;
     try {
       const jsonData = await api.fetchDotFile(jsonFilename);
-      edgeMetadata = JSON.parse(jsonData);
-    } catch (e) {
+      edgeMetadata = JSON.parse(jsonData) as Record<string, ValidityConditionsDebugRepr>;
+    } catch {
       // JSON file doesn't exist, that's fine
     }
 

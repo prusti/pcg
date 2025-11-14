@@ -69,11 +69,11 @@ pub struct BranchChoices {
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct BranchChoicesDebugRepr {
+pub struct BranchChoicesDebugRepr {
     #[cfg_attr(feature = "type-export", specta(type = String))]
-    from: StringOf<BasicBlock>,
+    pub from: StringOf<BasicBlock>,
     #[cfg_attr(feature = "type-export", specta(type = std::collections::HashSet<String>))]
-    chosen: HashSet<StringOf<BasicBlock>>,
+    pub chosen: HashSet<StringOf<BasicBlock>>,
 }
 
 impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
@@ -186,8 +186,8 @@ pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct ValidityConditionsDebugRepr {
-    branch_choices: Vec<BranchChoicesDebugRepr>,
+pub struct ValidityConditionsDebugRepr {
+    pub branch_choices: Vec<BranchChoicesDebugRepr>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for ValidityConditions {

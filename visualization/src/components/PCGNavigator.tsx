@@ -142,7 +142,7 @@ export default function PCGNavigator({
         window.removeEventListener("mouseup", handleResizeEnd);
       };
     }
-  }, [isResizing]);
+  }, [isResizing, setNavigatorWidth]);
 
   // Keyboard navigation
   useEffect(() => {

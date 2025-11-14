@@ -3,6 +3,7 @@ import * as Viz from "@viz-js/viz";
 import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { Api, PcgBlockDotGraphs } from "../api";
+import { ValidityConditionsDebugRepr } from "../generated/types";
 
 interface PcgGraphProps {
   showPCG: boolean;
@@ -58,6 +59,10 @@ function getPCGDotGraphFilename(
   return `data/${selectedFunction}/${filename}`;
 }
 
+interface ElementWithPaths extends globalThis.Element {
+  _highlightedPaths?: Array<{path: globalThis.SVGPathElement, originalStroke: string, originalWidth: string}>;
+}
+
 const PcgGraph: React.FC<PcgGraphProps> = ({
   showPCG,
   navigatorReservedWidth,
@@ -68,10 +73,10 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   onHighlightMirEdges
 }) => {
   const [svgContent, setSvgContent] = useState<string>("");
-  const [edgeMetadata, setEdgeMetadata] = useState<Record<string, any> | null>(null);
+  const [edgeMetadata, setEdgeMetadata] = useState<Record<string, ValidityConditionsDebugRepr> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const panzoomInstanceRef = useRef<PanZoom | null>(null);
-  const currentlyHighlightedRef = useRef<{path: SVGPathElement, originalStroke: string, originalWidth: string} | null>(null);
+  const currentlyHighlightedRef = useRef<{path: globalThis.SVGPathElement, originalStroke: string, originalWidth: string} | null>(null);
 
   useEffect(() => {
     const loadGraph = async () => {
@@ -96,8 +101,8 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
       const jsonFilePath = dotFilePath.replace(/\.dot$/, '.json');
       try {
         const jsonData = await api.fetchDotFile(jsonFilePath);
-        setEdgeMetadata(JSON.parse(jsonData));
-      } catch (e) {
+        setEdgeMetadata(JSON.parse(jsonData) as Record<string, ValidityConditionsDebugRepr>);
+      } catch {
         // JSON file doesn't exist, that's fine
         setEdgeMetadata(null);
       }
@@ -125,9 +130,9 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
     // Store event listeners for cleanup
     const eventListeners: Array<{
-      element: Element;
+      element: globalThis.Element;
       type: string;
-      listener: EventListener;
+      listener: globalThis.EventListener;
     }> = [];
 
     // Add hover listeners for edges if we have metadata
@@ -138,11 +143,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
         const id = gElement.getAttribute('id');
         if (id && edgeMetadata[id]) {
           // Make the element look hoverable
-          (gElement as HTMLElement).style.cursor = 'pointer';
-
-          const pathElement = gElement.querySelector('path');
-          const originalStroke = pathElement?.getAttribute('stroke');
-          const originalStrokeWidth = pathElement?.getAttribute('stroke-width');
+          (gElement as globalThis.HTMLElement).style.cursor = 'pointer';
 
           const mouseenterHandler = () => {
 
@@ -168,12 +169,12 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
             }
 
             // Store original values and highlight
-            const highlightedPaths: Array<{path: SVGPathElement, originalStroke: string, originalWidth: string}> = [];
+            const highlightedPaths: Array<{path: globalThis.SVGPathElement, originalStroke: string, originalWidth: string}> = [];
             pathsToHighlight.forEach(p => {
               const currentStroke = p.getAttribute('stroke') || 'black';
               const currentWidth = p.getAttribute('stroke-width') || '1';
               highlightedPaths.push({
-                path: p as SVGPathElement,
+                path: p as globalThis.SVGPathElement,
                 originalStroke: currentStroke,
                 originalWidth: currentWidth
               });
@@ -185,14 +186,14 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
               // Store first path for reference (we'll restore all in mouseleave)
               currentlyHighlightedRef.current = highlightedPaths[0];
               // Store all paths for restoration
-              (gElement as any)._highlightedPaths = highlightedPaths;
+              (gElement as ElementWithPaths)._highlightedPaths = highlightedPaths;
             }
 
             // Extract MIR edges from branch choices
             const mirEdges = new Set<string>();
             const metadata = edgeMetadata[id];
             if (metadata.branch_choices && Array.isArray(metadata.branch_choices)) {
-              metadata.branch_choices.forEach((branchChoice: any) => {
+              metadata.branch_choices.forEach((branchChoice) => {
                 if (branchChoice.from && branchChoice.chosen) {
                   const from = branchChoice.from.replace('bb', '');
                   if (Array.isArray(branchChoice.chosen)) {
@@ -211,13 +212,13 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
           const mouseleaveHandler = () => {
             // Restore all highlighted paths
-            const highlightedPaths = (gElement as any)._highlightedPaths as Array<{path: SVGPathElement, originalStroke: string, originalWidth: string}> | undefined;
+            const highlightedPaths = (gElement as ElementWithPaths)._highlightedPaths;
             if (highlightedPaths) {
               highlightedPaths.forEach(({ path, originalStroke, originalWidth }) => {
                 path.setAttribute('stroke', originalStroke);
                 path.setAttribute('stroke-width', originalWidth);
               });
-              delete (gElement as any)._highlightedPaths;
+              delete (gElement as ElementWithPaths)._highlightedPaths;
             }
 
             if (currentlyHighlightedRef.current) {
@@ -245,13 +246,13 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
         element.removeEventListener(type, listener);
 
         // Restore any highlighted paths on this element
-        const highlightedPaths = (element as any)._highlightedPaths as Array<{path: SVGPathElement, originalStroke: string, originalWidth: string}> | undefined;
+        const highlightedPaths = (element as ElementWithPaths)._highlightedPaths;
         if (highlightedPaths) {
           highlightedPaths.forEach(({ path, originalStroke, originalWidth }) => {
             path.setAttribute('stroke', originalStroke);
             path.setAttribute('stroke-width', originalWidth);
           });
-          delete (element as any)._highlightedPaths;
+          delete (element as ElementWithPaths)._highlightedPaths;
         }
       });
 
