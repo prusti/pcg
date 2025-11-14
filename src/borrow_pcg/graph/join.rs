@@ -124,7 +124,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
             #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
-                && let Ok(dot_graph) = generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self)
+                && let Ok(dot_graph) =
+                    generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self)
             {
                 DotGraph::render_with_imgcat(&dot_graph, "After join (loop):").unwrap_or_else(
                     |e| {
@@ -166,7 +167,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
             );
             #[cfg(feature = "visualization")]
             {
-                if let Ok(dot_graph) = generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self) {
+                if let Ok(dot_graph) =
+                    generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self)
+                {
                     DotGraph::render_with_imgcat(&dot_graph, "Invalid self graph").unwrap_or_else(
                         |e| {
                             eprintln!("Error rendering self graph: {e}");

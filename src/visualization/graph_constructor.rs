@@ -327,8 +327,7 @@ impl<'a, 'tcx: 'a> Grapher<'a, 'tcx> for PcgGraphConstructor<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, C> Grapher<'a, 'tcx>
-    for BorrowsGraphConstructor<'a, 'tcx, C>
+impl<'a, 'tcx: 'a, C> Grapher<'a, 'tcx> for BorrowsGraphConstructor<'a, 'tcx, C>
 where
     C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
 {

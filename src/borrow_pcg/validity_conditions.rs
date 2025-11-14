@@ -70,7 +70,9 @@ pub struct BranchChoices {
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct BranchChoicesDebugRepr {
+    #[cfg_attr(feature = "type-export", specta(type = String))]
     from: StringOf<BasicBlock>,
+    #[cfg_attr(feature = "type-export", specta(type = std::collections::HashSet<String>))]
     chosen: HashSet<StringOf<BasicBlock>>,
 }
 
@@ -83,7 +85,7 @@ impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
             chosen: self
                 .successors(ctxt)
                 .into_iter()
-                .map(|s| StringOf::new_debug(s))
+                .map(StringOf::new_debug)
                 .collect::<HashSet<_>>(),
         }
     }

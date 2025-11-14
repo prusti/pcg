@@ -6,12 +6,15 @@ use super::Graph;
 
 pub struct GraphDrawer<T: io::Write> {
     dot_output: T,
-    ctxt_output: Option<T>
+    ctxt_output: Option<T>,
 }
 
 impl<T: io::Write> GraphDrawer<T> {
     pub fn new(dot_output: T, ctxt_output: Option<T>) -> Self {
-        Self { dot_output, ctxt_output }
+        Self {
+            dot_output,
+            ctxt_output,
+        }
     }
 
     pub(crate) fn draw<'a, 'tcx: 'a>(
@@ -23,7 +26,6 @@ impl<T: io::Write> GraphDrawer<T> {
         writeln!(self.dot_output, "{}", graph_with_edge_ctxt.graph)?;
         if let Some(ctxt_output) = self.ctxt_output {
             serde_json::to_writer_pretty(ctxt_output, &graph_with_edge_ctxt.edge_ctxt)?;
-
         }
         Ok(())
     }

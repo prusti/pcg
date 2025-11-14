@@ -36,7 +36,8 @@ use crate::{
         HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCtxt, OutputMode},
         html::Html,
-    }, visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
+    },
+    visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
 };
 use std::{
     collections::HashSet,
@@ -57,7 +58,6 @@ use self::{
 pub fn place_id(place: &Place<'_>) -> String {
     format!("{place:?}")
 }
-
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct NodeId(char, usize);
@@ -218,8 +218,14 @@ impl<'a> GraphEdge<'a> {
         match self {
             GraphEdge::Projection { .. } => None,
             GraphEdge::Alias { .. } => None,
-            GraphEdge::Borrow { validity_conditions, .. } => Some(validity_conditions),
-            GraphEdge::DerefExpansion { validity_conditions, .. } => Some(validity_conditions),
+            GraphEdge::Borrow {
+                validity_conditions,
+                ..
+            } => Some(validity_conditions),
+            GraphEdge::DerefExpansion {
+                validity_conditions,
+                ..
+            } => Some(validity_conditions),
             GraphEdge::Abstract { .. } => None,
             GraphEdge::BorrowFlow { .. } => None,
             GraphEdge::Coupled { .. } => None,

@@ -1,10 +1,20 @@
 use std::{
-    borrow::Cow, collections::{BTreeSet, HashMap}, fmt::Display, fs::File, io::Write, path::Path, process::{Command, Stdio}
+    borrow::Cow,
+    collections::{BTreeSet, HashMap},
+    fmt::Display,
+    fs::File,
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
 };
 
 use serde_derive::Serialize;
 
-use crate::{borrow_pcg::validity_conditions::ValidityConditionsDebugRepr, utils::{DebugRepr, HasCompilerCtxt, html::Html}, visualization::Graph};
+use crate::{
+    borrow_pcg::validity_conditions::ValidityConditionsDebugRepr,
+    utils::{DebugRepr, HasCompilerCtxt, html::Html},
+    visualization::Graph,
+};
 
 type NodeId = String;
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
@@ -17,7 +27,10 @@ pub struct DotGraphWithEdgeCtxt<Ctxt> {
 }
 
 impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
-    pub(crate) fn from_graph<'a, 'tcx: 'a>(graph: Graph<'a>, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self {
+    pub(crate) fn from_graph<'a, 'tcx: 'a>(
+        graph: Graph<'a>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Self {
         let nodes = graph.nodes.iter().map(|g| g.to_dot_node()).collect();
         let mut edges = Vec::new();
         let mut edge_ctxt = HashMap::new();
