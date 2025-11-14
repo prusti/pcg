@@ -349,23 +349,23 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LocalBorrow<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for LocalBorrow<'tcx> {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
-            format!(" <{}>", DisplayWithCtxt::<_>::display_string(&rp, ()))
+            format!(" <{}>", rp.display_output((), mode).into_text())
         } else {
             "".to_string()
         };
         DisplayOutput::Text(
             format!(
                 "borrow: {}{} = &{} {}",
-                self.assigned_ref.display_string(ctxt),
+                self.assigned_ref.display_output(ctxt, mode).into_text(),
                 rp_part,
                 if self.kind.mutability() == Mutability::Mut {
                     "mut "
                 } else {
                     ""
                 },
-                self.blocked_place.display_string(ctxt),
+                self.blocked_place.display_output(ctxt, mode).into_text(),
             )
             .into(),
         )
