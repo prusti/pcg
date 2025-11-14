@@ -12,7 +12,6 @@ export async function openDotGraphInNewWindow(api: Api, filename: string) {
       edgeMetadata = JSON.parse(jsonData);
     } catch (e) {
       // JSON file doesn't exist, that's fine
-      console.log(`No metadata file found for ${filename}`);
     }
 
     Viz.instance().then((viz) => {
@@ -49,8 +48,6 @@ export async function openDotGraphInNewWindow(api: Api, filename: string) {
             const originalStrokeWidth = pathElement?.getAttribute('stroke-width');
 
             gElement.addEventListener('mouseenter', () => {
-              console.log(`Edge ${id} metadata:`, edgeMetadata![id]);
-
               // Highlight this edge in the SVG
               if (pathElement) {
                 pathElement.setAttribute('stroke', '#ff6b00');

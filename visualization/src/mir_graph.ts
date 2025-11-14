@@ -196,10 +196,6 @@ export function toReactFlowEdges(
     const edgeKey = `${sourceBlock}-${targetBlock}`;
     const isHighlighted = highlightedEdges?.has(edgeKey) || false;
 
-    if (highlightedEdges && highlightedEdges.size > 0) {
-      console.log(`MIR Edge ${edgeKey}: highlighted=${isHighlighted}, available keys:`, Array.from(highlightedEdges));
-    }
-
     const terminatorActions =
       showActionsInGraph && sourceBlock !== undefined && targetBlock !== undefined && pcgFunctionData
         ? pcgFunctionData.blocks[sourceBlock]?.successors[targetBlock]
