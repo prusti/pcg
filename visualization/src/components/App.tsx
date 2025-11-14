@@ -424,7 +424,6 @@ export const App: React.FC<AppProps> = ({
           setShowPCGNavigator={setShowPCGNavigator}
           currentPoint={currentPoint}
           selectedFunction={selectedFunction}
-          iterations={iterations}
           api={api}
         />
         <MirGraph
@@ -471,6 +470,10 @@ export const App: React.FC<AppProps> = ({
                 }
               }}
               onNavigatorStateChange={handleNavigatorStateChange}
+              currentPoint={currentPoint}
+              selectedFunction={selectedFunction}
+              allIterations={iterations}
+              api={api}
               onAdvanceToNextStatement={() => {
                 if (currentPoint.type === "stmt") {
                   const currentNode = nodes.find(

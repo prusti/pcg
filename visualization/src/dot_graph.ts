@@ -1,14 +1,15 @@
 import * as Viz from "@viz-js/viz";
 import { Api } from "./api";
 
-export async function openDotGraphInNewWindow(api: Api, filename: string) {
+export async function openDotGraphInNewWindow(api: Api, filename: string, title?: string) {
     const dotData = await api.fetchDotFile(filename);
 
     Viz.instance().then((viz) => {
       const svgElement = viz.renderSVGElement(dotData);
+      const windowTitle = title || `Dot Graph - ${filename}`;
       const popup = window.open(
         "",
-        `Dot Graph - ${filename}`,
+        "_blank",
         "width=800,height=600"
       );
       if (!popup) {
@@ -16,6 +17,7 @@ export async function openDotGraphInNewWindow(api: Api, filename: string) {
         return;
       }
       popup.document.head.innerHTML = `
+        <title>${windowTitle}</title>
         <style>
           body { margin: 0; }
           svg {

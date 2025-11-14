@@ -1,7 +1,6 @@
 import React from "react";
-import { Api, PcgBlockDotGraphs } from "../api";
+import { Api } from "../api";
 import { CurrentPoint, FunctionSlug } from "../types";
-import { openDotGraphInNewWindow } from "../dot_graph";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 
 interface SettingsProps {
@@ -15,44 +14,8 @@ interface SettingsProps {
   setShowPCGNavigator: (value: boolean) => void;
   currentPoint: CurrentPoint;
   selectedFunction: FunctionSlug;
-  iterations: PcgBlockDotGraphs;
   api: Api;
 }
-
-const getPCGDotGraphFilename = (
-  currentPoint: CurrentPoint,
-  selectedFunction: string,
-  graphs: PcgBlockDotGraphs
-): string | null => {
-  if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
-    return null;
-  }
-  if (currentPoint.navigatorPoint.type === "action") {
-    if (currentPoint.navigatorPoint.phase === "successor") {
-      return null;
-    }
-    const stmt = graphs[currentPoint.stmt];
-    const iterationActions = stmt.actions;
-    const actionGraphFilenames =
-      iterationActions[currentPoint.navigatorPoint.phase];
-    return `data/${selectedFunction}/${actionGraphFilenames[currentPoint.navigatorPoint.index]}`;
-  }
-
-  const navPoint = currentPoint.navigatorPoint;
-  if (navPoint.type !== "iteration") {
-    return null;
-  }
-
-  const phases = graphs[currentPoint.stmt].at_phase;
-  const phaseIndex = phases.findIndex((p) => p.phase === navPoint.name);
-
-  if (phaseIndex === -1 || phases.length === 0) {
-    return null;
-  }
-
-  const filename: string = phases[phaseIndex].filename;
-  return `data/${selectedFunction}/${filename}`;
-};
 
 export default function Settings({
   showSettings,
@@ -65,7 +28,6 @@ export default function Settings({
   setShowPCGNavigator,
   currentPoint,
   selectedFunction,
-  iterations,
   api,
 }: SettingsProps) {
   if (!showSettings) {
@@ -123,26 +85,6 @@ export default function Settings({
           />{" "}
           Show PCG
         </label>
-        <button
-          style={{
-            width: "100%",
-            padding: "8px",
-            marginBottom: "10px",
-            cursor: "pointer",
-          }}
-          onClick={async () => {
-            const dotFilePath = getPCGDotGraphFilename(
-              currentPoint,
-              selectedFunction,
-              iterations
-            );
-            if (dotFilePath) {
-              openDotGraphInNewWindow(api, dotFilePath);
-            }
-          }}
-        >
-          Open Current PCG in New Window
-        </button>
         <label style={{ display: "block", marginBottom: "10px" }}>
           <input
             type="checkbox"
