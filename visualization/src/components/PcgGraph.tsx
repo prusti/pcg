@@ -66,6 +66,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   api
 }) => {
   const [svgContent, setSvgContent] = useState<string>("");
+  const [edgeMetadata, setEdgeMetadata] = useState<Record<string, any> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const panzoomInstanceRef = useRef<PanZoom | null>(null);
 
@@ -75,6 +76,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
       if (!dotFilePath) {
         setSvgContent("");
+        setEdgeMetadata(null);
         return;
       }
 
@@ -86,6 +88,16 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
       svg.setAttribute("height", "100%");
 
       setSvgContent(svg.outerHTML);
+
+      // Try to load corresponding JSON file
+      const jsonFilePath = dotFilePath.replace(/\.dot$/, '.json');
+      try {
+        const jsonData = await api.fetchDotFile(jsonFilePath);
+        setEdgeMetadata(JSON.parse(jsonData));
+      } catch (e) {
+        // JSON file doesn't exist, that's fine
+        setEdgeMetadata(null);
+      }
     };
 
     loadGraph();
@@ -108,13 +120,26 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
       boundsPadding: 0.1,
     });
 
+    // Add hover listeners for edges if we have metadata
+    if (edgeMetadata) {
+      const gElements = svgElement.querySelectorAll('g[id]');
+      gElements.forEach((gElement) => {
+        const id = gElement.getAttribute('id');
+        if (id && edgeMetadata[id]) {
+          gElement.addEventListener('mouseenter', () => {
+            console.log(`Edge ${id} metadata:`, edgeMetadata[id]);
+          });
+        }
+      });
+    }
+
     return () => {
       if (panzoomInstanceRef.current) {
         panzoomInstanceRef.current.dispose();
         panzoomInstanceRef.current = null;
       }
     };
-  }, [svgContent]);
+  }, [svgContent, edgeMetadata]);
 
   return (
     <div

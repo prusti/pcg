@@ -114,7 +114,8 @@ impl Display for RankAnnotation {
 
 impl Display for DotGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "digraph {} {{", self.name)?;
+        write!(f, "digraph \"{}\" {{", self.name)?;
+        writeln!(f)?;
         writeln!(f, "layout=dot")?;
         writeln!(f, "node [shape=rect]")?;
         for node in &self.nodes {
@@ -306,6 +307,10 @@ pub(crate) struct DotEdge {
 
 impl Display for DotEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let id_part = match &self.id {
+            Some(id) => format!(", id=\"{}\"", id.0),
+            None => "".to_string(),
+        };
         let style_part = match &self.options.style {
             Some(style) => format!(", style=\"{style}\""),
             None => "".to_string(),
@@ -333,10 +338,11 @@ impl Display for DotEdge {
         };
         write!(
             f,
-            "    \"{}\" -> \"{}\" [label=\"{}\"{}{}{}{}{}{}]",
+            "    \"{}\" -> \"{}\" [label=\"{}\"{}{}{}{}{}{}{}]",
             self.from,
             self.to,
             self.options.label,
+            id_part,
             style_part,
             direction_part,
             color_part,
