@@ -54,6 +54,19 @@ fn ex6_loop<'a>(list: &'a mut List<i32>) -> Option<&'a mut i32> {
     prev
 }
 
+fn ex6_loop_2<'a>(list: &'a mut List<i32>) {
+    let mut current = &mut *list;
+    let mut current2: Option<&mut i32> = None;
+    let mut current3 = None;
+    while let Some(next) = &mut current.tail {
+        current2 = Some(&mut current.head);
+        current3 = Some(&mut **current2.as_mut().unwrap());
+        current = next;
+    }
+    *current3.unwrap() = 5;
+    *current2.unwrap() = 6;
+}
+
 fn ex7_path_sensitive(c: bool) {
     let mut x = 1;
     let mut y = 2;
