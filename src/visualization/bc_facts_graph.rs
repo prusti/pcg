@@ -62,7 +62,7 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
     let mut graph = DotGraph {
         nodes: vec![],
         edges: vec![],
-        name: "bcfacts".to_string(),
+        name: "bcfacts".into(),
     };
     let mut nodes = IdLookup::new('n');
     for loc in ctxt.bc.output_facts.subset.values() {
@@ -71,6 +71,7 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
             for sub in subs {
                 let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
                 let edge = DotEdge {
+                    id: None,
                     from: sup_node.to_string(),
                     to: sub_node.to_string(),
                     options: EdgeOptions::directed(EdgeDirection::Forward),
@@ -188,7 +189,7 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
     let mut graph = DotGraph {
         nodes: vec![],
         edges: vec![],
-        name: "bcfacts".to_string(),
+        name: "bcfacts".into(),
     };
     let mut nodes = IdLookup::new('n');
     let location_index = if start {
@@ -202,6 +203,7 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
             for sub in subs {
                 let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
                 graph.edges.push(DotEdge {
+                    id: None,
                     from: sup_node.to_string(),
                     to: sub_node.to_string(),
                     options: EdgeOptions::directed(EdgeDirection::Forward),

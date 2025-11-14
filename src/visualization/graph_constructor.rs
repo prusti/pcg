@@ -29,13 +29,13 @@ use crate::{
 };
 use std::collections::{BTreeSet, HashSet};
 
-pub(super) struct GraphConstructor<'mir, 'tcx> {
+pub(super) struct GraphConstructor<'a, 'tcx> {
     remote_nodes: IdLookup<RemotePlace>,
     place_nodes: IdLookup<(Place<'tcx>, Option<SnapshotLocation>)>,
     region_projection_nodes: IdLookup<LifetimeProjection<'tcx>>,
     nodes: Vec<GraphNode>,
-    pub(super) edges: HashSet<GraphEdge>,
-    ctxt: CompilerCtxt<'mir, 'tcx>,
+    pub(super) edges: HashSet<GraphEdge<'a>>,
+    ctxt: CompilerCtxt<'a, 'tcx>,
     location: Option<mir::Location>,
 }
 
@@ -81,7 +81,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
     }
 
-    fn into_graph(self) -> Graph {
+    fn into_graph(self) -> Graph<'a> {
         Graph::new(self.nodes, self.edges)
     }
 
@@ -254,20 +254,20 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     }
 }
 
-pub struct BorrowsGraphConstructor<'graph, 'a, 'tcx, C> {
-    borrows_graph: &'graph BorrowsGraph<'tcx>,
-    capabilities: &'graph C,
+pub struct BorrowsGraphConstructor<'a, 'tcx, C> {
+    borrows_graph: &'a BorrowsGraph<'tcx>,
+    capabilities: &'a C,
     constructor: GraphConstructor<'a, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 }
 
-impl<'graph, 'a: 'graph, 'tcx: 'a, C> BorrowsGraphConstructor<'graph, 'a, 'tcx, C>
+impl<'a, 'tcx: 'a, C> BorrowsGraphConstructor<'a, 'tcx, C>
 where
     C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
 {
     pub fn new(
-        borrows_graph: &'graph BorrowsGraph<'tcx>,
-        capabilities: &'graph C,
+        borrows_graph: &'a BorrowsGraph<'tcx>,
+        capabilities: &'a C,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> Self {
         Self {
@@ -278,8 +278,8 @@ where
         }
     }
 
-    pub(crate) fn construct_graph(mut self) -> Graph {
-        let edges: Vec<MaterializedEdge<'tcx, 'graph>> =
+    pub(crate) fn construct_graph(mut self) -> Graph<'a> {
+        let edges: Vec<MaterializedEdge<'tcx, 'a>> =
             self.borrows_graph.materialized_edges(self.ctxt);
         for edge in edges {
             self.draw_materialized_edge(edge);
@@ -288,10 +288,10 @@ where
     }
 }
 
-pub struct PcgGraphConstructor<'pcg, 'a, 'tcx> {
-    summary: &'pcg OwnedPcg<'tcx>,
-    borrows_domain: BorrowStateRef<'pcg, 'tcx>,
-    capabilities: &'pcg PlaceCapabilities<'tcx, SymbolicCapability>,
+pub struct PcgGraphConstructor<'a, 'tcx> {
+    summary: &'a OwnedPcg<'tcx>,
+    borrows_domain: BorrowStateRef<'a, 'tcx>,
+    capabilities: &'a PlaceCapabilities<'tcx, SymbolicCapability>,
     constructor: GraphConstructor<'a, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 }
@@ -310,7 +310,7 @@ where
     }
 }
 
-impl<'pcg, 'a: 'pcg, 'tcx> Grapher<'pcg, 'a, 'tcx> for PcgGraphConstructor<'pcg, 'a, 'tcx> {
+impl<'a, 'tcx: 'a> Grapher<'a, 'tcx> for PcgGraphConstructor<'a, 'tcx> {
     fn ctxt(&self) -> CompilerCtxt<'a, 'tcx> {
         self.ctxt
     }
@@ -319,16 +319,15 @@ impl<'pcg, 'a: 'pcg, 'tcx> Grapher<'pcg, 'a, 'tcx> for PcgGraphConstructor<'pcg,
         &mut self.constructor
     }
 
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'pcg {
-        PCGCapabilityGetter::<'pcg, 'a, 'tcx, _> {
+    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a {
+        PCGCapabilityGetter::<'a, 'a, 'tcx, _> {
             capabilities: self.capabilities,
             ctxt: self.ctxt,
         }
     }
 }
 
-impl<'graph, 'a: 'graph, 'tcx: 'a, C> Grapher<'graph, 'a, 'tcx>
-    for BorrowsGraphConstructor<'graph, 'a, 'tcx, C>
+impl<'a, 'tcx: 'a, C> Grapher<'a, 'tcx> for BorrowsGraphConstructor<'a, 'tcx, C>
 where
     C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
 {
@@ -340,17 +339,17 @@ where
         &mut self.constructor
     }
 
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'graph {
-        PCGCapabilityGetter::<'graph, 'a, 'tcx, C> {
+    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a {
+        PCGCapabilityGetter::<'a, 'a, 'tcx, C> {
             capabilities: self.capabilities,
             ctxt: self.ctxt,
         }
     }
 }
 
-impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
+impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
     pub fn new(
-        pcg: PcgRef<'pcg, 'tcx>,
+        pcg: PcgRef<'a, 'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
         location: mir::Location,
     ) -> Self {
@@ -392,8 +391,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a> PcgGraphConstructor<'pcg, 'a, 'tcx> {
         node
     }
 
-    pub fn construct_graph(mut self) -> Graph {
-        let capability_getter = &PCGCapabilityGetter::<'pcg, 'a, 'tcx, _> {
+    pub fn construct_graph(mut self) -> Graph<'a> {
+        let capability_getter = &PCGCapabilityGetter::<'a, 'a, 'tcx, _> {
             capabilities: self.capabilities,
             ctxt: self.ctxt,
         };

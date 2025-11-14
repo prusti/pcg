@@ -1,6 +1,6 @@
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdgeLike,
+        borrow_pcg_edge::BorrowPcgEdgeRef,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
@@ -8,8 +8,8 @@ use crate::{
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasPlace, Place, display::DisplayWithCompilerCtxt,
-        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace,
+        CompilerCtxt, HasPlace, Place, maybe_old::MaybeLabelledPlace,
+        maybe_remote::MaybeRemotePlace,
     },
 };
 
@@ -19,8 +19,8 @@ pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
     fn get(&self, node: Place<'tcx>) -> Option<SymbolicCapability>;
 }
 
-pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'state;
+pub(super) trait Grapher<'a, 'tcx: 'a> {
+    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a;
     fn insert_maybe_old_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId {
         let capability_getter = self.capability_getter();
         let constructor = self.constructor();
@@ -42,10 +42,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
 
     fn constructor(&mut self) -> &mut GraphConstructor<'a, 'tcx>;
     fn ctxt(&self) -> CompilerCtxt<'a, 'tcx>;
-    fn draw_materialized_edge<'graph>(&mut self, edge: MaterializedEdge<'tcx, 'graph>)
-    where
-        'a: 'graph,
-    {
+    fn draw_materialized_edge(&mut self, edge: MaterializedEdge<'tcx, 'a>) {
         match edge {
             MaterializedEdge::Real(edge) => {
                 self.draw_borrow_pcg_edge(edge, &self.capability_getter())
@@ -67,10 +64,10 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
     }
     fn draw_borrow_pcg_edge(
         &mut self,
-        edge: impl BorrowPcgEdgeLike<'tcx>,
+        edge: BorrowPcgEdgeRef<'tcx, 'a>,
         capabilities: &impl CapabilityGetter<'a, 'tcx>,
     ) {
-        let path_conditions = edge.conditions().display_string(self.ctxt());
+        let validity_conditions = edge.conditions;
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref_edge) => {
                 let deref_place = self.insert_pcg_node(deref_edge.deref_place.into());
@@ -79,7 +76,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                     self.constructor().edges.insert(GraphEdge::DerefExpansion {
                         source: blocked,
                         target: deref_place,
-                        path_conditions: path_conditions.clone(),
+                        validity_conditions,
                     });
                 }
             }
@@ -91,7 +88,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                         self.constructor().edges.insert(GraphEdge::DerefExpansion {
                             source: blocked_graph_node,
                             target: blocking_graph_node,
-                            path_conditions: path_conditions.clone(),
+                            validity_conditions,
                         });
                     }
                 }
@@ -115,7 +112,7 @@ pub(super) trait Grapher<'state, 'a: 'state, 'tcx: 'a> {
                     assigned_region_projection: assigned_rp_node,
                     location: borrow.reserve_location(),
                     region: borrow.borrow_region().map(|r| format!("{r:?}")),
-                    path_conditions,
+                    validity_conditions,
                     kind,
                     borrow_index: borrow.borrow_index().map(|i| format!("{i:?}")),
                 });

@@ -12,7 +12,9 @@ describe('openDotGraphInNewWindow', () => {
 
   beforeEach(() => {
     mockApi = {
-      fetchDotFile: jest.fn().mockResolvedValue('digraph { a -> b; }'),
+      fetchDotFile: jest.fn()
+        .mockResolvedValueOnce('digraph { a -> b; }')
+        .mockRejectedValue(new Error('JSON file not found')),
     } as any;
 
     mockVizInstance = {
@@ -25,6 +27,7 @@ describe('openDotGraphInNewWindow', () => {
       document: {
         head: { innerHTML: '' },
         body: { appendChild: jest.fn() },
+        querySelectorAll: jest.fn().mockReturnValue([]),
       },
     };
 
@@ -43,6 +46,7 @@ describe('openDotGraphInNewWindow', () => {
     await openDotGraphInNewWindow(mockApi, filename);
 
     expect(mockApi.fetchDotFile).toHaveBeenCalledWith(filename);
+    expect(mockApi.fetchDotFile).toHaveBeenCalledWith('test.json');
   });
 
   it('should open a new window with the rendered SVG', async () => {
@@ -78,11 +82,15 @@ describe('openDotGraphInNewWindow', () => {
 
   it('should use correct api instance when different apis are provided', async () => {
     const mockApi1: jest.Mocked<Api> = {
-      fetchDotFile: jest.fn().mockResolvedValue('digraph { x -> y; }'),
+      fetchDotFile: jest.fn()
+        .mockResolvedValueOnce('digraph { x -> y; }')
+        .mockRejectedValue(new Error('JSON file not found')),
     } as any;
 
     const mockApi2: jest.Mocked<Api> = {
-      fetchDotFile: jest.fn().mockResolvedValue('digraph { a -> b; }'),
+      fetchDotFile: jest.fn()
+        .mockResolvedValueOnce('digraph { a -> b; }')
+        .mockRejectedValue(new Error('JSON file not found')),
     } as any;
 
     await openDotGraphInNewWindow(mockApi1, 'file1.dot');

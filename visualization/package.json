@@ -60,6 +60,7 @@
   },
   "overrides": {
     "glob": "^10.4.5",
-    "inflight": "npm:inflight-coalesce@^1.0.0"
+    "inflight": "npm:inflight-coalesce@^1.0.0",
+    "js-yaml": "4.1.1"
   }
 }

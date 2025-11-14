@@ -74,12 +74,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefEdge<'tcx> {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             format!(
                 "{{{}}} -> {{{}}}",
-                self.blocked_place.display_string(ctxt),
-                self.deref_place.display_string(ctxt)
+                self.blocked_place.display_output(ctxt, mode).into_text(),
+                self.deref_place.display_output(ctxt, mode).into_text()
             )
             .into(),
         )

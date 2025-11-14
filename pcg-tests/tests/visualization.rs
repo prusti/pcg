@@ -25,6 +25,6 @@ let rx = s.x;
         let stmt = &bb.statements[22];
         let pcg = stmt.states.eval_stmt_data().post_main();
         let graph = PcgGraphConstructor::new(pcg.into(), ctxt, stmt.location).construct_graph();
-        assert!(graph.has_edge_between_labelled_nodes("s", "s.x"));
+        assert!(graph.has_edge_between_labelled_nodes("s", "s.x", ctxt));
     });
 }

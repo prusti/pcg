@@ -6,6 +6,8 @@ import {
   PcgProgramPointData,
   StringOf,
   NavigatorPoint,
+  CurrentPoint,
+  FunctionSlug,
 } from "../types";
 import { StmtGraphs, PcgSuccessorVisualizationData } from "../generated/types";
 import { actionLine } from "../actionFormatting";
@@ -13,6 +15,8 @@ import {
   useLocalStorageBool,
   useLocalStorageNumber,
 } from "../hooks/useLocalStorageState";
+import { Api, PcgBlockDotGraphs } from "../api";
+import { openDotGraphInNewWindow } from "../dot_graph";
 
 type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
@@ -28,6 +32,52 @@ export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
 
+const getPCGDotGraphFilename = (
+  currentPoint: CurrentPoint,
+  selectedFunction: string,
+  graphs: PcgBlockDotGraphs
+): string | null => {
+  if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
+    return null;
+  }
+  if (currentPoint.navigatorPoint.type === "action") {
+    if (currentPoint.navigatorPoint.phase === "successor") {
+      return null;
+    }
+    const stmt = graphs[currentPoint.stmt];
+    const iterationActions = stmt.actions;
+    const actionGraphFilenames =
+      iterationActions[currentPoint.navigatorPoint.phase];
+    return `data/${selectedFunction}/${actionGraphFilenames[currentPoint.navigatorPoint.index]}`;
+  }
+
+  const navPoint = currentPoint.navigatorPoint;
+  if (navPoint.type !== "iteration") {
+    return null;
+  }
+
+  const phases = graphs[currentPoint.stmt].at_phase;
+  const phaseIndex = phases.findIndex((p) => p.phase === navPoint.name);
+
+  if (phaseIndex === -1 || phases.length === 0) {
+    return null;
+  }
+
+  const filename: string = phases[phaseIndex].filename;
+  return `data/${selectedFunction}/${filename}`;
+};
+
+const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
+  if (currentPoint.type === "stmt") {
+    const navPointName = currentPoint.navigatorPoint.type === "iteration"
+      ? currentPoint.navigatorPoint.name
+      : `${currentPoint.navigatorPoint.phase}[${currentPoint.navigatorPoint.index}]`;
+    return `bb${currentPoint.block}[${currentPoint.stmt}] ${navPointName}`;
+  } else {
+    return `bb${currentPoint.block1} -> bb${currentPoint.block2}`;
+  }
+};
+
 export default function PCGNavigator({
   iterations,
   pcgData,
@@ -36,6 +86,10 @@ export default function PCGNavigator({
   onNavigatorStateChange,
   onAdvanceToNextStatement,
   onGoToPreviousStatement,
+  currentPoint,
+  selectedFunction,
+  allIterations,
+  api,
 }: {
   iterations?: StmtGraphs<StringOf<"DataflowStmtPhase">>;
   pcgData: PcgProgramPointData;
@@ -44,6 +98,10 @@ export default function PCGNavigator({
   onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
   onAdvanceToNextStatement?: () => void;
   onGoToPreviousStatement?: () => void;
+  currentPoint: CurrentPoint;
+  selectedFunction: FunctionSlug;
+  allIterations: PcgBlockDotGraphs;
+  api: Api;
 }) {
   const [isMinimized, setIsMinimized] = useLocalStorageBool(
     "pcgNavigatorMinimized",
@@ -142,7 +200,7 @@ export default function PCGNavigator({
         window.removeEventListener("mouseup", handleResizeEnd);
       };
     }
-  }, [isResizing]);
+  }, [isResizing, setNavigatorWidth]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -368,6 +426,31 @@ export default function PCGNavigator({
           >
             {renderItems()}
           </div>
+          <button
+            style={{
+              margin: "10px",
+              padding: "8px",
+              cursor: "pointer",
+              backgroundColor: "#007acc",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              fontSize: "12px",
+            }}
+            onClick={async () => {
+              const dotFilePath = getPCGDotGraphFilename(
+                currentPoint,
+                selectedFunction,
+                allIterations
+              );
+              if (dotFilePath) {
+                const title = formatCurrentPointTitle(currentPoint);
+                openDotGraphInNewWindow(api, dotFilePath, title);
+              }
+            }}
+          >
+            Open Current PCG in New Window
+          </button>
           <div
             style={{
               padding: "10px",

@@ -2,12 +2,14 @@
 use crate::{
     rustc_interface::middle::mir,
     utils::{
-        HasCompilerCtxt,
+        DebugRepr, HasCompilerCtxt, StringOf,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
 use bit_set::BitSet;
 use itertools::Itertools;
+use serde_derive::Serialize;
 use smallvec::SmallVec;
 
 use crate::rustc_interface::middle::mir::BasicBlock;
@@ -63,6 +65,30 @@ impl Path {
 pub struct BranchChoices {
     from: BasicBlock,
     chosen: BitSet<u8>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct BranchChoicesDebugRepr {
+    #[cfg_attr(feature = "type-export", specta(type = String))]
+    pub from: StringOf<BasicBlock>,
+    #[cfg_attr(feature = "type-export", specta(type = std::collections::HashSet<String>))]
+    pub chosen: HashSet<StringOf<BasicBlock>>,
+}
+
+impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
+    type Repr = BranchChoicesDebugRepr;
+
+    fn debug_repr(&self, ctxt: &'a mir::Body<'tcx>) -> Self::Repr {
+        BranchChoicesDebugRepr {
+            from: StringOf::new_debug(self.from),
+            chosen: self
+                .successors(ctxt)
+                .into_iter()
+                .map(StringOf::new_debug)
+                .collect::<HashSet<_>>(),
+        }
+    }
 }
 
 enum BranchChoicesJoinResult {
@@ -157,6 +183,25 @@ pub type PathConditions = ValidityConditions;
 /// in the PCG applies.
 #[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
 pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub struct ValidityConditionsDebugRepr {
+    pub branch_choices: Vec<BranchChoicesDebugRepr>,
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for ValidityConditions {
+    type Repr = ValidityConditionsDebugRepr;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        ValidityConditionsDebugRepr {
+            branch_choices: self
+                .all_branch_choices()
+                .map(|bc| bc.debug_repr(ctxt.body()))
+                .collect(),
+        }
+    }
+}
 
 pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
     ValidityConditions(SmallVec::new_const());

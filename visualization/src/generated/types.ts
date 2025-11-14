@@ -23,6 +23,8 @@ export type BorrowPcgActionKindDiscriminants = "LabelLifetimeProjection" | "Weak
  */
 "RemoveEdge" | "AddEdge"
 
+export type BranchChoicesDebugRepr = { from: string; chosen: string[] }
+
 export type CapabilityKind = 
 /**
  * For borrowed places only: permits reads from the location, but not writes or
@@ -148,6 +150,8 @@ export type RepackOp<Local, Place, Guide> =
 export type SourcePos = { line: number; column: number }
 
 export type StmtGraphs<PhaseKey> = { at_phase: DotFileAtPhase<PhaseKey>[]; actions: EvalStmtData<PathToDotFile[]> }
+
+export type ValidityConditionsDebugRepr = { branch_choices: BranchChoicesDebugRepr[] }
 
 /**
  * Instructs that the current capability to the place (first [`CapabilityKind`]) should

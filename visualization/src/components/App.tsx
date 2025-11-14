@@ -38,6 +38,16 @@ interface AppProps {
   functions: FunctionsMetadata;
 }
 
+const INITIAL_CURRENT_POINT: CurrentPoint = {
+  type: "stmt",
+  block: 0,
+  stmt: 0,
+  navigatorPoint: {
+    type: "iteration",
+    name: "initial",
+  },
+};
+
 export const App: React.FC<AppProps> = ({
   functions,
 }) => {
@@ -47,20 +57,17 @@ export const App: React.FC<AppProps> = ({
   >(new Map());
   const [pcgFunctionData, setPcgFunctionData] =
     useState<PcgFunctionData | null>(null);
-  const [currentPoint, setCurrentPoint] = useState<CurrentPoint>({
-    type: "stmt",
-    block: 0,
-    stmt: 0,
-    navigatorPoint: {
-      type: "iteration",
-      name: "initial",
-    },
-  });
+  const [currentPoint, setCurrentPoint] = useState<CurrentPoint>(INITIAL_CURRENT_POINT);
 
-  const [selectedFunction, setSelectedFunction] = useLocalStorageString(
+  const [selectedFunction, setSelectedFunctionInternal] = useLocalStorageString(
     "selectedFunction",
     Object.keys(functions)[0] as FunctionSlug
   ) as [FunctionSlug, Dispatch<SetStateAction<FunctionSlug>>];
+
+  const setSelectedFunction = useCallback((newFunction: SetStateAction<FunctionSlug>) => {
+    setSelectedFunctionInternal(newFunction);
+    setCurrentPoint(INITIAL_CURRENT_POINT);
+  }, [setSelectedFunctionInternal]);
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showUnwindEdges] = useState(false);
@@ -89,8 +96,10 @@ export const App: React.FC<AppProps> = ({
   const [clickPosition, setClickPosition] = useState<SourcePos | null>(null);
   const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
+  // Track highlighted MIR edges based on PCG edge hover
+  const [highlightedMirEdges, setHighlightedMirEdges] = useState<Set<string>>(new Set());
+
   // Track PCG Navigator state for layout adjustment
-  const [navigatorDocked] = useLocalStorageBool("pcgNavigatorDocked", true);
   const [navigatorMinimized, setNavigatorMinimized] = useLocalStorageBool(
     "pcgNavigatorMinimized",
     false
@@ -174,13 +183,13 @@ export const App: React.FC<AppProps> = ({
     [setNavigatorMinimized, setNavigatorWidth]
   );
 
-  // Calculate the width to reserve for the navigator when it's docked
+  // Calculate the width to reserve for the navigator
   const navigatorReservedWidth = useMemo(() => {
-    if (!showPCGNavigator || !navigatorDocked) {
+    if (!showPCGNavigator) {
       return "0px";
     }
     return navigatorMinimized ? NAVIGATOR_MIN_WIDTH : `${navigatorWidth}px`;
-  }, [showPCGNavigator, navigatorDocked, navigatorMinimized, navigatorWidth]);
+  }, [showPCGNavigator, navigatorMinimized, navigatorWidth]);
 
   const highlightSpan = useMemo(() => {
     const selectedStmt = getSelectedStmt(nodes, currentPoint);
@@ -415,7 +424,6 @@ export const App: React.FC<AppProps> = ({
           setShowPCGNavigator={setShowPCGNavigator}
           currentPoint={currentPoint}
           selectedFunction={selectedFunction}
-          iterations={iterations}
           api={api}
         />
         <MirGraph
@@ -427,6 +435,7 @@ export const App: React.FC<AppProps> = ({
           showActionsInGraph={showActionsInCode}
           allPcgStmtData={allPcgStmtData}
           pcgFunctionData={pcgFunctionData}
+          highlightedEdges={highlightedMirEdges}
         />
         {showPCGNavigator &&
           pcgProgramPointData &&
@@ -461,6 +470,10 @@ export const App: React.FC<AppProps> = ({
                 }
               }}
               onNavigatorStateChange={handleNavigatorStateChange}
+              currentPoint={currentPoint}
+              selectedFunction={selectedFunction}
+              allIterations={iterations}
+              api={api}
               onAdvanceToNextStatement={() => {
                 if (currentPoint.type === "stmt") {
                   const currentNode = nodes.find(
@@ -568,6 +581,7 @@ export const App: React.FC<AppProps> = ({
         selectedFunction={selectedFunction}
         iterations={iterations}
         api={api}
+        onHighlightMirEdges={setHighlightedMirEdges}
       />
     </div>
   );

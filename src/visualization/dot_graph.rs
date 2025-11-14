@@ -1,5 +1,6 @@
 use std::{
-    collections::BTreeSet,
+    borrow::Cow,
+    collections::{BTreeSet, HashMap},
     fmt::Display,
     fs::File,
     io::Write,
@@ -7,12 +8,52 @@ use std::{
     process::{Command, Stdio},
 };
 
-use crate::utils::html::Html;
+use serde_derive::Serialize;
+
+use crate::{
+    borrow_pcg::validity_conditions::ValidityConditionsDebugRepr,
+    utils::{DebugRepr, HasCompilerCtxt, html::Html},
+    visualization::Graph,
+};
 
 type NodeId = String;
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub(crate) struct DotEdgeId(String);
+
+pub struct DotGraphWithEdgeCtxt<Ctxt> {
+    pub(crate) graph: DotGraph,
+    pub(crate) edge_ctxt: HashMap<DotEdgeId, Ctxt>,
+}
+
+impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
+    pub(crate) fn from_graph<'a, 'tcx: 'a>(
+        graph: Graph<'a>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Self {
+        let nodes = graph.nodes.iter().map(|g| g.to_dot_node()).collect();
+        let mut edges = Vec::new();
+        let mut edge_ctxt = HashMap::new();
+        for (i, edge) in graph.edges.iter().enumerate() {
+            let edge_id = DotEdgeId(format!("edge_{i}"));
+            if let Some(validity_conditions) = edge.validity_conditions() {
+                edge_ctxt.insert(edge_id.clone(), validity_conditions.debug_repr(ctxt));
+            }
+            edges.push(edge.to_dot_edge(Some(edge_id), ctxt));
+        }
+        Self {
+            graph: DotGraph {
+                name: Cow::Borrowed("graph"),
+                nodes,
+                edges,
+            },
+            edge_ctxt,
+        }
+    }
+}
 
 pub struct DotGraph {
-    pub(crate) name: String,
+    pub(crate) name: Cow<'static, str>,
     pub(crate) nodes: Vec<DotNode>,
     pub(crate) edges: Vec<DotEdge>,
 }
@@ -86,7 +127,8 @@ impl Display for RankAnnotation {
 
 impl Display for DotGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "digraph {} {{", self.name)?;
+        write!(f, "digraph \"{}\" {{", self.name)?;
+        writeln!(f)?;
         writeln!(f, "layout=dot")?;
         writeln!(f, "node [shape=rect]")?;
         for node in &self.nodes {
@@ -209,10 +251,10 @@ pub enum EdgeDirection {
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct EdgeOptions {
     label: String,
-    color: Option<String>,
+    color: Option<Cow<'static, str>>,
     style: Option<String>,
     direction: Option<EdgeDirection>,
-    tooltip: Option<String>,
+    tooltip: Option<Cow<'static, str>>,
     penwidth: Option<String>,
     weight: Option<String>,
 }
@@ -252,7 +294,7 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_color(mut self, color: String) -> Self {
+    pub fn with_color(mut self, color: Cow<'static, str>) -> Self {
         self.color = Some(color);
         self
     }
@@ -262,7 +304,7 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_tooltip(mut self, tooltip: String) -> Self {
+    pub fn with_tooltip(mut self, tooltip: Cow<'static, str>) -> Self {
         self.tooltip = Some(tooltip);
         self
     }
@@ -270,6 +312,7 @@ impl EdgeOptions {
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct DotEdge {
+    pub id: Option<DotEdgeId>,
     pub from: NodeId,
     pub to: NodeId,
     pub options: EdgeOptions,
@@ -277,6 +320,10 @@ pub(crate) struct DotEdge {
 
 impl Display for DotEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let id_part = match &self.id {
+            Some(id) => format!(", id=\"{}\"", id.0),
+            None => "".to_string(),
+        };
         let style_part = match &self.options.style {
             Some(style) => format!(", style=\"{style}\""),
             None => "".to_string(),
@@ -304,10 +351,11 @@ impl Display for DotEdge {
         };
         write!(
             f,
-            "    \"{}\" -> \"{}\" [label=\"{}\"{}{}{}{}{}{}]",
+            "    \"{}\" -> \"{}\" [label=\"{}\"{}{}{}{}{}{}{}]",
             self.from,
             self.to,
             self.options.label,
+            id_part,
             style_part,
             direction_part,
             color_part,
