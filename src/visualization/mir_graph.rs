@@ -8,6 +8,7 @@ use crate::{
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     fs::File,
     io::{self},
     path::Path,
@@ -81,37 +82,37 @@ struct MirNode {
 struct MirEdge {
     source: String,
     target: String,
-    label: String,
+    label: Cow<'static, str>,
 }
 
-fn format_bin_op(op: &BinOp) -> String {
+fn format_bin_op(op: &BinOp) -> &'static str {
     match op {
-        BinOp::Add => "+".to_string(),
-        BinOp::Sub => "-".to_string(),
-        BinOp::Mul => "*".to_string(),
-        BinOp::Div => "/".to_string(),
-        BinOp::Rem => "%".to_string(),
+        BinOp::Add => "+",
+        BinOp::Sub => "-",
+        BinOp::Mul => "*",
+        BinOp::Div => "/",
+        BinOp::Rem => "%",
         BinOp::AddUnchecked => todo!(),
         BinOp::SubUnchecked => todo!(),
         BinOp::MulUnchecked => todo!(),
-        BinOp::BitXor => "^".to_string(),
-        BinOp::BitAnd => "&".to_string(),
-        BinOp::BitOr => "|".to_string(),
-        BinOp::Shl => "<<".to_string(),
-        BinOp::ShlUnchecked => "<<".to_string(),
-        BinOp::Shr => ">>".to_string(),
-        BinOp::ShrUnchecked => ">>".to_string(),
-        BinOp::Eq => "==".to_string(),
-        BinOp::Lt => "<".to_string(),
-        BinOp::Le => "<=".to_string(),
-        BinOp::Ne => "!=".to_string(),
-        BinOp::Ge => ">=".to_string(),
-        BinOp::Gt => ">".to_string(),
+        BinOp::BitXor => "^",
+        BinOp::BitAnd => "&",
+        BinOp::BitOr => "|",
+        BinOp::Shl => "<<",
+        BinOp::ShlUnchecked => "<<",
+        BinOp::Shr => ">>",
+        BinOp::ShrUnchecked => ">>",
+        BinOp::Eq => "==",
+        BinOp::Lt => "<",
+        BinOp::Le => "<=",
+        BinOp::Ne => "!=",
+        BinOp::Ge => ">=",
+        BinOp::Gt => ">",
         BinOp::Offset => todo!(),
         BinOp::Cmp => todo!(),
-        BinOp::AddWithOverflow => "+".to_string(),
-        BinOp::SubWithOverflow => "-".to_string(),
-        BinOp::MulWithOverflow => "*".to_string(),
+        BinOp::AddWithOverflow => "+",
+        BinOp::SubWithOverflow => "-",
+        BinOp::MulWithOverflow => "*",
     }
 }
 
@@ -275,8 +276,8 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
         mir::StatementKind::PlaceMention(place) => {
             format!("PlaceMention({})", format_place(place, ctxt))
         }
-        mir::StatementKind::AscribeUserType(_, _) => "AscribeUserType(...)".to_string(),
-        mir::StatementKind::Coverage(_) => "coverage".to_string(),
+        mir::StatementKind::AscribeUserType(_, _) => "AscribeUserType(...)".to_owned(),
+        mir::StatementKind::Coverage(_) => "coverage".to_owned(),
         mir::StatementKind::Intrinsic(non_diverging_intrinsic) => {
             format!("Intrinsic({non_diverging_intrinsic:?})")
         }
@@ -389,7 +390,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{target:?}"),
-                    label: "goto".to_string(),
+                    label: Cow::Borrowed("goto"),
                 });
             }
             TerminatorKind::SwitchInt { discr: _, targets } => {
@@ -397,13 +398,13 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     edges.push(MirEdge {
                         source: format!("{bb:?}"),
                         target: format!("{target:?}"),
-                        label: format!("{val}"),
+                        label: Cow::Owned(format!("{val}")),
                     });
                 }
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{:?}", targets.otherwise()),
-                    label: "otherwise".to_string(),
+                    label: Cow::Borrowed("otherwise"),
                 });
             }
             TerminatorKind::UnwindResume => {}
@@ -414,7 +415,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{target:?}"),
-                    label: "drop".to_string(),
+                    label: Cow::Borrowed("drop"),
                 });
             }
             TerminatorKind::Call {
@@ -430,7 +431,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     edges.push(MirEdge {
                         source: format!("{bb:?}"),
                         target: format!("{target:?}"),
-                        label: "call".to_string(),
+                        label: Cow::Borrowed("call"),
                     });
                     match unwind {
                         UnwindAction::Continue => todo!(),
@@ -440,7 +441,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                             edges.push(MirEdge {
                                 source: format!("{bb:?}"),
                                 target: format!("{cleanup:?}"),
-                                label: "unwind".to_string(),
+                                label: Cow::Borrowed("unwind"),
                             });
                         }
                     }
@@ -461,14 +462,14 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                         edges.push(MirEdge {
                             source: format!("{bb:?}"),
                             target: format!("{cleanup:?}"),
-                            label: "unwind".to_string(),
+                            label: Cow::Borrowed("unwind"),
                         });
                     }
                 }
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{target:?}"),
-                    label: "success".to_string(),
+                    label: Cow::Borrowed("success"),
                 });
             }
             TerminatorKind::Yield {
@@ -484,7 +485,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{real_target:?}"),
-                    label: "real".to_string(),
+                    label: Cow::Borrowed("real"),
                 });
             }
             TerminatorKind::FalseUnwind {
@@ -494,7 +495,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
                     target: format!("{real_target:?}"),
-                    label: "real".to_string(),
+                    label: Cow::Borrowed("real"),
                 });
             }
             TerminatorKind::InlineAsm { .. } => todo!(),

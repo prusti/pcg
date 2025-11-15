@@ -112,13 +112,13 @@ impl GraphNode {
                     (None, None)
                 } else {
                     (
-                        Some(DotStringAttr("rounded".to_string())),
+                        Some(DotStringAttr("rounded".into())),
                         Some(DotFloatAttr(1.5)),
                     )
                 };
                 let capability_text = match capability {
                     Some(k) => format!(": {k:?}"),
-                    None => "".to_string(),
+                    None => String::new(),
                 };
                 let label_html = Html::Font(
                     "courier",
@@ -130,12 +130,12 @@ impl GraphNode {
                 DotNode {
                     id: self.id.to_string(),
                     label: DotLabel::Html(label_html),
-                    color: DotStringAttr(color.to_string()),
-                    font_color: DotStringAttr(color.to_string()),
-                    shape: DotStringAttr("rect".to_string()),
+                    color: DotStringAttr(color.into()),
+                    font_color: DotStringAttr(color.into()),
+                    shape: DotStringAttr("rect".into()),
                     style,
                     penwidth,
-                    tooltip: Some(DotStringAttr(ty.clone())),
+                    tooltip: Some(DotStringAttr(ty.clone().into())),
                 }
             }
             NodeType::RegionProjectionNode {
@@ -145,12 +145,12 @@ impl GraphNode {
             } => DotNode {
                 id: self.id.to_string(),
                 label: DotLabel::Html(label.clone()),
-                color: DotStringAttr("blue".to_string()),
-                font_color: DotStringAttr("blue".to_string()),
-                shape: DotStringAttr("octagon".to_string()),
+                color: DotStringAttr("blue".into()),
+                font_color: DotStringAttr("blue".into()),
+                shape: DotStringAttr("octagon".into()),
                 style: None,
                 penwidth: None,
-                tooltip: Some(DotStringAttr(format!("{place_ty}\\\n{loans}"))),
+                tooltip: Some(DotStringAttr(format!("{place_ty}\\\n{loans}").into())),
             },
         }
     }
@@ -252,7 +252,7 @@ impl<'a> GraphEdge<'a> {
                 to: blocking_place.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
                     .with_color("grey".into())
-                    .with_style("dashed".to_string()),
+                    .with_style("dashed"),
             },
             GraphEdge::Borrow {
                 borrowed_place,
@@ -273,10 +273,10 @@ impl<'a> GraphEdge<'a> {
                         if let Some(borrow_index) = borrow_index {
                             format!("{borrow_index}: ")
                         } else {
-                            "".to_string()
+                            String::new()
                         },
                         kind,
-                        region.as_ref().cloned().unwrap_or("".to_string())
+                        region.as_ref().cloned().unwrap_or_default()
                     ))
                     .with_tooltip(
                         validity_conditions
@@ -325,7 +325,7 @@ impl<'a> GraphEdge<'a> {
                         if *regions_equal {
                             options.with_penwidth(2.0)
                         } else {
-                            options.with_style("dashed".to_string())
+                            options.with_style("dashed")
                         }
                     }
                     _ => options,
@@ -343,7 +343,7 @@ impl<'a> GraphEdge<'a> {
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
                     .with_color("red".into())
-                    .with_style("dashed".to_string()),
+                    .with_style("dashed"),
             },
         }
     }

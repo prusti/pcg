@@ -201,7 +201,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 if let Some(function_data) = &self.function_data {
                     format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
                 } else {
-                    "".to_string()
+                    String::new()
                 },
                 self.location
             )

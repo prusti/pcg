@@ -353,7 +353,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Lo
         let rp_part = if let Some(rp) = self.assigned_lifetime_projection_label {
             format!(" <{}>", rp.display_output((), mode).into_text())
         } else {
-            "".to_string()
+            String::new()
         };
         DisplayOutput::Text(
             format!(

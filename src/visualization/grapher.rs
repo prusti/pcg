@@ -102,10 +102,10 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     .constructor()
                     .insert_region_projection_node(assigned_region_projection);
                 let kind = match borrow.kind() {
-                    Some(mir::BorrowKind::Shared) => "shared".to_string(),
+                    Some(mir::BorrowKind::Shared) => "shared".to_owned(),
                     Some(mir::BorrowKind::Mut { kind }) => format!("{kind:?}"),
-                    Some(mir::BorrowKind::Fake(_)) => "fake".to_string(),
-                    None => "".to_string(),
+                    Some(mir::BorrowKind::Fake(_)) => "fake".to_owned(),
+                    None => String::new(),
                 };
                 self.constructor().edges.insert(GraphEdge::Borrow {
                     borrowed_place,

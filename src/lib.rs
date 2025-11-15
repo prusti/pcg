@@ -108,7 +108,7 @@ impl<'tcx> Weaken<'tcx> {
     pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let to_str = match self.to {
             Some(to) => format!("{to:?}"),
-            None => "None".to_string(),
+            None => "None".to_owned(),
         };
         format!(
             "Weaken {} from {:?} to {}",

@@ -59,7 +59,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
-                string.to_string()
+                string.to_owned()
             } else {
                 format!("{self:?}")
             }
@@ -88,8 +88,8 @@ impl PcgRegion {
                         format!("{vid:?}")
                     }
                 }
-                PcgRegion::ReErased => "ReErased".to_string(),
-                PcgRegion::ReStatic => "ReStatic".to_string(),
+                PcgRegion::ReErased => "ReErased".to_owned(),
+                PcgRegion::ReStatic => "ReStatic".to_owned(),
                 PcgRegion::ReBound(debruijn_index, region) => {
                     format!("ReBound({debruijn_index:?}, {region:?})")
                 }
@@ -615,7 +615,7 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
                 phantom: PhantomData,
             }),
             PlaceOrConst::Const(_) => {
-                Err("Const cannot be converted to a region projection".to_string())
+                Err("Const cannot be converted to a region projection".to_owned())
             }
         }
     }

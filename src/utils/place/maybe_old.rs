@@ -99,7 +99,7 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
         match value {
             PlaceOrConst::Place(maybe_remote_place) => maybe_remote_place.try_into(),
             PlaceOrConst::Const(_) => {
-                Err("Const cannot be converted to a maybe old place".to_string())
+                Err("Const cannot be converted to a maybe old place".to_owned())
             }
         }
     }
@@ -131,7 +131,7 @@ impl<'tcx> TryFrom<PcgNode<'tcx>> for MaybeLabelledPlace<'tcx> {
         match node {
             PcgNode::Place(p) => Ok(p.try_into()?),
             PcgNode::LifetimeProjection(_) => {
-                Err("Region projection cannot be converted to a maybe old place".to_string())
+                Err("Region projection cannot be converted to a maybe old place".to_owned())
             }
         }
     }

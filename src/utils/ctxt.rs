@@ -78,7 +78,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub fn source_lines(&self) -> Result<Vec<String>, SpanSnippetError> {
         let source = self.source()?;
-        Ok(source.lines().map(|l| l.to_string()).collect::<Vec<_>>())
+        Ok(source.lines().map(|l| l.to_owned()).collect::<Vec<_>>())
     }
 
     pub fn bc(&self) -> T
