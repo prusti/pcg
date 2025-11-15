@@ -45,7 +45,7 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "Reborrow Edge",
         EdgeOptions::directed(EdgeDirection::Forward)
             .with_color("orange".into())
-            .with_label("region".to_string())
+            .with_label("region")
             .with_tooltip("conditions".into()),
     )?;
 
@@ -86,7 +86,7 @@ fn write_edge_legend<T: Write>(out: &mut T) -> io::Result<()> {
         "Coupled Edge",
         EdgeOptions::undirected()
             .with_color("red".into())
-            .with_style("dashed".to_string()),
+            .with_style("dashed"),
     )?;
 
     writeln!(out, "}}")
@@ -104,10 +104,10 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
         id: NodeId('f', 0),
         node_type: NodeType::PlaceNode {
             owned: true,
-            label: "x".to_string(),
+            label: "x".to_owned(),
             capability: Some(CapabilityKind::Write),
             location: None,
-            ty: "&'a mut i32".to_string(),
+            ty: "&'a mut i32".to_owned(),
         },
     };
 
@@ -115,8 +115,8 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
         id: NodeId('r', 0),
         node_type: NodeType::RegionProjectionNode {
             label: "rx↓'rx".into(),
-            base_ty: "&'rx mut i32".to_string(),
-            loans: "".to_string(),
+            base_ty: "&'rx mut i32".to_owned(),
+            loans: String::new(),
         },
     };
 
@@ -124,10 +124,10 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
         id: NodeId('b', 0),
         node_type: NodeType::PlaceNode {
             owned: false,
-            label: "*rx".to_string(),
+            label: "*rx".to_owned(),
             location: None,
             capability: None,
-            ty: "i32".to_string(),
+            ty: "i32".to_owned(),
         },
     };
 
@@ -154,22 +154,22 @@ fn write_edge<T: Write>(
     options: EdgeOptions,
 ) -> io::Result<()> {
     let node_a = DotNode {
-        id: from.to_string(),
-        label: DotLabel::Text("A".to_string()),
-        color: DotStringAttr("black".to_string()),
-        font_color: DotStringAttr("black".to_string()),
-        shape: DotStringAttr("rect".to_string()),
+        id: from.to_owned(),
+        label: DotLabel::Text("A".into()),
+        color: DotStringAttr("black".into()),
+        font_color: DotStringAttr("black".into()),
+        shape: DotStringAttr("rect".into()),
         style: None,
         penwidth: None,
         tooltip: None,
     };
 
     let node_b = DotNode {
-        id: to.to_string(),
-        label: DotLabel::Text("B".to_string()),
-        color: DotStringAttr("black".to_string()),
-        font_color: DotStringAttr("black".to_string()),
-        shape: DotStringAttr("rect".to_string()),
+        id: to.to_owned(),
+        label: DotLabel::Text("B".into()),
+        color: DotStringAttr("black".into()),
+        font_color: DotStringAttr("black".into()),
+        shape: DotStringAttr("rect".into()),
         style: None,
         penwidth: None,
         tooltip: None,
@@ -177,8 +177,8 @@ fn write_edge<T: Write>(
 
     let edge = DotEdge {
         id: None,
-        from: from.to_string(),
-        to: to.to_string(),
+        from: from.to_owned(),
+        to: to.to_owned(),
         options,
     };
 

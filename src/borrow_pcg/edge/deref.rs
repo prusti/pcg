@@ -67,7 +67,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for DerefEdge<'tcx> {
         self.deref_place.check_validity(ctxt)?;
         self.blocked_lifetime_projection.check_validity(ctxt)?;
         if self.deref_place.last_projection().unwrap().1 != mir::PlaceElem::Deref {
-            return Err("Deref edge deref place must end with a deref projection".to_string());
+            return Err("Deref edge deref place must end with a deref projection".to_owned());
         }
         Ok(())
     }

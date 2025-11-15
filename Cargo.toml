@@ -44,3 +44,4 @@ rustc_private = true
 [lints.clippy]
 uninlined_format_args = "deny"
 derivable_impls = "deny"
+str_to_string = "deny"

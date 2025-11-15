@@ -130,7 +130,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                             .join(", ")
                     )
                 } else {
-                    "{}".to_string()
+                    "{}".to_owned()
                 }
             };
             if let Some(location) = self.location {
@@ -152,10 +152,10 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                     loans_after
                 )
             } else {
-                "".to_string()
+                String::new()
             }
         } else {
-            "".to_string()
+            String::new()
         };
         let node = GraphNode {
             id,

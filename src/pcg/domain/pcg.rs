@@ -189,7 +189,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
         self.owned
             .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
         if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
-            return Err("PCG is not acyclic".to_string());
+            return Err("PCG is not acyclic".to_owned());
         }
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {

@@ -316,13 +316,13 @@ export const App: React.FC<AppProps> = ({
           });
         }
       } else {
-        // New position - select first overlapping statement
-        setClickPosition(position);
-        setClickCycleIndex(0);
 
         const overlapping = getOverlappingStmts(position);
         if (overlapping.length > 0) {
           const selected = overlapping[0];
+          // New position - select first overlapping statement
+          setClickPosition(position);
+          setClickCycleIndex(0);
           setCurrentPoint({
             type: "stmt",
             block: selected.block,
@@ -394,7 +394,6 @@ export const App: React.FC<AppProps> = ({
           }}
         >
           <SourceCodeViewer
-            metadata={functions[selectedFunction]}
             functions={functions}
             selectedFunction={selectedFunction}
             onFunctionChange={setSelectedFunction}

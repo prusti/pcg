@@ -142,7 +142,7 @@ impl Display for DotGraph {
 }
 
 pub(crate) enum DotLabel {
-    Text(String),
+    Text(Cow<'static, str>),
     Html(Html),
 }
 
@@ -169,13 +169,13 @@ pub struct DotNode {
 }
 
 impl DotNode {
-    pub(crate) fn simple(id: NodeId, label: String) -> Self {
+    pub(crate) fn simple(id: NodeId, label: impl Into<Cow<'static, str>>) -> Self {
         Self {
             id,
-            label: DotLabel::Text(label),
-            font_color: DotStringAttr("black".to_string()),
-            color: DotStringAttr("black".to_string()),
-            shape: DotStringAttr("rect".to_string()),
+            label: DotLabel::Text(label.into()),
+            font_color: DotStringAttr("black".into()),
+            color: DotStringAttr("black".into()),
+            shape: DotStringAttr("rect".into()),
             style: None,
             penwidth: None,
             tooltip: None,
@@ -184,7 +184,7 @@ impl DotNode {
 }
 trait DotAttr: Display {}
 
-pub struct DotStringAttr(pub String);
+pub struct DotStringAttr(pub Cow<'static, str>);
 
 impl Display for DotStringAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_dotstring_attr_escapes_quotes() {
-        let attr = DotStringAttr("extern \"RustCall\"".to_string());
+        let attr = DotStringAttr("extern \"RustCall\"".into());
         assert_eq!(attr.to_string(), "\"extern \\\"RustCall\\\"\"");
     }
 }
@@ -220,7 +220,7 @@ fn format_attr<T: DotAttr>(name: &'static str, value: &T) -> String {
 fn format_optional<T: DotAttr>(name: &'static str, value: &Option<T>) -> String {
     match value {
         Some(value) => format!("{name}={value}"),
-        None => "".to_string(),
+        None => String::new(),
     }
 }
 
@@ -250,9 +250,9 @@ pub enum EdgeDirection {
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct EdgeOptions {
-    label: String,
+    label: Cow<'static, str>,
     color: Option<Cow<'static, str>>,
-    style: Option<String>,
+    style: Option<Cow<'static, str>>,
     direction: Option<EdgeDirection>,
     tooltip: Option<Cow<'static, str>>,
     penwidth: Option<String>,
@@ -262,7 +262,7 @@ pub(crate) struct EdgeOptions {
 impl EdgeOptions {
     pub fn directed(direction: EdgeDirection) -> Self {
         Self {
-            label: "".to_string(),
+            label: Cow::Borrowed(""),
             color: None,
             style: None,
             direction: Some(direction),
@@ -274,7 +274,7 @@ impl EdgeOptions {
 
     pub fn undirected() -> Self {
         Self {
-            label: "".to_string(),
+            label: Cow::Borrowed(""),
             color: None,
             style: None,
             direction: None,
@@ -289,8 +289,8 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_label(mut self, label: String) -> Self {
-        self.label = label;
+    pub fn with_label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
+        self.label = label.into();
         self
     }
 
@@ -299,8 +299,8 @@ impl EdgeOptions {
         self
     }
 
-    pub fn with_style(mut self, style: String) -> Self {
-        self.style = Some(style);
+    pub fn with_style(mut self, style: impl Into<Cow<'static, str>>) -> Self {
+        self.style = Some(style.into());
         self
     }
 
@@ -322,11 +322,11 @@ impl Display for DotEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let id_part = match &self.id {
             Some(id) => format!(", id=\"{}\"", id.0),
-            None => "".to_string(),
+            None => String::new(),
         };
         let style_part = match &self.options.style {
             Some(style) => format!(", style=\"{style}\""),
-            None => "".to_string(),
+            None => String::new(),
         };
         let direction_part = match &self.options.direction {
             Some(EdgeDirection::Backward) => ", dir=\"back\"",
@@ -335,19 +335,19 @@ impl Display for DotEdge {
         };
         let color_part = match &self.options.color {
             Some(color) => format!(", color=\"{color}\""),
-            None => "".to_string(),
+            None => String::new(),
         };
         let tooltip_part = match &self.options.tooltip {
             Some(tooltip) => format!(", edgetooltip=\"{tooltip}\""),
-            None => "".to_string(),
+            None => String::new(),
         };
         let penwidth_part = match &self.options.penwidth {
             Some(penwidth) => format!(", penwidth=\"{penwidth}\""),
-            None => "".to_string(),
+            None => String::new(),
         };
         let weight_part = match &self.options.weight {
             Some(weight) => format!(", weight=\"{weight}\""),
-            None => "".to_string(),
+            None => String::new(),
         };
         write!(
             f,

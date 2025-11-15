@@ -197,12 +197,12 @@ impl PcgSettings {
     }
 
     fn process_bool_var(processed: &mut HashSet<String>, var_name: &str, default: bool) -> bool {
-        processed.insert(var_name.to_string());
+        processed.insert(var_name.to_owned());
         env_feature_enabled(var_name).unwrap_or(default)
     }
 
     fn process_usize_var(processed: &mut HashSet<String>, var_name: &str) -> Option<usize> {
-        processed.insert(var_name.to_string());
+        processed.insert(var_name.to_owned());
         match std::env::var(var_name) {
             Ok(val) => Some(
                 val.parse()
@@ -213,7 +213,7 @@ impl PcgSettings {
     }
 
     fn process_string_var(processed: &mut HashSet<String>, var_name: &str) -> Option<String> {
-        processed.insert(var_name.to_string());
+        processed.insert(var_name.to_owned());
         match std::env::var(var_name) {
             Ok(val) if !val.is_empty() => Some(val),
             _ => None,
@@ -221,7 +221,7 @@ impl PcgSettings {
     }
 
     fn process_debug_block(processed: &mut HashSet<String>) -> Option<BasicBlock> {
-        processed.insert("PCG_DEBUG_BLOCK".to_string());
+        processed.insert("PCG_DEBUG_BLOCK".to_owned());
         match std::env::var("PCG_DEBUG_BLOCK") {
             Ok(val) => {
                 if !val.starts_with("bb") {
@@ -239,7 +239,7 @@ impl PcgSettings {
     }
 
     fn process_debug_imgcat(processed: &mut HashSet<String>) -> Vec<DebugImgcat> {
-        processed.insert("PCG_DEBUG_IMGCAT".to_string());
+        processed.insert("PCG_DEBUG_IMGCAT".to_owned());
         match std::env::var("PCG_DEBUG_IMGCAT") {
             Ok(val) => {
                 let vec: Vec<DebugImgcat> = val
