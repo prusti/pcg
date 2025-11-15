@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Highlight, themes } from "prism-react-renderer";
 import {
-  FunctionMetadata,
   FunctionSlug,
   FunctionsMetadata,
   SourcePos,
@@ -13,15 +12,14 @@ type RelativeSpan = {
 };
 
 interface SourceCodeViewerProps {
-  metadata: FunctionMetadata;
   functions: FunctionsMetadata;
   selectedFunction: FunctionSlug;
   onFunctionChange: (selectedFunction: FunctionSlug) => void;
+  onClickPosition: (position: SourcePos) => void;
   highlightSpan?: RelativeSpan | null;
   minimized?: boolean;
   fontSize?: number;
   onHoverPositionChange?: (position: SourcePos | null) => void;
-  onClickPosition?: (position: SourcePos) => void;
   selectionIndicator?: { line: number; index: number; total: number } | null;
   showSettings?: boolean;
   onToggleSettings?: () => void;
@@ -30,7 +28,6 @@ interface SourceCodeViewerProps {
 }
 
 const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
-  metadata,
   functions,
   selectedFunction,
   onFunctionChange,
@@ -47,6 +44,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
+  const metadata = functions[selectedFunction];
 
   const isSingleLineSpan = (): boolean => {
     if (!highlightSpan) return false;
@@ -90,7 +88,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
 
   const handleCharClick = (lineIndex: number, charIndex: number) => {
     const position = { line: lineIndex, column: charIndex };
-    onClickPosition?.(position);
+    onClickPosition(position);
   };
 
   const handleMouseLeave = () => {
