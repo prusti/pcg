@@ -4,7 +4,7 @@ use crate::pcg_validity_assert;
 use crate::rustc_interface::index::IndexVec;
 use crate::rustc_interface::middle::mir;
 use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::utils::{CompilerCtxt, DebugRepr, StringOf};
+use crate::utils::{CompilerCtxt, StringOf};
 use crate::visualization::write_pcg_dot_graph_to_file;
 use derive_more::{Deref, From};
 use serde_derive::Serialize;
@@ -18,40 +18,17 @@ use std::path::{Path, PathBuf};
 pub(crate) struct PathToDotFile(PathBuf);
 
 #[derive(Clone, Serialize, Debug)]
-pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct StmtGraphs<PhaseKey = StringOf<DataflowStmtPhase>> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
 
 #[derive(Clone, Serialize, Debug)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
     filename: PathToDotFile,
-}
-
-#[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct PcgBlockDotGraphs {
-    at_phase: Vec<PcgDotFileAtPhase>,
-    actions: EvalStmtData<Vec<PathToDotFile>>,
-}
-
-#[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct PcgDotFileAtPhase {
-    phase: String,
-    filename: PathToDotFile,
-}
-
-impl DebugRepr for DotFileAtPhase<DataflowStmtPhase> {
-    type Repr = DotFileAtPhase<StringOf<DataflowStmtPhase>>;
-
-    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
-        DotFileAtPhase {
-            phase: StringOf::new(self.phase),
-            filename: self.filename.clone(),
-        }
-    }
 }
 
 impl<PhaseKey> DotFileAtPhase<PhaseKey> {
@@ -65,21 +42,6 @@ impl Default for StmtGraphs {
         Self {
             at_phase: Vec::new(),
             actions: EvalStmtData::default(),
-        }
-    }
-}
-
-impl DebugRepr for StmtGraphs {
-    type Repr = StmtGraphs<StringOf<DataflowStmtPhase>>;
-
-    fn debug_repr(&self, _ctxt: ()) -> StmtGraphs<StringOf<DataflowStmtPhase>> {
-        StmtGraphs {
-            at_phase: self
-                .at_phase
-                .iter()
-                .map(|dotfile_at_phase| dotfile_at_phase.debug_repr(()))
-                .collect(),
-            actions: self.actions.clone(),
         }
     }
 }
@@ -106,7 +68,8 @@ impl StmtGraphs {
     }
 
     pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: PathToDotFile) {
-        self.at_phase.push(DotFileAtPhase::new(phase, filename));
+        self.at_phase
+            .push(DotFileAtPhase::new(StringOf::new_display(phase), filename));
     }
 
     pub(crate) fn insert_for_action(
@@ -182,23 +145,8 @@ pub(crate) struct PcgDotGraphsForBlock {
 #[derive(Clone, Debug, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct AllBlockIterations {
-    pub(crate) blocks: std::collections::HashMap<String, Vec<PcgBlockDotGraphs>>,
-}
-
-impl PcgBlockDotGraphs {
-    pub(crate) fn from_stmt_graphs(stmt_graphs: &StmtGraphs) -> Self {
-        Self {
-            at_phase: stmt_graphs
-                .at_phase
-                .iter()
-                .map(|dot_file| PcgDotFileAtPhase {
-                    phase: StringOf::new(dot_file.phase).0,
-                    filename: dot_file.filename.clone(),
-                })
-                .collect(),
-            actions: stmt_graphs.actions.clone(),
-        }
-    }
+    // We use std::collections::HashMap for specta compatibility
+    pub(crate) blocks: std::collections::HashMap<String, Vec<StmtGraphs>>,
 }
 
 impl PcgDotGraphsForBlock {

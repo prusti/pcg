@@ -1,4 +1,10 @@
-import { MirGraph, PcgFunctionData, AllBlockIterations, PcgBlockDotGraphs as PcgBlockDotGraph } from "./generated/types";
+import {
+  MirGraph,
+  PcgFunctionData,
+  AllBlockIterations,
+  StmtGraphs,
+} from "./generated/types";
+import { StringOf } from "./generated_type_deps";
 import {
   FunctionsMetadata,
   GetFunctionsResult,
@@ -6,7 +12,7 @@ import {
 } from "./types";
 import * as JSZip from "jszip";
 
-export type PcgBlockDotGraphs = PcgBlockDotGraph[];
+export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[]
 
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;
@@ -16,15 +22,18 @@ export abstract class Api {
 
   async getAllIterations(functionName: string): Promise<AllBlockIterations> {
     if (!this.allIterationsCache.has(functionName)) {
-      const data = await this.fetchJsonFile(
+      const data = (await this.fetchJsonFile(
         `data/${functionName}/all_iterations.json`
-      ) as AllBlockIterations;
+      )) as AllBlockIterations;
       this.allIterationsCache.set(functionName, data);
     }
     return this.allIterationsCache.get(functionName)!;
   }
 
-  async getPcgIterations(functionName: string, block: number): Promise<PcgBlockDotGraphs> {
+  async getPcgIterations(
+    functionName: string,
+    block: number
+  ): Promise<PcgBlockDotGraphs> {
     const allIterations = await this.getAllIterations(functionName);
     const blockKey = `bb${block}`;
     return allIterations.blocks[blockKey] || [];
@@ -32,21 +41,27 @@ export abstract class Api {
 
   async getGraphData(func: string): Promise<MirGraph> {
     const graphFilePath = `data/${func}/mir.json`;
-    return await this.fetchJsonFile(graphFilePath) as Promise<MirGraph>;
+    return (await this.fetchJsonFile(graphFilePath)) as Promise<MirGraph>;
   }
 
   async getFunctions(): Promise<GetFunctionsResult> {
     try {
-      const data = await this.fetchJsonFile("data/functions.json") as FunctionsMetadata;
+      const data = (await this.fetchJsonFile(
+        "data/functions.json"
+      )) as FunctionsMetadata;
       return { type: "found", data };
     } catch {
       return { type: "not_found" };
     }
   }
 
-  public async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
+  public async getPcgFunctionData(
+    functionName: string
+  ): Promise<PcgFunctionData> {
     if (!this.pcgDataCache.has(functionName)) {
-      const data = await this.fetchJsonFile(`data/${functionName}/pcg_data.json`) as PcgFunctionData;
+      const data = (await this.fetchJsonFile(
+        `data/${functionName}/pcg_data.json`
+      )) as PcgFunctionData;
       this.pcgDataCache.set(functionName, data);
     }
     return this.pcgDataCache.get(functionName)!;
@@ -81,9 +96,9 @@ class FetchApi extends Api {
   constructor(prefix?: string) {
     super();
     if (prefix) {
-      this.prefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      this.prefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
     } else {
-      this.prefix = '';
+      this.prefix = "";
     }
   }
 
@@ -119,7 +134,9 @@ export class ZipFileApi extends Api {
   static async fromUrl(url: string): Promise<ZipFileApi> {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch ZIP file from ${url}: ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch ZIP file from ${url}: ${response.statusText}`
+      );
     }
     const arrayBuffer = await response.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
@@ -150,7 +167,7 @@ export class ZipFileApi extends Api {
 
 function createDefaultApi(): Api {
   const params = new URLSearchParams(window.location.search);
-  const datasrc = params.get('datasrc');
+  const datasrc = params.get("datasrc");
 
   return new FetchApi(datasrc || undefined);
 }

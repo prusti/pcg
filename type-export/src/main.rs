@@ -16,12 +16,15 @@ fn main() {
 
     let output_file = output_dir.join("types.ts");
 
-    let typescript = Typescript::default().bigint(BigIntExportBehavior::Number);
+    let typescript = Typescript::default()
+        .bigint(BigIntExportBehavior::Number);
+
+    let header = "import type { StringOf } from \"../generated_type_deps.ts\";\n";
 
     let collection = pcg::type_collection();
-    typescript
-        .export_to(&output_file, &collection)
-        .unwrap();
+    let contents = typescript.export(&collection).unwrap();
+
+    fs::write(&output_file, format!("{}{}", header, contents)).unwrap();
 
     println!("TypeScript types generated at: {}", output_file.display());
 }

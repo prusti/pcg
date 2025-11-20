@@ -3,6 +3,13 @@ use serde::{Serialize, Serializer};
 
 use crate::{pcg::EvalStmtPhase, rustc_interface::middle::mir::BasicBlock};
 
+#[cfg(feature = "type-export")]
+impl crate::utils::TypescriptBrand for DataflowStmtPhase {
+    fn brand() -> &'static str {
+        "\"DataflowStmtPhase\""
+    }
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, TryInto)]
 pub enum DataflowStmtPhase {
     Initial,

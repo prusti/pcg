@@ -405,7 +405,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
 
     #[cfg(feature = "visualization")]
     if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
-        let mut blocks_map = std::collections::HashMap::new();
+        let mut blocks_map = std::collections::HashMap::default();
         for block in body.basic_blocks.indices() {
             let state = analysis.entry_set_for_block(block);
             if state.is_bottom() {
@@ -414,15 +414,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             let ctxt = analysis.get_analysis().analysis_ctxt(block);
             if let Some(graphs) = ctxt.graphs {
                 let block_key = format!("bb{}", block.index());
-                let debug_graphs: Vec<_> = graphs
-                    .dot_graphs
-                    .borrow()
-                    .graphs
-                    .iter()
-                    .map(|g| {
-                        crate::visualization::stmt_graphs::PcgBlockDotGraphs::from_stmt_graphs(g)
-                    })
-                    .collect();
+                let debug_graphs = graphs.dot_graphs.borrow().graphs.clone();
                 blocks_map.insert(block_key, debug_graphs);
             }
         }
