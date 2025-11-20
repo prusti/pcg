@@ -31,10 +31,10 @@ fn ex4_expiry(mut x: i32, mut y: i32, mut z: i32) {
     let r2 = if z > 5 {
         &mut *r1
     } else {
-        x = 5;
+        x = 5; // borrow must expire before this point
         &mut y
     };
-    *r2 = 5;
+    *r2 = 5; // but x is still borrowed here!
 }
 
 fn ex5_function_call(c: bool) {

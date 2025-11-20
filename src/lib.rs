@@ -414,16 +414,20 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             let ctxt = analysis.get_analysis().analysis_ctxt(block);
             if let Some(graphs) = ctxt.graphs {
                 let block_key = format!("bb{}", block.index());
-                let debug_graphs: Vec<_> = graphs.dot_graphs.borrow().graphs
+                let debug_graphs: Vec<_> = graphs
+                    .dot_graphs
+                    .borrow()
+                    .graphs
                     .iter()
-                    .map(|g| crate::visualization::stmt_graphs::PcgBlockDotGraphs::from_stmt_graphs(g))
+                    .map(|g| {
+                        crate::visualization::stmt_graphs::PcgBlockDotGraphs::from_stmt_graphs(g)
+                    })
                     .collect();
                 blocks_map.insert(block_key, debug_graphs);
             }
         }
-        let all_block_iterations = crate::visualization::stmt_graphs::AllBlockIterations {
-            blocks: blocks_map,
-        };
+        let all_block_iterations =
+            crate::visualization::stmt_graphs::AllBlockIterations { blocks: blocks_map };
         let iterations_json_file = dir_path.join("all_iterations.json");
         std::fs::write(
             &iterations_json_file,
