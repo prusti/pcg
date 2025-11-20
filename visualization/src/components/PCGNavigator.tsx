@@ -9,7 +9,7 @@ import {
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import { StmtGraphs, PcgSuccessorVisualizationData } from "../generated/types";
+import { PcgBlockDotGraphs as PcgBlockDotGraph, PcgSuccessorVisualizationData, PcgDotFileAtPhase } from "../generated/types";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
@@ -91,7 +91,7 @@ export default function PCGNavigator({
   allIterations,
   api,
 }: {
-  iterations?: StmtGraphs<StringOf<"DataflowStmtPhase">>;
+  iterations?: PcgBlockDotGraph;
   pcgData: PcgProgramPointData;
   selectedPoint: NavigatorPoint | null;
   onSelectPoint: (point: NavigatorPoint) => void;
@@ -141,7 +141,7 @@ export default function PCGNavigator({
       const stmtData = pcgData as PcgStmtVisualizationData;
 
       // For each iteration in at_phase
-      iterations.at_phase.forEach((at_phase) => {
+      iterations.at_phase.forEach((at_phase: PcgDotFileAtPhase) => {
         // Check if this iteration name corresponds to an EvalStmtPhase with actions
         const phase = at_phase.phase as EvalStmtPhase;
         if (phase in stmtData.actions) {

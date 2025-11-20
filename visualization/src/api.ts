@@ -1,24 +1,33 @@
-import { MirGraph, PcgFunctionData, StmtGraphs } from "./generated/types";
+import { MirGraph, PcgFunctionData, AllBlockIterations, PcgBlockDotGraphs as PcgBlockDotGraph } from "./generated/types";
 import {
   FunctionsMetadata,
   GetFunctionsResult,
   PcgProgramPointData,
-  StringOf,
 } from "./types";
 import * as JSZip from "jszip";
 
-export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[];
+export type PcgBlockDotGraphs = PcgBlockDotGraph[];
 
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;
   protected abstract fetchTextFile(filePath: string): Promise<string>;
   private pcgDataCache: Map<string, PcgFunctionData> = new Map();
+  private allIterationsCache: Map<string, AllBlockIterations> = new Map();
+
+  async getAllIterations(functionName: string): Promise<AllBlockIterations> {
+    if (!this.allIterationsCache.has(functionName)) {
+      const data = await this.fetchJsonFile(
+        `data/${functionName}/all_iterations.json`
+      ) as AllBlockIterations;
+      this.allIterationsCache.set(functionName, data);
+    }
+    return this.allIterationsCache.get(functionName)!;
+  }
 
   async getPcgIterations(functionName: string, block: number): Promise<PcgBlockDotGraphs> {
-    const iterations = await this.fetchJsonFile(
-      `data/${functionName}/block_${block}_iterations.json`
-    );
-    return iterations as PcgBlockDotGraphs;
+    const allIterations = await this.getAllIterations(functionName);
+    const blockKey = `bb${block}`;
+    return allIterations.blocks[blockKey] || [];
   }
 
   async getGraphData(func: string): Promise<MirGraph> {

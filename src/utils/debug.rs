@@ -6,7 +6,7 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr;
 }
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone, Debug)]
 pub struct StringOf<T>(pub String, PhantomData<T>);
 
 #[cfg(feature = "type-export")]

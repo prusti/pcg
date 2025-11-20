@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import * as Viz from "@viz-js/viz";
 import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
@@ -11,6 +11,7 @@ interface PcgGraphProps {
   currentPoint: CurrentPoint;
   selectedFunction: FunctionSlug;
   iterations: PcgBlockDotGraphs;
+  iterationsBlock: number | null;
   api: Api;
   onHighlightMirEdges: (edges: Set<string>) => void;
 }
@@ -78,10 +79,15 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   currentPoint,
   selectedFunction,
   iterations,
+  iterationsBlock,
   api,
   onHighlightMirEdges,
 }) => {
-  const [svgContent, setSvgContent] = useState<string>("");
+  const [svgContent, setSvgContentInternal] = useState<string>("");
+  const setSvgContent = useCallback((newSvgContent: string) => {
+    console.log("Updated SVG content");
+    setSvgContentInternal(newSvgContent);
+  }, [setSvgContentInternal]);
   const [edgeMetadata, setEdgeMetadata] = useState<Record<
     string,
     ValidityConditionsDebugRepr
@@ -96,6 +102,11 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
   useEffect(() => {
     const loadGraph = async () => {
+      // Only load if iterations match the current block
+      if (currentPoint.type === "stmt" && iterationsBlock !== currentPoint.block) {
+        return;
+      }
+
       const dotFilePath = getPCGDotGraphFilename(
         currentPoint,
         selectedFunction,
@@ -131,7 +142,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
     };
 
     loadGraph();
-  }, [api, currentPoint, selectedFunction, iterations]);
+  }, [api, currentPoint, selectedFunction, iterations, iterationsBlock, setSvgContent]);
 
   useEffect(() => {
     if (!containerRef.current || !svgContent) return;

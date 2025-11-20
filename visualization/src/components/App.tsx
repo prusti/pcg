@@ -27,7 +27,7 @@ import { PcgBlockDotGraphs } from "../api";
 import { PcgFunctionData } from "../generated/types";
 import { filterNodesAndEdges } from "../mir_graph";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
-import { addKeyDownListener, reloadIterations } from "../effects";
+import { addKeyDownListener } from "../effects";
 import SourceCodeViewer from "./SourceCodeViewer";
 import PcgGraph from "./PcgGraph";
 import Settings from "./Settings";
@@ -38,7 +38,7 @@ interface AppProps {
   functions: FunctionsMetadata;
 }
 
-const INITIAL_CURRENT_POINT: CurrentPoint = {
+const INITIAL_POINT: CurrentPoint = {
   type: "stmt",
   block: 0,
   stmt: 0,
@@ -52,12 +52,18 @@ export const App: React.FC<AppProps> = ({
   functions,
 }) => {
   const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
+  const [iterationsBlock, setIterationsBlock] = useState<number | null>(null);
   const [allPcgStmtData, setAllPcgStmtData] = useState<
     Map<number, Map<number, PcgProgramPointData>>
   >(new Map());
   const [pcgFunctionData, setPcgFunctionData] =
     useState<PcgFunctionData | null>(null);
-  const [currentPoint, setCurrentPoint] = useState<CurrentPoint>(INITIAL_CURRENT_POINT);
+  const [currentPoint, setCurrentPointInitial] = useState<CurrentPoint>(INITIAL_POINT);
+
+  const setCurrentPoint = useCallback((newPoint: CurrentPoint) => {
+    console.log("setCurrentPoint", newPoint);
+    setCurrentPointInitial(newPoint);
+  }, [setCurrentPointInitial]);
 
   const [selectedFunction, setSelectedFunctionInternal] = useLocalStorageString(
     "selectedFunction",
@@ -66,8 +72,9 @@ export const App: React.FC<AppProps> = ({
 
   const setSelectedFunction = useCallback((newFunction: SetStateAction<FunctionSlug>) => {
     setSelectedFunctionInternal(newFunction);
-    setCurrentPoint(INITIAL_CURRENT_POINT);
-  }, [setSelectedFunctionInternal]);
+    setCurrentPoint(INITIAL_POINT);
+  }, [setSelectedFunctionInternal, setCurrentPoint]);
+
   const [nodes, setNodes] = useState<MirNode[]>([]);
   const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showUnwindEdges] = useState(false);
@@ -128,6 +135,7 @@ export const App: React.FC<AppProps> = ({
         const mirGraph = await api.getGraphData(selectedFunction);
         setNodes(mirGraph.nodes);
         setEdges(mirGraph.edges);
+        await api.getAllIterations(selectedFunction);
       })();
     }
   }, [selectedFunction]);
@@ -168,7 +176,18 @@ export const App: React.FC<AppProps> = ({
   }, [selectedFunction]);
 
   useEffect(() => {
-    reloadIterations(api, selectedFunction, currentPoint, setIterations);
+    const fetchIterations = async () => {
+      if (currentPoint.type === "stmt") {
+        const block = currentPoint.block;
+        const iterations = await api.getPcgIterations(selectedFunction, block);
+        setIterations(iterations);
+        setIterationsBlock(block);
+      } else {
+        setIterations([]);
+        setIterationsBlock(null);
+      }
+    };
+    fetchIterations();
   }, [selectedFunction, currentPoint]);
 
   useEffect(() => {
@@ -332,7 +351,7 @@ export const App: React.FC<AppProps> = ({
         }
       }
     },
-    [clickPosition, clickCycleIndex, getOverlappingStmts]
+    [clickPosition, clickCycleIndex, getOverlappingStmts, setCurrentPoint]
   );
 
   // Divider drag handlers
@@ -579,6 +598,7 @@ export const App: React.FC<AppProps> = ({
         currentPoint={currentPoint}
         selectedFunction={selectedFunction}
         iterations={iterations}
+        iterationsBlock={iterationsBlock}
         api={api}
         onHighlightMirEdges={setHighlightedMirEdges}
       />

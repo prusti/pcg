@@ -18,16 +18,28 @@ use std::path::{Path, PathBuf};
 pub(crate) struct PathToDotFile(PathBuf);
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
+    filename: PathToDotFile,
+}
+
+#[derive(Clone, Serialize, Debug)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct PcgBlockDotGraphs {
+    at_phase: Vec<PcgDotFileAtPhase>,
+    actions: EvalStmtData<Vec<PathToDotFile>>,
+}
+
+#[derive(Clone, Serialize, Debug)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct PcgDotFileAtPhase {
+    phase: String,
     filename: PathToDotFile,
 }
 
@@ -160,10 +172,33 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub(crate) struct PcgDotGraphsForBlock {
-    graphs: Vec<StmtGraphs>,
+    pub(crate) graphs: Vec<StmtGraphs>,
+    #[serde(skip)]
     block: mir::BasicBlock,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct AllBlockIterations {
+    pub(crate) blocks: std::collections::HashMap<String, Vec<PcgBlockDotGraphs>>,
+}
+
+impl PcgBlockDotGraphs {
+    pub(crate) fn from_stmt_graphs(stmt_graphs: &StmtGraphs) -> Self {
+        Self {
+            at_phase: stmt_graphs
+                .at_phase
+                .iter()
+                .map(|dot_file| PcgDotFileAtPhase {
+                    phase: StringOf::new(dot_file.phase).0,
+                    filename: dot_file.filename.clone(),
+                })
+                .collect(),
+            actions: stmt_graphs.actions.clone(),
+        }
+    }
 }
 
 impl PcgDotGraphsForBlock {
@@ -173,14 +208,6 @@ impl PcgDotGraphsForBlock {
             block,
             graphs: vec![StmtGraphs::default(); num_statements + 1],
         }
-    }
-
-    pub(crate) fn write_json_file(&self, filename: &Path) {
-        std::fs::write(
-            filename,
-            serde_json::to_string_pretty(&self.graphs).unwrap(),
-        )
-        .unwrap();
     }
 
     pub(crate) fn insert_for_action(
