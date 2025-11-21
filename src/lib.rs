@@ -200,25 +200,13 @@ type VisualizationActions = Vec<PcgActionDebugRepr>;
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgStmtVisualizationData {
     actions: EvalStmtData<VisualizationActions>,
+    graphs: StmtGraphs,
 }
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgSuccessorVisualizationData {
     actions: VisualizationActions,
-}
-
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-struct PcgBlockData {
-    statements: Vec<PcgStmtVisualizationData>,
-    successors: std::collections::HashMap<usize, PcgSuccessorVisualizationData>,
-}
-
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-struct PcgFunctionData {
-    blocks: std::collections::HashMap<usize, PcgBlockData>,
 }
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
@@ -380,6 +368,27 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     }
 }
 
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgBlockVisualizationData {
+    statements: Vec<PcgStmtVisualizationData>,
+    successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
+}
+
+#[derive(Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
+
+impl PcgVisualizationData {
+    fn new() -> Self {
+        Self(std::collections::HashMap::new())
+    }
+
+    fn insert(&mut self, block: BasicBlock, data: PcgBlockVisualizationData) {
+        self.0.insert(block, data);
+    }
+}
+
 /// The main entrypoint for running the PCG.
 ///
 /// # Arguments
@@ -403,32 +412,64 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         state.complete(ctxt);
     }
 
-    #[cfg(feature = "visualization")]
-    if let Some(dir_path) = &pcg_ctxt.visualization_output_path() {
-        let mut blocks_map = std::collections::HashMap::default();
-        for block in body.basic_blocks.indices() {
-            let state = analysis.entry_set_for_block(block);
-            if state.is_bottom() {
-                continue;
-            }
-            let ctxt = analysis.get_analysis().analysis_ctxt(block);
-            if let Some(graphs) = ctxt.graphs {
-                let block_key = format!("bb{}", block.index());
-                let debug_graphs = graphs.dot_graphs.borrow().graphs.clone();
-                blocks_map.insert(block_key, debug_graphs);
-            }
-        }
-        let all_block_iterations =
-            crate::visualization::stmt_graphs::AllBlockIterations { blocks: blocks_map };
-        let iterations_json_file = dir_path.join("all_iterations.json");
-        std::fs::write(
-            &iterations_json_file,
-            serde_json::to_string_pretty(&all_block_iterations).unwrap(),
-        )
-        .expect("Failed to write all iterations JSON file");
-    }
-
     let mut analysis_results = results::PcgAnalysisResults::new(analysis.into_results_cursor(body));
+
+    #[cfg(feature = "visualization")]
+    if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
+        generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
+            .expect("Failed to generate JSON from MIR");
+        let mut visualization_data = PcgVisualizationData::new();
+        for block in body.basic_blocks.indices() {
+            let Ok(Some(pcg_block)) = analysis_results.get_all_for_bb(block) else {
+                continue;
+            };
+            let ctxt = analysis_results.analysis().analysis_ctxt(block);
+            let debug_graphs = if let Some(graphs) = ctxt.graphs {
+                graphs.dot_graphs.borrow().graphs.clone()
+            } else {
+                Vec::new()
+            };
+
+            let statements = pcg_block
+                .statements
+                .iter()
+                .map(|stmt| PcgStmtVisualizationData {
+                    actions: stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt),
+                    graphs: debug_graphs
+                        .get(stmt.location.statement_index)
+                        .cloned()
+                        .unwrap_or_default(),
+                })
+                .collect();
+
+            let successors = pcg_block
+                .terminator
+                .succs
+                .iter()
+                .map(|succ| {
+                    (
+                        succ.block().into(),
+                        PcgSuccessorVisualizationData {
+                            actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
+                        },
+                    )
+                })
+                .collect();
+
+            visualization_data.insert(
+                block.into(),
+                PcgBlockVisualizationData {
+                    statements,
+                    successors,
+                },
+            );
+        }
+
+        let pcg_data_file_path = dir_path.join("pcg_data.json");
+        let pcg_data_json = serde_json::to_string(&visualization_data).unwrap();
+        std::fs::write(&pcg_data_file_path, pcg_data_json)
+            .expect("Failed to write pcg data to JSON file");
+    }
 
     if validity_checks_enabled() {
         for (block, _data) in body.basic_blocks.iter_enumerated() {
@@ -451,72 +492,6 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 );
             }
         }
-    }
-
-    #[cfg(feature = "visualization")]
-    if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
-        let edge_legend_file_path = dir_path.join("edge_legend.dot");
-        let edge_legend_graph = crate::visualization::legend::generate_edge_legend().unwrap();
-        std::fs::write(&edge_legend_file_path, edge_legend_graph)
-            .expect("Failed to write edge legend");
-
-        let node_legend_file_path = dir_path.join("node_legend.dot");
-        let node_legend_graph = crate::visualization::legend::generate_node_legend().unwrap();
-        std::fs::write(&node_legend_file_path, node_legend_graph)
-            .expect("Failed to write node legend");
-        generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
-            .expect("Failed to generate JSON from MIR");
-
-        let mut function_data = PcgFunctionData {
-            blocks: std::collections::HashMap::new(),
-        };
-
-        for (block, _data) in body.basic_blocks.iter_enumerated() {
-            let pcs_block_option = if let Ok(opt) = analysis_results.get_all_for_bb(block) {
-                opt
-            } else {
-                continue;
-            };
-            if pcs_block_option.is_none() {
-                continue;
-            }
-            let pcs_block = pcs_block_option.unwrap();
-
-            let statements = pcs_block
-                .statements
-                .iter()
-                .map(|statement| PcgStmtVisualizationData {
-                    actions: statement.actions.debug_repr(pcg_ctxt.compiler_ctxt),
-                })
-                .collect();
-
-            let successors = pcs_block
-                .terminator
-                .succs
-                .iter()
-                .map(|succ| {
-                    (
-                        succ.block().index(),
-                        PcgSuccessorVisualizationData {
-                            actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
-                        },
-                    )
-                })
-                .collect();
-
-            function_data.blocks.insert(
-                block.index(),
-                PcgBlockData {
-                    statements,
-                    successors,
-                },
-            );
-        }
-
-        let pcg_data_file_path = dir_path.join("pcg_data.json");
-        let pcg_data_json = serde_json::to_string(&function_data).unwrap();
-        std::fs::write(&pcg_data_file_path, pcg_data_json)
-            .expect("Failed to write pcg data to JSON file");
     }
 
     analysis_results
@@ -682,8 +657,9 @@ use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
-        json::ToJsonWithCtxt,
+        json::ToJsonWithCtxt, mir::BasicBlock,
     },
+    visualization::stmt_graphs::StmtGraphs,
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {

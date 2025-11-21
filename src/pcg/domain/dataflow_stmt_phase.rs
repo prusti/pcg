@@ -1,16 +1,10 @@
 use derive_more::TryInto;
 use serde::{Serialize, Serializer};
 
-use crate::{pcg::EvalStmtPhase, rustc_interface::middle::mir::BasicBlock};
-
-#[cfg(feature = "type-export")]
-impl crate::utils::TypescriptBrand for DataflowStmtPhase {
-    fn brand() -> &'static str {
-        "\"DataflowStmtPhase\""
-    }
-}
+use crate::{pcg::EvalStmtPhase, utils::mir::BasicBlock};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, TryInto)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum DataflowStmtPhase {
     Initial,
     EvalStmt(EvalStmtPhase),

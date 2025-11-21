@@ -9,8 +9,8 @@ path = "src/main.rs"
 
 [dependencies]
 pcg = { path = "..", features = ["type-export"] }
-specta = { version = "2.0.0-rc.22", features = ["derive", "export"] }
-specta-typescript = "0.0.9"
+specta = { git = "https://github.com/zgrannan/specta.git", features = ["derive", "export"], rev = "19d77b5d26bc1251fb3630a007290e299e825bf9"}
+specta-typescript = { git = "https://github.com/zgrannan/specta.git", rev = "19d77b5d26bc1251fb3630a007290e299e825bf9"}
 
 [package.metadata.rust-analyzer]
 rustc_private = true

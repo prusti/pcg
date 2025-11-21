@@ -23,8 +23,12 @@ import {
   SourcePos,
 } from "../types";
 import MirGraph from "./MirGraph";
-import { PcgBlockDotGraphs } from "../api";
-import { PcgFunctionData } from "../generated/types";
+import {
+  MirGraph as MirGraphData,
+  BasicBlock,
+  StmtGraphs,
+  DataflowStmtPhase,
+} from "../generated/types";
 import { filterNodesAndEdges } from "../mir_graph";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
 import { addKeyDownListener } from "../effects";
@@ -32,7 +36,9 @@ import SourceCodeViewer from "./SourceCodeViewer";
 import PcgGraph from "./PcgGraph";
 import Settings from "./Settings";
 import { MirEdge, MirNode } from "../generated/types";
-import { api } from "../api";
+import { api, ApiFunctionData } from "../api";
+import { StringOf } from "../generated_type_deps";
+import { toBasicBlock } from "../util";
 
 interface AppProps {
   functions: FunctionsMetadata;
@@ -48,35 +54,24 @@ const INITIAL_POINT: CurrentPoint = {
   },
 };
 
-export const App: React.FC<AppProps> = ({
-  functions,
-}) => {
-  const [iterations, setIterations] = useState<PcgBlockDotGraphs>([]);
-  const [iterationsBlock, setIterationsBlock] = useState<number | null>(null);
-  const [allPcgStmtData, setAllPcgStmtData] = useState<
-    Map<number, Map<number, PcgProgramPointData>>
-  >(new Map());
-  const [pcgFunctionData, setPcgFunctionData] =
-    useState<PcgFunctionData | null>(null);
-  const [currentPoint, setCurrentPointInitial] = useState<CurrentPoint>(INITIAL_POINT);
-
-  const setCurrentPoint = useCallback((newPoint: CurrentPoint) => {
-    console.log("setCurrentPoint", newPoint);
-    setCurrentPointInitial(newPoint);
-  }, [setCurrentPointInitial]);
+export const App: React.FC<AppProps> = ({ functions }) => {
+  const [apiFunctionData, setApiFunctionData] =
+    useState<ApiFunctionData | null>(null);
+  const [currentPoint, setCurrentPoint] = useState<CurrentPoint>(INITIAL_POINT);
 
   const [selectedFunction, setSelectedFunctionInternal] = useLocalStorageString(
     "selectedFunction",
     Object.keys(functions)[0] as FunctionSlug
   ) as [FunctionSlug, Dispatch<SetStateAction<FunctionSlug>>];
 
-  const setSelectedFunction = useCallback((newFunction: SetStateAction<FunctionSlug>) => {
-    setSelectedFunctionInternal(newFunction);
-    setCurrentPoint(INITIAL_POINT);
-  }, [setSelectedFunctionInternal, setCurrentPoint]);
+  const setSelectedFunction = useCallback(
+    (newFunction: SetStateAction<FunctionSlug>) => {
+      setSelectedFunctionInternal(newFunction);
+      setCurrentPoint(INITIAL_POINT);
+    },
+    [setSelectedFunctionInternal, setCurrentPoint]
+  );
 
-  const [nodes, setNodes] = useState<MirNode[]>([]);
-  const [edges, setEdges] = useState<MirEdge[]>([]);
   const [showUnwindEdges] = useState(false);
   const [showPCG, setShowPCG] = useLocalStorageBool("showPCG", true);
   const [showPCGNavigator, setShowPCGNavigator] = useLocalStorageBool(
@@ -104,7 +99,9 @@ export const App: React.FC<AppProps> = ({
   const [clickCycleIndex, setClickCycleIndex] = useState<number>(0);
 
   // Track highlighted MIR edges based on PCG edge hover
-  const [highlightedMirEdges, setHighlightedMirEdges] = useState<Set<string>>(new Set());
+  const [highlightedMirEdges, setHighlightedMirEdges] = useState<Set<string>>(
+    new Set()
+  );
 
   // Track PCG Navigator state for layout adjustment
   const [navigatorMinimized, setNavigatorMinimized] = useLocalStorageBool(
@@ -124,71 +121,42 @@ export const App: React.FC<AppProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dividerRef = useRef<HTMLDivElement>(null);
 
-  const { filteredNodes } = filterNodesAndEdges(nodes, edges, {
-    showUnwindEdges,
-    path: null,
-  });
-
   useEffect(() => {
     if (selectedFunction) {
-      (async function () {
-        const mirGraph = await api.getGraphData(selectedFunction);
-        setNodes(mirGraph.nodes);
-        setEdges(mirGraph.edges);
-        await api.getAllIterations(selectedFunction);
+      (async () => {
+        const apiFunctionData = await api.getApiFunctionData(selectedFunction);
+        setApiFunctionData(apiFunctionData);
       })();
     }
   }, [selectedFunction]);
 
-  const pcgProgramPointData = useMemo(() => {
-    if (!pcgFunctionData) {
-      return null;
-    }
+  let pcgProgramPointData: PcgProgramPointData | null = null;
+  let nodes: MirNode[] = [];
+  let edges: MirEdge[] = [];
 
-    let pcgStmtVisualizationData: PcgProgramPointData | null = null;
+  if (apiFunctionData) {
+    nodes = apiFunctionData.mirGraph.nodes;
+    edges = apiFunctionData.mirGraph.edges;
+    const pcgData = apiFunctionData.pcgData;
 
     if (currentPoint.type === "stmt") {
-      const blockData = pcgFunctionData.blocks[currentPoint.block];
+      const blockData = pcgData[toBasicBlock(currentPoint.block)];
       if (blockData) {
-        pcgStmtVisualizationData =
-          blockData.statements[currentPoint.stmt] || null;
+        pcgProgramPointData = blockData.statements[currentPoint.stmt] || null;
       }
     } else {
-      const blockData = pcgFunctionData.blocks[currentPoint.block1];
+      const blockData = pcgData[toBasicBlock(currentPoint.block1)];
       if (blockData) {
-        pcgStmtVisualizationData =
-          blockData.successors[currentPoint.block2] || null;
+        pcgProgramPointData =
+          blockData.successors[toBasicBlock(currentPoint.block2)] || null;
       }
     }
+  }
 
-    return pcgStmtVisualizationData;
-  }, [pcgFunctionData, currentPoint]);
-
-  useEffect(() => {
-    const fetchAllPcgStmtData = async () => {
-      const allData = await api.getAllPcgStmtData(selectedFunction);
-      setAllPcgStmtData(allData);
-      const functionData = await api.getPcgFunctionData(selectedFunction);
-      setPcgFunctionData(functionData);
-    };
-
-    fetchAllPcgStmtData();
-  }, [selectedFunction]);
-
-  useEffect(() => {
-    const fetchIterations = async () => {
-      if (currentPoint.type === "stmt") {
-        const block = currentPoint.block;
-        const iterations = await api.getPcgIterations(selectedFunction, block);
-        setIterations(iterations);
-        setIterationsBlock(block);
-      } else {
-        setIterations([]);
-        setIterationsBlock(null);
-      }
-    };
-    fetchIterations();
-  }, [selectedFunction, currentPoint]);
+  const { filteredNodes } = filterNodesAndEdges(nodes, edges, {
+    showUnwindEdges,
+    path: null,
+  });
 
   useEffect(() => {
     return addKeyDownListener(nodes, filteredNodes, setCurrentPoint);
@@ -335,7 +303,6 @@ export const App: React.FC<AppProps> = ({
           });
         }
       } else {
-
         const overlapping = getOverlappingStmts(position);
         if (overlapping.length > 0) {
           const selected = overlapping[0];
@@ -391,6 +358,12 @@ export const App: React.FC<AppProps> = ({
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [handleMouseMove, handleMouseUp]);
+
+  const currentBlock = toBasicBlock(
+    currentPoint.type === "stmt" ? currentPoint.block : currentPoint.block1
+  );
+
+  const currentBlockData = apiFunctionData?.pcgData[currentBlock];
 
   return (
     <div style={{ display: "flex", width: "100%", height: "100vh" }}>
@@ -451,120 +424,107 @@ export const App: React.FC<AppProps> = ({
           setCurrentPoint={setCurrentPoint}
           hoveredStmts={hoveredStmts}
           showActionsInGraph={showActionsInCode}
-          allPcgStmtData={allPcgStmtData}
-          pcgFunctionData={pcgFunctionData}
+          apiData={apiFunctionData}
           highlightedEdges={highlightedMirEdges}
         />
-        {showPCGNavigator &&
-          pcgProgramPointData &&
-          ((currentPoint.type === "stmt" &&
-            iterations.length > currentPoint.stmt &&
-            !Array.isArray(pcgProgramPointData.actions)) ||
-            (currentPoint.type === "terminator" &&
-              Array.isArray(pcgProgramPointData.actions))) && (
-            <PCGNavigator
-              iterations={
-                currentPoint.type === "stmt"
-                  ? iterations[currentPoint.stmt]
-                  : undefined
+        {showPCGNavigator && currentBlockData && pcgProgramPointData && (
+          <PCGNavigator
+            pcgData={currentBlockData}
+            programPointData={pcgProgramPointData}
+            selectedPoint={
+              currentPoint.type === "stmt"
+                ? currentPoint.navigatorPoint
+                : currentPoint.navigatorPoint || null
+            }
+            onSelectPoint={(point: NavigatorPoint) => {
+              if (currentPoint.type === "stmt") {
+                setCurrentPoint({
+                  ...currentPoint,
+                  navigatorPoint: point,
+                });
+              } else if (currentPoint.type === "terminator") {
+                setCurrentPoint({
+                  ...currentPoint,
+                  navigatorPoint: point,
+                });
               }
-              pcgData={pcgProgramPointData}
-              selectedPoint={
-                currentPoint.type === "stmt"
-                  ? currentPoint.navigatorPoint
-                  : currentPoint.navigatorPoint || null
-              }
-              onSelectPoint={(point: NavigatorPoint) => {
-                if (currentPoint.type === "stmt") {
-                  setCurrentPoint({
-                    ...currentPoint,
-                    navigatorPoint: point,
-                  });
-                } else if (currentPoint.type === "terminator") {
-                  setCurrentPoint({
-                    ...currentPoint,
-                    navigatorPoint: point,
-                  });
-                }
-              }}
-              onNavigatorStateChange={handleNavigatorStateChange}
-              currentPoint={currentPoint}
-              selectedFunction={selectedFunction}
-              allIterations={iterations}
-              api={api}
-              onAdvanceToNextStatement={() => {
-                if (currentPoint.type === "stmt") {
-                  const currentNode = nodes.find(
-                    (node) => node.block === currentPoint.block
-                  );
-                  if (currentNode) {
-                    const nextStmt = currentPoint.stmt + 1;
-                    if (nextStmt <= currentNode.stmts.length) {
-                      setCurrentPoint({
-                        ...currentPoint,
-                        stmt: nextStmt,
-                        navigatorPoint: { type: "iteration", name: "initial" },
-                      });
-                    } else {
-                      // At last statement, move to next block
-                      const currBlockIdx = filteredNodes.findIndex(
-                        (node) => node.block === currentPoint.block
-                      );
-                      if (currBlockIdx !== -1) {
-                        const nextBlockIdx =
-                          (currBlockIdx + 1) % filteredNodes.length;
-                        const nextNode = filteredNodes[nextBlockIdx];
-                        setCurrentPoint({
-                          type: "stmt",
-                          block: nextNode.block,
-                          stmt: 0,
-                          navigatorPoint: {
-                            type: "iteration",
-                            name: "initial",
-                          },
-                        });
-                      }
-                    }
-                  }
-                }
-              }}
-              onGoToPreviousStatement={() => {
-                if (currentPoint.type === "stmt") {
-                  let targetBlock: number;
-                  let targetStmt: number;
-
-                  if (currentPoint.stmt > 0) {
-                    // Move to previous statement in same block
-                    targetBlock = currentPoint.block;
-                    targetStmt = currentPoint.stmt - 1;
+            }}
+            onNavigatorStateChange={handleNavigatorStateChange}
+            currentPoint={currentPoint}
+            selectedFunction={selectedFunction}
+            api={api}
+            onAdvanceToNextStatement={() => {
+              if (currentPoint.type === "stmt") {
+                const currentNode = nodes.find(
+                  (node) => node.block === currentPoint.block
+                );
+                if (currentNode) {
+                  const nextStmt = currentPoint.stmt + 1;
+                  if (nextStmt <= currentNode.stmts.length) {
+                    setCurrentPoint({
+                      ...currentPoint,
+                      stmt: nextStmt,
+                      navigatorPoint: { type: "iteration", name: "initial" },
+                    });
                   } else {
-                    // At first statement, move to previous block
+                    // At last statement, move to next block
                     const currBlockIdx = filteredNodes.findIndex(
                       (node) => node.block === currentPoint.block
                     );
-                    if (currBlockIdx === -1) return;
-
-                    const prevBlockIdx =
-                      (currBlockIdx - 1 + filteredNodes.length) %
-                      filteredNodes.length;
-                    const prevNode = filteredNodes[prevBlockIdx];
-                    targetBlock = prevNode.block;
-                    targetStmt = prevNode.stmts.length;
+                    if (currBlockIdx !== -1) {
+                      const nextBlockIdx =
+                        (currBlockIdx + 1) % filteredNodes.length;
+                      const nextNode = filteredNodes[nextBlockIdx];
+                      setCurrentPoint({
+                        type: "stmt",
+                        block: nextNode.block,
+                        stmt: 0,
+                        navigatorPoint: {
+                          type: "iteration",
+                          name: "initial",
+                        },
+                      });
+                    }
                   }
-
-                  // Set to post_main when going to previous statement
-                  setCurrentPoint({
-                    type: "stmt",
-                    block: targetBlock,
-                    stmt: targetStmt,
-                    navigatorPoint: { type: "iteration", name: "post_main" },
-                  });
                 }
-              }}
-            />
-          )}
-      </div>
+              }
+            }}
+            onGoToPreviousStatement={() => {
+              if (currentPoint.type === "stmt") {
+                let targetBlock: number;
+                let targetStmt: number;
 
+                if (currentPoint.stmt > 0) {
+                  // Move to previous statement in same block
+                  targetBlock = currentPoint.block;
+                  targetStmt = currentPoint.stmt - 1;
+                } else {
+                  // At first statement, move to previous block
+                  const currBlockIdx = filteredNodes.findIndex(
+                    (node) => node.block === currentPoint.block
+                  );
+                  if (currBlockIdx === -1) return;
+
+                  const prevBlockIdx =
+                    (currBlockIdx - 1 + filteredNodes.length) %
+                    filteredNodes.length;
+                  const prevNode = filteredNodes[prevBlockIdx];
+                  targetBlock = prevNode.block;
+                  targetStmt = prevNode.stmts.length;
+                }
+
+                // Set to post_main when going to previous statement
+                setCurrentPoint({
+                  type: "stmt",
+                  block: targetBlock,
+                  stmt: targetStmt,
+                  navigatorPoint: { type: "iteration", name: "post_main" },
+                });
+              }
+            }}
+          />
+        )}
+      </div>
       {/* Draggable divider */}
       <div
         ref={dividerRef}
@@ -591,17 +551,17 @@ export const App: React.FC<AppProps> = ({
           }}
         ></div>
       </div>
-
-      <PcgGraph
-        showPCG={showPCG}
-        navigatorReservedWidth={navigatorReservedWidth}
-        currentPoint={currentPoint}
-        selectedFunction={selectedFunction}
-        iterations={iterations}
-        iterationsBlock={iterationsBlock}
-        api={api}
-        onHighlightMirEdges={setHighlightedMirEdges}
-      />
+      {currentBlockData && (
+        <PcgGraph
+          pcgData={currentBlockData}
+          showPCG={showPCG}
+          navigatorReservedWidth={navigatorReservedWidth}
+          currentPoint={currentPoint}
+          selectedFunction={selectedFunction}
+          api={api}
+          onHighlightMirEdges={setHighlightedMirEdges}
+        />
+      )}
     </div>
   );
 };

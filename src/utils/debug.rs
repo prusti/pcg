@@ -6,29 +6,12 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr;
 }
 
-#[cfg(feature = "type-export")]
-pub(crate) trait TypescriptBrand {
-    fn brand() -> &'static str;
-}
-
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
-pub struct StringOf<T>(String, PhantomData<T>);
-
-#[cfg(feature = "type-export")]
-impl<T: TypescriptBrand> specta::Type for StringOf<T> {
-    fn inline(
-        type_map: &mut specta::TypeCollection,
-        generics: specta::Generics,
-    ) -> specta::DataType {
-        use std::borrow::Cow;
-
-        use specta::datatype::GenericType;
-
-        specta::datatype::DataType::Generic(GenericType::from(Cow::Owned(format!(
-            "StringOf<{}>",
-            T::brand()
-        ))))
-    }
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", specta(export = false))]
+pub struct StringOf<T> {
+    value: String,
+    _marker: PhantomData<T>,
 }
 
 impl<T> serde::Serialize for StringOf<T> {
@@ -36,18 +19,24 @@ impl<T> serde::Serialize for StringOf<T> {
     where
         S: serde::Serializer,
     {
-        self.0.serialize(serializer)
+        self.value.serialize(serializer)
     }
 }
 
 impl<T: std::fmt::Display> StringOf<T> {
     pub(crate) fn new_display(value: T) -> Self {
-        Self(value.to_string(), PhantomData)
+        Self {
+            value: value.to_string(),
+            _marker: PhantomData,
+        }
     }
 }
 
 impl<T: std::fmt::Debug> StringOf<T> {
     pub(crate) fn new_debug(value: T) -> Self {
-        Self(format!("{value:?}"), PhantomData)
+        Self {
+            value: format!("{value:?}"),
+            _marker: PhantomData,
+        }
     }
 }

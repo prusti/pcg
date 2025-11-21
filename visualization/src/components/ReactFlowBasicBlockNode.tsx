@@ -16,7 +16,7 @@ export default function ReactFlowBasicBlockNode({ data }: NodeProps<ReactFlowNod
         setCurrentPoint={data.setCurrentPoint}
         hoveredStmts={data.hoveredStmts}
         showActionsInGraph={data.showActionsInGraph}
-        pcgStmtData={data.pcgStmtData}
+        pcgData={data.pcgData}
       />
       <Handle type="target" position={Position.Top} style={{ visibility: "hidden" }} />
       <Handle type="source" position={Position.Bottom} style={{ visibility: "hidden" }} />

@@ -25,7 +25,7 @@ serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
 smallvec = { version = "^1.11", features = ["union", "const_new"] }
-specta = { version = "2.0.0-rc.22", optional = true, features = ["derive", "export"] }
+specta = { git = "https://github.com/zgrannan/specta.git", features = ["derive", "export"], rev = "19d77b5d26bc1251fb3630a007290e299e825bf9", optional = true }
 strum = "0.26"
 strum_macros = "0.26"
 tracing = "0.1"

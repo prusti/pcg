@@ -16,13 +16,17 @@ fn main() {
 
     let output_file = output_dir.join("types.ts");
 
-    let typescript = Typescript::default()
-        .bigint(BigIntExportBehavior::Number);
+    let typescript = Typescript::default().bigint(BigIntExportBehavior::Number);
 
     let header = "import type { StringOf } from \"../generated_type_deps.ts\";\n";
 
     let collection = pcg::type_collection();
-    let contents = typescript.export(&collection).unwrap();
+    let mut contents = typescript.export(&collection).unwrap();
+    contents = contents
+        .lines()
+        .filter(|line| !line.starts_with("export type StringOf"))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     fs::write(&output_file, format!("{}{}", header, contents)).unwrap();
 

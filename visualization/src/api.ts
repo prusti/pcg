@@ -1,42 +1,23 @@
-import {
-  MirGraph,
-  PcgFunctionData,
-  AllBlockIterations,
-  StmtGraphs,
-} from "./generated/types";
+import { MirGraph, StmtGraphs, PcgVisualizationData } from "./generated/types";
 import { StringOf } from "./generated_type_deps";
-import {
-  FunctionsMetadata,
-  GetFunctionsResult,
-  PcgProgramPointData,
-} from "./types";
+import { FunctionsMetadata, GetFunctionsResult } from "./types";
 import * as JSZip from "jszip";
 
-export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[]
+export type ApiFunctionData = {
+  pcgData: PcgVisualizationData;
+  mirGraph: MirGraph;
+};
 
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;
   protected abstract fetchTextFile(filePath: string): Promise<string>;
-  private pcgDataCache: Map<string, PcgFunctionData> = new Map();
-  private allIterationsCache: Map<string, AllBlockIterations> = new Map();
+  private pcgDataCache: Map<string, PcgVisualizationData> = new Map();
 
-  async getAllIterations(functionName: string): Promise<AllBlockIterations> {
-    if (!this.allIterationsCache.has(functionName)) {
-      const data = (await this.fetchJsonFile(
-        `data/${functionName}/all_iterations.json`
-      )) as AllBlockIterations;
-      this.allIterationsCache.set(functionName, data);
-    }
-    return this.allIterationsCache.get(functionName)!;
-  }
-
-  async getPcgIterations(
-    functionName: string,
-    block: number
-  ): Promise<PcgBlockDotGraphs> {
-    const allIterations = await this.getAllIterations(functionName);
-    const blockKey = `bb${block}`;
-    return allIterations.blocks[blockKey] || [];
+  async getApiFunctionData(functionName: string): Promise<ApiFunctionData> {
+    return {
+      pcgData: await this.getPcgVisualizationData(functionName),
+      mirGraph: await this.getGraphData(functionName),
+    };
   }
 
   async getGraphData(func: string): Promise<MirGraph> {
@@ -55,34 +36,16 @@ export abstract class Api {
     }
   }
 
-  public async getPcgFunctionData(
+  public async getPcgVisualizationData(
     functionName: string
-  ): Promise<PcgFunctionData> {
+  ): Promise<PcgVisualizationData> {
     if (!this.pcgDataCache.has(functionName)) {
       const data = (await this.fetchJsonFile(
         `data/${functionName}/pcg_data.json`
-      )) as PcgFunctionData;
+      )) as PcgVisualizationData;
       this.pcgDataCache.set(functionName, data);
     }
     return this.pcgDataCache.get(functionName)!;
-  }
-
-  async getAllPcgStmtData(
-    functionName: string
-  ): Promise<Map<number, Map<number, PcgProgramPointData>>> {
-    const functionData = await this.getPcgFunctionData(functionName);
-    const result = new Map<number, Map<number, PcgProgramPointData>>();
-
-    Object.entries(functionData.blocks).forEach(([blockId, blockData]) => {
-      const blockNum = parseInt(blockId);
-      const stmtMap = new Map<number, PcgProgramPointData>();
-      blockData.statements.forEach((stmtData, stmtIndex) => {
-        stmtMap.set(stmtIndex, stmtData);
-      });
-      result.set(blockNum, stmtMap);
-    });
-
-    return result;
   }
 
   async fetchDotFile(filePath: string): Promise<string> {

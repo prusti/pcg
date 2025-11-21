@@ -4,6 +4,7 @@ use crate::pcg_validity_assert;
 use crate::rustc_interface::index::IndexVec;
 use crate::rustc_interface::middle::mir;
 use crate::utils::eval_stmt_data::EvalStmtData;
+use crate::utils::mir::BasicBlock;
 use crate::utils::{CompilerCtxt, StringOf};
 use crate::visualization::write_pcg_dot_graph_to_file;
 use derive_more::{Deref, From};
@@ -140,13 +141,6 @@ pub(crate) struct PcgDotGraphsForBlock {
     pub(crate) graphs: Vec<StmtGraphs>,
     #[serde(skip)]
     block: mir::BasicBlock,
-}
-
-#[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct AllBlockIterations {
-    // We use std::collections::HashMap for specta compatibility
-    pub(crate) blocks: std::collections::HashMap<String, Vec<StmtGraphs>>,
 }
 
 impl PcgDotGraphsForBlock {

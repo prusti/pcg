@@ -2,7 +2,11 @@ import React from "react";
 import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
-import { PcgActionDebugRepr } from "../generated/types";
+import {
+  PcgActionDebugRepr,
+  PcgBlockVisualizationData,
+  PcgVisualizationData,
+} from "../generated/types";
 import { actionLine } from "../actionFormatting";
 
 interface BasicBlockTableProps {
@@ -11,7 +15,7 @@ interface BasicBlockTableProps {
   setCurrentPoint: (point: CurrentPoint) => void;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
-  pcgStmtData?: Map<number, PcgProgramPointData>;
+  pcgData?: PcgBlockVisualizationData;
 }
 
 export function isStorageStmt(stmt: string) {
@@ -27,7 +31,14 @@ type TableRowProps = {
   actions?: string[];
 };
 
-function TableRow({ selected, hovered, onClick, stmt, index, actions }: TableRowProps) {
+function TableRow({
+  selected,
+  hovered,
+  onClick,
+  stmt,
+  index,
+  actions,
+}: TableRowProps) {
   const tooltip = `${stmt.debug_stmt}\nLoans invalidated at start: ${stmt.loans_invalidated_start.join(", ")}\nLoans invalidated at mid: ${stmt.loans_invalidated_mid.join(", ")}\nBorrows in scope at start: ${stmt.borrows_in_scope_start.join(", ")}\nBorrows in scope at mid: ${stmt.borrows_in_scope_mid.join(", ")}`;
   return (
     <tr
@@ -35,7 +46,7 @@ function TableRow({ selected, hovered, onClick, stmt, index, actions }: TableRow
       onClick={onClick}
       title={tooltip}
       style={{
-        backgroundColor: selected ? undefined : (hovered ? "#add8e6" : undefined),
+        backgroundColor: selected ? undefined : hovered ? "#add8e6" : undefined,
       }}
     >
       <td>{index}</td>
@@ -70,40 +81,37 @@ export default function BasicBlockTable({
   setCurrentPoint,
   hoveredStmts,
   showActionsInGraph,
-  pcgStmtData,
+  pcgData,
 }: BasicBlockTableProps) {
   const getActionsForStmt = (stmtIndex: number): string[] => {
-    if (!showActionsInGraph || !pcgStmtData) {
+    if (!showActionsInGraph || !pcgData) {
       return [];
     }
 
-    const stmtData = pcgStmtData.get(stmtIndex);
+    const stmtData = pcgData.statements[stmtIndex];
     if (!stmtData) {
       return [];
     }
 
     const actions: string[] = [];
 
-    if (Array.isArray(stmtData.actions)) {
-      stmtData.actions.forEach((action: PcgActionDebugRepr) => {
-        if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
-          actions.push(actionLine(action.data.kind));
-        }
-      });
-    } else {
-      const evalStmtActions = stmtData.actions;
-      const phases: Array<'pre_operands' | 'post_operands' | 'pre_main' | 'post_main'> = ['pre_operands', 'post_operands', 'pre_main', 'post_main'];
-      phases.forEach((phase) => {
-        const phaseActions = evalStmtActions[phase];
-        if (Array.isArray(phaseActions)) {
-          phaseActions.forEach((action: PcgActionDebugRepr) => {
-            if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
-              actions.push(actionLine(action.data.kind));
-            }
-          });
-        }
-      });
-    }
+    const evalStmtActions = stmtData.actions;
+    const phases: Array<
+      "pre_operands" | "post_operands" | "pre_main" | "post_main"
+    > = ["pre_operands", "post_operands", "pre_main", "post_main"];
+    phases.forEach((phase) => {
+      const phaseActions = evalStmtActions[phase];
+      if (Array.isArray(phaseActions)) {
+        phaseActions.forEach((action: PcgActionDebugRepr) => {
+          if (
+            action.data.kind.type !== "MakePlaceOld" &&
+            action.data.kind.type !== "LabelLifetimeProjection"
+          ) {
+            actions.push(actionLine(action.data.kind));
+          }
+        });
+      }
+    });
 
     return actions;
   };
@@ -157,7 +165,9 @@ export default function BasicBlockTable({
             currentPoint.stmt == data.stmts.length &&
             data.block === currentPoint.block
           }
-          hovered={hoveredStmts?.has(`${data.block}-${data.stmts.length}`) || false}
+          hovered={
+            hoveredStmts?.has(`${data.block}-${data.stmts.length}`) || false
+          }
           onClick={() =>
             setCurrentPoint({
               type: "stmt",
@@ -176,7 +186,7 @@ export default function BasicBlockTable({
 export function computeTableHeight(
   data: BasicBlockData,
   showActionsInGraph?: boolean,
-  pcgStmtData?: Map<number, PcgProgramPointData>
+  pcgData?: PcgBlockVisualizationData
 ): number {
   const container = document.createElement("div");
   container.innerHTML = ReactDOMServer.renderToString(
@@ -194,7 +204,7 @@ export function computeTableHeight(
       },
       setCurrentPoint: () => {},
       showActionsInGraph,
-      pcgStmtData,
+      pcgData,
     })
   );
   document.body.appendChild(container);

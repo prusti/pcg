@@ -1,27 +1,5 @@
-import { Api, PcgBlockDotGraphs } from "./api";
 import { MirNode } from "./generated/types";
 import { CurrentPoint, MirStmt } from "./types";
-
-export function reloadIterations(
-  api: Api,
-  selectedFunction: string,
-  currentPoint: CurrentPoint,
-  setIterations: React.Dispatch<React.SetStateAction<PcgBlockDotGraphs>>
-) {
-  if (currentPoint.type != "stmt") {
-    setIterations([]);
-    return;
-  }
-  const fetchIterations = async () => {
-    const iterations = await api.getPcgIterations(
-      selectedFunction,
-      currentPoint.block
-    );
-    setIterations(iterations);
-  };
-
-  fetchIterations();
-}
 
 export function addKeyDownListener(
   nodes: MirNode[],
