@@ -1,9 +1,8 @@
-import { BasicBlock, MirEdge, MirNode } from "./generated/types";
+import { MirEdge, MirNode } from "./generated/types";
 import { computeTableHeight } from "./components/BasicBlockTable";
 import {
   BasicBlockData,
   CurrentPoint,
-  PcgProgramPointData,
   ReactFlowNodeData,
 } from "./types";
 import * as dagre from "@dagrejs/dagre";

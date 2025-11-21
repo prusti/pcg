@@ -1,5 +1,4 @@
-import { BasicBlock, PcgBlockVisualizationData, PcgStmtVisualizationData } from "./generated/types";
-import { PcgProgramPointData } from "./types";
+import { BasicBlock } from "./generated/types";
 
 export function toBasicBlock(block: number): BasicBlock {
   return `bb${block}` as BasicBlock;

@@ -4,10 +4,7 @@ import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { Api } from "../api";
 import {
-  EvalStmtData,
-  PcgActionDebugRepr,
   PcgBlockVisualizationData,
-  PcgVisualizationData,
   ValidityConditionsDebugRepr,
 } from "../generated/types";
 import { assert } from "../util";
@@ -20,20 +17,6 @@ interface PcgGraphProps {
   api: Api;
   pcgData: PcgBlockVisualizationData;
   onHighlightMirEdges: (edges: Set<string>) => void;
-}
-
-function getIterationActions(
-  dotGraphs: PcgBlockVisualizationData,
-  currentPoint: CurrentPoint
-): EvalStmtData<PcgActionDebugRepr[]> {
-  if (
-    currentPoint.type !== "stmt" ||
-    dotGraphs.statements.length <= currentPoint.stmt
-  ) {
-    return { pre_operands: [], post_operands: [], pre_main: [], post_main: [] };
-  }
-  const stmt = dotGraphs.statements[currentPoint.stmt];
-  return stmt.actions;
 }
 
 function getPcgDotGraphFilename(

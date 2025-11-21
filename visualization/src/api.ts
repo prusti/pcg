@@ -1,5 +1,4 @@
-import { MirGraph, StmtGraphs, PcgVisualizationData } from "./generated/types";
-import { StringOf } from "./generated_type_deps";
+import { MirGraph, PcgVisualizationData } from "./generated/types";
 import { FunctionsMetadata, GetFunctionsResult } from "./types";
 import * as JSZip from "jszip";
 

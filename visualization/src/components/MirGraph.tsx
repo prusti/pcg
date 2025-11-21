@@ -1,9 +1,19 @@
 import React, { useMemo } from "react";
-import ReactFlow, { Background, Controls, MarkerType, PanOnScrollMode } from "reactflow";
+import ReactFlow, {
+  Background,
+  Controls,
+  MarkerType,
+  PanOnScrollMode,
+} from "reactflow";
 import "reactflow/dist/style.css";
-import { CurrentPoint, PcgProgramPointData } from "../types";
+import { CurrentPoint } from "../types";
 import { MirNode, MirEdge } from "../generated/types";
-import { toReactFlowNodes, toReactFlowEdges, filterNodesAndEdges, layoutNodesWithDagre } from "../mir_graph";
+import {
+  toReactFlowNodes,
+  toReactFlowEdges,
+  filterNodesAndEdges,
+  layoutNodesWithDagre,
+} from "../mir_graph";
 import ReactFlowBasicBlockNode from "./ReactFlowBasicBlockNode";
 import ReactFlowEdge from "./ReactFlowEdge";
 import { ApiFunctionData } from "../api";
@@ -38,10 +48,11 @@ const MirGraph: React.FC<MirGraphProps> = ({
   highlightedEdges = new Set(),
 }) => {
   const { filteredNodes, filteredEdges } = useMemo(
-    () => filterNodesAndEdges(mirNodes, edges, {
-      showUnwindEdges: false,
-      path: null,
-    }),
+    () =>
+      filterNodesAndEdges(mirNodes, edges, {
+        showUnwindEdges: false,
+        path: null,
+      }),
     [mirNodes, edges]
   );
 
@@ -52,7 +63,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
       showActionsInGraph,
       apiData
     ).nodes;
-  }, [filteredNodes, filteredEdges, showActionsInGraph]);
+  }, [filteredNodes, filteredEdges, showActionsInGraph, apiData]);
   const reactFlowNodes = useMemo(
     () =>
       toReactFlowNodes(
@@ -63,7 +74,14 @@ const MirGraph: React.FC<MirGraphProps> = ({
         showActionsInGraph,
         apiData
       ),
-    [layoutNodes, currentPoint, setCurrentPoint, hoveredStmts, showActionsInGraph, apiData?.pcgData]
+    [
+      layoutNodes,
+      currentPoint,
+      setCurrentPoint,
+      hoveredStmts,
+      showActionsInGraph,
+      apiData,
+    ]
   );
 
   const reactFlowEdges = useMemo(
@@ -77,7 +95,15 @@ const MirGraph: React.FC<MirGraphProps> = ({
         apiData,
         highlightedEdges
       ),
-    [edges, mirNodes, currentPoint, setCurrentPoint, showActionsInGraph, highlightedEdges]
+    [
+      edges,
+      mirNodes,
+      currentPoint,
+      setCurrentPoint,
+      showActionsInGraph,
+      highlightedEdges,
+      apiData,
+    ]
   );
 
   const defaultEdgeOptions = useMemo(
@@ -92,10 +118,7 @@ const MirGraph: React.FC<MirGraphProps> = ({
   );
 
   return (
-    <div
-      className="graph-container"
-      style={{ width: "100%", height: "100%" }}
-    >
+    <div className="graph-container" style={{ width: "100%", height: "100%" }}>
       <ReactFlow
         nodes={reactFlowNodes}
         edges={reactFlowEdges}

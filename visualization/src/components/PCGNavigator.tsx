@@ -2,14 +2,12 @@ import React, { useState, useEffect } from "react";
 import {
   EvalStmtPhase,
   PcgAction,
-  PcgStmtVisualizationData,
   PcgProgramPointData,
   NavigatorPoint,
   CurrentPoint,
   FunctionSlug,
 } from "../types";
 import {
-  PcgSuccessorVisualizationData,
   PcgBlockVisualizationData,
   DotFileAtPhase,
 } from "../generated/types";

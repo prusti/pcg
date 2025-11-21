@@ -2,7 +2,8 @@ use derive_more::From;
 
 use crate::rustc_interface::middle::mir;
 
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg(feature = "type-export")]
+#[derive(specta::Type)]
 struct BasicBlockMarker {
     _basic_block: (),
 }

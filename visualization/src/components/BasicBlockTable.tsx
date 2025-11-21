@@ -1,11 +1,10 @@
 import React from "react";
-import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "../types";
+import { BasicBlockData, CurrentPoint } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
 import {
   PcgActionDebugRepr,
   PcgBlockVisualizationData,
-  PcgVisualizationData,
 } from "../generated/types";
 import { actionLine } from "../actionFormatting";
 

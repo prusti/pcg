@@ -4,7 +4,6 @@ use crate::pcg_validity_assert;
 use crate::rustc_interface::index::IndexVec;
 use crate::rustc_interface::middle::mir;
 use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::utils::mir::BasicBlock;
 use crate::utils::{CompilerCtxt, StringOf};
 use crate::visualization::write_pcg_dot_graph_to_file;
 use derive_more::{Deref, From};
