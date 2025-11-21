@@ -4,7 +4,7 @@ use crate::pcg_validity_assert;
 use crate::rustc_interface::index::IndexVec;
 use crate::rustc_interface::middle::mir;
 use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::utils::{CompilerCtxt, DebugRepr, StringOf};
+use crate::utils::{CompilerCtxt, StringOf};
 use crate::visualization::write_pcg_dot_graph_to_file;
 use derive_more::{Deref, From};
 use serde_derive::Serialize;
@@ -19,7 +19,7 @@ pub(crate) struct PathToDotFile(PathBuf);
 
 #[derive(Clone, Serialize, Debug)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
+pub(crate) struct StmtGraphs<PhaseKey = StringOf<DataflowStmtPhase>> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
@@ -29,17 +29,6 @@ pub(crate) struct StmtGraphs<PhaseKey = DataflowStmtPhase> {
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
     filename: PathToDotFile,
-}
-
-impl DebugRepr for DotFileAtPhase<DataflowStmtPhase> {
-    type Repr = DotFileAtPhase<StringOf<DataflowStmtPhase>>;
-
-    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
-        DotFileAtPhase {
-            phase: StringOf::new(self.phase),
-            filename: self.filename.clone(),
-        }
-    }
 }
 
 impl<PhaseKey> DotFileAtPhase<PhaseKey> {
@@ -53,21 +42,6 @@ impl Default for StmtGraphs {
         Self {
             at_phase: Vec::new(),
             actions: EvalStmtData::default(),
-        }
-    }
-}
-
-impl DebugRepr for StmtGraphs {
-    type Repr = StmtGraphs<StringOf<DataflowStmtPhase>>;
-
-    fn debug_repr(&self, _ctxt: ()) -> StmtGraphs<StringOf<DataflowStmtPhase>> {
-        StmtGraphs {
-            at_phase: self
-                .at_phase
-                .iter()
-                .map(|dotfile_at_phase| dotfile_at_phase.debug_repr(()))
-                .collect(),
-            actions: self.actions.clone(),
         }
     }
 }
@@ -94,7 +68,8 @@ impl StmtGraphs {
     }
 
     pub(crate) fn insert_for_phase(&mut self, phase: DataflowStmtPhase, filename: PathToDotFile) {
-        self.at_phase.push(DotFileAtPhase::new(phase, filename));
+        self.at_phase
+            .push(DotFileAtPhase::new(StringOf::new_display(phase), filename));
     }
 
     pub(crate) fn insert_for_action(
@@ -160,9 +135,10 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub(crate) struct PcgDotGraphsForBlock {
-    graphs: Vec<StmtGraphs>,
+    pub(crate) graphs: Vec<StmtGraphs>,
+    #[serde(skip)]
     block: mir::BasicBlock,
 }
 
@@ -173,14 +149,6 @@ impl PcgDotGraphsForBlock {
             block,
             graphs: vec![StmtGraphs::default(); num_statements + 1],
         }
-    }
-
-    pub(crate) fn write_json_file(&self, filename: &Path) {
-        std::fs::write(
-            filename,
-            serde_json::to_string_pretty(&self.graphs).unwrap(),
-        )
-        .unwrap();
     }
 
     pub(crate) fn insert_for_action(

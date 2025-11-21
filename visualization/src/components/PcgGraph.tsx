@@ -1,51 +1,45 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import * as Viz from "@viz-js/viz";
 import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
-import { Api, PcgBlockDotGraphs } from "../api";
-import { ValidityConditionsDebugRepr } from "../generated/types";
+import { Api } from "../api";
+import {
+  PcgBlockVisualizationData,
+  ValidityConditionsDebugRepr,
+} from "../generated/types";
+import { assert } from "../util";
 
 interface PcgGraphProps {
   showPCG: boolean;
   navigatorReservedWidth: string;
   currentPoint: CurrentPoint;
   selectedFunction: FunctionSlug;
-  iterations: PcgBlockDotGraphs;
   api: Api;
+  pcgData: PcgBlockVisualizationData;
   onHighlightMirEdges: (edges: Set<string>) => void;
 }
 
-function getIterationActions(
-  dotGraphs: PcgBlockDotGraphs,
-  currentPoint: CurrentPoint
-) {
-  if (currentPoint.type !== "stmt" || dotGraphs.length <= currentPoint.stmt) {
-    return { pre_operands: [], post_operands: [], pre_main: [], post_main: [] };
-  }
-  const stmt = dotGraphs[currentPoint.stmt];
-  return stmt.actions;
-}
-
-function getPCGDotGraphFilename(
+function getPcgDotGraphFilename(
   currentPoint: CurrentPoint,
   selectedFunction: string,
-  graphs: PcgBlockDotGraphs
+  graphs: PcgBlockVisualizationData
 ): string | null {
-  if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
+  assert(!!graphs, "graphs is falsy");
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
     if (currentPoint.navigatorPoint.phase === "successor") {
       return null;
     }
-    const iterationActions = getIterationActions(graphs, currentPoint);
-    const actionGraphFilenames =
-      iterationActions[
-        currentPoint.navigatorPoint.phase as keyof typeof iterationActions
-      ];
-    return `data/${selectedFunction}/${
-      actionGraphFilenames[currentPoint.navigatorPoint.index]
-    }`;
+    const filename =
+      graphs.statements[currentPoint.stmt].graphs.actions[
+        currentPoint.navigatorPoint.phase
+      ][currentPoint.navigatorPoint.index];
+    return `data/${selectedFunction}/${filename}`;
   }
 
   const navPoint = currentPoint.navigatorPoint;
@@ -53,7 +47,7 @@ function getPCGDotGraphFilename(
     return null;
   }
 
-  const phases = graphs[currentPoint.stmt].at_phase;
+  const phases = graphs.statements[currentPoint.stmt].graphs.at_phase;
   const phaseIndex = phases.findIndex((p) => p.phase === navPoint.name);
 
   if (phaseIndex === -1 || phases.length === 0) {
@@ -77,11 +71,18 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   navigatorReservedWidth,
   currentPoint,
   selectedFunction,
-  iterations,
   api,
   onHighlightMirEdges,
+  pcgData,
 }) => {
-  const [svgContent, setSvgContent] = useState<string>("");
+  const [svgContent, setSvgContentInternal] = useState<string>("");
+  const setSvgContent = useCallback(
+    (newSvgContent: string) => {
+      console.log("Updated SVG content");
+      setSvgContentInternal(newSvgContent);
+    },
+    [setSvgContentInternal]
+  );
   const [edgeMetadata, setEdgeMetadata] = useState<Record<
     string,
     ValidityConditionsDebugRepr
@@ -96,10 +97,10 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
 
   useEffect(() => {
     const loadGraph = async () => {
-      const dotFilePath = getPCGDotGraphFilename(
+      const dotFilePath = getPcgDotGraphFilename(
         currentPoint,
         selectedFunction,
-        iterations
+        pcgData
       );
 
       if (!dotFilePath) {
@@ -131,7 +132,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
     };
 
     loadGraph();
-  }, [api, currentPoint, selectedFunction, iterations]);
+  }, [api, currentPoint, selectedFunction, setSvgContent, pcgData]);
 
   useEffect(() => {
     if (!containerRef.current || !svgContent) return;
@@ -218,16 +219,16 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
             // Extract MIR edges from branch choices
             const mirEdges = new Set<string>();
             const metadata = edgeMetadata[id];
-              metadata.branch_choices.forEach((branchChoice) => {
-                if (branchChoice.from && branchChoice.chosen) {
-                  const from = branchChoice.from.replace("bb", "");
-                  branchChoice.chosen.forEach((to: string) => {
-                    const toNum = to.replace("bb", "");
-                    const edgeKey = `${from}-${toNum}`;
-                    mirEdges.add(edgeKey);
-                  });
-                }
-              });
+            metadata.branch_choices.forEach((branchChoice) => {
+              if (branchChoice.from && branchChoice.chosen) {
+                const from = branchChoice.from.replace("bb", "");
+                branchChoice.chosen.forEach((to: string) => {
+                  const toNum = to.replace("bb", "");
+                  const edgeKey = `${from}-${toNum}`;
+                  mirEdges.add(edgeKey);
+                });
+              }
+            });
 
             onHighlightMirEdges(mirEdges);
           };

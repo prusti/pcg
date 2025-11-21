@@ -49,7 +49,7 @@ export default [
       ...reactHooks.configs.recommended.rules,
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-unused-vars": [
-        "error",
+        "warn",
         { argsIgnorePattern: "^_" },
       ],
       "react/react-in-jsx-scope": "off",

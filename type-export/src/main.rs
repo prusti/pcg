@@ -18,10 +18,17 @@ fn main() {
 
     let typescript = Typescript::default().bigint(BigIntExportBehavior::Number);
 
+    let header = "import type { StringOf } from \"../generated_type_deps.ts\";\n";
+
     let collection = pcg::type_collection();
-    typescript
-        .export_to(&output_file, &collection)
-        .unwrap();
+    let mut contents = typescript.export(&collection).unwrap();
+    contents = contents
+        .lines()
+        .filter(|line| !line.starts_with("export type StringOf"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    fs::write(&output_file, format!("{}{}", header, contents)).unwrap();
 
     println!("TypeScript types generated at: {}", output_file.display());
 }

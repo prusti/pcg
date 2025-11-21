@@ -1,64 +1,50 @@
-import { MirGraph, PcgFunctionData, StmtGraphs } from "./generated/types";
-import {
-  FunctionsMetadata,
-  GetFunctionsResult,
-  PcgProgramPointData,
-  StringOf,
-} from "./types";
+import { MirGraph, PcgVisualizationData } from "./generated/types";
+import { FunctionsMetadata, GetFunctionsResult } from "./types";
 import * as JSZip from "jszip";
 
-export type PcgBlockDotGraphs = StmtGraphs<StringOf<"DataflowStmtPhase">>[];
+export type ApiFunctionData = {
+  pcgData: PcgVisualizationData;
+  mirGraph: MirGraph;
+};
 
 export abstract class Api {
   protected abstract fetchJsonFile(filePath: string): Promise<unknown>;
   protected abstract fetchTextFile(filePath: string): Promise<string>;
-  private pcgDataCache: Map<string, PcgFunctionData> = new Map();
+  private pcgDataCache: Map<string, PcgVisualizationData> = new Map();
 
-  async getPcgIterations(functionName: string, block: number): Promise<PcgBlockDotGraphs> {
-    const iterations = await this.fetchJsonFile(
-      `data/${functionName}/block_${block}_iterations.json`
-    );
-    return iterations as PcgBlockDotGraphs;
+  async getApiFunctionData(functionName: string): Promise<ApiFunctionData> {
+    return {
+      pcgData: await this.getPcgVisualizationData(functionName),
+      mirGraph: await this.getGraphData(functionName),
+    };
   }
 
   async getGraphData(func: string): Promise<MirGraph> {
     const graphFilePath = `data/${func}/mir.json`;
-    return await this.fetchJsonFile(graphFilePath) as Promise<MirGraph>;
+    return (await this.fetchJsonFile(graphFilePath)) as Promise<MirGraph>;
   }
 
   async getFunctions(): Promise<GetFunctionsResult> {
     try {
-      const data = await this.fetchJsonFile("data/functions.json") as FunctionsMetadata;
+      const data = (await this.fetchJsonFile(
+        "data/functions.json"
+      )) as FunctionsMetadata;
       return { type: "found", data };
     } catch {
       return { type: "not_found" };
     }
   }
 
-  public async getPcgFunctionData(functionName: string): Promise<PcgFunctionData> {
+  public async getPcgVisualizationData(
+    functionName: string
+  ): Promise<PcgVisualizationData> {
     if (!this.pcgDataCache.has(functionName)) {
-      const data = await this.fetchJsonFile(`data/${functionName}/pcg_data.json`) as PcgFunctionData;
+      const data = (await this.fetchJsonFile(
+        `data/${functionName}/pcg_data.json`
+      )) as PcgVisualizationData;
       this.pcgDataCache.set(functionName, data);
     }
     return this.pcgDataCache.get(functionName)!;
-  }
-
-  async getAllPcgStmtData(
-    functionName: string
-  ): Promise<Map<number, Map<number, PcgProgramPointData>>> {
-    const functionData = await this.getPcgFunctionData(functionName);
-    const result = new Map<number, Map<number, PcgProgramPointData>>();
-
-    Object.entries(functionData.blocks).forEach(([blockId, blockData]) => {
-      const blockNum = parseInt(blockId);
-      const stmtMap = new Map<number, PcgProgramPointData>();
-      blockData.statements.forEach((stmtData, stmtIndex) => {
-        stmtMap.set(stmtIndex, stmtData);
-      });
-      result.set(blockNum, stmtMap);
-    });
-
-    return result;
   }
 
   async fetchDotFile(filePath: string): Promise<string> {
@@ -72,9 +58,9 @@ class FetchApi extends Api {
   constructor(prefix?: string) {
     super();
     if (prefix) {
-      this.prefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
+      this.prefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
     } else {
-      this.prefix = '';
+      this.prefix = "";
     }
   }
 
@@ -110,7 +96,9 @@ export class ZipFileApi extends Api {
   static async fromUrl(url: string): Promise<ZipFileApi> {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error(`Failed to fetch ZIP file from ${url}: ${response.statusText}`);
+      throw new Error(
+        `Failed to fetch ZIP file from ${url}: ${response.statusText}`
+      );
     }
     const arrayBuffer = await response.arrayBuffer();
     const zip = await JSZip.loadAsync(arrayBuffer);
@@ -141,7 +129,7 @@ export class ZipFileApi extends Api {
 
 function createDefaultApi(): Api {
   const params = new URLSearchParams(window.location.search);
-  const datasrc = params.get('datasrc');
+  const datasrc = params.get("datasrc");
 
   return new FetchApi(datasrc || undefined);
 }

@@ -1,11 +1,13 @@
-export type NavigatorPoint = {
-  type: "action";
-  phase: EvalStmtPhase | "successor";
-  index: number;
-} | {
-  type: "iteration";
-  name: string;
-};
+export type NavigatorPoint =
+  | {
+      type: "action";
+      phase: EvalStmtPhase | "successor";
+      index: number;
+    }
+  | {
+      type: "iteration";
+      name: string;
+    };
 
 export type CurrentPoint =
   | {
@@ -56,7 +58,7 @@ export type ReactFlowNodeData = BasicBlockData & {
   setCurrentPoint: (point: CurrentPoint) => void;
   hoveredStmts?: Set<string>;
   showActionsInGraph?: boolean;
-  pcgStmtData?: Map<number, PcgProgramPointData>;
+  pcgData?: PcgBlockVisualizationData;
 };
 
 export type PcgAction = PcgActionDebugRepr;
@@ -83,6 +85,7 @@ import type {
   FunctionMetadata,
   MirStmt,
   PcgActionDebugRepr,
+  PcgBlockVisualizationData,
   PcgStmtVisualizationData,
   PcgSuccessorVisualizationData,
   SourcePos,
@@ -103,5 +106,3 @@ export type FunctionsMetadata = {
 export type GetFunctionsResult =
   | { type: "found"; data: FunctionsMetadata }
   | { type: "not_found" };
-
-export type StringOf<T> = string & { __brand: T };

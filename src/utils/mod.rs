@@ -18,6 +18,7 @@ pub(crate) mod iter;
 pub mod json;
 pub(crate) mod liveness;
 pub(crate) mod logging;
+pub mod mir;
 mod mutable;
 pub mod place;
 pub mod place_snapshot;

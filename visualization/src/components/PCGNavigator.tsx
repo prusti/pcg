@@ -2,21 +2,23 @@ import React, { useState, useEffect } from "react";
 import {
   EvalStmtPhase,
   PcgAction,
-  PcgStmtVisualizationData,
   PcgProgramPointData,
-  StringOf,
   NavigatorPoint,
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import { StmtGraphs, PcgSuccessorVisualizationData } from "../generated/types";
+import {
+  PcgBlockVisualizationData,
+  DotFileAtPhase,
+} from "../generated/types";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
   useLocalStorageNumber,
 } from "../hooks/useLocalStorageState";
-import { Api, PcgBlockDotGraphs } from "../api";
+import { Api } from "../api";
 import { openDotGraphInNewWindow } from "../dot_graph";
+import { toBasicBlock } from "../util";
 
 type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
@@ -35,16 +37,16 @@ export const NAVIGATOR_MIN_WIDTH = "40px";
 const getPCGDotGraphFilename = (
   currentPoint: CurrentPoint,
   selectedFunction: string,
-  graphs: PcgBlockDotGraphs
+  graphs: PcgBlockVisualizationData
 ): string | null => {
-  if (currentPoint.type !== "stmt" || graphs.length <= currentPoint.stmt) {
+  if (currentPoint.type !== "stmt" || graphs.statements.length <= currentPoint.stmt) {
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
     if (currentPoint.navigatorPoint.phase === "successor") {
       return null;
     }
-    const stmt = graphs[currentPoint.stmt];
+    const stmt = graphs.statements[currentPoint.stmt];
     const iterationActions = stmt.actions;
     const actionGraphFilenames =
       iterationActions[currentPoint.navigatorPoint.phase];
@@ -56,7 +58,7 @@ const getPCGDotGraphFilename = (
     return null;
   }
 
-  const phases = graphs[currentPoint.stmt].at_phase;
+  const phases = graphs.statements[currentPoint.stmt].graphs.at_phase;
   const phaseIndex = phases.findIndex((p) => p.phase === navPoint.name);
 
   if (phaseIndex === -1 || phases.length === 0) {
@@ -69,9 +71,10 @@ const getPCGDotGraphFilename = (
 
 const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
   if (currentPoint.type === "stmt") {
-    const navPointName = currentPoint.navigatorPoint.type === "iteration"
-      ? currentPoint.navigatorPoint.name
-      : `${currentPoint.navigatorPoint.phase}[${currentPoint.navigatorPoint.index}]`;
+    const navPointName =
+      currentPoint.navigatorPoint.type === "iteration"
+        ? currentPoint.navigatorPoint.name
+        : `${currentPoint.navigatorPoint.phase}[${currentPoint.navigatorPoint.index}]`;
     return `bb${currentPoint.block}[${currentPoint.stmt}] ${navPointName}`;
   } else {
     return `bb${currentPoint.block1} -> bb${currentPoint.block2}`;
@@ -79,8 +82,6 @@ const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
 };
 
 export default function PCGNavigator({
-  iterations,
-  pcgData,
   selectedPoint,
   onSelectPoint,
   onNavigatorStateChange,
@@ -88,11 +89,10 @@ export default function PCGNavigator({
   onGoToPreviousStatement,
   currentPoint,
   selectedFunction,
-  allIterations,
+  pcgData,
   api,
 }: {
-  iterations?: StmtGraphs<StringOf<"DataflowStmtPhase">>;
-  pcgData: PcgProgramPointData;
+  programPointData: PcgProgramPointData;
   selectedPoint: NavigatorPoint | null;
   onSelectPoint: (point: NavigatorPoint) => void;
   onNavigatorStateChange?: (isMinimized: boolean, width: number) => void;
@@ -100,7 +100,7 @@ export default function PCGNavigator({
   onGoToPreviousStatement?: () => void;
   currentPoint: CurrentPoint;
   selectedFunction: FunctionSlug;
-  allIterations: PcgBlockDotGraphs;
+  pcgData: PcgBlockVisualizationData;
   api: Api;
 }) {
   const [isMinimized, setIsMinimized] = useLocalStorageBool(
@@ -124,44 +124,42 @@ export default function PCGNavigator({
   const buildNavigationItems = (): NavigationItem[] => {
     const items: NavigationItem[] = [];
 
-    // Check if this is successor (terminator) data - it has a flat actions array
-    if (Array.isArray(pcgData.actions)) {
-      // PcgSuccessorVisualizationData - just display actions without phases
-      const successorData = pcgData as PcgSuccessorVisualizationData;
-      successorData.actions.forEach((action, index) => {
+    if (currentPoint.type === "stmt") {
+      const programPointData = pcgData.statements[currentPoint.stmt];
+      programPointData.graphs.at_phase.forEach(
+        (at_phase: DotFileAtPhase<string>) => {
+          // Check if this iteration name corresponds to an EvalStmtPhase with actions
+          const phase = at_phase.phase as EvalStmtPhase;
+          if (phase in programPointData.graphs.actions) {
+            // Add all actions for this phase first
+            programPointData.actions[phase].forEach((action, index) => {
+              if (
+                action.data.kind.type !== "MakePlaceOld" &&
+                action.data.kind.type !== "LabelLifetimeProjection"
+              ) {
+                items.push({ type: "action", phase, index, action });
+              }
+            });
+          }
+
+          // Add the iteration after its actions
+          items.push({
+            type: "iteration",
+            name: at_phase.phase,
+            filename: at_phase.filename,
+          });
+        }
+      );
+    } else {
+      const programPointData =
+        pcgData.successors[toBasicBlock(currentPoint.block2)];
+      programPointData.actions.forEach((action, index) => {
         if (
           action.data.kind.type !== "MakePlaceOld" &&
           action.data.kind.type !== "LabelLifetimeProjection"
         ) {
           items.push({ type: "action", phase: "successor", index, action });
         }
-      });
-    } else if (iterations) {
-      // PcgStmtVisualizationData - display actions organized by phases
-      const stmtData = pcgData as PcgStmtVisualizationData;
-
-      // For each iteration in at_phase
-      iterations.at_phase.forEach((at_phase) => {
-        // Check if this iteration name corresponds to an EvalStmtPhase with actions
-        const phase = at_phase.phase as EvalStmtPhase;
-        if (phase in stmtData.actions) {
-          // Add all actions for this phase first
-          stmtData.actions[phase].forEach((action, index) => {
-            if (
-              action.data.kind.type !== "MakePlaceOld" &&
-              action.data.kind.type !== "LabelLifetimeProjection"
-            ) {
-              items.push({ type: "action", phase, index, action });
-            }
-          });
-        }
-
-        // Add the iteration after its actions
-        items.push({
-          type: "iteration",
-          name: at_phase.phase,
-          filename: at_phase.filename,
-        });
       });
     }
 
@@ -289,7 +287,8 @@ export default function PCGNavigator({
     return navigationItems.map((item, idx) => {
       if (item.type === "iteration") {
         const isSelected =
-          selectedPoint?.type === "iteration" && selectedPoint.name === item.name;
+          selectedPoint?.type === "iteration" &&
+          selectedPoint.name === item.name;
         return (
           <div
             key={`iteration-${item.name}-${idx}`}
@@ -441,7 +440,7 @@ export default function PCGNavigator({
               const dotFilePath = getPCGDotGraphFilename(
                 currentPoint,
                 selectedFunction,
-                allIterations
+                pcgData
               );
               if (dotFilePath) {
                 const title = formatCurrentPointTitle(currentPoint);

@@ -1,8 +1,14 @@
-import { MirEdge, MirNode, PcgFunctionData } from "./generated/types";
+import { MirEdge, MirNode } from "./generated/types";
 import { computeTableHeight } from "./components/BasicBlockTable";
-import { BasicBlockData, CurrentPoint, PcgProgramPointData } from "./types";
+import {
+  BasicBlockData,
+  CurrentPoint,
+  ReactFlowNodeData,
+} from "./types";
 import * as dagre from "@dagrejs/dagre";
 import { Node as ReactFlowNode, Edge as ReactFlowEdge } from "reactflow";
+import { ApiFunctionData } from "./api";
+import { toBasicBlock } from "./util";
 
 export type FilterOptions = {
   showUnwindEdges: boolean;
@@ -88,7 +94,9 @@ export function filterNodesAndEdges(
   }
 
   const reachableBlocks = computeReachableBlocks(filteredNodes, filteredEdges);
-  filteredNodes = filteredNodes.filter((node) => reachableBlocks.has(node.block));
+  filteredNodes = filteredNodes.filter((node) =>
+    reachableBlocks.has(node.block)
+  );
   filteredEdges = filteredEdges.filter((edge) => {
     const sourceNode = filteredNodes.find((n) => n.id === edge.source);
     const targetNode = filteredNodes.find((n) => n.id === edge.target);
@@ -102,7 +110,7 @@ export function layoutNodesWithDagre(
   nodes: MirNode[],
   edges: MirEdge[],
   showActionsInGraph?: boolean,
-  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
+  apiData?: ApiFunctionData | null
 ): { nodes: PositionedLayoutNode[]; height: number | null } {
   // Create Dagre graph
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
@@ -115,7 +123,7 @@ export function layoutNodesWithDagre(
     height: computeTableHeight(
       node,
       showActionsInGraph,
-      allPcgStmtData?.get(node.block)
+      apiData?.pcgData[toBasicBlock(node.block)]
     ),
     data: {
       block: node.block,
@@ -153,8 +161,8 @@ export function toReactFlowNodes(
   setCurrentPoint: (point: CurrentPoint) => void,
   hoveredStmts?: Set<string>,
   showActionsInGraph?: boolean,
-  allPcgStmtData?: Map<number, Map<number, PcgProgramPointData>>
-): ReactFlowNode[] {
+  apiData?: ApiFunctionData | null
+): (ReactFlowNode & { data: ReactFlowNodeData })[] {
   return layoutNodes.map((node) => ({
     id: node.id,
     type: "basicBlock",
@@ -168,7 +176,7 @@ export function toReactFlowNodes(
       setCurrentPoint,
       hoveredStmts,
       showActionsInGraph,
-      pcgStmtData: allPcgStmtData?.get(node.data.block),
+      pcgData: apiData?.pcgData[toBasicBlock(node.data.block)],
     },
   }));
 }
@@ -179,7 +187,7 @@ export function toReactFlowEdges(
   currentPoint: CurrentPoint,
   setCurrentPoint: (point: CurrentPoint) => void,
   showActionsInGraph: boolean,
-  pcgFunctionData: PcgFunctionData | null,
+  apiData?: ApiFunctionData | null,
   highlightedEdges?: Set<string>
 ): ReactFlowEdge[] {
   const nodeIdToBlock = new Map(mirNodes.map((n) => [n.id, n.block]));
@@ -197,9 +205,12 @@ export function toReactFlowEdges(
     const isHighlighted = highlightedEdges?.has(edgeKey) || false;
 
     const terminatorActions =
-      showActionsInGraph && sourceBlock !== undefined && targetBlock !== undefined && pcgFunctionData
-        ? pcgFunctionData.blocks[sourceBlock]?.successors[targetBlock]
-        : undefined;
+      showActionsInGraph &&
+      sourceBlock !== undefined &&
+      targetBlock !== undefined &&
+      apiData?.pcgData[toBasicBlock(sourceBlock)]?.successors[
+        toBasicBlock(targetBlock)
+      ];
 
     return {
       id: `${edge.source}-${edge.target}-${idx}`,
