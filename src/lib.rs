@@ -196,11 +196,12 @@ use utils::eval_stmt_data::EvalStmtData;
 
 type VisualizationActions = Vec<PcgActionDebugRepr>;
 
+#[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgStmtVisualizationData {
     actions: EvalStmtData<VisualizationActions>,
-    graphs: StmtGraphs,
+    graphs: visualization::stmt_graphs::StmtGraphs,
 }
 
 #[derive(Serialize)]
@@ -368,6 +369,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     }
 }
 
+#[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgBlockVisualizationData {
@@ -375,10 +377,12 @@ struct PcgBlockVisualizationData {
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
 }
 
+#[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
 
+#[cfg(feature = "visualization")]
 impl PcgVisualizationData {
     fn new() -> Self {
         Self(std::collections::HashMap::new())
@@ -659,7 +663,6 @@ use crate::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         json::ToJsonWithCtxt, mir::BasicBlock,
     },
-    visualization::stmt_graphs::StmtGraphs,
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {
