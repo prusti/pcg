@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{borrow::Cow, rc::Rc};
 
 use crate::{
     DebugLines,
@@ -39,7 +39,7 @@ impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for PcgSuccessor<'_, 'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
         let mut result = Vec::new();
         result.extend(self.actions.iter().map(|a| a.debug_line(ctxt)));
         result

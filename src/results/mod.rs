@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use derive_more::Deref;
 
@@ -343,8 +343,8 @@ pub struct PcgLocation<'a, 'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
-    fn debug_lines(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
-        self.iter().map(|r| format!("{r:?}")).collect()
+    fn debug_lines(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+        self.iter().map(|r| Cow::Owned(format!("{r:?}"))).collect()
     }
 }
 
@@ -414,7 +414,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
         &self,
         phase: EvalStmtPhase,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Vec<String> {
+    ) -> Vec<Cow<'static, str>> {
         let mut result = self.states[phase].debug_lines(ctxt);
         for action in self.actions[phase].0.iter() {
             result.push(action.debug_line(ctxt));

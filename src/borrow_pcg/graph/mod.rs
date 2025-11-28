@@ -6,7 +6,7 @@ pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
 mod mutate;
 
-use std::marker::PhantomData;
+use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
@@ -64,9 +64,9 @@ impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
         self.edges()
-            .map(|edge| edge.display_string(ctxt).to_string())
+            .map(|edge| edge.test_string(ctxt))
             .sorted()
             .collect()
     }
@@ -488,9 +488,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> Di
     for Conditioned<T>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let output = self.value.display_output(ctxt, mode);
         match mode {
-            OutputMode::Normal => {
-                DisplayOutput::Text(self.conditions.conditional_string(&self.value, ctxt).into())
+            OutputMode::Normal | OutputMode::Test => {
+                self.conditions.conditional_string(output, ctxt)
             }
             OutputMode::Short => self.value.display_output(ctxt, mode),
         }

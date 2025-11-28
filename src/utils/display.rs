@@ -89,6 +89,7 @@ impl DisplayOutput {
 pub enum OutputMode {
     Normal,
     Short,
+    Test,
 }
 
 pub trait DisplayWithCtxt<Ctxt> {
@@ -102,6 +103,10 @@ pub trait DisplayWithCtxt<Ctxt> {
         self.display_output(ctxt, OutputMode::Normal)
             .into_text()
             .into_owned()
+    }
+
+    fn test_string(&self, ctxt: Ctxt) -> Cow<'static, str> {
+        self.display_output(ctxt, OutputMode::Test).into_text()
     }
 
     fn to_short_string(&self, ctxt: Ctxt) -> String {
@@ -294,5 +299,5 @@ impl<'tcx> Place<'tcx> {
 }
 
 pub(crate) trait DebugLines<Ctxt> {
-    fn debug_lines(&self, ctxt: Ctxt) -> Vec<String>;
+    fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>>;
 }

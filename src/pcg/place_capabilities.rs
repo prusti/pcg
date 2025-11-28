@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use itertools::Itertools;
 
@@ -291,14 +291,14 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for SymbolicPlaceCapabilities<'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
         self.iter()
             .map(|(node, capability)| {
-                format!(
+                Cow::Owned(format!(
                     "{}: {:?}",
                     node.display_string(ctxt),
                     capability.expect_concrete()
-                )
+                ))
             })
             .sorted()
             .collect()

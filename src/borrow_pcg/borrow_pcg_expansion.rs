@@ -175,6 +175,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
 pub struct BorrowPcgExpansion<'tcx, P = LocalNode<'tcx>> {
     pub(crate) base: P,
     pub(crate) expansion: Vec<P>,
+    pub(crate) guide: Option<RepackGuide>,
     _marker: PhantomData<&'tcx ()>,
 }
 
@@ -236,18 +237,28 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
 impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            format!(
-                "{{{}}} -> {{{}}}",
-                self.base.display_string(ctxt),
-                self.expansion
-                    .iter()
-                    .map(|p| p.display_string(ctxt))
-                    .join(", ")
-            )
-            .into(),
-        )
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let guide_part = if let Some(guide) = self.guide
+            && matches!(mode, OutputMode::Test)
+        {
+            DisplayOutput::Text(format!(" (guide={guide:?})").into())
+        } else {
+            DisplayOutput::EMPTY
+        };
+        DisplayOutput::Seq(vec![
+            DisplayOutput::Text(
+                format!(
+                    "{{{}}} -> {{{}}}",
+                    self.base.display_string(ctxt),
+                    self.expansion
+                        .iter()
+                        .map(|p| p.display_string(ctxt))
+                        .join(", ")
+                )
+                .into(),
+            ),
+            guide_part,
+        ])
     }
 }
 
@@ -304,6 +315,7 @@ impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
     fn try_from(expansion: BorrowPcgExpansion<'tcx, LocalNode<'tcx>>) -> Result<Self, Self::Error> {
         Ok(BorrowPcgExpansion {
             base: expansion.base.try_into()?,
+            guide: expansion.guide,
             expansion: expansion
                 .expansion
                 .into_iter()
@@ -315,6 +327,10 @@ impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
+    pub fn guide(&self) -> Option<RepackGuide> {
+        self.guide
+    }
+
     pub(crate) fn is_deref<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
         if let BlockingNode::Place(p) = self.base {
             p.place().is_ref(ctxt)
@@ -385,6 +401,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
         );
         let result = Self {
             base,
+            guide: expansion.guide(),
             expansion: expansion
                 .elems()
                 .into_iter()
