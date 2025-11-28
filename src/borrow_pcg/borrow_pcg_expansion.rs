@@ -241,7 +241,7 @@ impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
         let guide_part = if let Some(guide) = self.guide
             && matches!(mode, OutputMode::Test)
         {
-            DisplayOutput::Text(format!(" (guide={:?})", guide).into())
+            DisplayOutput::Text(format!(" (guide={guide:?})").into())
         } else {
             DisplayOutput::EMPTY
         };
