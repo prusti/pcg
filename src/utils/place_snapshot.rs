@@ -44,7 +44,7 @@ impl DisplayWithCtxt<()> for AnalysisLocation {
     fn display_output(&self, ctxt: (), mode: OutputMode) -> DisplayOutput {
         match mode {
             OutputMode::Short => self.location.display_output(ctxt, mode),
-            OutputMode::Normal => DisplayOutput::Seq(vec![
+            OutputMode::Normal | OutputMode::Test => DisplayOutput::Seq(vec![
                 self.location.display_output(ctxt, mode),
                 DisplayOutput::Text(Cow::Borrowed(":")),
                 self.eval_stmt_phase.display_output(ctxt, mode),

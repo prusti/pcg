@@ -210,17 +210,17 @@ pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VAL
 impl ValidityConditions {
     pub(crate) fn conditional_string<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
-        content: &impl DisplayWithCtxt<Ctxt>,
+        content: DisplayOutput,
         ctxt: Ctxt,
-    ) -> String {
+    ) -> DisplayOutput {
         if self.is_empty() {
-            content.display_string(ctxt)
+            content
         } else {
-            format!(
-                "{} under conditions {}",
-                content.display_string(ctxt),
-                self.display_string(ctxt)
-            )
+            DisplayOutput::Seq(vec![
+                content,
+                DisplayOutput::Text(" under conditions ".into()),
+                self.display_output(ctxt, OutputMode::Normal),
+            ])
         }
     }
 }

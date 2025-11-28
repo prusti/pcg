@@ -237,18 +237,28 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
 impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for BorrowPcgExpansion<'tcx, P>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            format!(
-                "{{{}}} -> {{{}}}",
-                self.base.display_string(ctxt),
-                self.expansion
-                    .iter()
-                    .map(|p| p.display_string(ctxt))
-                    .join(", ")
-            )
-            .into(),
-        )
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let guide_part = if let Some(guide) = self.guide
+            && matches!(mode, OutputMode::Test)
+        {
+            DisplayOutput::Text(format!(" (guide={:?})", guide).into())
+        } else {
+            DisplayOutput::EMPTY
+        };
+        DisplayOutput::Seq(vec![
+            DisplayOutput::Text(
+                format!(
+                    "{{{}}} -> {{{}}}",
+                    self.base.display_string(ctxt),
+                    self.expansion
+                        .iter()
+                        .map(|p| p.display_string(ctxt))
+                        .join(", ")
+                )
+                .into(),
+            ),
+            guide_part,
+        ])
     }
 }
 

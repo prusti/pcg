@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
@@ -393,7 +395,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
-    pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<String> {
+    pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
         result.sort();
         let mut capabilities = self.capabilities.debug_lines(ctxt);
