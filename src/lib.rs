@@ -107,11 +107,17 @@ impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
         self.from
     }
 
-    pub fn place(&self) -> Place where Place: Copy {
+    pub fn place(&self) -> Place
+    where
+        Place: Copy,
+    {
         self.place
     }
 
-    pub fn to_cap(&self) -> ToCap where ToCap: Copy {
+    pub fn to_cap(&self) -> ToCap
+    where
+        ToCap: Copy,
+    {
         self.to
     }
 }
