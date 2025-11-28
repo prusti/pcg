@@ -118,16 +118,18 @@ impl<'tcx> Weaken<'tcx> {
         )
     }
 
-    pub fn place(&self) -> Place<'tcx> {
-        self.place
-    }
-
     pub fn from_cap(&self) -> CapabilityKind {
         self.from
     }
 
     pub fn to_cap(&self) -> Option<CapabilityKind> {
         self.to
+    }
+}
+
+impl<'tcx, Place: Copy, Cap> Weaken<'tcx, Place, Cap> {
+    pub fn place(&self) -> Place {
+        self.place
     }
 }
 
