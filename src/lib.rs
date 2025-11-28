@@ -102,6 +102,24 @@ impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
             _marker: PhantomData,
         }
     }
+
+    pub fn from_cap(&self) -> CapabilityKind {
+        self.from
+    }
+
+    pub fn place(&self) -> Place
+    where
+        Place: Copy,
+    {
+        self.place
+    }
+
+    pub fn to_cap(&self) -> ToCap
+    where
+        ToCap: Copy,
+    {
+        self.to
+    }
 }
 
 impl<'tcx> Weaken<'tcx> {
@@ -116,18 +134,6 @@ impl<'tcx> Weaken<'tcx> {
             self.from,
             to_str
         )
-    }
-
-    pub fn place(&self) -> Place<'tcx> {
-        self.place
-    }
-
-    pub fn from_cap(&self) -> CapabilityKind {
-        self.from
-    }
-
-    pub fn to_cap(&self) -> Option<CapabilityKind> {
-        self.to
     }
 }
 
