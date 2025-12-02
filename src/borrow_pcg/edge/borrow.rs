@@ -181,7 +181,7 @@ impl<'tcx> BorrowEdge<'tcx> {
         self.borrow_index
     }
 
-    pub(crate) fn kind(&self) -> mir::BorrowKind {
+    pub fn kind(&self) -> mir::BorrowKind {
         self.kind
     }
 
