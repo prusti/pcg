@@ -11,7 +11,7 @@ use crate::{
         validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
     },
     pcg::{
-        PcgNodeLike, SymbolicCapability,
+        SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
@@ -397,36 +397,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
     /// conditions.
     pub fn filter_for_path(&mut self, path: &[BasicBlock], ctxt: CompilerCtxt<'_, 'tcx>) {
         self.graph.filter_for_path(path, ctxt);
-    }
-
-    /// Returns the place that blocks `node` if:
-    /// 1. there is exactly one hyperedge blocking `node`
-    /// 2. that edge is blocked by exactly one node
-    /// 3. that node is a region projection that can be dereferenced
-    ///
-    /// This is used in the symbolic-execution based purification encoding to
-    /// compute the backwards function for the argument local `place`. It
-    /// depends on `Borrow` edges connecting the remote input to a single node
-    /// in the PCG. In the symbolic execution, backward function results are computed
-    /// per-path, so this expectation may be reasonable in that context.
-    pub fn get_place_blocking(
-        &self,
-        place: MaybeLabelledPlace<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Option<MaybeLabelledPlace<'tcx>> {
-        let edges = self.edges_blocking(place.to_pcg_node(ctxt), ctxt);
-        if edges.len() != 1 {
-            return None;
-        }
-        let nodes = edges[0].blocked_by_nodes(ctxt).collect::<Vec<_>>();
-        if nodes.len() != 1 {
-            return None;
-        }
-        let node = nodes.into_iter().next().unwrap();
-        match node {
-            PcgNode::Place(_) => todo!(),
-            PcgNode::LifetimeProjection(region_projection) => region_projection.deref(ctxt),
-        }
     }
 
     pub(crate) fn edges_blocking<'slf, 'mir: 'slf, 'bc: 'slf>(
