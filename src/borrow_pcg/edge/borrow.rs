@@ -18,7 +18,8 @@ use crate::{
         },
     },
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        HasBorrowCheckerCtxt, HasCompilerCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
 
@@ -259,8 +260,7 @@ impl std::fmt::Display for BorrowEdge<'_> {
         write!(
             f,
             "borrow blocking {} assigned to {}",
-            self.blocked_place,
-            self.assigned_ref,
+            self.blocked_place, self.assigned_ref,
         )
     }
 }
