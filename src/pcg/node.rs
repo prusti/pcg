@@ -20,7 +20,6 @@ use crate::{
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
         place::maybe_remote::MaybeRemotePlace,
-        remote::RemotePlace,
         validity::HasValidityCheck,
     },
 };
@@ -29,7 +28,7 @@ use crate::{
 pub type PCGNode<'tcx> = PcgNode<'tcx>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub enum PcgNode<'tcx, T = MaybeRemotePlace<'tcx>, U = PcgLifetimeProjectionBase<'tcx>> {
+pub enum PcgNode<'tcx, T = MaybeLabelledPlace<'tcx>, U = PcgLifetimeProjectionBase<'tcx>> {
     Place(T),
     LifetimeProjection(LifetimeProjection<'tcx, U>),
 }
@@ -57,13 +56,9 @@ impl<'tcx, Ctxt, T: LabelPlaceWithContext<'tcx, Ctxt>, U: LabelPlaceWithContext<
 }
 
 impl<'tcx> PcgNode<'tcx> {
-    pub fn is_remote_place(self) -> bool {
-        matches!(self, PcgNode::Place(MaybeRemotePlace::Remote(_)))
-    }
-
     pub fn related_place(self) -> Option<MaybeRemotePlace<'tcx>> {
         match self {
-            PcgNode::Place(p) => Some(p),
+            PcgNode::Place(p) => Some(p.into()),
             PcgNode::LifetimeProjection(rp) => match rp.base() {
                 PlaceOrConst::Place(p) => Some(p),
                 _ => None,
@@ -79,7 +74,10 @@ impl<'tcx> PcgNode<'tcx> {
         &self,
     ) -> Option<MaybeRemoteCurrentPlace<'tcx>> {
         match self {
-            PcgNode::Place(p) => p.maybe_remote_current_place(),
+            PcgNode::Place(p) => match p {
+                MaybeLabelledPlace::Current(place) => Some(MaybeRemoteCurrentPlace::Local(*place)),
+                MaybeLabelledPlace::Labelled(_) => None,
+            },
             PcgNode::LifetimeProjection(rp) => rp.base().maybe_remote_current_place(),
         }
     }
@@ -229,12 +227,7 @@ pub trait PcgNodeLike<'tcx>:
         'tcx: 'a,
     {
         match self.to_pcg_node(ctxt.ctxt()) {
-            PcgNode::Place(p) => match p {
-                MaybeRemotePlace::Local(maybe_old_place) => {
-                    Some(maybe_old_place.to_local_node(ctxt.ctxt()))
-                }
-                MaybeRemotePlace::Remote(_) => None,
-            },
+            PcgNode::Place(p) => Some(p.into()),
             PcgNode::LifetimeProjection(rp) => match rp.base() {
                 PlaceOrConst::Place(maybe_remote_place) => match maybe_remote_place {
                     MaybeRemotePlace::Local(maybe_old_place) => {
@@ -255,11 +248,5 @@ pub(crate) trait LocalNodeLike<'tcx> {
 impl<'tcx> LocalNodeLike<'tcx> for mir::Place<'tcx> {
     fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
-    }
-}
-
-impl From<RemotePlace> for PcgNode<'_> {
-    fn from(remote_place: RemotePlace) -> Self {
-        PcgNode::Place(remote_place.into())
     }
 }

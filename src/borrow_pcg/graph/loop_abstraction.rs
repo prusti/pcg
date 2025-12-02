@@ -76,13 +76,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
-    fn to_pcg_node(self, ctxt: CompilerCtxt<'_, 'tcx>) -> PcgNode<'tcx> {
-        match self {
-            MaybeRemoteCurrentPlace::Local(place) => place.to_pcg_node(ctxt),
-            MaybeRemoteCurrentPlace::Remote(place) => place.to_pcg_node(ctxt),
-        }
-    }
-
     pub(crate) fn relevant_place_for_blocking(self) -> Place<'tcx> {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place,
@@ -651,7 +644,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
         for flow_rp in flow_rps {
             add_block_edge(
                 expander,
-                blocked_rp.into(),
+                blocked_rp.to_pcg_node(ctxt),
                 flow_rp.to_local_node(ctxt),
                 ctxt,
             );
@@ -676,7 +669,9 @@ fn add_block_edges<'mir, 'tcx>(
     // Add top-level borrow
     add_block_edge(
         expander,
-        blocked_place.to_pcg_node(ctxt),
+        blocked_place
+            .relevant_place_for_blocking()
+            .to_pcg_node(ctxt),
         blocker_rps[RegionIdx::from(0)].to_local_node(ctxt),
         ctxt,
     );

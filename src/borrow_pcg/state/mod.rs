@@ -4,16 +4,17 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
+        borrow_pcg_edge::BlockingNode,
         edge_data::LabelEdgePlaces,
         graph::join::JoinBorrowsArgs,
         has_pcs_elem::LabelLifetimeProjection,
         validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
     },
     pcg::{
-        SymbolicCapability,
+        PcgNodeLike, SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
-    utils::HasBorrowCheckerCtxt,
+    utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
 };
 
 use super::{
@@ -47,11 +48,8 @@ use crate::{
         ty::{self},
     },
     utils::{
-        CompilerCtxt, Place,
-        display::DebugLines,
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        remote::RemotePlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, Place, display::DebugLines, place::maybe_old::MaybeLabelledPlace,
+        remote::RemotePlace, validity::HasValidityCheck,
     },
 };
 
@@ -401,8 +399,8 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         self.graph.filter_for_path(path, ctxt);
     }
 
-    /// Returns the place that blocks `place` if:
-    /// 1. there is exactly one hyperedge blocking `place`
+    /// Returns the place that blocks `node` if:
+    /// 1. there is exactly one hyperedge blocking `node`
     /// 2. that edge is blocked by exactly one node
     /// 3. that node is a region projection that can be dereferenced
     ///
@@ -413,10 +411,10 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
     /// per-path, so this expectation may be reasonable in that context.
     pub fn get_place_blocking(
         &self,
-        place: MaybeRemotePlace<'tcx>,
+        place: MaybeLabelledPlace<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Option<MaybeLabelledPlace<'tcx>> {
-        let edges = self.edges_blocking(place.into(), ctxt);
+        let edges = self.edges_blocking(place.to_pcg_node(ctxt), ctxt);
         if edges.len() != 1 {
             return None;
         }
@@ -437,6 +435,17 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> Vec<BorrowPcgEdgeRef<'tcx, 'slf>> {
         self.graph.edges_blocking(node, ctxt).collect()
+    }
+
+    pub fn nodes_blocking<'slf, 'mir: 'slf, 'bc: 'slf>(
+        &'slf self,
+        node: BlockedNode<'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
+    ) -> HashSet<BlockingNode<'tcx>> {
+        self.graph
+            .edges_blocking(node, ctxt)
+            .flat_map(|e| e.blocked_by_nodes(ctxt).collect::<Vec<_>>())
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]

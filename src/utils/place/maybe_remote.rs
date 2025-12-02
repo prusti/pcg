@@ -7,15 +7,10 @@ use crate::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
         region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgRegion,
-            PlaceOrConst, RegionIdx,
+            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
         },
     },
-    pcg::{PcgNode, PcgNodeLike},
-    rustc_interface::{
-        index::IndexVec,
-        middle::{mir, ty},
-    },
+    rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, HasPlace, LabelledPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -86,15 +81,6 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for MaybeRemotePlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        match self {
-            MaybeRemotePlace::Local(p) => p.to_pcg_node(ctxt),
-            MaybeRemotePlace::Remote(rp) => rp.to_pcg_node(ctxt),
-        }
-    }
-}
-
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
@@ -156,13 +142,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         }
     }
 
-    pub(crate) fn regions<C: Copy>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, C>,
-    ) -> IndexVec<RegionIdx, PcgRegion> {
-        self.related_local_place().regions(ctxt)
-    }
-
     pub fn as_current_place(&self) -> Option<Place<'tcx>> {
         if let MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place)) = self {
             Some(*place)
@@ -212,7 +191,7 @@ impl<'tcx> From<mir::Place<'tcx>> for MaybeRemotePlace<'tcx> {
 }
 
 impl RemotePlace {
-    pub(crate) fn new(local: mir::Local) -> Self {
+    pub fn new(local: mir::Local) -> Self {
         Self { local }
     }
 

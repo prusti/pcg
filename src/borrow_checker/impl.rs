@@ -6,7 +6,7 @@ use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
     BodyAndBorrows,
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::PcgRegion,
+    borrow_pcg::region_projection::{HasRegions, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{

@@ -122,7 +122,7 @@ pub trait BorrowPcgEdgeLike<'tcx, Kind = BorrowPcgEdgeKind<'tcx>>:
     fn blocked_places<'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> impl Iterator<Item = MaybeRemotePlace<'tcx>> + 'slf
+    ) -> impl Iterator<Item = MaybeLabelledPlace<'tcx>> + 'slf
     where
         'tcx: 'slf,
     {
@@ -314,10 +314,7 @@ impl<'tcx> PcgNode<'tcx> {
         'tcx: 'a,
     {
         match self {
-            PcgNode::Place(MaybeRemotePlace::Local(maybe_old_place)) => {
-                Some(LocalNode::Place(*maybe_old_place))
-            }
-            PcgNode::Place(MaybeRemotePlace::Remote(_)) => None,
+            PcgNode::Place(place) => Some(LocalNode::Place(*place)),
             PcgNode::LifetimeProjection(rp) => {
                 let place = rp.base().as_local_place()?;
                 Some(LocalNode::LifetimeProjection(rp.with_base(place)))
@@ -326,14 +323,12 @@ impl<'tcx> PcgNode<'tcx> {
     }
     pub fn as_current_place(&self) -> Option<Place<'tcx>> {
         match self {
-            BlockedNode::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place))) => {
-                Some(*place)
-            }
+            BlockedNode::Place(MaybeLabelledPlace::Current(place)) => Some(*place),
             _ => None,
         }
     }
 
-    pub(crate) fn as_place(&self) -> Option<MaybeRemotePlace<'tcx>> {
+    pub(crate) fn as_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
         match self {
             BlockedNode::Place(maybe_remote_place) => Some(*maybe_remote_place),
             BlockedNode::LifetimeProjection(_) => None,
@@ -353,16 +348,10 @@ impl<'tcx> From<Place<'tcx>> for BlockedNode<'tcx> {
     }
 }
 
-impl<'tcx> From<MaybeLabelledPlace<'tcx>> for BlockedNode<'tcx> {
-    fn from(maybe_old_place: MaybeLabelledPlace<'tcx>) -> Self {
-        BlockedNode::Place(maybe_old_place.into())
-    }
-}
-
 impl<'tcx> From<LocalNode<'tcx>> for BlockedNode<'tcx> {
     fn from(blocking_node: LocalNode<'tcx>) -> Self {
         match blocking_node {
-            LocalNode::Place(maybe_old_place) => BlockedNode::Place(maybe_old_place.into()),
+            LocalNode::Place(maybe_old_place) => BlockedNode::Place(maybe_old_place),
             LocalNode::LifetimeProjection(rp) => BlockedNode::LifetimeProjection(rp.into()),
         }
     }

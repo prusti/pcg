@@ -19,7 +19,6 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        maybe_remote::MaybeRemotePlace,
         place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -129,8 +128,8 @@ pub struct LoopAbstractionInput<'tcx>(pub(crate) PcgNode<'tcx>);
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
 pub struct LoopAbstractionOutput<'tcx>(pub(crate) LocalNode<'tcx>);
 
-impl<'tcx> From<MaybeRemotePlace<'tcx>> for LoopAbstractionInput<'tcx> {
-    fn from(value: MaybeRemotePlace<'tcx>) -> Self {
+impl<'tcx> From<MaybeLabelledPlace<'tcx>> for LoopAbstractionInput<'tcx> {
+    fn from(value: MaybeLabelledPlace<'tcx>) -> Self {
         LoopAbstractionInput(value.into())
     }
 }

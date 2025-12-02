@@ -129,9 +129,9 @@ impl<'tcx> TryFrom<PcgNode<'tcx>> for MaybeLabelledPlace<'tcx> {
     type Error = String;
     fn try_from(node: PcgNode<'tcx>) -> Result<Self, Self::Error> {
         match node {
-            PcgNode::Place(p) => Ok(p.try_into()?),
+            PcgNode::Place(p) => Ok(p),
             PcgNode::LifetimeProjection(_) => {
-                Err("Region projection cannot be converted to a maybe old place".to_owned())
+                Err("Lifetime projection cannot be converted to a maybe labelled place".to_owned())
             }
         }
     }

@@ -351,8 +351,7 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
     for LifetimeProjection<'tcx, T>
 {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.with_base(self.base.to_pcg_lifetime_projection_base())
-            .into()
+        PcgNode::LifetimeProjection(self.with_base(self.base.to_pcg_lifetime_projection_base()))
     }
 }
 

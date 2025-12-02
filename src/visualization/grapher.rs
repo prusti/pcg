@@ -7,10 +7,7 @@ use crate::{
     },
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
     rustc_interface::middle::mir,
-    utils::{
-        CompilerCtxt, HasPlace, Place, maybe_old::MaybeLabelledPlace,
-        maybe_remote::MaybeRemotePlace,
-    },
+    utils::{CompilerCtxt, HasPlace, Place, maybe_old::MaybeLabelledPlace},
 };
 
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
@@ -26,16 +23,9 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
         let constructor = self.constructor();
         constructor.insert_place_node(place.place(), place.location(), &capability_getter)
     }
-    fn insert_maybe_remote_place(&mut self, place: MaybeRemotePlace<'tcx>) -> NodeId {
-        let constructor = self.constructor();
-        match place {
-            MaybeRemotePlace::Local(place) => self.insert_maybe_labelled_place(place),
-            MaybeRemotePlace::Remote(local) => constructor.insert_remote_node(local),
-        }
-    }
     fn insert_pcg_node(&mut self, node: PcgNode<'tcx>) -> NodeId {
         match node {
-            PcgNode::Place(place) => self.insert_maybe_remote_place(place),
+            PcgNode::Place(place) => self.insert_maybe_labelled_place(place),
             PcgNode::LifetimeProjection(rp) => self.constructor().insert_region_projection_node(rp),
         }
     }
@@ -121,7 +111,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     .insert_abstraction(abstraction, capabilities);
             }
             BorrowPcgEdgeKind::BorrowFlow(member) => {
-                let input_node = self.insert_pcg_node(member.long().into());
+                let input_node = self.insert_pcg_node(member.long().to_pcg_node(self.ctxt()));
                 let output_node = self.insert_pcg_node(member.short().to_pcg_node(self.ctxt()));
                 self.constructor().edges.insert(GraphEdge::BorrowFlow {
                     source: input_node,

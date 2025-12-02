@@ -29,11 +29,7 @@ use crate::{
         edge_data::EdgeData,
         region_projection::LifetimeProjection,
     },
-    utils::{
-        CompilerCtxt,
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        validity::HasValidityCheck,
-    },
+    utils::{CompilerCtxt, place::maybe_old::MaybeLabelledPlace, validity::HasValidityCheck},
 };
 
 /// A borrow that is explicit in the MIR (e.g. `let x = &mut y;`)
@@ -140,7 +136,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Bo
 impl<'tcx> EdgeData<'tcx> for BorrowEdge<'tcx> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         match node {
-            PcgNode::Place(MaybeRemotePlace::Local(p)) => self.blocked_place == p,
+            PcgNode::Place(p) => self.blocked_place == p,
             _ => false,
         }
     }
