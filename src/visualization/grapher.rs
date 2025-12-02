@@ -21,7 +21,7 @@ pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
 
 pub(super) trait Grapher<'a, 'tcx: 'a> {
     fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a;
-    fn insert_maybe_old_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId {
+    fn insert_maybe_labelled_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId {
         let capability_getter = self.capability_getter();
         let constructor = self.constructor();
         constructor.insert_place_node(place.place(), place.location(), &capability_getter)
@@ -29,7 +29,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
     fn insert_maybe_remote_place(&mut self, place: MaybeRemotePlace<'tcx>) -> NodeId {
         let constructor = self.constructor();
         match place {
-            MaybeRemotePlace::Local(place) => self.insert_maybe_old_place(place),
+            MaybeRemotePlace::Local(place) => self.insert_maybe_labelled_place(place),
             MaybeRemotePlace::Remote(local) => constructor.insert_remote_node(local),
         }
     }
@@ -94,7 +94,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                 }
             }
             BorrowPcgEdgeKind::Borrow(borrow) => {
-                let borrowed_place = self.insert_maybe_remote_place(borrow.blocked_place());
+                let borrowed_place = self.insert_maybe_labelled_place(borrow.blocked_place());
                 let assigned_region_projection = borrow
                     .assigned_lifetime_projection(self.ctxt())
                     .to_lifetime_projection();
@@ -102,16 +102,15 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     .constructor()
                     .insert_region_projection_node(assigned_region_projection);
                 let kind = match borrow.kind() {
-                    Some(mir::BorrowKind::Shared) => "shared".to_owned(),
-                    Some(mir::BorrowKind::Mut { kind }) => format!("{kind:?}"),
-                    Some(mir::BorrowKind::Fake(_)) => "fake".to_owned(),
-                    None => String::new(),
+                    mir::BorrowKind::Shared => "shared".to_owned(),
+                    mir::BorrowKind::Mut { kind } => format!("{kind:?}"),
+                    mir::BorrowKind::Fake(_) => "fake".to_owned(),
                 };
                 self.constructor().edges.insert(GraphEdge::Borrow {
                     borrowed_place,
                     assigned_region_projection: assigned_rp_node,
                     location: borrow.reserve_location(),
-                    region: borrow.borrow_region().map(|r| format!("{r:?}")),
+                    region: format!("{:?}", borrow.region),
                     validity_conditions,
                     kind,
                     borrow_index: borrow.borrow_index().map(|i| format!("{i:?}")),

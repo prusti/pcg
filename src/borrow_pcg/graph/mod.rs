@@ -36,12 +36,12 @@ use itertools::Itertools;
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
-    edge::borrow::LocalBorrow,
+    edge::borrow::BorrowEdge,
     edge_data::EdgeData,
     validity_conditions::ValidityConditions,
 };
 use crate::{
-    borrow_pcg::edge::{abstraction::AbstractionEdge, borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+    borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
     utils::CompilerCtxt,
 };
 
@@ -257,7 +257,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         result.insert(base);
                     }
                 }
-                BorrowPcgEdgeKind::Borrow(BorrowEdge::Local(borrow)) => {
+                BorrowPcgEdgeKind::Borrow(borrow) => {
                     if let MaybeLabelledPlace::Current(place) = borrow.blocked_place
                         && place.is_owned(ctxt)
                     {
@@ -270,9 +270,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&LocalBorrow<'tcx>> {
+    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
         for edge in self.edges() {
-            if let BorrowPcgEdgeKind::Borrow(BorrowEdge::Local(borrow)) = edge.kind
+            if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind
                 && borrow.reserve_location() == location
             {
                 return Some(borrow);
