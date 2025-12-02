@@ -181,6 +181,10 @@ impl<'tcx> BorrowEdge<'tcx> {
         self.borrow_index
     }
 
+    pub fn region(&self) -> ty::Region<'tcx> {
+        self.region
+    }
+
     pub fn kind(&self) -> mir::BorrowKind {
         self.kind
     }
