@@ -405,6 +405,10 @@ impl PcgVisualizationData {
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
 pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
+    tracing::info!(
+        "Running PCG (visualization: {})",
+        pcg_ctxt.settings.visualization
+    );
     let engine = PcgEngine::new(
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,

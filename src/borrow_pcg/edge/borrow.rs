@@ -333,7 +333,7 @@ impl<'tcx> BorrowEdge<'tcx> {
         }
     }
 
-    pub(crate) fn assigned_ref(&self) -> MaybeLabelledPlace<'tcx> {
+    pub fn assigned_ref(&self) -> MaybeLabelledPlace<'tcx> {
         match self {
             BorrowEdge::Local(borrow) => borrow.assigned_ref,
             BorrowEdge::Remote(remote) => remote.assigned_ref(),

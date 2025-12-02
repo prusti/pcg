@@ -530,7 +530,7 @@ impl<'tcx> Place<'tcx> {
         )
     }
 
-    pub(crate) fn is_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    pub fn is_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
     {

@@ -51,6 +51,10 @@ impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for MaybeRemotePlace<'t
 }
 
 impl<'tcx> MaybeRemotePlace<'tcx> {
+    pub fn is_remote(self) -> bool {
+        matches!(self, MaybeRemotePlace::Remote(_))
+    }
+
     pub(crate) fn maybe_remote_current_place(&self) -> Option<MaybeRemoteCurrentPlace<'tcx>> {
         match self {
             MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place)) => {
@@ -159,7 +163,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         self.related_local_place().regions(ctxt)
     }
 
-    pub(crate) fn as_current_place(&self) -> Option<Place<'tcx>> {
+    pub fn as_current_place(&self) -> Option<Place<'tcx>> {
         if let MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place)) = self {
             Some(*place)
         } else {

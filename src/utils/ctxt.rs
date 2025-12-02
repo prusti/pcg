@@ -564,7 +564,7 @@ impl<'tcx> Place<'tcx> {
         (*self).ty(ctxt.body(), ctxt.tcx())
     }
 
-    pub(crate) fn projects_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    pub fn projects_shared_ref<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
     {
