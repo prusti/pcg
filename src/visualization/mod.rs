@@ -188,8 +188,8 @@ pub(crate) enum GraphEdge<'a> {
         borrowed_place: NodeId,
         assigned_region_projection: NodeId,
         kind: String,
-        location: Option<Location>,
-        region: Option<String>,
+        location: Location,
+        region: String,
         validity_conditions: &'a ValidityConditions,
         borrow_index: Option<String>,
     },
@@ -276,7 +276,7 @@ impl<'a> GraphEdge<'a> {
                             String::new()
                         },
                         kind,
-                        region.as_ref().cloned().unwrap_or_default()
+                        region
                     ))
                     .with_tooltip(
                         validity_conditions

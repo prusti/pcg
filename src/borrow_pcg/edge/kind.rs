@@ -8,7 +8,7 @@ use crate::{
     coupling::PcgCoupledEdgeKind,
 };
 
-use super::{borrow::RemoteBorrow, outlives::BorrowFlowEdge};
+use super::outlives::BorrowFlowEdge;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum BorrowPcgEdgeKind<'tcx> {
@@ -18,10 +18,4 @@ pub enum BorrowPcgEdgeKind<'tcx> {
     Abstraction(AbstractionEdge<'tcx>),
     BorrowFlow(BorrowFlowEdge<'tcx>),
     Coupled(PcgCoupledEdgeKind<'tcx>),
-}
-
-impl<'tcx> From<RemoteBorrow<'tcx>> for BorrowPcgEdgeKind<'tcx> {
-    fn from(borrow: RemoteBorrow<'tcx>) -> Self {
-        BorrowPcgEdgeKind::Borrow(BorrowEdge::Remote(borrow))
-    }
 }

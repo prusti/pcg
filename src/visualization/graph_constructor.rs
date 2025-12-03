@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{HasTy, LifetimeProjection, PlaceOrConst},
+        region_projection::{LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
@@ -22,15 +22,11 @@ use super::{
     node::IdLookup,
 };
 use crate::{
-    borrow_pcg::edge::abstraction::AbstractionEdge,
-    utils::place::{
-        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace, remote::RemotePlace,
-    },
+    borrow_pcg::edge::abstraction::AbstractionEdge, utils::place::maybe_old::MaybeLabelledPlace,
 };
 use std::collections::{BTreeSet, HashSet};
 
 pub(super) struct GraphConstructor<'a, 'tcx> {
-    remote_nodes: IdLookup<RemotePlace>,
     place_nodes: IdLookup<(Place<'tcx>, Option<SnapshotLocation>)>,
     region_projection_nodes: IdLookup<LifetimeProjection<'tcx>>,
     nodes: Vec<GraphNode>,
@@ -42,7 +38,6 @@ pub(super) struct GraphConstructor<'a, 'tcx> {
 impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn new(ctxt: CompilerCtxt<'a, 'tcx>, location: Option<mir::Location>) -> Self {
         Self {
-            remote_nodes: IdLookup::new('a'),
             place_nodes: IdLookup::new('p'),
             region_projection_nodes: IdLookup::new('r'),
             nodes: vec![],
@@ -52,7 +47,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         }
     }
 
-    fn insert_maybe_old_place(
+    fn insert_maybe_labelled_place(
         &mut self,
         place: MaybeLabelledPlace<'tcx>,
         capability_getter: &impl CapabilityGetter<'a, 'tcx>,
@@ -60,23 +55,13 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         self.insert_place_node(place.place(), place.location(), capability_getter)
     }
 
-    fn insert_maybe_remote_place(
-        &mut self,
-        place: MaybeRemotePlace<'tcx>,
-        capability_getter: &impl CapabilityGetter<'a, 'tcx>,
-    ) -> NodeId {
-        match place {
-            MaybeRemotePlace::Local(place) => self.insert_maybe_old_place(place, capability_getter),
-            MaybeRemotePlace::Remote(local) => self.insert_remote_node(local),
-        }
-    }
     fn insert_pcg_node(
         &mut self,
         node: PcgNode<'tcx>,
         capability_getter: &impl CapabilityGetter<'a, 'tcx>,
     ) -> NodeId {
         match node {
-            PcgNode::Place(place) => self.insert_maybe_remote_place(place, capability_getter),
+            PcgNode::Place(place) => self.insert_maybe_labelled_place(place, capability_getter),
             PcgNode::LifetimeProjection(rp) => self.insert_region_projection_node(rp),
         }
     }
@@ -193,25 +178,6 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             blocking: output,
             label,
         });
-    }
-
-    pub(super) fn insert_remote_node(&mut self, remote_place: RemotePlace) -> NodeId {
-        if let Some(id) = self.remote_nodes.existing_id(&remote_place) {
-            return id;
-        }
-        let id = self.remote_nodes.node_id(&remote_place);
-        let node = GraphNode {
-            id,
-            node_type: NodeType::PlaceNode {
-                owned: false,
-                label: format!("Target of input {:?}", remote_place.assigned_local()),
-                location: None,
-                capability: None,
-                ty: format!("{:?}", remote_place.rust_ty(self.ctxt)),
-            },
-        };
-        self.insert_node(node);
-        id
     }
 
     pub(super) fn insert_place_node(

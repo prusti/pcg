@@ -10,6 +10,7 @@ impl PcgSettings {
         let file_path = self.functions_json_path();
         let json_data =
             serde_json::to_string(metadata).expect("Failed to serialize item names to JSON");
+        tracing::info!("Writing functions JSON to {:?}", file_path);
         let mut file = std::fs::File::create(file_path).expect("Failed to create JSON file");
         file.write_all(json_data.as_bytes())
             .expect("Failed to write item names to JSON file");

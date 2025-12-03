@@ -92,12 +92,12 @@ impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
 
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
-        _ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        Box::new(std::iter::once(self.long.into()))
+        Box::new(std::iter::once(self.long.to_pcg_node(ctxt.ctxt())))
     }
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(

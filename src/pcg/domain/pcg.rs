@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
-        edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+        edge::kind::BorrowPcgEdgeKind,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
@@ -245,7 +245,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
                         ));
                     }
                 }
-                BorrowPcgEdgeKind::Borrow(BorrowEdge::Local(borrow_edge)) => {
+                BorrowPcgEdgeKind::Borrow(borrow_edge) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = borrow_edge.blocked_place
                         && blocked_place.is_owned(ctxt)
                         && !self.owned.contains_place(blocked_place, ctxt.bc_ctxt())

@@ -4,6 +4,7 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
+        borrow_pcg_edge::BlockingNode,
         edge_data::LabelEdgePlaces,
         graph::join::JoinBorrowsArgs,
         has_pcs_elem::LabelLifetimeProjection,
@@ -13,12 +14,11 @@ use crate::{
         SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
-    utils::HasBorrowCheckerCtxt,
+    utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
 };
 
 use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, ToBorrowsEdge},
-    edge::borrow::RemoteBorrow,
     graph::BorrowsGraph,
     validity_conditions::{PathCondition, ValidityConditions},
     visitor::extract_regions,
@@ -28,7 +28,7 @@ use crate::{
     borrow_pcg::{
         action::{BorrowPcgActionKind, LabelPlaceReason},
         edge::{
-            borrow::{BorrowEdge, LocalBorrow},
+            borrow::BorrowEdge,
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
@@ -48,11 +48,8 @@ use crate::{
         ty::{self},
     },
     utils::{
-        CompilerCtxt, Place,
-        display::DebugLines,
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        remote::RemotePlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, Place, display::DebugLines, place::maybe_old::MaybeLabelledPlace,
+        remote::RemotePlace, validity::HasValidityCheck,
     },
 };
 
@@ -325,17 +322,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
     ) {
         let local_decl = &ctxt.ctxt.body().local_decls[local];
         let arg_place: Place<'tcx> = local.into();
-        if let ty::TyKind::Ref(_, _, _) = local_decl.ty.kind() {
-            let _ = self.apply_action(
-                BorrowPcgAction::add_edge(
-                    BorrowPcgEdge::new(RemoteBorrow::new(local).into(), ValidityConditions::new()),
-                    "Introduce initial borrows",
-                    ctxt.ctxt,
-                ),
-                capabilities,
-                ctxt,
-            );
-        }
         for region in extract_regions(local_decl.ty) {
             let region_projection =
                 LifetimeProjection::new(arg_place.into(), region, None, ctxt.ctxt).unwrap();
@@ -413,42 +399,23 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         self.graph.filter_for_path(path, ctxt);
     }
 
-    /// Returns the place that blocks `place` if:
-    /// 1. there is exactly one hyperedge blocking `place`
-    /// 2. that edge is blocked by exactly one node
-    /// 3. that node is a region projection that can be dereferenced
-    ///
-    /// This is used in the symbolic-execution based purification encoding to
-    /// compute the backwards function for the argument local `place`. It
-    /// depends on `Borrow` edges connecting the remote input to a single node
-    /// in the PCG. In the symbolic execution, backward function results are computed
-    /// per-path, so this expectation may be reasonable in that context.
-    pub fn get_place_blocking(
-        &self,
-        place: MaybeRemotePlace<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Option<MaybeLabelledPlace<'tcx>> {
-        let edges = self.edges_blocking(place.into(), ctxt);
-        if edges.len() != 1 {
-            return None;
-        }
-        let nodes = edges[0].blocked_by_nodes(ctxt).collect::<Vec<_>>();
-        if nodes.len() != 1 {
-            return None;
-        }
-        let node = nodes.into_iter().next().unwrap();
-        match node {
-            PcgNode::Place(_) => todo!(),
-            PcgNode::LifetimeProjection(region_projection) => region_projection.deref(ctxt),
-        }
-    }
-
     pub(crate) fn edges_blocking<'slf, 'mir: 'slf, 'bc: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> Vec<BorrowPcgEdgeRef<'tcx, 'slf>> {
         self.graph.edges_blocking(node, ctxt).collect()
+    }
+
+    pub fn nodes_blocking<'slf, 'mir: 'slf, 'bc: 'slf>(
+        &'slf self,
+        node: BlockedNode<'tcx>,
+        ctxt: CompilerCtxt<'mir, 'tcx>,
+    ) -> HashSet<BlockingNode<'tcx>> {
+        self.graph
+            .edges_blocking(node, ctxt)
+            .flat_map(|e| e.blocked_by_nodes(ctxt).collect::<Vec<_>>())
+            .collect()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -472,7 +439,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             assigned_place,
             assigned_place.ty(ctxt).ty
         );
-        let borrow_edge = LocalBorrow::new(
+        let borrow_edge = BorrowEdge::new(
             blocked_place.into(),
             assigned_place.into(),
             kind,
@@ -481,7 +448,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             ctxt,
         );
         assert!(self.graph.insert(
-            BorrowEdge::Local(borrow_edge).to_borrow_pcg_edge(self.validity_conditions.clone()),
+            borrow_edge.to_borrow_pcg_edge(self.validity_conditions.clone()),
             ctxt.ctxt()
         ));
 
