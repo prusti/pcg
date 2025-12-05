@@ -14,12 +14,12 @@ export function useLocalStorageBool(
   return [value, setValue];
 }
 
-export function useLocalStorageString(
+export function useLocalStorageString<T extends string = string>(
   key: string,
-  defaultValue: string
-): [string, Dispatch<SetStateAction<string>>] {
-  const [value, setValue] = useState(
-    () => storage.getItem(key) || defaultValue
+  defaultValue: T
+): [T, Dispatch<SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(
+    () => (storage.getItem(key) as T) || defaultValue
   );
 
   useEffect(() => {

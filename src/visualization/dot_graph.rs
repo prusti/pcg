@@ -141,15 +141,16 @@ impl Display for DotGraph {
     }
 }
 
+#[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) enum DotLabel {
-    Text(Cow<'static, str>),
+    Text(DotStringAttr),
     Html(Html),
 }
 
 impl Display for DotLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DotLabel::Text(text) => write!(f, "\"{text}\""),
+            DotLabel::Text(text) => write!(f, "{text}"),
             DotLabel::Html(html) => write!(f, "<{html}>"),
         }
     }
@@ -172,7 +173,7 @@ impl DotNode {
     pub(crate) fn simple(id: NodeId, label: impl Into<Cow<'static, str>>) -> Self {
         Self {
             id,
-            label: DotLabel::Text(label.into()),
+            label: DotLabel::Text(DotStringAttr(label.into())),
             font_color: DotStringAttr("black".into()),
             color: DotStringAttr("black".into()),
             shape: DotStringAttr("rect".into()),
@@ -184,7 +185,14 @@ impl DotNode {
 }
 trait DotAttr: Display {}
 
+#[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub struct DotStringAttr(pub Cow<'static, str>);
+
+impl From<&'static str> for DotStringAttr {
+    fn from(value: &'static str) -> Self {
+        Self(value.into())
+    }
+}
 
 impl Display for DotStringAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -250,7 +258,7 @@ pub enum EdgeDirection {
 
 #[derive(Eq, PartialEq, PartialOrd, Ord)]
 pub(crate) struct EdgeOptions {
-    label: Cow<'static, str>,
+    label: DotLabel,
     color: Option<Cow<'static, str>>,
     style: Option<Cow<'static, str>>,
     direction: Option<EdgeDirection>,
@@ -262,7 +270,7 @@ pub(crate) struct EdgeOptions {
 impl EdgeOptions {
     pub fn directed(direction: EdgeDirection) -> Self {
         Self {
-            label: Cow::Borrowed(""),
+            label: DotLabel::Text(DotStringAttr("".into())),
             color: None,
             style: None,
             direction: Some(direction),
@@ -274,7 +282,7 @@ impl EdgeOptions {
 
     pub fn undirected() -> Self {
         Self {
-            label: Cow::Borrowed(""),
+            label: DotLabel::Text(DotStringAttr("".into())),
             color: None,
             style: None,
             direction: None,
@@ -290,7 +298,7 @@ impl EdgeOptions {
     }
 
     pub fn with_label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
-        self.label = label.into();
+        self.label = DotLabel::Text(DotStringAttr(label.into()));
         self
     }
 
@@ -351,7 +359,7 @@ impl Display for DotEdge {
         };
         write!(
             f,
-            "    \"{}\" -> \"{}\" [label=\"{}\"{}{}{}{}{}{}{}]",
+            "    \"{}\" -> \"{}\" [label={}{}{}{}{}{}{}{}]",
             self.from,
             self.to,
             self.options.label,

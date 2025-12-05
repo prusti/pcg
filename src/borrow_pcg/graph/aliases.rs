@@ -169,7 +169,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     );
                 }
                 BorrowPcgEdgeKind::BorrowFlow(outlives) => match &outlives.kind {
-                    BorrowFlowEdgeKind::Move => {
+                    BorrowFlowEdgeKind::Assignment(_) => {
                         extend(outlives.long().to_pcg_node(ctxt), seen, &mut result, true);
                     }
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal }

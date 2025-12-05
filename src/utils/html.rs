@@ -1,7 +1,7 @@
 use dot::escape_html;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Html {
     Text(Cow<'static, str>),
     Subscript(Cow<'static, str>),

@@ -3,9 +3,11 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::outlives::{
+            AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
+        },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
-        region_projection::{LifetimeProjection, PlaceOrConst},
+        region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
         CapabilityKind, EvalStmtPhase,
@@ -13,13 +15,11 @@ use crate::{
         place_capabilities::PlaceCapabilitiesInterface,
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
+    utils::Place,
 };
 
-use crate::{
-    rustc_interface::middle::ty::{self},
-    utils::{
-        self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
-    },
+use crate::utils::{
+    self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
 };
 
 use super::{PcgError, PcgUnsupportedError};
@@ -103,60 +103,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
             }
-            Rvalue::Use(Operand::Constant(box c)) => {
-                if let ty::TyKind::Ref(const_region, _, _) = c.ty().kind()
-                    && let ty::TyKind::Ref(target_region, _, _) = target.ty(self.ctxt).ty.kind()
-                {
-                    self.record_and_apply_action(
-                        BorrowPcgAction::add_edge(
-                            BorrowPcgEdge::new(
-                                BorrowFlowEdge::new(
-                                    LifetimeProjection::new(
-                                        PlaceOrConst::Const(c.const_),
-                                        (*const_region).into(),
-                                        None,
-                                        self.ctxt.ctxt(),
-                                    )
-                                    .unwrap(),
-                                    LifetimeProjection::new(
-                                        target,
-                                        (*target_region).into(),
-                                        None,
-                                        self.ctxt.ctxt(),
-                                    )
-                                    .unwrap()
-                                    .into(),
-                                    BorrowFlowEdgeKind::ConstRef,
-                                    self.ctxt,
-                                )
-                                .into(),
-                                self.pcg.borrow.validity_conditions.clone(),
-                            ),
-                            "assign_post_main",
-                            self.ctxt,
-                        )
-                        .into(),
-                    )?;
-                }
+            Rvalue::Use(operand) => {
+                self.assignment_projections(operand, target, None)?;
             }
-            Rvalue::Use(operand @ (Operand::Move(from) | Operand::Copy(from)))
-            | Rvalue::Cast(_, operand @ (Operand::Move(from) | Operand::Copy(from)), _) => {
-                let from: utils::Place<'tcx> = (*from).into();
-                let (from, kind) = if matches!(operand, Operand::Move(_)) {
-                    (
-                        MaybeLabelledPlace::new(from, Some(self.pre_operand_move_label())),
-                        BorrowFlowEdgeKind::Move,
-                    )
-                } else {
-                    (from.into(), BorrowFlowEdgeKind::CopyRef)
-                };
-                for source_proj in from.lifetime_projections(self.ctxt) {
-                    self.connect_outliving_projections(
-                        source_proj.with_base(PlaceOrConst::Place(from.with_inherent_region(ctxt))),
-                        target,
-                        |_| kind,
-                    )?;
-                }
+            Rvalue::Cast(kind, operand, ty) => {
+                self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
                 let blocked_place: utils::Place<'tcx> = (*blocked_place).into();
@@ -181,6 +132,45 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn assignment_projections(
+        &mut self,
+        operand: &Operand<'tcx>,
+        target_place: Place<'tcx>,
+        cast_data: Option<CastData<'tcx>>,
+    ) -> Result<(), PcgError> {
+        let (source_projections, operand_type) = match operand {
+            Operand::Move(place) | Operand::Copy(place) => {
+                let operand_type = if matches!(operand, Operand::Move(_)) {
+                    OperandType::Move
+                } else {
+                    OperandType::Copy
+                };
+                let place_label = if matches!(operand_type, OperandType::Move) {
+                    Some(self.pre_operand_move_label())
+                } else {
+                    None
+                };
+                let place: utils::Place<'tcx> = (*place).into();
+                let place = place.with_inherent_region(self.ctxt);
+                (
+                    PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
+                        .lifetime_projections(self.ctxt),
+                    operand_type,
+                )
+            }
+            Operand::Constant(const_) => (
+                PlaceOrConst::Const(const_.const_).lifetime_projections(self.ctxt),
+                OperandType::Const,
+            ),
+        };
+        for source_proj in source_projections {
+            self.connect_outliving_projections(source_proj, target_place, |_| {
+                BorrowFlowEdgeKind::Assignment(AssignmentData::new(operand_type, cast_data))
+            })?;
         }
         Ok(())
     }

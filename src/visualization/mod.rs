@@ -205,7 +205,7 @@ pub(crate) enum GraphEdge<'a> {
     BorrowFlow {
         source: NodeId,
         target: NodeId,
-        kind: BorrowFlowEdgeKind,
+        kind: BorrowFlowEdgeKind<'a, String>,
     },
     Coupled {
         source: NodeId,
