@@ -188,7 +188,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         &mut self,
         source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
         target: Place<'tcx>,
-        kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind,
+        kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt).into_iter() {

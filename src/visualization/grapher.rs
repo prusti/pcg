@@ -7,7 +7,7 @@ use crate::{
     },
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
     rustc_interface::middle::mir,
-    utils::{CompilerCtxt, HasPlace, Place, maybe_old::MaybeLabelledPlace},
+    utils::{CompilerCtxt, DebugRepr, HasPlace, Place, maybe_old::MaybeLabelledPlace},
 };
 
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
@@ -116,7 +116,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                 self.constructor().edges.insert(GraphEdge::BorrowFlow {
                     source: input_node,
                     target: output_node,
-                    kind: member.kind,
+                    kind: member.kind.debug_repr(()),
                 });
             }
             BorrowPcgEdgeKind::Coupled(hyper_edge) => {

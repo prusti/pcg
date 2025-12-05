@@ -1,4 +1,8 @@
 //! Borrow-flow edges
+use std::marker::PhantomData;
+
+use serde_derive::Serialize;
+
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -11,8 +15,9 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
+    rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        CompilerCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
@@ -22,7 +27,7 @@ use crate::{
 pub struct BorrowFlowEdge<'tcx> {
     long: LifetimeProjection<'tcx>,
     short: LocalLifetimeProjection<'tcx>,
-    pub(crate) kind: BorrowFlowEdgeKind,
+    pub(crate) kind: BorrowFlowEdgeKind<'tcx>,
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
@@ -129,7 +134,7 @@ impl<'tcx> BorrowFlowEdge<'tcx> {
     pub(crate) fn new<'a>(
         long: LifetimeProjection<'tcx>,
         short: LocalLifetimeProjection<'tcx>,
-        kind: BorrowFlowEdgeKind,
+        kind: BorrowFlowEdgeKind<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self
     where
@@ -149,13 +154,58 @@ impl<'tcx> BorrowFlowEdge<'tcx> {
         self.short
     }
 
-    pub fn kind(&self) -> BorrowFlowEdgeKind {
+    pub fn kind(&self) -> BorrowFlowEdgeKind<'tcx> {
         self.kind
     }
 }
 
+impl<'tcx, Ty: serde::Serialize> serde::Serialize for CastData<'tcx, Ty> {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum BorrowFlowEdgeKind {
+pub struct CastData<'tcx, Ty = ty::Ty<'tcx>> {
+    kind: mir::CastKind,
+    ty: Ty,
+    _phantom: PhantomData<&'tcx Ty>,
+}
+
+impl<'tcx, Ty> CastData<'tcx, Ty> {
+    pub(crate) fn new(kind: mir::CastKind, ty: Ty) -> Self {
+        Self {
+            kind,
+            ty,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
+pub enum OperandType {
+    Move,
+    Copy,
+    Const,
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
+pub struct AssignmentData<'tcx, Ty = ty::Ty<'tcx>> {
+    operand_type: OperandType,
+    cast: Option<CastData<'tcx, Ty>>,
+}
+
+impl<'tcx, Ty> AssignmentData<'tcx, Ty> {
+    pub(crate) fn new(operand_type: OperandType, cast: Option<CastData<'tcx, Ty>>) -> Self {
+        Self { operand_type, cast }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
+pub enum BorrowFlowEdgeKind<'tcx, Ty = ty::Ty<'tcx>> {
     /// Indicates that the borrow flows to the `target_rp_index`th region
     /// projection of the `field_idx`th field of the aggregate.
     ///
@@ -170,10 +220,6 @@ pub enum BorrowFlowEdgeKind {
         field_idx: usize,
         target_rp_index: usize,
     },
-    /// Connects a region projection from a constant to some PCG node. For
-    /// example `let x: &'x C = c;` where `c` is a constant of type `&'c C`, then
-    /// an edge `{c↓'c} -> {x↓'x}` of this kind is created.
-    ConstRef,
     /// For a borrow `let x: &'x T<'b> = &y`, where y is of typ T<'a>, an edge generated
     /// for `{y|'a} -> {x|'b}` of this kind is created if 'a outlives 'b.
     ///
@@ -188,19 +234,50 @@ pub enum BorrowFlowEdgeKind {
         regions_equal: bool,
     },
     InitialBorrows,
-    CopyRef,
-    Move,
+    /// Borrows that have flowed from a place as the result of a MIR assignment
+    /// statement. For a statement e.g. `let x = e`, borrows will flow from the
+    /// lifetime projections in `e` to the lifetime projections of `x`.
+    Assignment(AssignmentData<'tcx, Ty>),
     Future,
 }
 
-impl std::fmt::Display for BorrowFlowEdgeKind {
+impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
+    type Repr = BorrowFlowEdgeKind<'tcx, String>;
+    fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
+        match self {
+            BorrowFlowEdgeKind::Aggregate {
+                field_idx,
+                target_rp_index,
+            } => BorrowFlowEdgeKind::Aggregate {
+                field_idx: *field_idx,
+                target_rp_index: *target_rp_index,
+            },
+            BorrowFlowEdgeKind::BorrowOutlives {
+                regions_equal: lifetimes_equal,
+            } => BorrowFlowEdgeKind::BorrowOutlives {
+                regions_equal: *lifetimes_equal,
+            },
+            BorrowFlowEdgeKind::InitialBorrows => BorrowFlowEdgeKind::InitialBorrows,
+            BorrowFlowEdgeKind::Future => BorrowFlowEdgeKind::Future,
+            BorrowFlowEdgeKind::Assignment(assignment_data) => {
+                BorrowFlowEdgeKind::Assignment(AssignmentData::new(
+                    assignment_data.operand_type,
+                    assignment_data
+                        .cast
+                        .map(|cast| CastData::new(cast.kind, format!("{cast:?}").into())),
+                ))
+            }
+        }
+    }
+}
+
+impl<'tcx, Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'tcx, Ty> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BorrowFlowEdgeKind::Aggregate {
                 field_idx,
                 target_rp_index,
             } => write!(f, "Aggregate({field_idx}, {target_rp_index})"),
-            BorrowFlowEdgeKind::ConstRef => write!(f, "ConstRef"),
             BorrowFlowEdgeKind::BorrowOutlives {
                 regions_equal: lifetimes_equal,
             } => {
@@ -211,9 +288,19 @@ impl std::fmt::Display for BorrowFlowEdgeKind {
                 }
             }
             BorrowFlowEdgeKind::InitialBorrows => write!(f, "InitialBorrows"),
-            BorrowFlowEdgeKind::CopyRef => write!(f, "CopyRef"),
-            BorrowFlowEdgeKind::Move => write!(f, "Move"),
             BorrowFlowEdgeKind::Future => write!(f, "Future"),
+            BorrowFlowEdgeKind::Assignment(assignment_data) => {
+                let first_part = match assignment_data.operand_type {
+                    OperandType::Move => "Move",
+                    OperandType::Copy => "Copy",
+                    OperandType::Const => "Const",
+                };
+                let second_part = match &assignment_data.cast {
+                    Some(cast) => format!(" with cast to {:?} via {:?}", cast.ty, cast.kind),
+                    None => String::new(),
+                };
+                write!(f, "{first_part}{second_part}")
+            }
         }
     }
 }

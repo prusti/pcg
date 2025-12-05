@@ -30,7 +30,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, Place,
         PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
@@ -190,10 +190,10 @@ impl Idx for RegionIdx {
     }
 }
 
-pub type PcgLifetimeProjectionBase<'tcx> = PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>>;
-
 /// The most general base of a lifetime projection. Either a [`MaybeRemotePlace`]
 /// or a constant.
+pub type PcgLifetimeProjectionBase<'tcx> = PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>>;
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Display)]
 pub enum PlaceOrConst<'tcx, T> {
     Place(T),
