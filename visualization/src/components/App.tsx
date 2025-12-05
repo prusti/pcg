@@ -2,7 +2,6 @@ import React, {
   useState,
   useEffect,
   useCallback,
-  Dispatch,
   SetStateAction,
 } from "react";
 import {
@@ -36,10 +35,10 @@ export const App: React.FC<AppProps> = ({ functions }) => {
     useState<ApiFunctionData | null>(null);
   const [currentPoint, setCurrentPoint] = useState<CurrentPoint>(INITIAL_POINT);
 
-  const [selectedFunction, setSelectedFunctionInternal] = useLocalStorageString(
+  const [selectedFunction, setSelectedFunctionInternal] = useLocalStorageString<FunctionSlug>(
     "selectedFunction",
     Object.keys(functions)[0] as FunctionSlug
-  ) as [FunctionSlug, Dispatch<SetStateAction<FunctionSlug>>];
+  );
 
   const setSelectedFunction = useCallback(
     (newFunction: SetStateAction<FunctionSlug>) => {

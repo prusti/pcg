@@ -238,23 +238,24 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
                       key={lineIndex}
                       {...getLineProps({ line })}
                       data-line={lineIndex + 1}
-                      style={{ display: "table-row" }}
+                      style={{ display: "flex" }}
                     >
                       <span
                         style={{
-                          display: "table-cell",
                           textAlign: "right",
                           paddingRight: "1em",
                           userSelect: "none",
                           opacity: 0.5,
                           backgroundColor: lineHighlighted ? "#ffffcc" : "transparent",
+                          minWidth: "2em",
+                          flexShrink: 0,
                         }}
                       >
                         {lineIndex + 1}
                       </span>
                       <span
                         style={{
-                          display: "table-cell",
+                          flex: 1,
                           backgroundColor: lineHighlighted ? "#ffffcc" : "transparent",
                         }}
                       >

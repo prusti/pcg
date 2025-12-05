@@ -77,9 +77,10 @@ export function filterNodesAndEdges(
     filteredNodes = nodes.filter((node) => node.terminator.stmt !== "resume");
     filteredEdges = edges.filter((edge) => edge.label !== "unwind");
   }
-  if (options.path) {
+  const pathFilter = options.path;
+  if (pathFilter) {
     filteredNodes = filteredNodes.filter((node) =>
-      options.path.includes(node.block)
+      pathFilter.includes(node.block)
     );
     filteredEdges = filteredEdges.filter((edge) => {
       const sourceNode = nodes.find((n) => n.id === edge.source);
@@ -87,8 +88,8 @@ export function filterNodesAndEdges(
       return (
         sourceNode &&
         targetNode &&
-        options.path.includes(sourceNode.block) &&
-        options.path.includes(targetNode.block)
+        pathFilter.includes(sourceNode.block) &&
+        pathFilter.includes(targetNode.block)
       );
     });
   }
@@ -150,7 +151,7 @@ export function layoutNodesWithDagre(
   });
 
   const graphHeight = g.graph().height;
-  const height = isFinite(graphHeight) ? graphHeight : null;
+  const height = graphHeight !== undefined && isFinite(graphHeight) ? graphHeight : null;
 
   return { nodes: positionedNodes, height };
 }

@@ -79,11 +79,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for BorrowFlowEdge<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        let type_annotation = match self.kind {
+            BorrowFlowEdgeKind::Assignment(assignment_data)
+                if let Some(cast) = assignment_data.cast =>
+            {
+                format!(" with cast {:?}", cast.kind)
+            }
+            _ => String::new(),
+        };
         DisplayOutput::Text(
             format!(
-                "{} -> {}",
+                "{} -> {}{}",
                 DisplayWithCtxt::<_>::display_string(&self.long, ctxt),
-                self.short.display_string(ctxt)
+                self.short.display_string(ctxt),
+                type_annotation
             )
             .into(),
         )
@@ -192,6 +201,12 @@ pub enum OperandType {
     Const,
 }
 
+impl OperandType {
+    pub fn is_place(self) -> bool {
+        matches!(self, OperandType::Move | OperandType::Copy)
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
 pub struct AssignmentData<'tcx, Ty = ty::Ty<'tcx>> {
     operand_type: OperandType,
@@ -201,6 +216,10 @@ pub struct AssignmentData<'tcx, Ty = ty::Ty<'tcx>> {
 impl<'tcx, Ty> AssignmentData<'tcx, Ty> {
     pub(crate) fn new(operand_type: OperandType, cast: Option<CastData<'tcx, Ty>>) -> Self {
         Self { operand_type, cast }
+    }
+
+    pub fn operand_type(&self) -> OperandType {
+        self.operand_type
     }
 }
 
@@ -264,7 +283,7 @@ impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
                     assignment_data.operand_type,
                     assignment_data
                         .cast
-                        .map(|cast| CastData::new(cast.kind, format!("{cast:?}").into())),
+                        .map(|cast| CastData::new(cast.kind, format!("{:?}", cast.ty))),
                 ))
             }
         }
@@ -296,7 +315,7 @@ impl<'tcx, Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'tcx, T
                     OperandType::Const => "Const",
                 };
                 let second_part = match &assignment_data.cast {
-                    Some(cast) => format!(" with cast to {:?} via {:?}", cast.ty, cast.kind),
+                    Some(cast) => format!(" with cast {:?}", cast.kind),
                     None => String::new(),
                 };
                 write!(f, "{first_part}{second_part}")

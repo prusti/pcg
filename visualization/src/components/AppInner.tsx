@@ -34,7 +34,7 @@ interface AppInnerProps {
   apiFunctionData: ApiFunctionData;
   functions: FunctionsMetadata;
   currentPoint: CurrentPoint;
-  setCurrentPoint: (point: CurrentPoint) => void;
+  setCurrentPoint: React.Dispatch<React.SetStateAction<CurrentPoint>>;
   selectedFunction: FunctionSlug;
   setSelectedFunction: (functionSlug: FunctionSlug) => void;
 }
@@ -132,7 +132,7 @@ export const AppInner: React.FC<AppInnerProps> = ({
   );
 
   // State for panel resizing
-  const [leftPanelWidth, setLeftPanelWidth] = useLocalStorageString(
+  const [leftPanelWidth, setLeftPanelWidth] = useLocalStorageString<string>(
     "leftPanelWidth",
     "50%"
   );
@@ -144,7 +144,7 @@ export const AppInner: React.FC<AppInnerProps> = ({
 
   const pcgData = apiFunctionData.pcgData;
 
-  let pcgProgramPointData: PcgProgramPointData;
+  let pcgProgramPointData: PcgProgramPointData | null = null;
 
   if (currentPoint.type === "stmt") {
     const blockData = pcgData[toBasicBlock(currentPoint.block)];

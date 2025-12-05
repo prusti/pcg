@@ -33,7 +33,7 @@ function keydown(
 
     setCurrentPoint((prevPoint: CurrentPoint) => {
       if (prevPoint.type === "terminator") {
-        return; // TODO
+        return prevPoint; // TODO: handle terminator navigation
       }
       const currentNode = nodes.find((node) => node.block === prevPoint.block);
       if (!currentNode) return prevPoint;
@@ -54,9 +54,11 @@ function keydown(
 
       const nextStmtIdx = getNextStmtIdx(currentNode, prevPoint.stmt);
       if (nextStmtIdx !== null) {
-        const result = { ...prevPoint, stmt: nextStmtIdx };
-        result.navigatorPoint = { type: "iteration", name: "post_main" };
-        return result;
+        return {
+          ...prevPoint,
+          stmt: nextStmtIdx,
+          navigatorPoint: { type: "iteration" as const, name: "post_main" },
+        };
       } else {
         const currBlockIdx = filteredNodes.findIndex(
           (node) => node.block === prevPoint.block
@@ -65,20 +67,20 @@ function keydown(
           const nextBlockIdx = (currBlockIdx + 1) % filteredNodes.length;
           const data = filteredNodes[nextBlockIdx];
           return {
-            type: "stmt",
+            type: "stmt" as const,
             block: filteredNodes[nextBlockIdx].block,
-            stmt: getNextStmtIdx(data, -1),
-            navigatorPoint: { type: "iteration", name: "post_main" },
+            stmt: getNextStmtIdx(data, -1) ?? 0,
+            navigatorPoint: { type: "iteration" as const, name: "post_main" },
           };
         } else {
           const nextBlockIdx =
             (currBlockIdx - 1 + filteredNodes.length) % filteredNodes.length;
           const data = filteredNodes[nextBlockIdx];
           return {
-            type: "stmt",
+            type: "stmt" as const,
             block: data.block,
             stmt: data.stmts.length,
-            navigatorPoint: { type: "iteration", name: "post_main" },
+            navigatorPoint: { type: "iteration" as const, name: "post_main" },
           };
         }
       }
