@@ -493,14 +493,9 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
         match action {
             PcgAction::Borrow(action) => match action.kind {
                 BorrowPcgActionKind::AddEdge { edge } => Ok(self.graph.insert(edge, self.ctxt)),
-                BorrowPcgActionKind::LabelLifetimeProjection(
-                    predicate,
-                    region_projection_label,
-                ) => Ok(self.graph.label_region_projection(
-                    &predicate,
-                    region_projection_label,
-                    self.ctxt,
-                )),
+                BorrowPcgActionKind::LabelLifetimeProjection(action) => Ok(self
+                    .graph
+                    .label_region_projection(action.predicate(), action.label(), self.ctxt)),
                 BorrowPcgActionKind::Weaken(_) => todo!(),
                 BorrowPcgActionKind::Restore(_) => todo!(),
                 BorrowPcgActionKind::MakePlaceOld(_) => todo!(),

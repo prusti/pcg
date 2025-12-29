@@ -122,6 +122,26 @@ impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
     }
 }
 
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Weaken<'tcx> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let to_str = match self.to {
+            Some(to) => to.display_output(ctxt, mode),
+            None => "None".into(),
+        };
+        DisplayOutput::join(
+            vec![
+                "Weaken".into(),
+                self.place.display_output(ctxt, mode),
+                "from".into(),
+                self.from.display_output(ctxt, mode),
+                "to".into(),
+                to_str.into(),
+            ],
+            DisplayOutput::SPACE,
+        )
+    }
+}
+
 impl<'tcx> Weaken<'tcx> {
     pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
         let to_str = match self.to {
@@ -156,15 +176,24 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
         })
     }
 }
-impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
-        format!(
-            "Restore {} to {:?}",
-            self.place.display_string(ctxt),
-            self.capability,
+
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for RestoreCapability<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::join(
+            vec![
+                "Restore".into(),
+                self.place.display_output(ctxt, mode),
+                "to".into(),
+                self.capability.display_output(ctxt, mode),
+            ],
+            DisplayOutput::SPACE,
         )
     }
+}
 
+impl<'tcx> RestoreCapability<'tcx> {
     pub(crate) fn new(place: Place<'tcx>, capability: CapabilityKind) -> Self {
         Self { place, capability }
     }
@@ -671,7 +700,9 @@ use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
-        json::ToJsonWithCtxt, mir::BasicBlock,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
+        mir::BasicBlock,
     },
 };
 

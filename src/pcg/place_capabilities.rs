@@ -360,7 +360,7 @@ where
     {
         self.insert((*place).into(), capability, ctxt);
         if capability == CapabilityKind::Exclusive.into() {
-            borrows.label_region_projection(
+            borrows.label_lifetime_projection(
                 &LabelLifetimeProjectionPredicate::AllFuturePostfixes(place),
                 None,
                 ctxt,

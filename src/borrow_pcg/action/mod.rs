@@ -77,10 +77,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         context: impl Into<String>,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::LabelLifetimeProjection(
-                LabelLifetimeProjectionPredicate::Equals(projection),
-                None,
-            ),
+            kind: BorrowPcgActionKind::remove_lifetime_projection_label(projection),
             debug_context: Some(context.into()),
         }
     }
@@ -91,7 +88,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         context: impl Into<String>,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::LabelLifetimeProjection(predicate, label),
+            kind: BorrowPcgActionKind::label_lifetime_projection(predicate, label),
             debug_context: Some(context.into()),
         }
     }
@@ -128,9 +125,6 @@ pub enum LabelPlaceReason {
     /// may still have capability.
     JoinOwnedReadAndWriteCapabilities,
     ReAssign,
-    LabelDerefProjections {
-        shared_refs_only: bool,
-    },
     Collapse,
 }
 
@@ -154,12 +148,6 @@ impl LabelPlaceReason {
                 label_place_in_expansion: false,
             },
             LabelPlaceReason::Collapse => LabelPlacePredicate::Exact(place),
-            LabelPlaceReason::LabelDerefProjections { shared_refs_only } => {
-                LabelPlacePredicate::DerefPostfixOf {
-                    place,
-                    shared_refs_only,
-                }
-            }
         };
         let mut changed = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
         changed |= edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt());
@@ -180,7 +168,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             format!(
-                "Make {} an old place ({:?})",
+                "Label place {} ({:?})",
                 self.place.display_string(ctxt),
                 self.reason
             )
@@ -189,14 +177,79 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
+mod private {
+    use crate::{
+        borrow_pcg::{
+            has_pcs_elem::LabelLifetimeProjectionPredicate,
+            region_projection::{LifetimeProjection, LifetimeProjectionLabel},
+        },
+        utils::{
+            HasBorrowCheckerCtxt,
+            display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+            maybe_old::MaybeLabelledPlace,
+        },
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct LabelLifetimeProjectionAction<'tcx> {
+        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+    }
+
+    impl<'tcx> LabelLifetimeProjectionAction<'tcx> {
+        pub(crate) fn predicate(&self) -> &LabelLifetimeProjectionPredicate<'tcx> {
+            &self.predicate
+        }
+
+        pub(crate) fn label(&self) -> Option<LifetimeProjectionLabel> {
+            self.label
+        }
+
+        pub(crate) fn new(
+            predicate: LabelLifetimeProjectionPredicate<'tcx>,
+            label: Option<LifetimeProjectionLabel>,
+        ) -> Self {
+            Self { predicate, label }
+        }
+
+        pub(crate) fn remove_label(
+            projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        ) -> Self {
+            Self {
+                predicate: LabelLifetimeProjectionPredicate::Equals(projection),
+                label: None,
+            }
+        }
+    }
+
+    impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+        for LabelLifetimeProjectionAction<'tcx>
+    {
+        fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+            let predicate_label = self.predicate.display_output(ctxt, mode);
+            if let Some(label) = self.label {
+                DisplayOutput::Seq(vec![
+                    "Label lifetime projection ".into(),
+                    predicate_label,
+                    " with label ".into(),
+                    label.display_output((), mode),
+                ])
+            } else {
+                DisplayOutput::Seq(vec![
+                    "Unlabel lifetime projection ".into(),
+                    self.predicate.display_output(ctxt, mode),
+                ])
+            }
+        }
+    }
+}
+use private::LabelLifetimeProjectionAction;
+
 #[derive(Clone, Debug, PartialEq, Eq, strum_macros::EnumDiscriminants)]
 #[strum_discriminants(derive(Serialize))]
 #[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
 pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
-    LabelLifetimeProjection(
-        LabelLifetimeProjectionPredicate<'tcx>,
-        Option<LifetimeProjectionLabel>,
-    ),
+    LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx>),
     Weaken(Weaken<'tcx>),
     Restore(RestoreCapability<'tcx>),
     MakePlaceOld(LabelPlaceAction<'tcx>),
@@ -211,6 +264,21 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
     },
+}
+
+impl<'tcx> BorrowPcgActionKind<'tcx> {
+    pub(crate) fn remove_lifetime_projection_label(
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+    ) -> Self {
+        Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::remove_label(projection))
+    }
+
+    pub(crate) fn label_lifetime_projection(
+        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+    ) -> Self {
+        Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::new(predicate, label))
+    }
 }
 
 #[derive(Serialize)]
@@ -237,31 +305,23 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
     DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            match self {
-                BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
-                    format!(
-                        "Label Region Projection: {} with {:?}",
-                        rp.display_output(ctxt, mode).into_text(),
-                        label
-                    )
-                }
-                BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt.ctxt()),
-                BorrowPcgActionKind::Restore(restore_capability) => {
-                    restore_capability.debug_line(ctxt.ctxt())
-                }
-                BorrowPcgActionKind::MakePlaceOld(action) => action.display_string(ctxt),
-                BorrowPcgActionKind::RemoveEdge(edge) => {
-                    format!(
-                        "Remove Edge {}",
-                        edge.display_output(ctxt, mode).into_text()
-                    )
-                }
-                BorrowPcgActionKind::AddEdge { edge } => {
-                    format!("Add Edge {}", edge.display_output(ctxt, mode).into_text())
-                }
+        match self {
+            BorrowPcgActionKind::LabelLifetimeProjection(action) => {
+                action.display_output(ctxt, mode)
             }
-            .into(),
-        )
+            BorrowPcgActionKind::Weaken(weaken) => weaken.display_output(ctxt, mode),
+            BorrowPcgActionKind::Restore(restore_capability) => {
+                restore_capability.display_output(ctxt, mode)
+            }
+            BorrowPcgActionKind::MakePlaceOld(action) => action.display_output(ctxt, mode),
+            BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
+                vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
+                DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
+                vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
+                DisplayOutput::SPACE,
+            ),
+        }
     }
 }
