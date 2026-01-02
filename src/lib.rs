@@ -135,24 +135,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
                 "from".into(),
                 self.from.display_output(ctxt, mode),
                 "to".into(),
-                to_str.into(),
+                to_str,
             ],
             DisplayOutput::SPACE,
-        )
-    }
-}
-
-impl<'tcx> Weaken<'tcx> {
-    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
-        let to_str = match self.to {
-            Some(to) => format!("{to:?}"),
-            None => "None".to_owned(),
-        };
-        format!(
-            "Weaken {} from {:?} to {}",
-            self.place.display_string(ctxt),
-            self.from,
-            to_str
         )
     }
 }

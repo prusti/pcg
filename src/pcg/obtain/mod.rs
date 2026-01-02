@@ -7,10 +7,7 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::{
-            kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
-        },
+        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         edge_data::LabelPlacePredicate,
         has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
@@ -22,14 +19,12 @@ use crate::{
     pcg::{
         CapabilityKind, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
-        place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
-        Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -305,7 +300,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 node.label_place_with_context(
                     &LabelPlacePredicate::Exact((*place).into()),
                     &labeller,
-                    LabelNodeContext::Other,
+                    LabelNodeContext::for_node(node, false),
                     ctxt.bc_ctxt(),
                 );
                 let edge = BorrowPcgEdge::new(

@@ -117,7 +117,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         let mut changed = false;
         for blocked_place in blocked_places {
             if let MaybeLabelledPlace::Current(place) = blocked_place
-                && predicate.applies_to(*place, LabelNodeContext::Other, ctxt)
+                && predicate.applies_to(*place, LabelNodeContext::for_node(*place, false), ctxt)
             {
                 *blocked_place =
                     MaybeLabelledPlace::new(*place, Some(labeller.place_label(*place, ctxt)));
@@ -133,8 +133,9 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
+        let label_node_context = LabelNodeContext::for_node(self.deref_place, true);
         if let MaybeLabelledPlace::Current(place) = self.deref_place
-            && predicate.applies_to(place, LabelNodeContext::TargetOfExpansion, ctxt)
+            && predicate.applies_to(place, label_node_context, ctxt)
         {
             self.deref_place =
                 MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));

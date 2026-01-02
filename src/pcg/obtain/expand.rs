@@ -38,7 +38,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
+        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError>;
@@ -254,8 +254,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgExpansion<'tcx, LocalNode<'tcx>> =
-            BorrowPcgExpansion::new(base.into(), expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgExpansion<'tcx> =
+            BorrowPcgExpansion::new_place_expansion(base.into(), expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -294,7 +294,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
-                let mut expansion = BorrowPcgExpansion::new(base_rp.into(), place_expansion, ctxt)?;
+                let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
+                    base_rp.into(),
+                    place_expansion,
+                    ctxt,
+                )?;
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {
                     expansion.label_lifetime_projection(
@@ -334,8 +338,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                             .iter()
                             .map(|node| {
                                 node.to_pcg_node(ctxt.bc_ctxt())
-                                    .try_into_region_projection()
-                                    .unwrap()
+                                    .expect_lifetime_projection()
                             })
                             .collect::<Vec<_>>();
                         self.add_and_update_placeholder_edges(

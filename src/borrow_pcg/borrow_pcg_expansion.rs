@@ -12,17 +12,21 @@ use super::{
 };
 use crate::{
     borrow_pcg::{
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
+        borrow_pcg_edge::BorrowPcgEdgeLike,
+        borrow_pcg_expansion::internal::BorrowPcgExpansionData,
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
             LabelPlaceWithContext, PlaceLabeller,
         },
+        region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
+        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType,
+        SymbolicCapability,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
@@ -168,32 +172,109 @@ impl<'tcx> PlaceExpansion<'tcx> {
     }
 }
 
-/// An *expansion* of a place (e.g *x -> {*x.f, *x.g}) or region projection
-/// (e.g. {x↓'a} -> {x.f↓'a, x.g↓'a}) where the expanded part is in the Borrow
-/// PCG.
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct BorrowPcgExpansion<'tcx, P = LocalNode<'tcx>> {
-    pub(crate) base: P,
-    pub(crate) expansion: Vec<P>,
-    pub(crate) guide: Option<RepackGuide>,
-    _marker: PhantomData<&'tcx ()>,
+pub(crate) mod internal {
+    use crate::owned_pcg::RepackGuide;
+
+    /// An *expansion* of a place (e.g *x -> {*x.f, *x.g}) or region projection
+    /// (e.g. {x↓'a} -> {x.f↓'a, x.g↓'a}) where the expanded part is in the Borrow
+    /// PCG.
+    #[derive(PartialEq, Eq, Clone, Debug, Hash)]
+    pub struct BorrowPcgExpansionData<P> {
+        pub(crate) base: P,
+        pub(crate) expansion: Vec<P>,
+        pub(crate) guide: Option<RepackGuide>,
+    }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
+pub(crate) type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>;
+
+impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgPlaceExpansion<'tcx> {
+    fn label_lifetime_projection(
+        &mut self,
+        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        LabelLifetimeProjectionResult::Unchanged
+    }
+}
+
+pub(crate) type LifetimeProjectionExpansion<'tcx> =
+    BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>;
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum BorrowPcgExpansion<'tcx> {
+    Place(BorrowPcgPlaceExpansion<'tcx>),
+    LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
+}
+
+edgedata_enum!(
+    BorrowPcgExpansion<'tcx>,
+    Place(BorrowPcgPlaceExpansion<'tcx>),
+    LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
+);
+
+impl<'tcx> BorrowPcgExpansion<'tcx> {
+    pub fn base(&self) -> LocalNode<'tcx> {
+        match self {
+            BorrowPcgExpansion::Place(expansion) => expansion.base.into(),
+            BorrowPcgExpansion::LifetimeProjection(expansion) => expansion.base.into(),
+        }
+    }
+
+    pub fn expansion(&self) -> Vec<LocalNode<'tcx>> {
+        match self {
+            BorrowPcgExpansion::Place(expansion) => {
+                expansion.expansion.iter().map(|p| (*p).into()).collect()
+            }
+            BorrowPcgExpansion::LifetimeProjection(expansion) => {
+                expansion.expansion.iter().map(|p| (*p).into()).collect()
+            }
+        }
+    }
+    pub(crate) fn new_lifetime_projection_expansion<'a>(
+        base: LifetimeProjection<'tcx, Place<'tcx>>,
+        expansion: PlaceExpansion<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
+        Ok(BorrowPcgExpansion::LifetimeProjection(
+            BorrowPcgExpansionData::new(base.rebase(), expansion, ctxt)?,
+        ))
+    }
+    pub(crate) fn new_place_expansion<'a>(
+        base: Place<'tcx>,
+        expansion: PlaceExpansion<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Self, PcgError>
+    where
+        'tcx: 'a,
+    {
+        Ok(BorrowPcgExpansion::Place(BorrowPcgPlaceExpansion::new(
+            base.into(),
+            expansion,
+            ctxt,
+        )?))
+    }
+}
+
+impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext>>
+    LabelEdgePlaces<'tcx> for BorrowPcgExpansionData<P>
+{
     fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        tracing::debug!(
-            "label blocked places: {} with {:?}",
-            self.display_string(ctxt),
-            predicate
+        let result = self.base.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.base, false),
+            ctxt,
         );
-        let result =
-            self.base
-                .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
         self.assert_validity(ctxt);
         result
     }
@@ -209,7 +290,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
             changed |= p.label_place_with_context(
                 predicate,
                 labeller,
-                LabelNodeContext::TargetOfExpansion,
+                LabelNodeContext::for_node(*p, true),
                 ctxt,
             );
         }
@@ -218,7 +299,9 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
+impl<'a, 'tcx, P: LabelLifetimeProjection<'a, 'tcx>> LabelLifetimeProjection<'a, 'tcx>
+    for BorrowPcgExpansionData<P>
+{
     fn label_lifetime_projection(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
@@ -229,14 +312,11 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgExpansion<'tcx> {
         for p in &mut self.expansion {
             changed |= p.label_lifetime_projection(predicate, label, ctxt);
         }
-        self.assert_validity(ctxt);
         changed
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
-    for BorrowPcgExpansion<'tcx, P>
-{
+impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgExpansionData<P> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let guide_part = if let Some(guide) = self.guide
             && matches!(mode, OutputMode::Test)
@@ -262,7 +342,7 @@ impl<'tcx, Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansion<'tcx, P> {
+impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansionData<P> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
             return Err(format!("expansion contains base: {self:?}"));
@@ -282,60 +362,39 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
     }
 }
 
-impl<'tcx> EdgeData<'tcx> for BorrowPcgExpansion<'tcx> {
+impl<'tcx, P: Copy + Into<LocalNode<'tcx>>> EdgeData<'tcx> for BorrowPcgExpansionData<P> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.base.to_pcg_node(ctxt) == node
+        self.base.into().to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf, BC: Copy>(
         &self,
-        _ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        Box::new(std::iter::once(self.base.into()))
+        Box::new(std::iter::once(self.base.into().to_pcg_node(ctxt)))
     }
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
     {
-        Box::new(self.expansion.iter().copied())
-    }
-}
-
-impl<'tcx> TryFrom<BorrowPcgExpansion<'tcx, LocalNode<'tcx>>>
-    for BorrowPcgExpansion<'tcx, MaybeLabelledPlace<'tcx>>
-{
-    type Error = ();
-    fn try_from(expansion: BorrowPcgExpansion<'tcx, LocalNode<'tcx>>) -> Result<Self, Self::Error> {
-        Ok(BorrowPcgExpansion {
-            base: expansion.base.try_into()?,
-            guide: expansion.guide,
-            expansion: expansion
-                .expansion
-                .into_iter()
-                .map(|p| p.try_into())
-                .collect::<Result<Vec<_>, _>>()?,
-            _marker: PhantomData,
-        })
+        Box::new(self.expansion.iter().map(|p| (*p).into()))
     }
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
     pub fn guide(&self) -> Option<RepackGuide> {
-        self.guide
-    }
-
-    pub(crate) fn is_deref<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
-        if let BlockingNode::Place(p) = self.base {
-            p.place().is_ref(ctxt)
-        } else {
-            false
+        match self {
+            BorrowPcgExpansion::Place(place_expansion) => place_expansion.guide,
+            BorrowPcgExpansion::LifetimeProjection(lifetime_projection_expansion) => {
+                lifetime_projection_expansion.guide
+            }
         }
     }
 
@@ -348,30 +407,28 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
         ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        match self.base {
-            PcgNode::Place(base_place) => {
-                let mut fst_cap = None;
-                self.expansion.iter().all(|p| {
-                    if let PcgNode::Place(MaybeLabelledPlace::Current(place)) = p {
-                        if let Some(cap) = fst_cap {
-                            if cap != capabilities.get(*place, ctxt) {
-                                return false;
-                            }
-                        } else {
-                            fst_cap = Some(capabilities.get(*place, ctxt));
-                        }
+        let BorrowPcgExpansion::Place(place_expansion) = self else {
+            return false;
+        };
+        let mut fst_cap = None;
+        place_expansion.expansion.iter().all(|p| {
+            if let MaybeLabelledPlace::Current(place) = p {
+                if let Some(cap) = fst_cap {
+                    if cap != capabilities.get(*place, ctxt) {
+                        return false;
                     }
-                    base_place.place().is_prefix_exact(p.place())
-                        && p.location() == base_place.location()
-                })
+                } else {
+                    fst_cap = Some(capabilities.get(*place, ctxt));
+                }
             }
-            PcgNode::LifetimeProjection(_) => false,
-        }
+            place_expansion.base.place().is_prefix_exact(p.place())
+                && p.location() == place_expansion.base.location()
+        })
     }
 }
 
 impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
-    BorrowPcgExpansion<'tcx, P>
+    BorrowPcgExpansionData<P>
 {
     pub fn base(&self) -> P {
         self.base
@@ -407,7 +464,6 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
                 .into_iter()
                 .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
-            _marker: PhantomData,
         };
         result.assert_validity(ctxt.bc_ctxt());
         Ok(result)

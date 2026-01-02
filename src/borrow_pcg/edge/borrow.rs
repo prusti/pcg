@@ -78,7 +78,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         self.blocked_place.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::Other,
+            LabelNodeContext::for_node(self.blocked_place, false),
             ctxt,
         )
     }
@@ -95,7 +95,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         self.assigned_ref.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::Other,
+            LabelNodeContext::for_node(self.assigned_ref, false),
             ctxt,
         )
     }

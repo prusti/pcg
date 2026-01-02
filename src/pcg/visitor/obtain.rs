@@ -255,7 +255,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // - The base has write capability, it is a mutable ref
         let is_mutable_place_expansion = if let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) =
             edge.kind()
-            && let Some(place) = expansion.base.as_current_place()
+            && let Some(place) = expansion.base().as_current_place()
         {
             matches!(
                 self.pcg
@@ -654,14 +654,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         // STEP 4
         if obtain_cap.is_write() {
-            let _ = self.record_and_apply_action(
-                BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    self.prev_snapshot_location(),
-                    LabelPlaceReason::ReAssign,
-                )
-                .into(),
-            );
             // If this place is a reference or contains references, reborrows of
             // (postfixes of) place may have not yet expired, and therefore the borrowed
             // caps are still in the PCG.

@@ -1,7 +1,6 @@
 use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
-    rustc_interface::middle::mir::ProjectionElem,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -102,7 +101,7 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
         &self,
         candidate: Place<'tcx>,
         label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
             LabelPlacePredicate::Postfix {
@@ -110,7 +109,8 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
                 label_place_in_expansion,
             } => {
                 if candidate == *predicate_place
-                    && label_context == LabelNodeContext::TargetOfExpansion
+                    && label_context.is_place_node()
+                    && label_context.is_target_of_expansion()
                 {
                     *label_place_in_expansion
                 } else {

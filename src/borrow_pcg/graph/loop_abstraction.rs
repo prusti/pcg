@@ -91,17 +91,17 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
         matches!(self, MaybeRemoteCurrentPlace::Remote(_))
     }
 
-    fn region_projections(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<LifetimeProjection<'tcx>> {
+    fn lifetime_projections(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<LifetimeProjection<'tcx>> {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place
                 .lifetime_projections(ctxt)
                 .into_iter()
-                .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
+                .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
             MaybeRemoteCurrentPlace::Remote(place) => place
                 .lifetime_projections(ctxt)
                 .into_iter()
-                .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
+                .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
         }
     }
@@ -591,7 +591,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
     ctxt: CompilerCtxt<'mir, 'tcx>,
 ) {
     let blocker_rps = blocker.lifetime_projections(ctxt);
-    for blocked_rp in blocked_place.region_projections(ctxt) {
+    for blocked_rp in blocked_place.lifetime_projections(ctxt) {
         let flow_rps = blocker_rps
             .iter()
             .filter(|blocker_rp| {
@@ -604,7 +604,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
             .copied()
             .collect::<Vec<_>>();
         if let Some(blocked_node) = blocked_rp.try_to_local_node(ctxt) {
-            let blocked_rp = blocked_node.try_into_region_projection().unwrap();
+            let blocked_rp = blocked_node.expect_lifetime_projection();
             let mut_rps = flow_rps
                 .iter()
                 .filter_map(|rp| {
