@@ -597,7 +597,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             )
         {
             // If we want to get e.g. write permission but we currently have
-            // read permission, we will obtain read with the collpase and then
+            // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
             let collapse_cap =
                 if current_cap.map(|c| c.expect_concrete()) == Some(CapabilityKind::Read) {
