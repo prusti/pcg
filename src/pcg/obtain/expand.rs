@@ -2,7 +2,7 @@ use crate::{
     action::{BorrowPcgAction, OwnedPcgAction},
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
             deref::DerefEdge,
@@ -255,7 +255,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             block_type
         );
         let expansion: BorrowPcgExpansion<'tcx> =
-            BorrowPcgExpansion::new_place_expansion(base.into(), expanded_place.expansion, ctxt)?;
+            BorrowPcgExpansion::new_place_expansion(base, expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -295,7 +295,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             {
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
                 let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
-                    base_rp.into(),
+                    base_rp,
                     place_expansion,
                     ctxt,
                 )?;

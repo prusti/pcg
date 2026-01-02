@@ -3,7 +3,7 @@ use derive_more::From;
 use super::region_projection::{LifetimeProjection, LifetimeProjectionLabel};
 use crate::{
     borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
-    pcg::{LocalNodeLike, MaybeHasLocation, PcgNodeLike, PcgNodeType},
+    pcg::{MaybeHasLocation, PcgNodeLike, PcgNodeType},
     utils::{
         CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},

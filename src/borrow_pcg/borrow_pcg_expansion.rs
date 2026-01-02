@@ -1,5 +1,5 @@
 //! Definition of expansion edges in the Borrow PCG.
-use std::{collections::BTreeMap, hash::Hash, marker::PhantomData};
+use std::{collections::BTreeMap, hash::Hash};
 
 use derive_more::From;
 use itertools::Itertools;
@@ -12,7 +12,6 @@ use super::{
 };
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdgeLike,
         borrow_pcg_expansion::internal::BorrowPcgExpansionData,
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
@@ -25,8 +24,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType,
-        SymbolicCapability,
+        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
@@ -191,9 +189,9 @@ pub(crate) type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabe
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgPlaceExpansion<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        _predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        _label: Option<LifetimeProjectionLabel>,
+        _ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         LabelLifetimeProjectionResult::Unchanged
     }
@@ -379,7 +377,7 @@ impl<'tcx, P: Copy + Into<LocalNode<'tcx>>> EdgeData<'tcx> for BorrowPcgExpansio
 
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
+        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'mir,
