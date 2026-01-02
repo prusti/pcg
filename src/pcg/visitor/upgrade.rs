@@ -132,13 +132,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         .iter()
                         .flat_map(|e| {
                             if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = e.kind()
-                                && let PcgNode::LifetimeProjection(rp) = e.base
+                                && let PcgNode::LifetimeProjection(rp) = e.base()
                                 && rp == current_rp.into()
                             {
                                 Some(
                                     e.expansion()
                                         .iter()
-                                        .flat_map(|e| e.try_into_region_projection())
+                                        .flat_map(|e| e.try_into_lifetime_projection())
                                         .filter(|e| e.base.is_current())
                                         .collect::<Vec<_>>(),
                                 )

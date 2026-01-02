@@ -12,7 +12,7 @@ use crate::{
         visitor::extract_regions,
     },
     error::PcgError,
-    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
+    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType},
     rustc_interface::{
         PlaceTy,
         index::IndexVec,
@@ -89,6 +89,10 @@ impl<'tcx> PcgNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
             MaybeLabelledPlace::Current(place) => place.to_pcg_node(ctxt),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(ctxt),
         }
+    }
+
+    fn node_type(&self) -> PcgNodeType {
+        PcgNodeType::Place
     }
 }
 

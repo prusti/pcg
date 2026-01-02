@@ -173,10 +173,6 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                 }
             }
         }
-        if self.phase() == EvalStmtPhase::PostMain {
-            // self.pcg .as_mut_ref()
-            //     .assert_validity_at_location(self.ctxt, location);
-        }
         Ok(self.actions)
     }
 
@@ -236,8 +232,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         statement: &Statement<'tcx>,
         _location: Location,
     ) -> Result<(), PcgError> {
-        self.perform_statement_actions(statement)?;
-        Ok(())
+        self.perform_statement_actions(statement)
     }
 
     fn visit_operand_fallable(

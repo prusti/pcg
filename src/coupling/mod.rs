@@ -368,8 +368,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
 
 impl<
     'tcx,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Input: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
+    Output: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for HyperEdge<Input, Output>
 {
     fn label_blocked_places(
@@ -380,8 +380,12 @@ impl<
     ) -> bool {
         let mut result = false;
         for input in self.inputs.iter_mut() {
-            result |=
-                input.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
+            result |= input.label_place_with_context(
+                predicate,
+                labeller,
+                LabelNodeContext::for_node(*input, false),
+                ctxt,
+            );
         }
         result
     }
@@ -394,8 +398,12 @@ impl<
     ) -> bool {
         let mut result = false;
         for output in self.outputs.iter_mut() {
-            result |=
-                output.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
+            result |= output.label_place_with_context(
+                predicate,
+                labeller,
+                LabelNodeContext::for_node(*output, false),
+                ctxt,
+            );
         }
         result
     }
@@ -404,8 +412,8 @@ impl<
 impl<
     'tcx,
     Metadata,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Input: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
+    Output: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
     fn label_blocked_places(

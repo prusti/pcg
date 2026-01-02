@@ -102,12 +102,7 @@ export default function BasicBlockTable({
       const phaseActions = evalStmtActions[phase];
       if (Array.isArray(phaseActions)) {
         phaseActions.forEach((action: PcgActionDebugRepr) => {
-          if (
-            action.data.kind.type !== "MakePlaceOld" &&
-            action.data.kind.type !== "LabelLifetimeProjection"
-          ) {
-            actions.push(actionLine(action.data.kind));
-          }
+          actions.push(actionLine(action.data.kind));
         });
       }
     });

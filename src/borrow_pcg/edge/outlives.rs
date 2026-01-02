@@ -37,8 +37,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.long
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.long.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.long, false),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
@@ -47,8 +51,12 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.short
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.short.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.short, false),
+            ctxt,
+        )
     }
 }
 

@@ -1,11 +1,13 @@
 //! Definitions of edges in the Borrow PCG.
 use std::marker::PhantomData;
 
-use crate::rustc_interface::middle::mir::{self, BasicBlock, PlaceElem};
+use crate::{
+    borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
+    rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
+};
 use itertools::Itertools;
 
 use super::{
-    borrow_pcg_expansion::BorrowPcgExpansion,
     edge::outlives::BorrowFlowEdge,
     edge_data::EdgeData,
     graph::Conditioned,
@@ -426,7 +428,7 @@ pub(crate) trait ToBorrowsEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx>;
 }
 
-impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx, LocalNode<'tcx>> {
+impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowPcgExpansion(self), conditions)
     }

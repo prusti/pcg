@@ -223,7 +223,14 @@ impl<'tcx> LocalExpansions<'tcx> {
                         place.display_string(ctxt.ctxt())
                     );
                     let joined_cap = removed_cap.minimum(acc, ctxt);
-                    joined_cap.unwrap()
+                    pcg_validity_expect_some!(joined_cap,
+                        fallback: CapabilityKind::Exclusive.into(),
+                        [ctxt],
+                        "Cannot join capability {:?} of {} with min cap {:?}",
+                        removed_cap.expect_concrete(),
+                        place.display_string(ctxt.ctxt()),
+                        acc.expect_concrete()
+                    )
                 });
         self.remove_all_expansions_from(collapse.to, ctxt);
         place_capabilities.insert(collapse.to, retained_cap, ctxt);

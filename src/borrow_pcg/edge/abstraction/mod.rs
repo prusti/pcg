@@ -116,8 +116,8 @@ impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> 
 
 impl<
     'tcx,
-    T: LabelPlaceWithContext<'tcx, LabelNodeContext>,
-    U: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    T: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
+    U: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for AbstractionBlockEdge<'tcx, T, U>
 {
     fn label_blocked_places(
@@ -126,8 +126,12 @@ impl<
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.input
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.input.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.input, false),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
@@ -136,8 +140,12 @@ impl<
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.output
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.output.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.output, false),
+            ctxt,
+        )
     }
 }
 

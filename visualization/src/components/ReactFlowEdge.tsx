@@ -1,9 +1,5 @@
 import React from "react";
-import {
-  EdgeProps,
-  getBezierPath,
-  EdgeLabelRenderer,
-} from "reactflow";
+import { EdgeProps, getBezierPath, EdgeLabelRenderer } from "reactflow";
 import { PcgActionDebugRepr } from "../generated/types";
 import { PcgProgramPointData } from "../types";
 import { actionLine } from "../actionFormatting";
@@ -38,18 +34,24 @@ export default function ReactFlowEdge({
   });
 
   const actions: string[] = [];
-  if (data?.showActions && data?.terminatorActions && Array.isArray(data.terminatorActions.actions)) {
+  if (
+    data?.showActions &&
+    data?.terminatorActions &&
+    Array.isArray(data.terminatorActions.actions)
+  ) {
     data.terminatorActions.actions.forEach((action: PcgActionDebugRepr) => {
-      if (action.data.kind.type !== "MakePlaceOld" && action.data.kind.type !== "LabelLifetimeProjection") {
-        actions.push(actionLine(action.data.kind));
-      }
+      actions.push(actionLine(action.data.kind));
     });
   }
 
   const hasLabel = data?.label && data.label.length > 0;
   const hasActions = actions.length > 0;
 
-  const strokeColor = data?.selected ? "green" : data?.highlighted ? "#ff6b00" : "black";
+  const strokeColor = data?.selected
+    ? "green"
+    : data?.highlighted
+      ? "#ff6b00"
+      : "black";
   const strokeWidth = data?.highlighted ? 4 : 2;
 
   return (
@@ -117,4 +119,3 @@ export default function ReactFlowEdge({
     </>
   );
 }
-

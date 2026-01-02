@@ -206,9 +206,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         for edge in edges {
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
-            self.record_and_apply_action(
-                BorrowPcgAction::remove_edge(borrow_edge, context).into(),
-            )?;
+            self.apply_action(BorrowPcgAction::remove_edge(borrow_edge, context).into())?;
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
         if let Some(deref_place) = deref_place.as_current_place() {
@@ -257,7 +255,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // - The base has write capability, it is a mutable ref
         let is_mutable_place_expansion = if let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) =
             edge.kind()
-            && let Some(place) = expansion.base.as_current_place()
+            && let Some(place) = expansion.base().as_current_place()
         {
             matches!(
                 self.pcg
@@ -561,27 +559,20 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ) -> Result<(), PcgError> {
         let obtain_cap = obtain_type.capability(place, self.ctxt);
 
-        // STEP 1
-        // This is to support the following kind of scenario:
-        //
-        //  - `s` is to be re-assigned or borrowed mutably at location `l`
-        //  - `s.f` is shared a reference with lifetime 'a reborrowed into `x`
-        //
-        // We want to label s.f. such that the edge {s.f@l, s.f|'a@l} ->
-        // {*s.f@l} is in the graph and redirect the borrow from *s.f to
-        // *s.f@l
-        //
-        // After performing this operation, we should try again to remove borrow
-        // PCG edges blocking `place`, since this may enable some borrow
-        // expansions to be removed (s.f was previously blocked and no longer is)
-        //
-        // Note that this could also happen when obtaining for a loop invariant
-        if !obtain_cap.is_read() {
-            self.label_and_remove_capabilities_for_deref_projections_of_postfix_places(
-                place, true, self.ctxt,
+        if obtain_cap.is_write() {
+            tracing::debug!(
+                "labeling and removing capabilities for deref projections of postfix places"
+            );
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    place,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::ReAssign,
+                )
+                .into(),
             )?;
             self.render_debug_graph(None, "step 1 (after label + remove)");
-            self.pack_old_and_dead_borrow_leaves(Some(place))?;
+            // self.pack_old_and_dead_borrow_leaves(Some(place))?;
             self.render_debug_graph(None, "after step 1");
         }
 
@@ -606,7 +597,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             )
         {
             // If we want to get e.g. write permission but we currently have
-            // read permission, we will obtain read with the collpase and then
+            // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
             let collapse_cap =
                 if current_cap.map(|c| c.expect_concrete()) == Some(CapabilityKind::Read) {
@@ -663,14 +654,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         // STEP 4
         if obtain_cap.is_write() {
-            let _ = self.record_and_apply_action(
-                BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    self.prev_snapshot_location(),
-                    LabelPlaceReason::ReAssign,
-                )
-                .into(),
-            );
             // If this place is a reference or contains references, reborrows of
             // (postfixes of) place may have not yet expired, and therefore the borrowed
             // caps are still in the PCG.

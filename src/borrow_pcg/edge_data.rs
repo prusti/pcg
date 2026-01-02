@@ -1,7 +1,6 @@
 use crate::{
     borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
     pcg::PcgNode,
-    rustc_interface::middle::mir::ProjectionElem,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -71,15 +70,6 @@ pub enum LabelPlacePredicate<'tcx> {
         place: Place<'tcx>,
         label_place_in_expansion: bool,
     },
-    /// Label all places that (transitively) project from a dereference of ///
-    /// `place`. In general, this includes the dereference itself, but this can
-    /// also depend on the context. If `shared_refs_only` is true, then
-    /// dereferences of mutable references are not considered when determining
-    /// whether a place projects from a dereference.
-    DerefPostfixOf {
-        place: Place<'tcx>,
-        shared_refs_only: bool,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,16 +87,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 LabelPlacePredicate::Postfix { place, .. } => {
                     place.display_string(ctxt) // As a hack for now so debug output doesn't change
                 }
-                LabelPlacePredicate::DerefPostfixOf {
-                    place,
-                    shared_refs_only,
-                } => {
-                    format!(
-                        "deref postfix of {} (shared_refs_only: {})",
-                        place.display_string(ctxt),
-                        shared_refs_only
-                    )
-                }
                 LabelPlacePredicate::Exact(place) => {
                     format!("exact {}", place.display_string(ctxt))
                 }
@@ -121,7 +101,7 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
         &self,
         candidate: Place<'tcx>,
         label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
             LabelPlacePredicate::Postfix {
@@ -129,44 +109,13 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
                 label_place_in_expansion,
             } => {
                 if candidate == *predicate_place
-                    && label_context == LabelNodeContext::TargetOfExpansion
+                    && label_context.is_place_node()
+                    && label_context.is_target_of_expansion()
                 {
                     *label_place_in_expansion
                 } else {
                     predicate_place.is_prefix_of(candidate)
                 }
-            }
-            LabelPlacePredicate::DerefPostfixOf {
-                place,
-                shared_refs_only,
-            } => {
-                let is_ref_predicate = |p: Place<'tcx>| {
-                    if *shared_refs_only {
-                        p.is_shared_ref(ctxt)
-                    } else {
-                        p.is_ref(ctxt)
-                    }
-                };
-                if let Some(iter) = candidate.iter_projections_after(*place, ctxt) {
-                    let mut seen_deref_target = false;
-                    // If we want to label deref postfixes of e.g. "foo"
-                    // and we're looking at the deref edge foo.baz -> *foo.baz,
-                    // we don't want to label *this* instance, but all expansions
-                    // from *foo.baz should be labelled
-                    for (p, proj) in iter {
-                        if seen_deref_target {
-                            return true;
-                        }
-                        if matches!(proj, ProjectionElem::Deref) && is_ref_predicate(p) {
-                            if label_context == LabelNodeContext::TargetOfExpansion {
-                                seen_deref_target = true;
-                            } else {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                false
             }
             LabelPlacePredicate::Exact(place) => *place == candidate,
         }

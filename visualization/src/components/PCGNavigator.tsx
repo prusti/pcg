@@ -7,10 +7,7 @@ import {
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import {
-  PcgBlockVisualizationData,
-  DotFileAtPhase,
-} from "../generated/types";
+import { PcgBlockVisualizationData, DotFileAtPhase } from "../generated/types";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
@@ -39,7 +36,10 @@ const getPCGDotGraphFilename = (
   selectedFunction: string,
   graphs: PcgBlockVisualizationData
 ): string | null => {
-  if (currentPoint.type !== "stmt" || graphs.statements.length <= currentPoint.stmt) {
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
@@ -133,12 +133,7 @@ export default function PCGNavigator({
           if (phase in programPointData.graphs.actions) {
             // Add all actions for this phase first
             programPointData.actions[phase].forEach((action, index) => {
-              if (
-                action.data.kind.type !== "MakePlaceOld" &&
-                action.data.kind.type !== "LabelLifetimeProjection"
-              ) {
-                items.push({ type: "action", phase, index, action });
-              }
+              items.push({ type: "action", phase, index, action });
             });
           }
 
@@ -154,12 +149,7 @@ export default function PCGNavigator({
       const programPointData =
         pcgData.successors[toBasicBlock(currentPoint.block2)];
       programPointData.actions.forEach((action, index) => {
-        if (
-          action.data.kind.type !== "MakePlaceOld" &&
-          action.data.kind.type !== "LabelLifetimeProjection"
-        ) {
-          items.push({ type: "action", phase: "successor", index, action });
-        }
+        items.push({ type: "action", phase: "successor", index, action });
       });
     }
 

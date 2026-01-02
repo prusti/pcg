@@ -20,6 +20,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
+    pcg::PcgNodeType,
     rustc_interface::{
         VariantIdx,
         ast::Mutability,
@@ -115,6 +116,9 @@ impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
 impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
+    }
+    fn node_type(&self) -> PcgNodeType {
+        PcgNodeType::Place
     }
 }
 

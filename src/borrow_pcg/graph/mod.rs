@@ -100,7 +100,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
         }
         for edge in self.edges() {
             if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = edge.kind()
-                && let Some(place) = e.base.as_current_place()
+                && let Some(place) = e.base().as_current_place()
                 && place.projects_shared_ref(ctxt)
             {
                 edge.check_validity(ctxt)?;

@@ -129,7 +129,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         true
     }
 
-    fn label_region_projection<'a>(
+    fn label_lifetime_projection<'a>(
         &mut self,
         predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
@@ -191,7 +191,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                     // panic!("Capability should have been updated")
                 }
                 if restore.capability() == CapabilityKind::Exclusive {
-                    self.label_region_projection(
+                    self.label_lifetime_projection(
                         &LabelLifetimeProjectionPredicate::AllFuturePostfixes(restore_place),
                         None,
                         ctxt,
@@ -235,8 +235,8 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                 ),
             BorrowPcgActionKind::RemoveEdge(edge) => self.remove(&edge.value, capabilities, ctxt),
             BorrowPcgActionKind::AddEdge { edge } => self.graph_mut().insert(edge, ctxt.bc_ctxt()),
-            BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
-                self.label_region_projection(&rp, label, ctxt.bc_ctxt())
+            BorrowPcgActionKind::LabelLifetimeProjection(action) => {
+                self.label_lifetime_projection(action.predicate(), action.label(), ctxt.bc_ctxt())
             }
         };
         Ok(result)

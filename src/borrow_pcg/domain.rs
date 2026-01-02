@@ -15,7 +15,7 @@ use crate::{
             PcgLifetimeProjectionLike, PlaceOrConst,
         },
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike, PcgNodeType},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -76,6 +76,10 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstractionInpu
 impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.to_pcg_node(ctxt)
+    }
+
+    fn node_type(&self) -> PcgNodeType {
+        PcgNodeType::LifetimeProjection
     }
 }
 
@@ -163,6 +167,10 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionInput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
     }
+
+    fn node_type(&self) -> PcgNodeType {
+        self.0.node_type()
+    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionInput<'tcx> {
@@ -224,6 +232,10 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
     }
+
+    fn node_type(&self) -> PcgNodeType {
+        self.0.node_type()
+    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionOutput<'tcx> {
@@ -271,6 +283,10 @@ impl<'tcx> PcgNodeLike<'tcx> for AbstractionInputTarget<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
     }
+
+    fn node_type(&self) -> PcgNodeType {
+        self.0.node_type()
+    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionInputTarget<'tcx> {
@@ -289,8 +305,12 @@ impl<'tcx> LabelPlace<'tcx> for AbstractionOutputTarget<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.0.label_place_with_context(
+            predicate,
+            labeller,
+            LabelNodeContext::for_node(self.0, false),
+            ctxt,
+        )
     }
 }
 
@@ -340,6 +360,10 @@ where
 impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionOutput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
+    }
+
+    fn node_type(&self) -> PcgNodeType {
+        PcgNodeType::LifetimeProjection
     }
 }
 
