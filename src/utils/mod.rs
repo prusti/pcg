@@ -158,11 +158,11 @@ impl PcgSettings {
             Self::process_bool_var(&mut processed_vars, "PCG_DUMP_MIR_DATAFLOW", false);
 
         let visualization = Self::process_bool_var(&mut processed_vars, "PCG_VISUALIZATION", false);
-        let visualization_data_dir = PathBuf::from(Self::process_path_with_default(
+        let visualization_data_dir = Self::process_path_with_default(
             &mut processed_vars,
             "PCG_VISUALIZATION_DATA_DIR",
             PathBuf::from("../visualization/data"),
-        ));
+        );
 
         let check_annotations =
             Self::process_bool_var(&mut processed_vars, "PCG_CHECK_ANNOTATIONS", false);
