@@ -12,7 +12,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}/pcg-server
   MUTATION_TESTS_REF: zgrannan/update-pcg
   FLOWISTRY_REF: zgrannan/pcg-next4
-  SYMBOLIC_EXECUTION_REF: main
+  SYMBOLIC_EXECUTION_REF: zgrannan/pcg-fix-nested
   PURIFICATION_PRUSTI_REF: zgrannan/next5
 
 jobs:

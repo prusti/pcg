@@ -1,7 +1,7 @@
 //! Definition of expansion edges in the Borrow PCG.
 use std::{collections::BTreeMap, hash::Hash};
 
-use derive_more::From;
+use derive_more::{From, TryFrom};
 use itertools::Itertools;
 
 use super::{
@@ -184,7 +184,7 @@ pub(crate) mod internal {
     }
 }
 
-pub(crate) type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>;
+pub type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>;
 
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgPlaceExpansion<'tcx> {
     fn label_lifetime_projection(
@@ -200,7 +200,7 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgPlaceExpansion<'tc
 pub(crate) type LifetimeProjectionExpansion<'tcx> =
     BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, TryFrom)]
 pub enum BorrowPcgExpansion<'tcx> {
     Place(BorrowPcgPlaceExpansion<'tcx>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
