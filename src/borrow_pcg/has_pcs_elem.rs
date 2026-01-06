@@ -166,8 +166,17 @@ impl LabelNodeContext {
             edge_type,
         }
     }
-    pub(crate) fn is_place_node(self) -> bool {
-        self.node_type == PcgNodeType::Place
+
+    pub(crate) fn node_type(self) -> PcgNodeType {
+        self.node_type
+    }
+
+    pub(crate) fn source_or_target(self) -> SourceOrTarget {
+        self.source_or_target
+    }
+
+    pub(crate) fn edge_type(self) -> BorrowPcgEdgeType {
+        self.edge_type
     }
 }
 

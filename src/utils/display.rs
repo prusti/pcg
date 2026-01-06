@@ -50,7 +50,7 @@ impl PlaceDisplay<'_> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum DisplayOutput {
     Html(Html),
     Text(Cow<'static, str>),

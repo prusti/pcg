@@ -267,8 +267,11 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let result = self.base.label_place_with_context(
+    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
+    {
+        let mut result = crate::utils::data_structures::HashSet::default();
+        let from = self.base.to_pcg_node(ctxt);
+        let changed = self.base.label_place_with_context(
             predicate,
             labeller,
             LabelNodeContext::for_node(
@@ -278,6 +281,12 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
             ),
             ctxt,
         );
+        if changed {
+            result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
+                from,
+                self.base.to_pcg_node(ctxt),
+            ));
+        }
         self.assert_validity(ctxt);
         result
     }
@@ -287,10 +296,12 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let mut changed = false;
+    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
+    {
+        let mut result = crate::utils::data_structures::HashSet::default();
         for p in &mut self.expansion {
-            changed |= p.label_place_with_context(
+            let from = p.to_pcg_node(ctxt);
+            let changed = p.label_place_with_context(
                 predicate,
                 labeller,
                 LabelNodeContext::for_node(
@@ -300,9 +311,15 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
                 ),
                 ctxt,
             );
+            if changed {
+                result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
+                    from,
+                    p.to_pcg_node(ctxt),
+                ));
+            }
         }
         self.assert_validity(ctxt);
-        changed
+        result
     }
 }
 

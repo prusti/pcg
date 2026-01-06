@@ -1,14 +1,16 @@
 //! Borrow edges
 use crate::{
     borrow_pcg::{
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::LifetimeProjectionLabel,
     },
-    pcg::PcgNode,
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
@@ -19,6 +21,7 @@ use crate::{
     },
     utils::{
         HasBorrowCheckerCtxt, HasCompilerCtxt,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -74,13 +77,26 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.blocked_place.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from: PcgNode<'tcx> = self.blocked_place.to_pcg_node(ctxt);
+        let changed = self.blocked_place.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.blocked_place, false),
+            LabelNodeContext::for_node(
+                self.blocked_place,
+                SourceOrTarget::Source,
+                BorrowPcgEdgeType::Borrow,
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(
+                from,
+                self.blocked_place.to_pcg_node(ctxt),
+            ));
+        }
+        result
     }
 
     fn label_blocked_by_places(
@@ -88,16 +104,29 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from: PcgNode<'tcx> = self.assigned_ref.to_pcg_node(ctxt);
         // Technically, `assigned_ref` does not block this node, but this place
         // is used to compute `assigned_region_projection` which *does* block this node
         // So we should label it
-        self.assigned_ref.label_place_with_context(
+        let changed = self.assigned_ref.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.assigned_ref, false),
+            LabelNodeContext::for_node(
+                self.assigned_ref,
+                SourceOrTarget::Target,
+                BorrowPcgEdgeType::Borrow,
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(
+                from,
+                self.assigned_ref.to_pcg_node(ctxt),
+            ));
+        }
+        result
     }
 }
 

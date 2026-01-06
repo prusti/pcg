@@ -1,6 +1,9 @@
 use crate::{
     action::PcgAction,
-    borrow_pcg::state::{BorrowStateMutRef, BorrowsStateLike},
+    borrow_pcg::{
+        action::ApplyActionResult,
+        state::{BorrowStateMutRef, BorrowsStateLike},
+    },
     error::PcgError,
     owned_pcg::{LocalExpansions, RepackOp, join::data::JoinOwnedData},
     pcg::{
@@ -24,7 +27,7 @@ impl HasSnapshotLocation for JoinObtainer<'_, '_, '_, '_, '_> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<ApplyActionResult, PcgError> {
         match action {
             PcgAction::Borrow(action) => {
                 self.data
@@ -43,7 +46,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         self.ctxt,
                     )?;
                     self.actions.push(action.kind);
-                    Ok(true)
+                    Ok(ApplyActionResult::changed_no_display())
                 }
                 RepackOp::DerefShallowInit(..) => todo!(),
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -54,7 +57,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         self.ctxt,
                     )?;
                     self.actions.push(action.kind);
-                    Ok(true)
+                    Ok(ApplyActionResult::changed_no_display())
                 }
             },
         }

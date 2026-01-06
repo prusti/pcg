@@ -9,7 +9,7 @@ use crate::{
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
@@ -30,7 +30,8 @@ use crate::{
     },
     utils::display::{DisplayOutput, OutputMode},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck,
+        CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
+        validity::HasValidityCheck,
     },
 };
 
@@ -257,7 +258,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
@@ -266,7 +267,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }

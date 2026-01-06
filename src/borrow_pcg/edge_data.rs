@@ -6,6 +6,7 @@ use crate::{
     pcg::{PcgNode, PcgNodeType},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -86,7 +87,7 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LabelPlacePredicate<'tcx>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
                 LabelPlacePredicate::Postfix(place) => {
@@ -95,13 +96,31 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 LabelPlacePredicate::Exact(place) => {
                     format!("exact {}", place.display_string(ctxt))
                 }
-                LabelPlacePredicate::NodeType(pcg_node_type) => todo!(),
-                LabelPlacePredicate::And(label_place_predicates) => todo!(),
-                LabelPlacePredicate::EdgeType(borrow_pcg_edge_type) => todo!(),
-                LabelPlacePredicate::InSourceNodes => todo!(),
-                LabelPlacePredicate::InTargetNodes => todo!(),
-                LabelPlacePredicate::Or(label_place_predicates) => todo!(),
-                LabelPlacePredicate::Not(label_place_predicate) => todo!(),
+                LabelPlacePredicate::NodeType(pcg_node_type) => {
+                    format!("node_type({:?})", pcg_node_type)
+                }
+                LabelPlacePredicate::And(predicates) => {
+                    let inner: Vec<_> = predicates
+                        .iter()
+                        .map(|p| p.display_output(ctxt, mode).into_text().to_string())
+                        .collect();
+                    format!("({})", inner.join(" && "))
+                }
+                LabelPlacePredicate::Or(predicates) => {
+                    let inner: Vec<_> = predicates
+                        .iter()
+                        .map(|p| p.display_output(ctxt, mode).into_text().to_string())
+                        .collect();
+                    format!("({})", inner.join(" || "))
+                }
+                LabelPlacePredicate::Not(predicate) => {
+                    format!("!{}", predicate.display_output(ctxt, mode).into_text())
+                }
+                LabelPlacePredicate::EdgeType(edge_type) => {
+                    format!("edge_type({:?})", edge_type)
+                }
+                LabelPlacePredicate::InSourceNodes => "in_source_nodes".to_string(),
+                LabelPlacePredicate::InTargetNodes => "in_target_nodes".to_string(),
             }
             .into(),
         )
@@ -113,36 +132,91 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
         &self,
         candidate: Place<'tcx>,
         label_context: LabelNodeContext,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
-            LabelPlacePredicate::Exact(place) => todo!(),
-            LabelPlacePredicate::Postfix(place) => todo!(),
-            LabelPlacePredicate::NodeType(pcg_node_type) => todo!(),
-            LabelPlacePredicate::And(label_place_predicates) => todo!(),
-            LabelPlacePredicate::Or(label_place_predicates) => todo!(),
-            LabelPlacePredicate::Not(label_place_predicate) => todo!(),
-            LabelPlacePredicate::EdgeType(borrow_pcg_edge_type) => todo!(),
-            LabelPlacePredicate::InSourceNodes => todo!(),
-            LabelPlacePredicate::InTargetNodes => todo!(),
+            LabelPlacePredicate::Exact(place) => candidate == *place,
+            LabelPlacePredicate::Postfix(place) => place.is_prefix_of(candidate),
+            LabelPlacePredicate::NodeType(pcg_node_type) => {
+                label_context.node_type() == *pcg_node_type
+            }
+            LabelPlacePredicate::And(predicates) => predicates
+                .iter()
+                .all(|p| p.applies_to(candidate, label_context, ctxt)),
+            LabelPlacePredicate::Or(predicates) => predicates
+                .iter()
+                .any(|p| p.applies_to(candidate, label_context, ctxt)),
+            LabelPlacePredicate::Not(predicate) => {
+                !predicate.applies_to(candidate, label_context, ctxt)
+            }
+            LabelPlacePredicate::EdgeType(edge_type) => label_context.edge_type() == *edge_type,
+            LabelPlacePredicate::InSourceNodes => {
+                label_context.source_or_target() == SourceOrTarget::Source
+            }
+            LabelPlacePredicate::InTargetNodes => {
+                label_context.source_or_target() == SourceOrTarget::Target
+            }
         }
     }
 }
 
-pub trait LabelEdgePlaces<'tcx> {
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct NodeReplacement<'tcx> {
+    pub(crate) from: PcgNode<'tcx>,
+    pub(crate) to: PcgNode<'tcx>,
+}
+
+impl<'tcx> NodeReplacement<'tcx> {
+    pub(crate) fn new(from: PcgNode<'tcx>, to: PcgNode<'tcx>) -> Self {
+        Self { from, to }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for NodeReplacement<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            self.from.display_output(ctxt, mode),
+            " → ".into(),
+            self.to.display_output(ctxt, mode),
+        ])
+    }
+}
+
+pub(crate) fn display_node_replacements<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    replacements: &HashSet<NodeReplacement<'tcx>>,
+    ctxt: Ctxt,
+    mode: OutputMode,
+) -> DisplayOutput {
+    if replacements.is_empty() {
+        return DisplayOutput::EMPTY;
+    }
+    let items: Vec<DisplayOutput> = replacements
+        .iter()
+        .map(|r| r.display_output(ctxt, mode))
+        .collect();
+    DisplayOutput::Seq(vec![
+        "Labelled nodes: [".into(),
+        DisplayOutput::join(items, ", ".into()),
+        "]".into(),
+    ])
+}
+
+pub(crate) trait LabelEdgePlaces<'tcx> {
     fn label_blocked_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool;
+    ) -> HashSet<NodeReplacement<'tcx>>;
 
     fn label_blocked_by_places(
         &mut self,
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool;
+    ) -> HashSet<NodeReplacement<'tcx>>;
 }
 
 macro_rules! edgedata_enum {
@@ -210,7 +284,7 @@ macro_rules! edgedata_enum {
                 predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
                 ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> bool {
+            ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.label_blocked_places(predicate, labeller, ctxt),
@@ -223,7 +297,7 @@ macro_rules! edgedata_enum {
                 predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
                 ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> bool {
+            ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
                 match self {
                     $(
                         $enum_name::$variant_name(inner) => inner.label_blocked_by_places(predicate, labeller, ctxt),

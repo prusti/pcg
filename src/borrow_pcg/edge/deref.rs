@@ -1,17 +1,19 @@
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller,
+            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{LocalNodeLike, PcgNodeLike},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -109,22 +111,31 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let blocked_places = vec![
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx>> = vec![
             &mut self.blocked_place,
             &mut self.blocked_lifetime_projection.base,
         ];
-        let mut changed = false;
         for blocked_place in blocked_places {
-            if let MaybeLabelledPlace::Current(place) = blocked_place
-                && predicate.applies_to(*place, LabelNodeContext::for_node(*place, false), ctxt)
+            if let MaybeLabelledPlace::Current(place) = *blocked_place
+                && predicate.applies_to(
+                    place,
+                    LabelNodeContext::for_node(
+                        place,
+                        SourceOrTarget::Source,
+                        BorrowPcgEdgeType::Deref,
+                    ),
+                    ctxt,
+                )
             {
+                let from: PcgNode<'tcx> = blocked_place.to_pcg_node(ctxt);
                 *blocked_place =
-                    MaybeLabelledPlace::new(*place, Some(labeller.place_label(*place, ctxt)));
-                changed = true;
+                    MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
+                result.insert(NodeReplacement::new(from, blocked_place.to_pcg_node(ctxt)));
             }
         }
-        changed
+        result
     }
 
     fn label_blocked_by_places(
@@ -132,16 +143,25 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let label_node_context = LabelNodeContext::for_node(self.deref_place, true);
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let label_node_context = LabelNodeContext::for_node(
+            self.deref_place,
+            SourceOrTarget::Target,
+            BorrowPcgEdgeType::Deref,
+        );
         if let MaybeLabelledPlace::Current(place) = self.deref_place
             && predicate.applies_to(place, label_node_context, ctxt)
         {
+            let from: PcgNode<'tcx> = self.deref_place.to_pcg_node(ctxt);
             self.deref_place =
                 MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
-            return true;
+            result.insert(NodeReplacement::new(
+                from,
+                self.deref_place.to_pcg_node(ctxt),
+            ));
         }
-        false
+        result
     }
 }
 

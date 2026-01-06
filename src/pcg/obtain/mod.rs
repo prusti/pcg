@@ -5,11 +5,12 @@ use std::marker::PhantomData;
 use crate::{
     action::{BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
-        action::LabelPlaceReason,
+        action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
+        edge::kind::BorrowPcgEdgeType,
         edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         edge_data::LabelPlacePredicate,
-        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel},
+        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
     },
@@ -300,7 +301,13 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 node.label_place_with_context(
                     &LabelPlacePredicate::Exact((*place).into()),
                     &labeller,
-                    LabelNodeContext::for_node(node, false),
+                    LabelNodeContext::for_node(
+                        node,
+                        SourceOrTarget::Source,
+                        BorrowPcgEdgeType::BorrowFlow {
+                            future_edge_kind: None,
+                        },
+                    ),
                     ctxt.bc_ctxt(),
                 );
                 let edge = BorrowPcgEdge::new(
@@ -327,7 +334,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 }
 
 pub(crate) trait ActionApplier<'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError>;
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<ApplyActionResult, PcgError>;
 }
 
 pub(crate) trait HasSnapshotLocation {

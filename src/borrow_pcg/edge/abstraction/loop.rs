@@ -11,7 +11,7 @@ use crate::{
             },
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, PlaceLabeller,
@@ -22,7 +22,10 @@ use crate::{
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
     utils::display::{DisplayOutput, OutputMode},
-    utils::{CompilerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
+        validity::HasValidityCheck,
+    },
 };
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
@@ -87,7 +90,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
@@ -96,7 +99,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }

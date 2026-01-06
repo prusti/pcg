@@ -6,10 +6,12 @@ use serde_derive::Serialize;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -18,6 +20,7 @@ use crate::{
     rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
@@ -26,8 +29,18 @@ use crate::{
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BorrowFlowEdge<'tcx> {
     long: LifetimeProjection<'tcx>,
-    short: LocalLifetimeProjection<'tcx>,
+    pub(crate) short: LocalLifetimeProjection<'tcx>,
     pub(crate) kind: BorrowFlowEdgeKind<'tcx>,
+}
+
+impl<'tcx> BorrowFlowEdge<'tcx> {
+    pub(crate) fn future_edge_kind(self) -> Option<private::FutureEdgeKind> {
+        if let BorrowFlowEdgeKind::Future(future_edge_kind) = self.kind {
+            Some(future_edge_kind)
+        } else {
+            None
+        }
+    }
 }
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
@@ -36,13 +49,25 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.long.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from: PcgNode<'tcx> = self.long.to_pcg_node(ctxt);
+        let changed = self.long.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.long, false),
+            LabelNodeContext::for_node(
+                self.long,
+                SourceOrTarget::Source,
+                BorrowPcgEdgeType::BorrowFlow {
+                    future_edge_kind: self.future_edge_kind(),
+                },
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(from, self.long.to_pcg_node(ctxt)));
+        }
+        result
     }
 
     fn label_blocked_by_places(
@@ -50,13 +75,25 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.short.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from: PcgNode<'tcx> = self.short.to_pcg_node(ctxt);
+        let changed = self.short.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.short, false),
+            LabelNodeContext::for_node(
+                self.short,
+                SourceOrTarget::Target,
+                BorrowPcgEdgeType::BorrowFlow {
+                    future_edge_kind: self.future_edge_kind(),
+                },
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(from, self.short.to_pcg_node(ctxt)));
+        }
+        result
     }
 }
 
@@ -231,6 +268,16 @@ impl<'tcx, Ty> AssignmentData<'tcx, Ty> {
     }
 }
 
+pub(crate) mod private {
+    use serde_derive::Serialize;
+
+    #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
+    pub enum FutureEdgeKind {
+        Inherent,
+        FromBorrow,
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
 pub enum BorrowFlowEdgeKind<'tcx, Ty = ty::Ty<'tcx>> {
     /// Indicates that the borrow flows to the `target_rp_index`th region
@@ -265,7 +312,7 @@ pub enum BorrowFlowEdgeKind<'tcx, Ty = ty::Ty<'tcx>> {
     /// statement. For a statement e.g. `let x = e`, borrows will flow from the
     /// lifetime projections in `e` to the lifetime projections of `x`.
     Assignment(AssignmentData<'tcx, Ty>),
-    Future,
+    Future(private::FutureEdgeKind),
 }
 
 impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
@@ -285,7 +332,9 @@ impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
                 regions_equal: *lifetimes_equal,
             },
             BorrowFlowEdgeKind::InitialBorrows => BorrowFlowEdgeKind::InitialBorrows,
-            BorrowFlowEdgeKind::Future => BorrowFlowEdgeKind::Future,
+            BorrowFlowEdgeKind::Future(future_edge_kind) => {
+                BorrowFlowEdgeKind::Future(*future_edge_kind)
+            }
             BorrowFlowEdgeKind::Assignment(assignment_data) => {
                 BorrowFlowEdgeKind::Assignment(AssignmentData::new(
                     assignment_data.operand_type,
@@ -315,7 +364,7 @@ impl<'tcx, Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'tcx, T
                 }
             }
             BorrowFlowEdgeKind::InitialBorrows => write!(f, "InitialBorrows"),
-            BorrowFlowEdgeKind::Future => write!(f, "Future"),
+            BorrowFlowEdgeKind::Future(_) => write!(f, "Future"),
             BorrowFlowEdgeKind::Assignment(assignment_data) => {
                 let first_part = match assignment_data.operand_type {
                     OperandType::Move => "Move",

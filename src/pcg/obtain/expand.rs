@@ -7,7 +7,7 @@ use crate::{
         edge::{
             deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
         graph::BorrowsGraph,
         has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
@@ -392,7 +392,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     BorrowFlowEdge::new(
                         origin_rp.into(),
                         future_rp,
-                        BorrowFlowEdgeKind::Future,
+                        BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
                         ctxt,
                     )
                     .into(),
@@ -412,7 +412,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         BorrowFlowEdge::new(
                             *expansion_rp,
                             future_rp,
-                            BorrowFlowEdgeKind::Future,
+                            BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
                             ctxt,
                         )
                         .into(),
@@ -424,8 +424,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 .into(),
             )?;
         }
-        self.redirect_source_of_future_edges(origin_rp, future_rp, ctxt)?;
-        Ok(())
+        self.redirect_source_of_future_edges(origin_rp, future_rp, ctxt)
     }
 
     fn redirect_source_of_future_edges(
@@ -438,20 +437,17 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             .borrows_graph()
             .edges_blocking(old_source.into(), ctxt)
             .filter_map(|edge| {
-                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind
-                    && bf_edge.kind == BorrowFlowEdgeKind::Future
-                    && bf_edge.short() != new_source
+                if let BorrowPcgEdgeKind::BorrowFlow(BorrowFlowEdge {
+                    kind: kind @ BorrowFlowEdgeKind::Future(_),
+                    short,
+                    ..
+                }) = edge.kind
+                    && *short != new_source
                 {
                     return Some((
                         edge.to_owned_edge(),
                         BorrowPcgEdge::new(
-                            BorrowFlowEdge::new(
-                                new_source.into(),
-                                bf_edge.short(),
-                                BorrowFlowEdgeKind::Future,
-                                ctxt,
-                            )
-                            .into(),
+                            BorrowFlowEdge::new(new_source.into(), *short, *kind, ctxt).into(),
                             edge.conditions.clone(),
                         ),
                     ));

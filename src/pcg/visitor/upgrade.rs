@@ -6,7 +6,7 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
         has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::LifetimeProjection,
@@ -171,7 +171,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                     BorrowFlowEdge::new(
                                         labelled_rp.into(),
                                         future_rp.into(),
-                                        BorrowFlowEdgeKind::Future,
+                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
                                         self.ctxt,
                                     )
                                     .into(),
@@ -197,7 +197,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                         BorrowFlowEdge::new(
                                             to_connect,
                                             future_rp.into(),
-                                            BorrowFlowEdgeKind::Future,
+                                            BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
                                             self.ctxt,
                                         )
                                         .into(),

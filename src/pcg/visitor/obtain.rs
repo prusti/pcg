@@ -1,7 +1,7 @@
 use crate::{
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::{
-        action::LabelPlaceReason,
+        action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
@@ -48,7 +48,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<bool, PcgError> {
+    ) -> Result<ApplyActionResult, PcgError> {
         self.place_obtainer().record_and_apply_action(action)
     }
 }
@@ -446,7 +446,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<bool, PcgError> {
+    ) -> Result<ApplyActionResult, PcgError> {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
@@ -466,7 +466,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.borrow.as_mut_ref(),
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
                     self.pcg.owned.perform_expand_action(
@@ -474,7 +474,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.capabilities,
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
                     let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
@@ -490,7 +490,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             analysis_ctxt,
                         );
                     }
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Collapse(collapse) => {
                     let capability_projections =
@@ -500,7 +500,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.capabilities,
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 _ => unreachable!(),
             },
@@ -539,7 +539,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<ApplyActionResult, PcgError> {
         self.record_and_apply_action(action)
     }
 }

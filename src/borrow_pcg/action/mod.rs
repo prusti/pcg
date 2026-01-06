@@ -7,20 +7,63 @@ use crate::{
     RestoreCapability, Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
-        edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
+        edge::{
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+            outlives::private::FutureEdgeKind,
+        },
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
         has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     pcg::{CapabilityKind, PcgNodeType},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
     },
 };
 
 pub mod actions;
+
+/// The result of applying an action to the PCG.
+#[derive(Clone, Debug)]
+pub struct ApplyActionResult {
+    /// Whether the action had any effect on the PCG state.
+    pub changed: bool,
+    /// A summary of the changes made by the action.
+    pub display: DisplayOutput,
+}
+
+impl ApplyActionResult {
+    pub fn unchanged() -> Self {
+        Self {
+            changed: false,
+            display: DisplayOutput::EMPTY,
+        }
+    }
+
+    pub fn changed_no_display() -> Self {
+        Self {
+            changed: true,
+            display: DisplayOutput::EMPTY,
+        }
+    }
+
+    pub fn changed_with_display(display: DisplayOutput) -> Self {
+        Self {
+            changed: true,
+            display,
+        }
+    }
+
+    pub fn from_changed(changed: bool) -> Self {
+        Self {
+            changed,
+            display: DisplayOutput::EMPTY,
+        }
+    }
+}
 
 impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
     pub(crate) fn add_edge(
@@ -135,7 +178,7 @@ impl LabelPlaceReason {
         edge: &mut impl LabelEdgePlaces<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         let predicate = match self {
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
@@ -144,6 +187,8 @@ impl LabelPlaceReason {
             }
             LabelPlaceReason::Write => LabelPlacePredicate::And(vec![
                 LabelPlacePredicate::Postfix(place),
+                // If the place is e.g *x or x.f, don't label it if it
+                // is the target of a borrow expansion or deref edge.
                 LabelPlacePredicate::not(LabelPlacePredicate::And(vec![
                     LabelPlacePredicate::Exact(place),
                     LabelPlacePredicate::InTargetNodes,
@@ -153,12 +198,19 @@ impl LabelPlaceReason {
                         LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::Deref),
                     ]),
                 ])),
+                LabelPlacePredicate::not(LabelPlacePredicate::And(vec![
+                    LabelPlacePredicate::Exact(place),
+                    LabelPlacePredicate::InSourceNodes,
+                    LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
+                        future_edge_kind: Some(FutureEdgeKind::Inherent),
+                    }),
+                ])),
             ]),
             LabelPlaceReason::Collapse => LabelPlacePredicate::Exact(place),
         };
-        let mut changed = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
-        changed |= edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt());
-        changed
+        let mut result = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
+        result.extend(edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt()));
+        result
     }
 }
 

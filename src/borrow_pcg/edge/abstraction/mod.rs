@@ -11,10 +11,12 @@ use crate::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
         edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{LabelEdgePlaces, LabelPlacePredicate, NodeReplacement, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
     },
@@ -22,6 +24,7 @@ use crate::{
     pcg::PcgNodeLike,
     utils::{
         HasBorrowCheckerCtxt,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
     },
@@ -125,13 +128,23 @@ impl<
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.input.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from = self.input.to_pcg_node(ctxt);
+        let changed = self.input.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.input, false),
+            LabelNodeContext::for_node(
+                self.input,
+                SourceOrTarget::Source,
+                BorrowPcgEdgeType::Abstraction,
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(from, self.input.to_pcg_node(ctxt)));
+        }
+        result
     }
 
     fn label_blocked_by_places(
@@ -139,13 +152,23 @@ impl<
         predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.output.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let from = self.output.to_pcg_node(ctxt);
+        let changed = self.output.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.output, false),
+            LabelNodeContext::for_node(
+                self.output,
+                SourceOrTarget::Target,
+                BorrowPcgEdgeType::Abstraction,
+            ),
             ctxt,
-        )
+        );
+        if changed {
+            result.insert(NodeReplacement::new(from, self.output.to_pcg_node(ctxt)));
+        }
+        result
     }
 }
 

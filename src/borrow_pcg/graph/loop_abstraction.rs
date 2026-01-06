@@ -3,7 +3,7 @@ use derive_more::From;
 use crate::{
     action::PcgAction,
     borrow_pcg::{
-        action::BorrowPcgActionKind,
+        action::{ApplyActionResult, BorrowPcgActionKind},
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
         edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
         edge_data::EdgeData,
@@ -488,20 +488,29 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, crate::error::PcgError> {
+    fn apply_action(
+        &mut self,
+        action: PcgAction<'tcx>,
+    ) -> Result<ApplyActionResult, crate::error::PcgError> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {
-                BorrowPcgActionKind::AddEdge { edge } => Ok(self.graph.insert(edge, self.ctxt)),
-                BorrowPcgActionKind::LabelLifetimeProjection(action) => Ok(self
-                    .graph
-                    .label_region_projection(action.predicate(), action.label(), self.ctxt)),
+                BorrowPcgActionKind::AddEdge { edge } => Ok(ApplyActionResult::from_changed(
+                    self.graph.insert(edge, self.ctxt),
+                )),
+                BorrowPcgActionKind::LabelLifetimeProjection(action) => Ok(
+                    ApplyActionResult::from_changed(self.graph.label_region_projection(
+                        action.predicate(),
+                        action.label(),
+                        self.ctxt,
+                    )),
+                ),
                 BorrowPcgActionKind::Weaken(_) => todo!(),
                 BorrowPcgActionKind::Restore(_) => todo!(),
                 BorrowPcgActionKind::MakePlaceOld(_) => todo!(),
                 BorrowPcgActionKind::RemoveEdge(borrow_pcg_edge) => {
                     self.graph.remove(borrow_pcg_edge.kind());
-                    Ok(true)
+                    Ok(ApplyActionResult::changed_no_display())
                 }
             },
             PcgAction::Owned(action) => match action.kind {
