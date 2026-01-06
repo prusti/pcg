@@ -550,7 +550,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// Ensures that the place is expanded to the given place, with a certain
     /// capability.
     ///
-    /// This also handles corresponding region projections of the place.
+    /// This also handles corresponding lifetime projections of the place.
     #[tracing::instrument(skip(self))]
     pub(crate) fn obtain(
         &mut self,
@@ -567,7 +567,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 BorrowPcgAction::label_place_and_update_related_capabilities(
                     place,
                     self.prev_snapshot_location(),
-                    LabelPlaceReason::ReAssign,
+                    LabelPlaceReason::Write,
                 )
                 .into(),
             )?;

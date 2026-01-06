@@ -19,3 +19,13 @@ pub enum BorrowPcgEdgeKind<'tcx> {
     BorrowFlow(BorrowFlowEdge<'tcx>),
     Coupled(PcgCoupledEdgeKind<'tcx>),
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub(crate) enum BorrowPcgEdgeType {
+    Borrow,
+    BorrowPcgExpansion,
+    Deref,
+    Abstraction,
+    BorrowFlow,
+    Coupled,
+}

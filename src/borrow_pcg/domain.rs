@@ -4,11 +4,12 @@ use super::region_projection::LifetimeProjection;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
+        edge::kind::BorrowPcgEdgeType,
         edge_data::LabelPlacePredicate,
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, LabelPlaceWithContext,
-            PlaceLabeller,
+            PlaceLabeller, SourceOrTarget,
         },
         region_projection::{
             LifetimeProjectionLabel, LocalLifetimeProjection, PcgLifetimeProjectionBaseLike,
@@ -308,7 +309,11 @@ impl<'tcx> LabelPlace<'tcx> for AbstractionOutputTarget<'tcx> {
         self.0.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.0, false),
+            LabelNodeContext::for_node(
+                self.0,
+                SourceOrTarget::Target,
+                BorrowPcgEdgeType::Abstraction,
+            ),
             ctxt,
         )
     }

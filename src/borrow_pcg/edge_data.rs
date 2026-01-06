@@ -1,6 +1,9 @@
 use crate::{
-    borrow_pcg::has_pcs_elem::{LabelNodeContext, PlaceLabeller},
-    pcg::PcgNode,
+    borrow_pcg::{
+        edge::kind::BorrowPcgEdgeType,
+        has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
+    },
+    pcg::{PcgNode, PcgNodeType},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -62,20 +65,22 @@ pub trait EdgeData<'tcx> {
 pub enum LabelPlacePredicate<'tcx> {
     /// Label only this exact place, not including any of its pre-or postfix places.
     Exact(Place<'tcx>),
-    /// Label all places that (transitively) project from a postfix of `place`,
-    /// including `place` itself. If `label_place_in_expansion` is `false`,
-    /// then we would not label places e.g `place.foo` when `place.foo` is the
-    /// child of a [`BorrowPcgExpansion`] or [`DerefEdge`].
-    Postfix {
-        place: Place<'tcx>,
-        label_place_in_expansion: bool,
-    },
+    /// Label all places that (transitively) project from a postfix of `place`, including `place` itself.
+    Postfix(Place<'tcx>),
+    /// Only label places appearing in nodes of the given type.
+    NodeType(PcgNodeType),
+    And(Vec<Self>),
+    Or(Vec<Self>),
+    Not(Box<Self>),
+    EdgeType(BorrowPcgEdgeType),
+    InSourceNodes,
+    InTargetNodes,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EdgePredicate {
-    All,
-    BorrowEdges,
+impl<'tcx> LabelPlacePredicate<'tcx> {
+    pub(crate) fn not(self) -> Self {
+        Self::Not(Box::new(self))
+    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
@@ -84,12 +89,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
-                LabelPlacePredicate::Postfix { place, .. } => {
+                LabelPlacePredicate::Postfix(place) => {
                     place.display_string(ctxt) // As a hack for now so debug output doesn't change
                 }
                 LabelPlacePredicate::Exact(place) => {
                     format!("exact {}", place.display_string(ctxt))
                 }
+                LabelPlacePredicate::NodeType(pcg_node_type) => todo!(),
+                LabelPlacePredicate::And(label_place_predicates) => todo!(),
+                LabelPlacePredicate::EdgeType(borrow_pcg_edge_type) => todo!(),
+                LabelPlacePredicate::InSourceNodes => todo!(),
+                LabelPlacePredicate::InTargetNodes => todo!(),
+                LabelPlacePredicate::Or(label_place_predicates) => todo!(),
+                LabelPlacePredicate::Not(label_place_predicate) => todo!(),
             }
             .into(),
         )
@@ -104,20 +116,15 @@ impl<'tcx> LabelPlacePredicate<'tcx> {
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
-            LabelPlacePredicate::Postfix {
-                place: predicate_place,
-                label_place_in_expansion,
-            } => {
-                if candidate == *predicate_place
-                    && label_context.is_place_node()
-                    && label_context.is_target_of_expansion()
-                {
-                    *label_place_in_expansion
-                } else {
-                    predicate_place.is_prefix_of(candidate)
-                }
-            }
-            LabelPlacePredicate::Exact(place) => *place == candidate,
+            LabelPlacePredicate::Exact(place) => todo!(),
+            LabelPlacePredicate::Postfix(place) => todo!(),
+            LabelPlacePredicate::NodeType(pcg_node_type) => todo!(),
+            LabelPlacePredicate::And(label_place_predicates) => todo!(),
+            LabelPlacePredicate::Or(label_place_predicates) => todo!(),
+            LabelPlacePredicate::Not(label_place_predicate) => todo!(),
+            LabelPlacePredicate::EdgeType(borrow_pcg_edge_type) => todo!(),
+            LabelPlacePredicate::InSourceNodes => todo!(),
+            LabelPlacePredicate::InTargetNodes => todo!(),
         }
     }
 }

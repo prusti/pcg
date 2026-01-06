@@ -13,10 +13,11 @@ use super::{
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::internal::BorrowPcgExpansionData,
+        edge::kind::BorrowPcgEdgeType,
         edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
         has_pcs_elem::{
             LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, PlaceLabeller,
+            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
@@ -270,7 +271,11 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
         let result = self.base.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(self.base, false),
+            LabelNodeContext::for_node(
+                self.base,
+                SourceOrTarget::Source,
+                BorrowPcgEdgeType::BorrowPcgExpansion,
+            ),
             ctxt,
         );
         self.assert_validity(ctxt);
@@ -288,7 +293,11 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
             changed |= p.label_place_with_context(
                 predicate,
                 labeller,
-                LabelNodeContext::for_node(*p, true),
+                LabelNodeContext::for_node(
+                    *p,
+                    SourceOrTarget::Target,
+                    BorrowPcgEdgeType::BorrowPcgExpansion,
+                ),
                 ctxt,
             );
         }

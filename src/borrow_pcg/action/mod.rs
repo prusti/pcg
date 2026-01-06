@@ -7,12 +7,12 @@ use crate::{
     RestoreCapability, Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
-        edge::kind::BorrowPcgEdgeKind,
+        edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         edge_data::{LabelEdgePlaces, LabelPlacePredicate},
         has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
-    pcg::CapabilityKind,
+    pcg::{CapabilityKind, PcgNodeType},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -124,7 +124,7 @@ pub enum LabelPlaceReason {
     /// The place will not have any capability after the join, but reborrows derived from the dereference
     /// may still have capability.
     JoinOwnedReadAndWriteCapabilities,
-    ReAssign,
+    Write,
     Collapse,
 }
 
@@ -139,14 +139,21 @@ impl LabelPlaceReason {
         let predicate = match self {
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => LabelPlacePredicate::Postfix {
-                place,
-                label_place_in_expansion: true,
-            },
-            LabelPlaceReason::ReAssign => LabelPlacePredicate::Postfix {
-                place,
-                label_place_in_expansion: false,
-            },
+            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
+                LabelPlacePredicate::Postfix(place)
+            }
+            LabelPlaceReason::Write => LabelPlacePredicate::And(vec![
+                LabelPlacePredicate::Postfix(place),
+                LabelPlacePredicate::not(LabelPlacePredicate::And(vec![
+                    LabelPlacePredicate::Exact(place),
+                    LabelPlacePredicate::InTargetNodes,
+                    LabelPlacePredicate::NodeType(PcgNodeType::Place),
+                    LabelPlacePredicate::Or(vec![
+                        LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::BorrowPcgExpansion),
+                        LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::Deref),
+                    ]),
+                ])),
+            ]),
             LabelPlaceReason::Collapse => LabelPlacePredicate::Exact(place),
         };
         let mut changed = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());

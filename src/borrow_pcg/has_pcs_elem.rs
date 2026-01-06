@@ -2,7 +2,9 @@ use derive_more::From;
 
 use super::region_projection::{LifetimeProjection, LifetimeProjectionLabel};
 use crate::{
-    borrow_pcg::{edge_data::LabelPlacePredicate, region_projection::RegionIdx},
+    borrow_pcg::{
+        edge::kind::BorrowPcgEdgeType, edge_data::LabelPlacePredicate, region_projection::RegionIdx,
+    },
     pcg::{MaybeHasLocation, PcgNodeLike, PcgNodeType},
     utils::{
         CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
@@ -140,28 +142,32 @@ pub trait LabelLifetimeProjection<'a, 'tcx> {
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
+pub(crate) enum SourceOrTarget {
+    Source,
+    Target,
+}
+
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub(crate) struct LabelNodeContext {
     node_type: PcgNodeType,
-    is_target_of_expansion: bool,
+    source_or_target: SourceOrTarget,
+    edge_type: BorrowPcgEdgeType,
 }
 
 impl LabelNodeContext {
-    pub(crate) fn is_place_node(self) -> bool {
-        self.node_type == PcgNodeType::Place
-    }
-
-    pub(crate) fn is_target_of_expansion(self) -> bool {
-        self.is_target_of_expansion
-    }
-
-    pub(crate) fn for_node<'tcx, P: PcgNodeLike<'tcx>>(
-        node: P,
-        is_target_of_expansion: bool,
+    pub(crate) fn for_node<'tcx>(
+        node: impl PcgNodeLike<'tcx>,
+        source_or_target: SourceOrTarget,
+        edge_type: BorrowPcgEdgeType,
     ) -> Self {
         Self {
             node_type: node.node_type(),
-            is_target_of_expansion,
+            source_or_target,
+            edge_type,
         }
+    }
+    pub(crate) fn is_place_node(self) -> bool {
+        self.node_type == PcgNodeType::Place
     }
 }
 
