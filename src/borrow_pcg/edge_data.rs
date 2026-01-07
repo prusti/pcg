@@ -2,10 +2,11 @@ use crate::{
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
         has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
+        region_projection::{LifetimeProjectionLabel, RegionIdx},
     },
-    pcg::{PcgNode, PcgNodeType},
+    pcg::{MaybeHasLocation, PcgNode, PcgNodeType},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
@@ -62,13 +63,16 @@ pub trait EdgeData<'tcx> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LabelPlacePredicate<'tcx> {
-    /// Label only this exact place, not including any of its pre-or postfix places.
-    Exact(Place<'tcx>),
-    /// Label all places that (transitively) project from a postfix of `place`, including `place` itself.
-    Postfix(Place<'tcx>),
-    /// Only label places appearing in nodes of the given type.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LabelNodePredicate<'tcx> {
+    LifetimeProjectionLabelEquals(Option<LifetimeProjectionLabel>),
+    PlaceLabelEquals(Option<SnapshotLocation>),
+    ProjectionRegionIdxEquals(RegionIdx),
+    Equals(PcgNode<'tcx>),
+    /// The place associated with the node is exactly this place.
+    PlaceEquals(Place<'tcx>),
+    /// The place associated with the node is a postfix of this place.
+    PlaceIsPostfixOf(Place<'tcx>),
     NodeType(PcgNodeType),
     And(Vec<Self>),
     Or(Vec<Self>),
@@ -78,84 +82,178 @@ pub enum LabelPlacePredicate<'tcx> {
     InTargetNodes,
 }
 
-impl<'tcx> LabelPlacePredicate<'tcx> {
+impl<'tcx> LabelNodePredicate<'tcx> {
     pub(crate) fn not(self) -> Self {
         Self::Not(Box::new(self))
+    }
+
+    /// Creates a predicate that matches all future lifetime projections whose base
+    /// is a postfix of the given place (and the base is current, not labelled).
+    pub(crate) fn all_future_postfixes(place: Place<'tcx>) -> Self {
+        Self::And(vec![
+            Self::LifetimeProjectionLabelEquals(Some(LifetimeProjectionLabel::Future)),
+            Self::PlaceLabelEquals(None),
+            Self::PlaceIsPostfixOf(place),
+        ])
+    }
+
+    /// Creates a predicate that matches all non-future lifetime projections with
+    /// the given base place and region index.
+    pub(crate) fn all_non_future(
+        place: crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
+        region_idx: RegionIdx,
+    ) -> Self {
+        Self::And(vec![
+            Self::PlaceEquals(place.place()),
+            Self::PlaceLabelEquals(place.location()),
+            Self::ProjectionRegionIdxEquals(region_idx),
+            Self::LifetimeProjectionLabelEquals(Some(LifetimeProjectionLabel::Future)).not(),
+        ])
+    }
+
+    /// Creates a predicate that matches lifetime projections that are postfixes
+    /// of the given projection (same region, same label, and base is a postfix).
+    pub(crate) fn postfix_lifetime_projection(
+        projection: crate::borrow_pcg::region_projection::LifetimeProjection<
+            'tcx,
+            crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
+        >,
+    ) -> Self {
+        Self::And(vec![
+            Self::PlaceIsPostfixOf(projection.base.place()),
+            Self::PlaceLabelEquals(projection.base.location()),
+            Self::ProjectionRegionIdxEquals(projection.region_idx),
+            Self::LifetimeProjectionLabelEquals(projection.label()),
+        ])
+    }
+
+    /// Creates a predicate that matches exactly the given lifetime projection.
+    pub(crate) fn equals_lifetime_projection(
+        projection: crate::borrow_pcg::region_projection::LifetimeProjection<
+            'tcx,
+            crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
+        >,
+    ) -> Self {
+        Self::Equals(PcgNode::LifetimeProjection(projection.rebase()))
     }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for LabelPlacePredicate<'tcx>
+    for LabelNodePredicate<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            match self {
-                LabelPlacePredicate::Postfix(place) => {
-                    place.display_string(ctxt) // As a hack for now so debug output doesn't change
-                }
-                LabelPlacePredicate::Exact(place) => {
-                    format!("exact {}", place.display_string(ctxt))
-                }
-                LabelPlacePredicate::NodeType(pcg_node_type) => {
-                    format!("node_type({:?})", pcg_node_type)
-                }
-                LabelPlacePredicate::And(predicates) => {
-                    let inner: Vec<_> = predicates
-                        .iter()
-                        .map(|p| p.display_output(ctxt, mode).into_text().to_string())
-                        .collect();
-                    format!("({})", inner.join(" && "))
-                }
-                LabelPlacePredicate::Or(predicates) => {
-                    let inner: Vec<_> = predicates
-                        .iter()
-                        .map(|p| p.display_output(ctxt, mode).into_text().to_string())
-                        .collect();
-                    format!("({})", inner.join(" || "))
-                }
-                LabelPlacePredicate::Not(predicate) => {
-                    format!("!{}", predicate.display_output(ctxt, mode).into_text())
-                }
-                LabelPlacePredicate::EdgeType(edge_type) => {
-                    format!("edge_type({:?})", edge_type)
-                }
-                LabelPlacePredicate::InSourceNodes => "in_source_nodes".to_string(),
-                LabelPlacePredicate::InTargetNodes => "in_target_nodes".to_string(),
+        match self {
+            LabelNodePredicate::PlaceIsPostfixOf(place) => DisplayOutput::Seq(vec![
+                "postfixes of ".into(),
+                place.display_output(ctxt, mode),
+            ]),
+            LabelNodePredicate::PlaceEquals(place) => {
+                DisplayOutput::Seq(vec!["exact ".into(), place.display_output(ctxt, mode)])
             }
-            .into(),
-        )
+            LabelNodePredicate::NodeType(pcg_node_type) => {
+                format!("node_type({pcg_node_type:?})").into()
+            }
+            LabelNodePredicate::And(predicates) => DisplayOutput::Seq(vec![
+                "(".into(),
+                DisplayOutput::join(
+                    predicates.iter().map(|p| p.display_output(ctxt, mode)),
+                    " && ".into(),
+                ),
+                ")".into(),
+            ]),
+            LabelNodePredicate::Or(predicates) => DisplayOutput::Seq(vec![
+                "(".into(),
+                DisplayOutput::join(
+                    predicates.iter().map(|p| p.display_output(ctxt, mode)),
+                    " || ".into(),
+                ),
+                ")".into(),
+            ]),
+            LabelNodePredicate::Not(predicate) => {
+                DisplayOutput::Seq(vec!["!".into(), predicate.display_output(ctxt, mode)])
+            }
+            LabelNodePredicate::EdgeType(edge_type) => format!("edge_type({edge_type:?})").into(),
+            LabelNodePredicate::InSourceNodes => "in_source_nodes".into(),
+            LabelNodePredicate::InTargetNodes => "in_target_nodes".into(),
+            LabelNodePredicate::LifetimeProjectionLabelEquals(label) => {
+                format!("rp_label({label:?})").into()
+            }
+            LabelNodePredicate::PlaceLabelEquals(location) => {
+                format!("place_label({location:?})").into()
+            }
+            LabelNodePredicate::ProjectionRegionIdxEquals(region_idx) => {
+                format!("region_idx({region_idx:?})").into()
+            }
+            LabelNodePredicate::Equals(pcg_node) => pcg_node.display_output(ctxt, mode),
+        }
     }
 }
 
-impl<'tcx> LabelPlacePredicate<'tcx> {
+impl<'tcx> LabelNodePredicate<'tcx> {
     pub(crate) fn applies_to(
         &self,
-        candidate: Place<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        candidate: PcgNode<'tcx>,
+        label_context: Option<LabelNodeContext>,
     ) -> bool {
         match self {
-            LabelPlacePredicate::Exact(place) => candidate == *place,
-            LabelPlacePredicate::Postfix(place) => place.is_prefix_of(candidate),
-            LabelPlacePredicate::NodeType(pcg_node_type) => {
-                label_context.node_type() == *pcg_node_type
-            }
-            LabelPlacePredicate::And(predicates) => predicates
+            LabelNodePredicate::PlaceEquals(place) => match candidate {
+                PcgNode::Place(mlp) => mlp.as_current_place() == Some(*place),
+                PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(*place),
+            },
+            LabelNodePredicate::PlaceIsPostfixOf(place) => match candidate {
+                PcgNode::Place(mlp) => mlp
+                    .as_current_place()
+                    .is_some_and(|p| place.is_prefix_of(p)),
+                PcgNode::LifetimeProjection(rp) => rp
+                    .base
+                    .as_current_place()
+                    .is_some_and(|p| place.is_prefix_of(p)),
+            },
+            LabelNodePredicate::NodeType(pcg_node_type) => match candidate {
+                PcgNode::Place(_) => *pcg_node_type == PcgNodeType::Place,
+                PcgNode::LifetimeProjection(_) => *pcg_node_type == PcgNodeType::LifetimeProjection,
+            },
+            LabelNodePredicate::And(predicates) => predicates
                 .iter()
-                .all(|p| p.applies_to(candidate, label_context, ctxt)),
-            LabelPlacePredicate::Or(predicates) => predicates
+                .all(|p| p.applies_to(candidate, label_context)),
+            LabelNodePredicate::Or(predicates) => predicates
                 .iter()
-                .any(|p| p.applies_to(candidate, label_context, ctxt)),
-            LabelPlacePredicate::Not(predicate) => {
-                !predicate.applies_to(candidate, label_context, ctxt)
-            }
-            LabelPlacePredicate::EdgeType(edge_type) => label_context.edge_type() == *edge_type,
-            LabelPlacePredicate::InSourceNodes => {
-                label_context.source_or_target() == SourceOrTarget::Source
-            }
-            LabelPlacePredicate::InTargetNodes => {
-                label_context.source_or_target() == SourceOrTarget::Target
-            }
+                .any(|p| p.applies_to(candidate, label_context)),
+            LabelNodePredicate::Not(predicate) => !predicate.applies_to(candidate, label_context),
+            LabelNodePredicate::EdgeType(edge_type) => match candidate {
+                PcgNode::Place(_) => label_context
+                    .map(|ctx| ctx.edge_type() == *edge_type)
+                    .unwrap_or(false),
+                PcgNode::LifetimeProjection(_) => true,
+            },
+            LabelNodePredicate::InSourceNodes => match candidate {
+                PcgNode::Place(_) => label_context
+                    .map(|ctx| ctx.source_or_target() == SourceOrTarget::Source)
+                    .unwrap_or(false),
+                PcgNode::LifetimeProjection(_) => true,
+            },
+            LabelNodePredicate::InTargetNodes => match candidate {
+                PcgNode::Place(_) => label_context
+                    .map(|ctx| ctx.source_or_target() == SourceOrTarget::Target)
+                    .unwrap_or(false),
+                PcgNode::LifetimeProjection(_) => true,
+            },
+            LabelNodePredicate::LifetimeProjectionLabelEquals(label) => match candidate {
+                PcgNode::Place(_) => false,
+                PcgNode::LifetimeProjection(rp) => rp.label == *label,
+            },
+            LabelNodePredicate::PlaceLabelEquals(location) => match candidate {
+                PcgNode::Place(_) => todo!(),
+                PcgNode::LifetimeProjection(rp) => rp
+                    .base
+                    .as_local_place()
+                    .is_some_and(|p| p.location() == *location),
+            },
+            LabelNodePredicate::ProjectionRegionIdxEquals(region_idx) => match candidate {
+                PcgNode::Place(_) => false,
+                PcgNode::LifetimeProjection(rp) => rp.region_idx == *region_idx,
+            },
+            LabelNodePredicate::Equals(node) => candidate == *node,
         }
     }
 }
@@ -206,14 +304,14 @@ pub(crate) fn display_node_replacements<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt
 pub(crate) trait LabelEdgePlaces<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>;
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>;
@@ -281,7 +379,7 @@ macro_rules! edgedata_enum {
         impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgePlaces<$tcx> for $enum_name<$tcx> {
             fn label_blocked_places(
                 &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
                 ctxt: CompilerCtxt<'_, 'tcx>,
             ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
@@ -294,7 +392,7 @@ macro_rules! edgedata_enum {
 
             fn label_blocked_by_places(
                 &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
                 labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
                 ctxt: CompilerCtxt<'_, 'tcx>,
             ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
@@ -317,7 +415,7 @@ macro_rules! edgedata_enum {
         impl<'a, $tcx> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjection<'a, $tcx> for $enum_name<$tcx> {
             fn label_lifetime_projection(
                 &mut self,
-                predicate: &$crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionPredicate<'tcx>,
+                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
                 location: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
                 ctxt: CompilerCtxt<'a, 'tcx>,
             ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {

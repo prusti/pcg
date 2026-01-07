@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
     error::PcgError,
@@ -362,7 +362,7 @@ where
         self.insert((*place).into(), capability, ctxt);
         if capability == CapabilityKind::Exclusive.into() {
             borrows.label_lifetime_projection(
-                &LabelLifetimeProjectionPredicate::AllFuturePostfixes(place),
+                &LabelNodePredicate::all_future_postfixes(place),
                 None,
                 ctxt,
             );

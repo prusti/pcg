@@ -9,8 +9,9 @@ use crate::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
+        edge_data::LabelNodePredicate,
         graph::BorrowsGraph,
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
+        has_pcs_elem::LabelLifetimeProjection,
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
     },
@@ -201,7 +202,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if deref.blocked_lifetime_projection.label().is_some() {
                 self.apply_action(
                     BorrowPcgAction::label_lifetime_projection(
-                        LabelLifetimeProjectionPredicate::Equals(
+                        LabelNodePredicate::equals_lifetime_projection(
                             deref.blocked_lifetime_projection.with_label(None, ctxt),
                         ),
                         deref.blocked_lifetime_projection.label(),
@@ -302,7 +303,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {
                     expansion.label_lifetime_projection(
-                        &LabelLifetimeProjectionPredicate::Equals(base_rp.into()),
+                        &LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
                         Some(label.into()),
                         ctxt.bc_ctxt(),
                     );
@@ -323,7 +324,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 {
                     self.apply_action(
                         BorrowPcgAction::label_lifetime_projection(
-                            LabelLifetimeProjectionPredicate::Equals(base_rp.into()),
+                            LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
                             Some(label.into()),
                             "expand_region_projections_one_level: create new RP label",
                         )
@@ -392,7 +393,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     BorrowFlowEdge::new(
                         origin_rp.into(),
                         future_rp,
-                        BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
+                        BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
                         ctxt,
                     )
                     .into(),
@@ -412,7 +413,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         BorrowFlowEdge::new(
                             *expansion_rp,
                             future_rp,
-                            BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
+                            BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
                             ctxt,
                         )
                         .into(),

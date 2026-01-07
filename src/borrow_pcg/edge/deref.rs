@@ -2,10 +2,10 @@ use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
+        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
+            PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -91,11 +91,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         location: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        if predicate.matches(self.blocked_lifetime_projection.into(), ctxt) {
+        if predicate.applies_to(
+            PcgNode::LifetimeProjection(self.blocked_lifetime_projection.into()),
+            None,
+        ) {
             self.blocked_lifetime_projection =
                 self.blocked_lifetime_projection.with_label(location, ctxt);
             LabelLifetimeProjectionResult::Changed
@@ -108,7 +111,7 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -120,13 +123,11 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         for blocked_place in blocked_places {
             if let MaybeLabelledPlace::Current(place) = *blocked_place
                 && predicate.applies_to(
-                    place,
-                    LabelNodeContext::for_node(
-                        place,
+                    PcgNode::Place(MaybeLabelledPlace::Current(place)),
+                    Some(LabelNodeContext::new(
                         SourceOrTarget::Source,
                         BorrowPcgEdgeType::Deref,
-                    ),
-                    ctxt,
+                    )),
                 )
             {
                 let from: PcgNode<'tcx> = blocked_place.to_pcg_node(ctxt);
@@ -140,18 +141,18 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        let label_node_context = LabelNodeContext::for_node(
-            self.deref_place,
-            SourceOrTarget::Target,
-            BorrowPcgEdgeType::Deref,
-        );
+        let label_node_context =
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Deref);
         if let MaybeLabelledPlace::Current(place) = self.deref_place
-            && predicate.applies_to(place, label_node_context, ctxt)
+            && predicate.applies_to(
+                PcgNode::Place(MaybeLabelledPlace::Current(place)),
+                Some(label_node_context),
+            )
         {
             let from: PcgNode<'tcx> = self.deref_place.to_pcg_node(ctxt);
             self.deref_place =

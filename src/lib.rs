@@ -683,7 +683,7 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    action::{AppliedActionDebugRepr, AppliedActions, PcgActionDebugRepr, PcgActions},
+    action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,

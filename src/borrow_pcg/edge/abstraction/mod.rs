@@ -12,11 +12,10 @@ use crate::{
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
         edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, NodeReplacement, edgedata_enum},
+        edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement, edgedata_enum},
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
-            SourceOrTarget,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
+            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
     },
@@ -125,7 +124,7 @@ impl<
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -134,11 +133,7 @@ impl<
         let changed = self.input.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(
-                self.input,
-                SourceOrTarget::Source,
-                BorrowPcgEdgeType::Abstraction,
-            ),
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Abstraction),
             ctxt,
         );
         if changed {
@@ -149,7 +144,7 @@ impl<
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -158,11 +153,7 @@ impl<
         let changed = self.output.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(
-                self.output,
-                SourceOrTarget::Target,
-                BorrowPcgEdgeType::Abstraction,
-            ),
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Abstraction),
             ctxt,
         );
         if changed {
@@ -185,7 +176,7 @@ impl<
 {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
+        projection: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {

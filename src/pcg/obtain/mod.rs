@@ -11,7 +11,7 @@ use crate::{
             kind::BorrowPcgEdgeType,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
-        edge_data::LabelPlacePredicate,
+        edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
@@ -301,10 +301,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 );
                 let mut node = *node;
                 node.label_place_with_context(
-                    &LabelPlacePredicate::Exact((*place).into()),
+                    &LabelNodePredicate::PlaceEquals((*place).into()),
                     &labeller,
-                    LabelNodeContext::for_node(
-                        node,
+                    LabelNodeContext::new(
                         SourceOrTarget::Source,
                         BorrowPcgEdgeType::BorrowFlow {
                             future_edge_kind: None,

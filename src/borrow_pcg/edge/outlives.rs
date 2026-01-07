@@ -7,11 +7,10 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
+        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
-            SourceOrTarget,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
+            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -46,7 +45,7 @@ impl<'tcx> BorrowFlowEdge<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -55,8 +54,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         let changed = self.long.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(
-                self.long,
+            LabelNodeContext::new(
                 SourceOrTarget::Source,
                 BorrowPcgEdgeType::BorrowFlow {
                     future_edge_kind: self.future_edge_kind(),
@@ -72,7 +70,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -81,8 +79,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         let changed = self.short.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(
-                self.short,
+            LabelNodeContext::new(
                 SourceOrTarget::Target,
                 BorrowPcgEdgeType::BorrowFlow {
                     future_edge_kind: self.future_edge_kind(),
@@ -100,7 +97,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
@@ -110,7 +107,9 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
             predicate,
             label
         );
-        if predicate.matches(self.long, ctxt) && predicate.matches(self.short.rebase(), ctxt) {
+        if predicate.applies_to(PcgNode::LifetimeProjection(self.long), None)
+            && predicate.applies_to(PcgNode::LifetimeProjection(self.short.rebase()), None)
+        {
             return LabelLifetimeProjectionResult::ShouldCollapse;
         }
         let mut changed = self.long.label_lifetime_projection(predicate, label, ctxt);
@@ -273,7 +272,7 @@ pub(crate) mod private {
 
     #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
     pub enum FutureEdgeKind {
-        Inherent,
+        FromExpansion,
         FromBorrow,
     }
 }

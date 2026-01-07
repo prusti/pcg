@@ -2,11 +2,11 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         domain::LoopAbstractionInput,
-        edge_data::LabelPlacePredicate,
+        edge_data::LabelNodePredicate,
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelPlaceWithContext, PlaceLabeller,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelPlaceWithContext,
+            PlaceLabeller,
         },
         region_projection::{
             LifetimeProjection, LifetimeProjectionLabel, PcgLifetimeProjectionBase,
@@ -44,7 +44,7 @@ impl<'tcx, Ctxt, T: LabelPlaceWithContext<'tcx, Ctxt>, U: LabelPlaceWithContext<
 {
     fn label_place_with_context(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         label_context: Ctxt,
         ctxt: CompilerCtxt<'_, 'tcx>,
@@ -122,7 +122,7 @@ where
 {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {

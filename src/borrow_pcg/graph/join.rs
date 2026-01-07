@@ -1,10 +1,8 @@
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdgeLike,
-        edge::kind::BorrowPcgEdgeKind,
-        graph::loop_abstraction::ConstructAbstractionGraphResult,
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
-        region_projection::LifetimeProjectionLabel,
+        borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
+        edge_data::LabelNodePredicate, graph::loop_abstraction::ConstructAbstractionGraphResult,
+        has_pcs_elem::LabelLifetimeProjection, region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
@@ -89,7 +87,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 let orig_rp = local_rp.with_label(None, ctxt);
                 self.filter_mut_edges(|edge| {
                     edge.label_lifetime_projection(
-                        &LabelLifetimeProjectionPredicate::Equals(orig_rp),
+                        &LabelNodePredicate::equals_lifetime_projection(orig_rp),
                         Some(LifetimeProjectionLabel::Future),
                         ctxt.bc_ctxt(),
                     )

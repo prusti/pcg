@@ -9,11 +9,8 @@ use crate::{
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
-        has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, PlaceLabeller,
-        },
+        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
@@ -244,7 +241,7 @@ pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
@@ -255,7 +252,7 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tc
 impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -264,7 +261,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {

@@ -4,10 +4,13 @@ use crate::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
-        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
-        edge_data::EdgeData,
+        edge::{
+            deref::DerefEdge,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+            outlives::private::FutureEdgeKind,
+        },
+        edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
     owned_pcg::RepackOp,
@@ -119,7 +122,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.record_and_apply_action(PcgAction::restore_capability(
                 place,
                 restore_cap,
-                context.to_string(),
+                context.to_owned(),
                 self.ctxt,
             ))?;
         }
@@ -207,7 +210,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
             self.apply_action(
-                BorrowPcgAction::remove_edge(borrow_edge, context.to_string()).into(),
+                BorrowPcgAction::remove_edge(borrow_edge, context.to_owned()).into(),
             )?;
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
@@ -249,7 +252,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             );
         }
         self.record_and_apply_action(
-            BorrowPcgAction::remove_edge(edge.clone(), context.to_string()).into(),
+            BorrowPcgAction::remove_edge(edge.clone(), context.to_owned()).into(),
         )?;
 
         // This is true iff the expansion is for a place (not a region projection), and changes
@@ -308,7 +311,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                 );
                                 self.record_and_apply_action(
                                     BorrowPcgAction::label_lifetime_projection(
-                                        LabelLifetimeProjectionPredicate::Equals(rp),
+                                        LabelNodePredicate::equals_lifetime_projection(rp),
                                         Some(self.prev_snapshot_location().into()),
                                         format!(
                                             "{}: {}",
@@ -572,6 +575,20 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     place,
                     self.prev_snapshot_location(),
                     LabelPlaceReason::Write,
+                )
+                .into(),
+            )?;
+            self.record_and_apply_action(
+                BorrowPcgAction::label_lifetime_projection(
+                    LabelNodePredicate::And(vec![
+                        LabelNodePredicate::PlaceEquals(place),
+                        LabelNodePredicate::InSourceNodes,
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
+                            future_edge_kind: Some(FutureEdgeKind::FromExpansion),
+                        }),
+                    ]),
+                    None,
+                    "label place and update related capabilities",
                 )
                 .into(),
             )?;

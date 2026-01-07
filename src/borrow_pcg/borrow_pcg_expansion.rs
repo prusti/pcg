@@ -14,10 +14,10 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::internal::BorrowPcgExpansionData,
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
+        edge_data::{LabelEdgePlaces, LabelNodePredicate, edgedata_enum},
         has_pcs_elem::{
-            LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
+            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
@@ -190,7 +190,7 @@ pub type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPla
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgPlaceExpansion<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        _predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        _predicate: &LabelNodePredicate<'tcx>,
         _label: Option<LifetimeProjectionLabel>,
         _ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
@@ -264,7 +264,7 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
@@ -274,8 +274,7 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
         let changed = self.base.label_place_with_context(
             predicate,
             labeller,
-            LabelNodeContext::for_node(
-                self.base,
+            LabelNodeContext::new(
                 SourceOrTarget::Source,
                 BorrowPcgEdgeType::BorrowPcgExpansion,
             ),
@@ -293,7 +292,7 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
@@ -304,8 +303,7 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlaceWithContext<'tcx, LabelNodeContext
             let changed = p.label_place_with_context(
                 predicate,
                 labeller,
-                LabelNodeContext::for_node(
-                    *p,
+                LabelNodeContext::new(
                     SourceOrTarget::Target,
                     BorrowPcgEdgeType::BorrowPcgExpansion,
                 ),
@@ -328,7 +326,7 @@ impl<'a, 'tcx, P: LabelLifetimeProjection<'a, 'tcx>> LabelLifetimeProjection<'a,
 {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {

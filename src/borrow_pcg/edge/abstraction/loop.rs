@@ -11,11 +11,8 @@ use crate::{
             },
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
-        has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, PlaceLabeller,
-        },
+        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
@@ -52,7 +49,7 @@ pub type LoopAbstraction<'tcx> =
 impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstraction<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
+        projection: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
@@ -87,7 +84,7 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
@@ -96,7 +93,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {

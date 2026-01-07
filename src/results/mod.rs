@@ -9,7 +9,7 @@ use std::{borrow::Cow, collections::HashMap};
 use derive_more::Deref;
 
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions, PcgActionsRef},
+    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
         region_projection::PlaceOrConst,

@@ -33,8 +33,8 @@ use crate::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
-        edge_data::EdgeData,
-        has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller, SetLabel},
+        edge_data::{EdgeData, LabelNodePredicate},
+        has_pcs_elem::{PlaceLabeller, SetLabel},
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     error::PcgError,
@@ -136,7 +136,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
 
     fn label_lifetime_projection<'a>(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
@@ -197,7 +197,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                 }
                 if restore.capability() == CapabilityKind::Exclusive {
                     self.label_lifetime_projection(
-                        &LabelLifetimeProjectionPredicate::AllFuturePostfixes(restore_place),
+                        &LabelNodePredicate::all_future_postfixes(restore_place),
                         None,
                         ctxt,
                     );

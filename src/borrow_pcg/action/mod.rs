@@ -11,8 +11,8 @@ use crate::{
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
             outlives::private::FutureEdgeKind,
         },
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, NodeReplacement},
-        has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
+        edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        has_pcs_elem::PlaceLabeller,
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     pcg::{CapabilityKind, PcgNodeType},
@@ -124,7 +124,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     }
 
     pub(crate) fn label_lifetime_projection(
-        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
@@ -181,30 +181,30 @@ impl LabelPlaceReason {
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
             | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
-                LabelPlacePredicate::Postfix(place)
+                LabelNodePredicate::PlaceIsPostfixOf(place)
             }
-            LabelPlaceReason::Write => LabelPlacePredicate::And(vec![
-                LabelPlacePredicate::Postfix(place),
+            LabelPlaceReason::Write => LabelNodePredicate::And(vec![
+                LabelNodePredicate::PlaceIsPostfixOf(place),
                 // If the place is e.g *x or x.f, don't label it if it
                 // is the target of a borrow expansion or deref edge.
-                LabelPlacePredicate::not(LabelPlacePredicate::And(vec![
-                    LabelPlacePredicate::Exact(place),
-                    LabelPlacePredicate::InTargetNodes,
-                    LabelPlacePredicate::NodeType(PcgNodeType::Place),
-                    LabelPlacePredicate::Or(vec![
-                        LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::BorrowPcgExpansion),
-                        LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::Deref),
+                LabelNodePredicate::not(LabelNodePredicate::And(vec![
+                    LabelNodePredicate::PlaceEquals(place),
+                    LabelNodePredicate::InTargetNodes,
+                    LabelNodePredicate::NodeType(PcgNodeType::Place),
+                    LabelNodePredicate::Or(vec![
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowPcgExpansion),
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::Deref),
                     ]),
                 ])),
-                LabelPlacePredicate::not(LabelPlacePredicate::And(vec![
-                    LabelPlacePredicate::Exact(place),
-                    LabelPlacePredicate::InSourceNodes,
-                    LabelPlacePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
-                        future_edge_kind: Some(FutureEdgeKind::Inherent),
+                LabelNodePredicate::not(LabelNodePredicate::And(vec![
+                    LabelNodePredicate::PlaceEquals(place),
+                    LabelNodePredicate::InSourceNodes,
+                    LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
+                        future_edge_kind: Some(FutureEdgeKind::FromExpansion),
                     }),
                 ])),
             ]),
-            LabelPlaceReason::Collapse => LabelPlacePredicate::Exact(place),
+            LabelPlaceReason::Collapse => LabelNodePredicate::PlaceEquals(place),
         };
         let mut result = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
         result.extend(edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt()));
@@ -237,9 +237,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 mod private {
     use crate::{
         borrow_pcg::{
-            has_pcs_elem::LabelLifetimeProjectionPredicate,
+            edge_data::LabelNodePredicate,
             region_projection::{LifetimeProjection, LifetimeProjectionLabel},
         },
+        pcg::PcgNode,
         utils::{
             HasBorrowCheckerCtxt,
             display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -249,12 +250,12 @@ mod private {
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub struct LabelLifetimeProjectionAction<'tcx> {
-        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
     }
 
     impl<'tcx> LabelLifetimeProjectionAction<'tcx> {
-        pub(crate) fn predicate(&self) -> &LabelLifetimeProjectionPredicate<'tcx> {
+        pub(crate) fn predicate(&self) -> &LabelNodePredicate<'tcx> {
             &self.predicate
         }
 
@@ -263,7 +264,7 @@ mod private {
         }
 
         pub(crate) fn new(
-            predicate: LabelLifetimeProjectionPredicate<'tcx>,
+            predicate: LabelNodePredicate<'tcx>,
             label: Option<LifetimeProjectionLabel>,
         ) -> Self {
             Self { predicate, label }
@@ -273,7 +274,9 @@ mod private {
             projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
         ) -> Self {
             Self {
-                predicate: LabelLifetimeProjectionPredicate::Equals(projection),
+                predicate: LabelNodePredicate::Equals(PcgNode::LifetimeProjection(
+                    projection.rebase(),
+                )),
                 label: None,
             }
         }
@@ -331,7 +334,7 @@ impl<'tcx> BorrowPcgActionKind<'tcx> {
     }
 
     pub(crate) fn label_lifetime_projection(
-        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
     ) -> Self {
         Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::new(predicate, label))

@@ -6,9 +6,8 @@ use crate::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
         edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
-        edge_data::EdgeData,
+        edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
@@ -38,14 +37,14 @@ use crate::{
 
 pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
-    pub(crate) to_label: HashSet<LabelLifetimeProjectionPredicate<'tcx>>,
+    pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
     pub(crate) capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
 }
 
 impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
     pub(crate) fn new(
         graph: BorrowsGraph<'tcx>,
-        to_label: HashSet<LabelLifetimeProjectionPredicate<'tcx>>,
+        to_label: HashSet<LabelNodePredicate<'tcx>>,
         capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
     ) -> Self {
         Self {
@@ -154,7 +153,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     add_block_edges(&mut expander, *root, blocker, ctxt);
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
                         for rp in root.lifetime_projections(ctxt) {
-                            to_label.insert(LabelLifetimeProjectionPredicate::AllNonFuture(
+                            to_label.insert(LabelNodePredicate::all_non_future(
                                 (*root).into(),
                                 rp.region_idx,
                             ));
@@ -190,7 +189,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     capability_updates.insert(blocked_place, Some(CapabilityKind::Read));
                 }
                 for rp in blocked_place.lifetime_projections(ctxt) {
-                    to_label.insert(LabelLifetimeProjectionPredicate::AllNonFuture(
+                    to_label.insert(LabelNodePredicate::all_non_future(
                         blocked_place.into(),
                         rp.region_idx,
                     ));

@@ -8,7 +8,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        edge_data::LabelNodePredicate,
         region_projection::LifetimeProjection,
     },
     error::PcgError,
@@ -150,7 +150,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         .collect::<HashSet<_>>();
                     self.record_and_apply_action(
                         BorrowPcgAction::label_lifetime_projection(
-                            LabelLifetimeProjectionPredicate::Equals(current_rp.into()),
+                            LabelNodePredicate::equals_lifetime_projection(current_rp.into()),
                             Some(self.prev_snapshot_location().into()),
                             format!(
                                 "{}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
@@ -171,7 +171,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                     BorrowFlowEdge::new(
                                         labelled_rp.into(),
                                         future_rp.into(),
-                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
+                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
                                         self.ctxt,
                                     )
                                     .into(),
@@ -197,7 +197,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                         BorrowFlowEdge::new(
                                             to_connect,
                                             future_rp.into(),
-                                            BorrowFlowEdgeKind::Future(FutureEdgeKind::Inherent),
+                                            BorrowFlowEdgeKind::Future(
+                                                FutureEdgeKind::FromExpansion,
+                                            ),
                                             self.ctxt,
                                         )
                                         .into(),

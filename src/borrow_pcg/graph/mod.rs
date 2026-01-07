@@ -10,7 +10,7 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
+        edge_data::LabelNodePredicate, has_pcs_elem::LabelLifetimeProjection,
         region_projection::LifetimeProjectionLabel,
     },
     coupling::PcgCoupledEdgeKind,
@@ -513,7 +513,7 @@ impl<'a, 'tcx, EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Has
 {
     pub(crate) fn label_region_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
