@@ -7,7 +7,12 @@ import {
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import { PcgBlockVisualizationData, DotFileAtPhase } from "../generated/types";
+import {
+  PcgBlockVisualizationData,
+  DotFileAtPhase,
+  AppliedAction,
+  ApplyActionResult,
+} from "../generated/types";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
@@ -21,9 +26,15 @@ type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
   | {
       type: "action";
-      phase: EvalStmtPhase | "successor";
+      phase: "successor";
       index: number;
       action: PcgAction;
+    }
+  | {
+      type: "action";
+      phase: EvalStmtPhase;
+      index: number;
+      action: AppliedAction<PcgAction, ApplyActionResult<string>>;
     };
 
 export const NAVIGATOR_DEFAULT_WIDTH = 200;
@@ -303,6 +314,12 @@ export default function PCGNavigator({
           selectedPoint?.type === "action" &&
           selectedPoint.phase === item.phase &&
           selectedPoint.index === item.index;
+        const action = item.phase === "successor" ? item.action : item.action.action;
+        let hoverText = action.data.debug_context || "";
+        const  itemContent = actionLine(action.data.kind);
+        if(item.phase !== "successor") {
+          hoverText = hoverText + " " + item.action.result.change_summary;
+        }
         return (
           <div
             key={`action-${item.phase}-${item.index}-${idx}`}
@@ -322,9 +339,9 @@ export default function PCGNavigator({
                 index: item.index,
               });
             }}
-            title={item.action.data.debug_context || undefined}
+            title={hoverText || undefined}
           >
-            <code>{actionLine(item.action.data.kind)}</code>
+            <code>{itemContent}</code>
           </div>
         );
       }

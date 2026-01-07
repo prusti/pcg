@@ -1,6 +1,5 @@
 import React from "react";
 import { EdgeProps, getBezierPath, EdgeLabelRenderer } from "reactflow";
-import { PcgActionDebugRepr } from "../generated/types";
 import { PcgProgramPointData } from "../types";
 import { actionLine } from "../actionFormatting";
 
@@ -39,7 +38,7 @@ export default function ReactFlowEdge({
     data?.terminatorActions &&
     Array.isArray(data.terminatorActions.actions)
   ) {
-    data.terminatorActions.actions.forEach((action: PcgActionDebugRepr) => {
+    data.terminatorActions.actions.forEach((action) => {
       actions.push(actionLine(action.data.kind));
     });
   }

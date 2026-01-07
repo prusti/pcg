@@ -2,10 +2,7 @@ import React from "react";
 import { BasicBlockData, CurrentPoint } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
-import {
-  PcgActionDebugRepr,
-  PcgBlockVisualizationData,
-} from "../generated/types";
+import { PcgBlockVisualizationData } from "../generated/types";
 import { actionLine } from "../actionFormatting";
 
 interface BasicBlockTableProps {
@@ -100,11 +97,9 @@ export default function BasicBlockTable({
     > = ["pre_operands", "post_operands", "pre_main", "post_main"];
     phases.forEach((phase) => {
       const phaseActions = evalStmtActions[phase];
-      if (Array.isArray(phaseActions)) {
-        phaseActions.forEach((action: PcgActionDebugRepr) => {
-          actions.push(actionLine(action.data.kind));
-        });
-      }
+      phaseActions.forEach((action) => {
+        actions.push(actionLine(action.action.data.kind));
+      });
     });
 
     return actions;

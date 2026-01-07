@@ -164,9 +164,9 @@ impl<'tcx> PcgActions<'tcx> {
 /// action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct ActionKindWithDebugCtxt<T> {
+pub struct ActionKindWithDebugCtxt<T, Ctxt = Option<DisplayOutput>> {
     pub(crate) kind: T,
-    pub(crate) debug_context: Option<DisplayOutput>,
+    pub(crate) debug_context: Ctxt,
 }
 
 impl<T> ActionKindWithDebugCtxt<T> {
@@ -190,12 +190,11 @@ impl<T> ActionKindWithDebugCtxt<T> {
 }
 
 impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugCtxt<T> {
-    type Repr = ActionKindWithDebugCtxt<T::Repr>;
-
+    type Repr = ActionKindWithDebugCtxt<T::Repr, Option<String>>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         ActionKindWithDebugCtxt {
             kind: self.kind.debug_repr(ctxt),
-            debug_context: self.debug_context.clone(),
+            debug_context: self.debug_context.as_ref().map(|ctxt| ctxt.debug_repr(())),
         }
     }
 }
@@ -211,21 +210,38 @@ pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
 pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
     ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind>>;
 
-/// An action applied to the PCG during the PCG analysis.
-#[allow(clippy::large_enum_variant)]
-#[derive(Clone, PartialEq, Eq, Debug, From)]
-pub enum PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
-    Borrow(BorrowPcgAction<'tcx, EdgeKind>),
-    Owned(OwnedPcgAction<'tcx>),
+mod private {
+    use serde_derive::Serialize;
+
+    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[derive(Clone, PartialEq, Eq, Debug, Serialize)]
+    #[serde(tag = "type", content = "data")]
+    pub enum GenericPcgAction<Borrow, Owned> {
+        Borrow(Borrow),
+        Owned(Owned),
+    }
 }
 
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-#[serde(tag = "type", content = "data")]
-pub(crate) enum PcgActionDebugRepr {
-    Owned(ActionKindWithDebugCtxt<RepackOp<'static, String, String, String>>),
-    Borrow(ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr>),
+impl<'tcx, EdgeKind> From<BorrowPcgAction<'tcx, EdgeKind>> for PcgAction<'tcx, EdgeKind> {
+    fn from(action: BorrowPcgAction<'tcx, EdgeKind>) -> Self {
+        PcgAction::Borrow(action)
+    }
 }
+
+impl<'tcx> From<OwnedPcgAction<'tcx>> for PcgAction<'tcx> {
+    fn from(action: OwnedPcgAction<'tcx>) -> Self {
+        PcgAction::Owned(action)
+    }
+}
+
+/// An action applied to the PCG during the PCG analysis.
+pub type PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
+    private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind>, OwnedPcgAction<'tcx>>;
+
+pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
+    ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, Option<String>>,
+    ActionKindWithDebugCtxt<RepackOp<'static, String, String, String>, Option<String>>,
+>;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
     type Repr = PcgActionDebugRepr;

@@ -24,8 +24,7 @@ use serde_derive::Serialize;
 
 use crate::{
     rustc_interface::{self, middle::mir},
-    utils::HasCompilerCtxt,
-    utils::html::Html,
+    utils::{DebugRepr, HasCompilerCtxt, html::Html},
 };
 
 use super::{CompilerCtxt, Place};
@@ -58,6 +57,14 @@ pub enum DisplayOutput {
     Text(Cow<'static, str>),
     Both(Html, Cow<'static, str>),
     Seq(Vec<DisplayOutput>),
+}
+
+impl DebugRepr<()> for DisplayOutput {
+    type Repr = String;
+
+    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
+        self.clone().into_html().to_string()
+    }
 }
 
 impl From<&'static str> for DisplayOutput {

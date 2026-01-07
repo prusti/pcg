@@ -299,7 +299,7 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
     dir_path: &Path,
     ctxt: CompilerCtxt<'a, 'tcx, &'bc RustBorrowCheckerImpl<'a, 'tcx>>,
 ) {
-    if let RustBorrowCheckerImpl::Polonius(ref bc) = *ctxt.bc() {
+    if let RustBorrowCheckerImpl::Polonius(ref bc) = *ctxt.borrow_checker() {
         let ctxt = CompilerCtxt::new(ctxt.body(), ctxt.tcx(), bc);
         for (block_index, data) in ctxt.body().basic_blocks.iter_enumerated() {
             let num_stmts = data.statements.len();
@@ -344,19 +344,19 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
                     bc_facts_file: &mut std::fs::File,
                     ctxt: CompilerCtxt<'_, '_, &PoloniusBorrowChecker<'_, '_>>,
                 ) {
-                    let origin_contains_loan_at = ctxt.bc().origin_contains_loan_at_map(location);
+                    let origin_contains_loan_at = ctxt.borrow_checker().origin_contains_loan_at_map(location);
                     writeln!(bc_facts_file, "{location:?} Origin contains loan at:").unwrap();
                     if let Some(origin_contains_loan_at) = origin_contains_loan_at {
                         write_loans(bc, origin_contains_loan_at, bc_facts_file, ctxt);
                     }
                     writeln!(bc_facts_file, "{location:?} Origin live on entry:").unwrap();
-                    if let Some(origin_live_on_entry) = ctxt.bc().origin_live_on_entry(location) {
+                    if let Some(origin_live_on_entry) = ctxt.borrow_checker().origin_live_on_entry(location) {
                         for region in origin_live_on_entry {
                             writeln!(bc_facts_file, "  Region: {region:?}").unwrap();
                         }
                     }
                     writeln!(bc_facts_file, "{location:?} Loans live at:").unwrap();
-                    for region in ctxt.bc().loans_live_at(location) {
+                    for region in ctxt.borrow_checker().loans_live_at(location) {
                         writeln!(bc_facts_file, "  Region: {region:?}").unwrap();
                     }
                 }

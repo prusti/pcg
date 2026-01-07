@@ -5,7 +5,7 @@ import type { StringOf } from "../generated_type_deps.ts";
  * A pair of a PCG action and a debug context (indicating the source of the
  * action and possibly its effects).
  */
-export type ActionKindWithDebugCtxt<T> = { kind: T; debug_context: DisplayOutput | null };
+export type ActionKindWithDebugCtxt<T, Ctxt> = { kind: T; debug_context: Ctxt };
 
 export type AppliedAction<Action, Result> = { action: Action; result: Result; _marker: null };
 
@@ -82,6 +82,8 @@ export type EvalStmtPhase = "pre_operands" | "post_operands" | "pre_main" | "pos
 
 export type FunctionMetadata = { name: string; source: string; start: SourcePos };
 
+export type GenericPcgAction<Borrow, Owned> = { type: "Borrow"; data: Borrow } | { type: "Owned"; data: Owned };
+
 export type Html = { Text: string } | { Subscript: string } | { Seq: Html[] } | { Font: [string, Html] };
 
 export type MirEdge = { source: string; target: string; label: string };
@@ -96,13 +98,11 @@ export type MirStmtSpan = { low: SourcePos; high: SourcePos };
 
 export type PathToDotFile = string;
 
-export type PcgActionDebugRepr = { type: "Owned"; data: ActionKindWithDebugCtxt<RepackOp<string, string, string>> } | { type: "Borrow"; data: ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr> };
-
 export type PcgBlockVisualizationData = { statements: PcgStmtVisualizationData[]; successors: { [key in BasicBlock]: PcgSuccessorVisualizationData } };
 
-export type PcgStmtVisualizationData = { actions: EvalStmtData<(AppliedAction<PcgActionDebugRepr, ApplyActionResult<string>>)[]>; graphs: StmtGraphs<StringOf<DataflowStmtPhase>> };
+export type PcgStmtVisualizationData = { actions: EvalStmtData<(AppliedAction<GenericPcgAction<ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugCtxt<RepackOp<string, string, string>, string | null>>, ApplyActionResult<string>>)[]>; graphs: StmtGraphs<StringOf<DataflowStmtPhase>> };
 
-export type PcgSuccessorVisualizationData = { actions: PcgActionDebugRepr[] };
+export type PcgSuccessorVisualizationData = { actions: (GenericPcgAction<ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugCtxt<RepackOp<string, string, string>, string | null>>)[] };
 
 export type PcgVisualizationData = { [key in BasicBlock]: PcgBlockVisualizationData };
 
