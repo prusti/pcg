@@ -314,11 +314,16 @@ export default function PCGNavigator({
           selectedPoint?.type === "action" &&
           selectedPoint.phase === item.phase &&
           selectedPoint.index === item.index;
-        const action = item.phase === "successor" ? item.action : item.action.action;
+        const action =
+          item.phase === "successor" ? item.action : item.action.action;
         let hoverText = action.data.debug_context || "";
-        const  itemContent = actionLine(action.data.kind);
-        if(item.phase !== "successor") {
-          hoverText = hoverText + " " + item.action.result.change_summary;
+        const itemContent = actionLine(action.data.kind);
+        if (item.phase !== "successor") {
+          if (!hoverText) {
+            hoverText = item.action.result.change_summary;
+          } else {
+            hoverText += " " + item.action.result.change_summary;
+          }
         }
         return (
           <div

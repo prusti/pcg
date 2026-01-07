@@ -106,10 +106,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        let from: PcgNode<'tcx> = self.assigned_ref.to_pcg_node(ctxt);
-        // Technically, `assigned_ref` does not block this node, but this place
-        // is used to compute `assigned_region_projection` which *does* block this node
-        // So we should label it
+        let initial_assigned_lifetime_projection = self.assigned_lifetime_projection(ctxt);
         let changed = self.assigned_ref.label_place_with_context(
             predicate,
             labeller,
@@ -122,8 +119,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         );
         if changed {
             result.insert(NodeReplacement::new(
-                from,
-                self.assigned_ref.to_pcg_node(ctxt),
+                initial_assigned_lifetime_projection.to_pcg_node(ctxt),
+                self.assigned_lifetime_projection(ctxt).to_pcg_node(ctxt),
             ));
         }
         result
