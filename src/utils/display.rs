@@ -20,6 +20,7 @@ use rustc_interface::{
     },
     span::Span,
 };
+use serde_derive::Serialize;
 
 use crate::{
     rustc_interface::{self, middle::mir},
@@ -50,7 +51,8 @@ impl PlaceDisplay<'_> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum DisplayOutput {
     Html(Html),
     Text(Cow<'static, str>),
@@ -61,6 +63,12 @@ pub enum DisplayOutput {
 impl From<&'static str> for DisplayOutput {
     fn from(s: &'static str) -> Self {
         DisplayOutput::Text(s.into())
+    }
+}
+
+impl From<String> for DisplayOutput {
+    fn from(s: String) -> Self {
+        DisplayOutput::Text(Cow::Owned(s))
     }
 }
 

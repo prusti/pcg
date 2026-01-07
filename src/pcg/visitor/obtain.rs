@@ -1,5 +1,5 @@
 use crate::{
-    action::{BorrowPcgAction, PcgAction},
+    action::{AppliedAction, BorrowPcgAction, PcgAction},
     borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
@@ -48,7 +48,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<ApplyActionResult, PcgError> {
+    ) -> Result<(), PcgError> {
         self.place_obtainer().record_and_apply_action(action)
     }
 }
@@ -119,7 +119,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.record_and_apply_action(PcgAction::restore_capability(
                 place,
                 restore_cap,
-                context,
+                context.to_string(),
                 self.ctxt,
             ))?;
         }
@@ -206,7 +206,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         for edge in edges {
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
-            self.apply_action(BorrowPcgAction::remove_edge(borrow_edge, context).into())?;
+            self.apply_action(
+                BorrowPcgAction::remove_edge(borrow_edge, context.to_string()).into(),
+            )?;
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
         if let Some(deref_place) = deref_place.as_current_place() {
@@ -246,7 +248,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context,
             );
         }
-        self.record_and_apply_action(BorrowPcgAction::remove_edge(edge.clone(), context).into())?;
+        self.record_and_apply_action(
+            BorrowPcgAction::remove_edge(edge.clone(), context.to_string()).into(),
+        )?;
 
         // This is true iff the expansion is for a place (not a region projection), and changes
         // could have been made to the root place via the expansion
@@ -446,7 +450,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<ApplyActionResult, PcgError> {
+    ) -> Result<(), PcgError> {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
@@ -524,9 +528,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     pcg_ref,
                 );
             }
-            actions.push(action);
+            actions.push(AppliedAction::new(action, result));
         }
-        Ok(result)
+        Ok(())
     }
     pub(crate) fn phase(&self) -> Option<EvalStmtPhase> {
         match self.prev_snapshot_location {
@@ -539,7 +543,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<ApplyActionResult, PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {
         self.record_and_apply_action(action)
     }
 }

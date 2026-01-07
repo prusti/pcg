@@ -294,8 +294,12 @@ fn mk_mir_stmt(
     location: mir::Location,
     ctxt: CompilerCtxt<'_, '_>,
 ) -> MirStmt {
-    let bc = ctxt.bc.rust_borrow_checker().unwrap();
-    let location_table = ctxt.bc.rust_borrow_checker().unwrap().location_table();
+    let bc = ctxt.borrow_checker.rust_borrow_checker().unwrap();
+    let location_table = ctxt
+        .borrow_checker
+        .rust_borrow_checker()
+        .unwrap()
+        .location_table();
     let invalidated_at = &bc.input_facts().loan_invalidated_at;
     let loans_invalidated_start = invalidated_at
         .iter()

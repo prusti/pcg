@@ -9,7 +9,7 @@ use std::{borrow::Cow, collections::HashMap};
 use derive_more::Deref;
 
 use crate::{
-    action::{BorrowPcgAction, OwnedPcgAction, PcgActions},
+    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions, PcgActionsRef},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
         region_projection::PlaceOrConst,
@@ -169,7 +169,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     }
                 }
 
-                let mut actions: PcgActions<'tcx> = PcgActions(
+                let mut actions: PcgActions<'tcx> = PcgActions::new(
                     owned_bridge
                         .into_iter()
                         .map(|r| OwnedPcgAction::new(r, None).into())
@@ -339,7 +339,7 @@ impl<'tcx> PcgBasicBlock<'_, 'tcx> {
 pub struct PcgLocation<'a, 'tcx> {
     pub location: Location,
     pub states: DomainDataStates<Pcg<'a, 'tcx>>,
-    pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
+    pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }
 
 impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
@@ -358,11 +358,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
 }
 
 impl<'tcx> PcgLocation<'_, 'tcx> {
-    pub fn borrow_pcg_actions(&self, phase: EvalStmtPhase) -> BorrowPcgActions<'tcx> {
-        self.actions[phase].borrow_pcg_actions()
-    }
-    pub fn actions(&self, phase: EvalStmtPhase) -> &PcgActions<'tcx> {
-        &self.actions[phase]
+    pub fn actions<'slf>(&'slf self, phase: EvalStmtPhase) -> PcgActions<'tcx> {
+        self.actions[phase].map_actions(|action| action.action.clone())
     }
 
     pub fn ancestor_edges<'slf, 'mir: 'slf, 'bc: 'slf>(
@@ -416,8 +413,8 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.states[phase].debug_lines(ctxt);
-        for action in self.actions[phase].0.iter() {
-            result.push(action.debug_line(ctxt));
+        for action in self.actions[phase].iter() {
+            result.push(action.action.debug_line(ctxt));
         }
         result
     }

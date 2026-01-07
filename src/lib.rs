@@ -214,20 +214,18 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 use borrow_pcg::action::actions::BorrowPcgActions;
 use utils::eval_stmt_data::EvalStmtData;
 
-type VisualizationActions = Vec<PcgActionDebugRepr>;
-
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgStmtVisualizationData {
-    actions: EvalStmtData<VisualizationActions>,
+    actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
 }
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgSuccessorVisualizationData {
-    actions: VisualizationActions,
+    actions: Vec<PcgActionDebugRepr>,
 }
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
@@ -334,7 +332,7 @@ impl<'a, 'mir: 'a, 'tcx: 'mir>
     }
 
     fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
-        self.compiler_ctxt.bc()
+        self.compiler_ctxt.borrow_checker()
     }
 }
 
@@ -461,12 +459,16 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             let statements = pcg_block
                 .statements
                 .iter()
-                .map(|stmt| PcgStmtVisualizationData {
-                    actions: stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt),
-                    graphs: debug_graphs
-                        .get(stmt.location.statement_index)
-                        .cloned()
-                        .unwrap_or_default(),
+                .map(|stmt| {
+                    let actions: EvalStmtData<Vec<AppliedActionDebugRepr>> =
+                        stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt);
+                    PcgStmtVisualizationData {
+                        actions,
+                        graphs: debug_graphs
+                            .get(stmt.location.statement_index)
+                            .cloned()
+                            .unwrap_or_default(),
+                    }
                 })
                 .collect();
 
@@ -681,7 +683,7 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    action::PcgActionDebugRepr,
+    action::{AppliedActionDebugRepr, AppliedActions, PcgActionDebugRepr, PcgActions},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,

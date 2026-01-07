@@ -36,7 +36,7 @@ export function actionLine(
     case "RemoveEdge":
     case "Restore":
       return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
-    case "MakePlaceOld":
+    case "LabelPlace":
       return action.data
     case "LabelLifetimeProjection":
       return action.data

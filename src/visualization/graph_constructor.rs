@@ -96,7 +96,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 format!("{:?}", c.ty())
             }
         };
-        let loans = if let Some(output) = self.ctxt.bc.polonius_output()
+        let loans = if let Some(output) = self.ctxt.borrow_checker.polonius_output()
             && let Some(region_vid) = projection.region(self.ctxt).vid()
         {
             let region_vid = region_vid.into();
@@ -108,7 +108,11 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                             .iter()
                             .map(|l| format!(
                                 "{:?}",
-                                self.ctxt.bc.rust_borrow_checker().unwrap().borrow_set()[*l]
+                                self.ctxt
+                                    .borrow_checker
+                                    .rust_borrow_checker()
+                                    .unwrap()
+                                    .borrow_set()[*l]
                                     .region()
                             ))
                             .collect::<Vec<_>>()
@@ -119,7 +123,12 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 }
             };
             if let Some(location) = self.location {
-                let location_table = self.ctxt.bc.rust_borrow_checker().unwrap().location_table();
+                let location_table = self
+                    .ctxt
+                    .borrow_checker
+                    .rust_borrow_checker()
+                    .unwrap()
+                    .location_table();
                 let loans_before = render_loans(
                     output
                         .origin_contains_loan_at(location_table.start_index(location))

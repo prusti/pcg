@@ -3,12 +3,14 @@ pub(crate) mod expand;
 use std::marker::PhantomData;
 
 use crate::{
-    action::{BorrowPcgAction, OwnedPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
-        action::{ApplyActionResult, LabelPlaceReason},
+        action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::kind::BorrowPcgEdgeType,
-        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::{
+            kind::BorrowPcgEdgeType,
+            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        },
         edge_data::LabelPlacePredicate,
         has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
@@ -32,7 +34,7 @@ use crate::{
 pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
     pub(crate) pcg: PcgMutRef<'state, 'tcx>,
     pub(crate) ctxt: Ctxt,
-    pub(crate) actions: Option<&'state mut Vec<PcgAction<'tcx>>>,
+    pub(crate) actions: Option<&'state mut AppliedActions<'tcx>>,
     pub(crate) location: mir::Location,
     pub(crate) prev_snapshot_location: SnapshotLocation,
     pub(crate) _marker: PhantomData<&'a ()>,
@@ -65,7 +67,7 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
 
     pub(crate) fn new(
         pcg: PcgMutRef<'state, 'tcx>,
-        actions: Option<&'state mut Vec<PcgAction<'tcx>>>,
+        actions: Option<&'state mut AppliedActions<'tcx>>,
         ctxt: Ctxt,
         location: mir::Location,
         prev_snapshot_location: SnapshotLocation,
@@ -256,7 +258,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             for pe in expansions {
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
-                    Some(context.clone()),
+                    Some(context.clone().into()),
                 )))?;
                 for rp in place.lifetime_projections(ctxt) {
                     let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
@@ -334,7 +336,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 }
 
 pub(crate) trait ActionApplier<'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<ApplyActionResult, PcgError>;
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError>;
 }
 
 pub(crate) trait HasSnapshotLocation {

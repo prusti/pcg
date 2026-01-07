@@ -27,40 +27,38 @@ use crate::{
 pub mod actions;
 
 /// The result of applying an action to the PCG.
-#[derive(Clone, Debug)]
-pub struct ApplyActionResult {
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct ApplyActionResult<Summary = DisplayOutput> {
     /// Whether the action had any effect on the PCG state.
     pub changed: bool,
     /// A summary of the changes made by the action.
-    pub display: DisplayOutput,
+    pub change_summary: Summary,
+}
+
+impl DebugRepr<()> for ApplyActionResult {
+    type Repr = ApplyActionResult<String>;
+
+    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
+        ApplyActionResult {
+            changed: self.changed,
+            change_summary: self.change_summary.clone().into_html().to_string(),
+        }
+    }
 }
 
 impl ApplyActionResult {
-    pub fn unchanged() -> Self {
-        Self {
-            changed: false,
-            display: DisplayOutput::EMPTY,
-        }
-    }
-
-    pub fn changed_no_display() -> Self {
+    pub(crate) fn changed_no_display() -> Self {
         Self {
             changed: true,
-            display: DisplayOutput::EMPTY,
+            change_summary: DisplayOutput::EMPTY,
         }
     }
 
-    pub fn changed_with_display(display: DisplayOutput) -> Self {
-        Self {
-            changed: true,
-            display,
-        }
-    }
-
-    pub fn from_changed(changed: bool) -> Self {
+    pub(crate) fn from_changed(changed: bool) -> Self {
         Self {
             changed,
-            display: DisplayOutput::EMPTY,
+            change_summary: DisplayOutput::EMPTY,
         }
     }
 }
@@ -68,7 +66,7 @@ impl ApplyActionResult {
 impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
     pub(crate) fn add_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> Self {
         BorrowPcgAction {
@@ -79,7 +77,7 @@ impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
 
     pub(crate) fn remove_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::RemoveEdge(edge),
@@ -92,7 +90,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     pub(crate) fn restore_capability(
         place: Place<'tcx>,
         capability: CapabilityKind,
-        debug_context: impl Into<String>,
+        debug_context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Restore(RestoreCapability::new(place, capability)),
@@ -104,7 +102,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         place: Place<'tcx>,
         from: CapabilityKind,
         to: Option<CapabilityKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self
     where
         'tcx: 'a,
@@ -117,7 +115,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
 
     pub(crate) fn remove_lifetime_projection_label(
         projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::remove_lifetime_projection_label(projection),
@@ -128,7 +126,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     pub(crate) fn label_lifetime_projection(
         predicate: LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::label_lifetime_projection(predicate, label),
@@ -142,7 +140,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         reason: LabelPlaceReason,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::MakePlaceOld(LabelPlaceAction {
+            kind: BorrowPcgActionKind::LabelPlace(LabelPlaceAction {
                 place,
                 location,
                 reason,
@@ -311,7 +309,7 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx>),
     Weaken(Weaken<'tcx>),
     Restore(RestoreCapability<'tcx>),
-    MakePlaceOld(LabelPlaceAction<'tcx>),
+    LabelPlace(LabelPlaceAction<'tcx>),
     /// Remove an edge from the PCG. In terms of the PCG itself, the validity
     /// conditions associated with the edge are not relevant (there is no
     /// situation where an edge is removed only under certain conditions).
@@ -372,7 +370,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::Restore(restore_capability) => {
                 restore_capability.display_output(ctxt, mode)
             }
-            BorrowPcgActionKind::MakePlaceOld(action) => action.display_output(ctxt, mode),
+            BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
             BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
                 vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
                 DisplayOutput::SPACE,

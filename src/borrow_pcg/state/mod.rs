@@ -130,7 +130,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         let display = display_node_replacements(&replacements, ctxt.bc_ctxt(), OutputMode::Normal);
         ApplyActionResult {
             changed: true,
-            display,
+            change_summary: display,
         }
     }
 
@@ -230,7 +230,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                 }
                 ApplyActionResult::changed_no_display()
             }
-            BorrowPcgActionKind::MakePlaceOld(action) => self
+            BorrowPcgActionKind::LabelPlace(action) => self
                 .label_place_and_update_related_capabilities(
                     action.place,
                     action.reason,

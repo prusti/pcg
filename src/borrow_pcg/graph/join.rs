@@ -237,7 +237,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         let loop_blocked_places = live_loop_places.usages_where(|p| {
-            ctxt.ctxt.bc.is_directly_blocked(
+            ctxt.ctxt.borrow_checker.is_directly_blocked(
                 p.place,
                 mir::Location {
                     block: args.self_block,

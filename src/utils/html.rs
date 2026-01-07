@@ -1,7 +1,9 @@
 use dot::escape_html;
+use serde_derive::Serialize;
 use std::borrow::Cow;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum Html {
     Text(Cow<'static, str>),
     Subscript(Cow<'static, str>),

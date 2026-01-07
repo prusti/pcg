@@ -3,7 +3,7 @@ use derive_more::From;
 use crate::{
     action::PcgAction,
     borrow_pcg::{
-        action::{ApplyActionResult, BorrowPcgActionKind},
+        action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
         edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
         edge_data::EdgeData,
@@ -143,7 +143,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 let relevant_root = root.relevant_place_for_blocking();
                 if blocker == relevant_root
                     || ctxt
-                        .bc
+                        .borrow_checker
                         .blocks(blocker, relevant_root, loop_head_location, ctxt)
                 {
                     tracing::debug!(
@@ -172,9 +172,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 .iter_places()
                 .filter(|blocker| {
                     blocker.local != blocked_place.local
-                        && ctxt
-                            .bc
-                            .blocks(*blocker, blocked_place, loop_head_location, ctxt)
+                        && ctxt.borrow_checker.blocks(
+                            *blocker,
+                            blocked_place,
+                            loop_head_location,
+                            ctxt,
+                        )
                 })
                 .collect::<Vec<_>>();
             if !blockers.is_empty() {
@@ -488,29 +491,25 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
-    fn apply_action(
-        &mut self,
-        action: PcgAction<'tcx>,
-    ) -> Result<ApplyActionResult, crate::error::PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), crate::error::PcgError> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {
-                BorrowPcgActionKind::AddEdge { edge } => Ok(ApplyActionResult::from_changed(
-                    self.graph.insert(edge, self.ctxt),
-                )),
-                BorrowPcgActionKind::LabelLifetimeProjection(action) => Ok(
-                    ApplyActionResult::from_changed(self.graph.label_region_projection(
+                BorrowPcgActionKind::AddEdge { edge } => {
+                    self.graph.insert(edge, self.ctxt);
+                }
+                BorrowPcgActionKind::LabelLifetimeProjection(action) => {
+                    self.graph.label_region_projection(
                         action.predicate(),
                         action.label(),
                         self.ctxt,
-                    )),
-                ),
+                    );
+                }
                 BorrowPcgActionKind::Weaken(_) => todo!(),
                 BorrowPcgActionKind::Restore(_) => todo!(),
-                BorrowPcgActionKind::MakePlaceOld(_) => todo!(),
+                BorrowPcgActionKind::LabelPlace(_) => todo!(),
                 BorrowPcgActionKind::RemoveEdge(borrow_pcg_edge) => {
                     self.graph.remove(borrow_pcg_edge.kind());
-                    Ok(ApplyActionResult::changed_no_display())
                 }
             },
             PcgAction::Owned(action) => match action.kind {
@@ -524,7 +523,8 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                 RepackOp::DerefShallowInit(_, _) => todo!(),
                 RepackOp::RegainLoanedCapability(_) => todo!(),
             },
-        }
+        };
+        Ok(())
     }
 }
 
@@ -604,7 +604,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
         let flow_rps = blocker_rps
             .iter()
             .filter(|blocker_rp| {
-                ctxt.bc.outlives(
+                ctxt.borrow_checker.outlives(
                     blocked_rp.region(ctxt),
                     blocker_rp.region(ctxt),
                     expander.loop_head_location(),
@@ -618,7 +618,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
                 .iter()
                 .filter_map(|rp| {
                     if rp.is_invariant_in_type(ctxt)
-                        && ctxt.bc.outlives(
+                        && ctxt.borrow_checker.outlives(
                             rp.region(ctxt),
                             blocked_rp.region(ctxt),
                             expander.loop_head_location(),

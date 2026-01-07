@@ -13,7 +13,7 @@ use derive_more::From;
 
 use crate::{
     AnalysisEngine,
-    action::PcgActions,
+    action::AppliedActions,
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
@@ -53,7 +53,7 @@ pub struct DataflowIterationDebugInfo {
 #[derive(Clone, Eq, Debug)]
 pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
     pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
-    pub(crate) actions: EvalStmtData<PcgActions<'tcx>>,
+    pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }
 
 impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
@@ -231,7 +231,7 @@ mod private {
         }
 
         fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
-            self.ctxt.bc()
+            self.ctxt.borrow_checker()
         }
     }
 
