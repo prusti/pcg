@@ -137,24 +137,13 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        let label_node_context =
-            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Deref);
-        if let MaybeLabelledPlace::Current(place) = self.deref_place
-            && predicate.applies_to(
-                PcgNode::Place(MaybeLabelledPlace::Current(place)),
-                label_node_context,
-            )
-        {
-            let from: PcgNode<'tcx> = self.deref_place.to_pcg_node(ctxt);
-            self.deref_place =
-                MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
-            result.insert(NodeReplacement::new(
-                from,
-                self.deref_place.to_pcg_node(ctxt),
-            ));
-        }
-        result
+        conditionally_label_places(
+            vec![&mut self.deref_place],
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Deref),
+            ctxt,
+        )
     }
 }
 

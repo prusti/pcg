@@ -22,7 +22,10 @@ use crate::{
             },
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
-        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate},
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            conditionally_label_places,
+        },
         graph::{BorrowsGraph, Conditioned},
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
@@ -31,7 +34,7 @@ use crate::{
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
-    pcg::{LabelPlaceConditionally, PcgNodeLike},
+    pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
@@ -384,17 +387,13 @@ impl<
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        for input in self.inputs.iter_mut() {
-            input.label_place_conditionally(
-                &mut result,
-                predicate,
-                labeller,
-                LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled),
-                ctxt,
-            );
-        }
-        result
+        conditionally_label_places(
+            self.inputs.iter_mut(),
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
@@ -403,17 +402,13 @@ impl<
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        for output in self.outputs.iter_mut() {
-            output.label_place_conditionally(
-                &mut result,
-                predicate,
-                labeller,
-                LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled),
-                ctxt,
-            );
-        }
-        result
+        conditionally_label_places(
+            self.outputs.iter_mut(),
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled),
+            ctxt,
+        )
     }
 }
 
