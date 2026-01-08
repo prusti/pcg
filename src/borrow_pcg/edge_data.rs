@@ -304,14 +304,7 @@ use super::has_pcs_elem::LabelLifetimeProjectionResult;
 /// Checks the predicate and then applies the label operation if it matches.
 /// Analogous to `LabelEdgePlaces` for places.
 pub(crate) trait LabelEdgeLifetimeProjections<'tcx> {
-    fn label_blocked_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult;
-
-    fn label_blocked_by_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
@@ -415,7 +408,7 @@ macro_rules! edgedata_enum {
         )+
 
         impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgeLifetimeProjections<$tcx> for $enum_name<$tcx> {
-            fn label_blocked_lifetime_projections(
+            fn label_lifetime_projections(
                 &mut self,
                 predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
                 label: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
@@ -423,20 +416,7 @@ macro_rules! edgedata_enum {
             ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.label_blocked_lifetime_projections(predicate, label, ctxt),
-                    )+
-                }
-            }
-
-            fn label_blocked_by_lifetime_projections(
-                &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
-                label: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
-                ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.label_blocked_by_lifetime_projections(predicate, label, ctxt),
+                        $enum_name::$variant_name(inner) => inner.label_lifetime_projections(predicate, label, ctxt),
                     )+
                 }
             }

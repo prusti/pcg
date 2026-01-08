@@ -89,7 +89,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 let orig_rp = local_rp.with_label(None, ctxt);
                 self.filter_mut_edges(|edge| {
                     edge.value
-                        .label_blocked_lifetime_projections(
+                        .label_lifetime_projections(
                             &LabelNodePredicate::equals_lifetime_projection(orig_rp),
                             Some(LifetimeProjectionLabel::Future),
                             ctxt.bc_ctxt(),
@@ -335,7 +335,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         for rp in to_label.iter() {
             self.filter_mut_edges(|edge| {
                 edge.value
-                    .label_blocked_lifetime_projections(
+                    .label_lifetime_projections(
                         rp,
                         Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
                             loop_head,

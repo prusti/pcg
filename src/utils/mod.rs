@@ -222,7 +222,10 @@ impl PcgSettings {
         if let Some(user_path) = Self::process_string_var(processed, var_name) {
             let user_path = PathBuf::from(user_path);
             tracing::info!("Using user path for {var_name}: {:?}", user_path);
-            tracing::info!("Absolute path: {:?}", user_path.canonicalize().unwrap());
+            match user_path.canonicalize() {
+                Ok(path) => tracing::info!("Absolute path: {:?}", path),
+                Err(e) => tracing::error!("User path cannot be canonicalized: {e}"),
+            }
             user_path
         } else {
             tracing::info!(

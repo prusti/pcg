@@ -50,24 +50,13 @@ pub type LoopAbstraction<'tcx> =
     AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for LoopAbstraction<'tcx> {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_blocked_lifetime_projections(predicate, label, ctxt)
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
+        self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
 impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {

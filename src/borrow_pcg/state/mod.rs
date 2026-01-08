@@ -143,15 +143,8 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         'tcx: 'a,
         EdgeKind: LabelEdgeLifetimeProjections<'tcx> + Eq + std::hash::Hash,
     {
-        let mut result =
-            self.graph_mut()
-                .label_blocked_lifetime_projections(predicate, label, ctxt.bc_ctxt());
-        result |= self.graph_mut().label_blocked_by_lifetime_projections(
-            predicate,
-            label,
-            ctxt.bc_ctxt(),
-        );
-        result
+        self.graph_mut()
+            .label_lifetime_projections(predicate, label, ctxt.bc_ctxt())
     }
 
     fn remove<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(

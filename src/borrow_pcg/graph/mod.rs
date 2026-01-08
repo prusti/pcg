@@ -507,38 +507,21 @@ impl<T> Conditioned<T> {
     }
 }
 
-#[allow(private_bounds)]
-impl<'tcx, EdgeKind: LabelEdgeLifetimeProjections<'tcx> + Eq + std::hash::Hash>
-    BorrowsGraph<'tcx, EdgeKind>
-{
-    pub(crate) fn label_blocked_lifetime_projections(
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+    pub(crate) fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> bool
+    where
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx>,
+    {
         let mut result = false;
         self.filter_mut_edges(|edge| {
             let changed = edge
                 .value
-                .label_blocked_lifetime_projections(predicate, label, ctxt);
-            result |= changed != LabelLifetimeProjectionResult::Unchanged;
-            changed.to_filter_mut_result()
-        });
-        result
-    }
-
-    pub(crate) fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let mut result = false;
-        self.filter_mut_edges(|edge| {
-            let changed = edge
-                .value
-                .label_blocked_by_lifetime_projections(predicate, label, ctxt);
+                .label_lifetime_projections(predicate, label, ctxt);
             result |= changed != LabelLifetimeProjectionResult::Unchanged;
             changed.to_filter_mut_result()
         });

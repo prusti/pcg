@@ -171,7 +171,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                     BorrowFlowEdge::new(
                                         labelled_rp.into(),
                                         future_rp.into(),
-                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
+                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
                                         self.ctxt,
                                     )
                                     .into(),

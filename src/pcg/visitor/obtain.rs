@@ -194,7 +194,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if deref.deref_place.is_current()
             && deref.deref_place.lifetime_projections(self.ctxt).is_empty()
         {
-            self.unlabel_blocked_lifetime_projections(deref, context)
+            self.unlabel_source_lifetime_projections(deref, context)
         } else {
             Ok(())
         }
@@ -358,7 +358,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// Accordingly, when we want to remove *y in such cases, we just remove the
     /// label rather than use the normal logic (of renaming the placeholder
     /// projection to the current one).
-    fn unlabel_blocked_lifetime_projections(
+    fn unlabel_source_lifetime_projections(
         &mut self,
         deref: &DerefEdge<'tcx>,
         context: &str,

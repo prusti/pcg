@@ -91,7 +91,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 }
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for DerefEdge<'tcx> {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
@@ -108,15 +108,6 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for DerefEdge<'tcx> {
         } else {
             LabelLifetimeProjectionResult::Unchanged
         }
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        _predicate: &LabelNodePredicate<'tcx>,
-        _label: Option<LifetimeProjectionLabel>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        LabelLifetimeProjectionResult::Unchanged
     }
 }
 

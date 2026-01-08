@@ -104,24 +104,14 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
 }
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         self.value
-            .label_blocked_lifetime_projections(predicate, label, ctxt)
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        self.value
-            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
+            .label_lifetime_projections(predicate, label, ctxt)
     }
 }
 

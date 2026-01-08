@@ -190,16 +190,7 @@ pub(crate) mod internal {
 pub type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>;
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgPlaceExpansion<'tcx> {
-    fn label_blocked_lifetime_projections(
-        &mut self,
-        _predicate: &LabelNodePredicate<'tcx>,
-        _label: Option<LifetimeProjectionLabel>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        LabelLifetimeProjectionResult::Unchanged
-    }
-
-    fn label_blocked_by_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         _predicate: &LabelNodePredicate<'tcx>,
         _label: Option<LifetimeProjectionLabel>,
@@ -335,36 +326,26 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
 impl<'tcx, P: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>> LabelEdgeLifetimeProjections<'tcx>
     for BorrowPcgExpansionData<P>
 {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        let node_context = LabelNodeContext::new(
+        let source_context = LabelNodeContext::new(
             SourceOrTarget::Source,
             BorrowPcgEdgeType::BorrowPcgExpansion,
         );
-        if predicate.applies_to(self.base.to_pcg_node(ctxt), node_context) {
-            self.base.label_lifetime_projection(label)
-        } else {
-            LabelLifetimeProjectionResult::Unchanged
-        }
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        let node_context = LabelNodeContext::new(
+        let target_context = LabelNodeContext::new(
             SourceOrTarget::Target,
             BorrowPcgEdgeType::BorrowPcgExpansion,
         );
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
+        if predicate.applies_to(self.base.to_pcg_node(ctxt), source_context) {
+            changed |= self.base.label_lifetime_projection(label);
+        }
         for p in &mut self.expansion {
-            if predicate.applies_to(p.to_pcg_node(ctxt), node_context) {
+            if predicate.applies_to(p.to_pcg_node(ctxt), target_context) {
                 changed |= p.label_lifetime_projection(label);
             }
         }

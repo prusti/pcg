@@ -312,34 +312,24 @@ impl<
     Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgeLifetimeProjections<'tcx> for HyperEdge<Input, Output>
 {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        let node_context =
+        let source_context =
             LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled);
+        let target_context =
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled);
         let mut result = LabelLifetimeProjectionResult::Unchanged;
         for input in self.inputs.iter_mut() {
-            if predicate.applies_to(input.to_pcg_node(ctxt), node_context) {
+            if predicate.applies_to(input.to_pcg_node(ctxt), source_context) {
                 result |= input.label_lifetime_projection(label);
             }
         }
-        result
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        let node_context =
-            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled);
-        let mut result = LabelLifetimeProjectionResult::Unchanged;
         for output in self.outputs.iter_mut() {
-            if predicate.applies_to(output.to_pcg_node(ctxt), node_context) {
+            if predicate.applies_to(output.to_pcg_node(ctxt), target_context) {
                 result |= output.label_lifetime_projection(label);
             }
         }
@@ -354,29 +344,18 @@ impl<
     Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgeLifetimeProjections<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_blocked_lifetime_projections(predicate, label, ctxt)
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        self.edge
-            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
+        self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for PcgCoupledEdgeKind<'tcx> {
-    fn label_blocked_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
@@ -384,26 +363,10 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for PcgCoupledEdgeKind<'tcx> {
     ) -> LabelLifetimeProjectionResult {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
-                function.label_blocked_lifetime_projections(predicate, label, ctxt)
+                function.label_lifetime_projections(predicate, label, ctxt)
             }
             FunctionCallOrLoop::Loop(loop_) => {
-                loop_.label_blocked_lifetime_projections(predicate, label, ctxt)
-            }
-        }
-    }
-
-    fn label_blocked_by_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        match &mut self.0 {
-            FunctionCallOrLoop::FunctionCall(function) => {
-                function.label_blocked_by_lifetime_projections(predicate, label, ctxt)
-            }
-            FunctionCallOrLoop::Loop(loop_) => {
-                loop_.label_blocked_by_lifetime_projections(predicate, label, ctxt)
+                loop_.label_lifetime_projections(predicate, label, ctxt)
             }
         }
     }

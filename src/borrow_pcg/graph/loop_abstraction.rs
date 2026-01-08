@@ -264,7 +264,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
         for rp in to_label.iter() {
             tracing::debug!("labeling {:?}", rp);
-            graph.label_blocked_lifetime_projections(rp, Some(loop_head_label), ctxt);
+            graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
         }
         tracing::debug!("Completed loop abstraction");
         for (place, capability) in capability_updates.iter() {
@@ -498,7 +498,7 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                     self.graph.insert(edge, self.ctxt);
                 }
                 BorrowPcgActionKind::LabelLifetimeProjection(action) => {
-                    self.graph.label_blocked_lifetime_projections(
+                    self.graph.label_lifetime_projections(
                         action.predicate(),
                         action.label(),
                         self.ctxt,

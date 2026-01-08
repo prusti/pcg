@@ -57,16 +57,7 @@ pub struct BorrowEdge<'tcx> {
 }
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowEdge<'tcx> {
-    fn label_blocked_lifetime_projections(
-        &mut self,
-        _predicate: &LabelNodePredicate<'tcx>,
-        _label: Option<LifetimeProjectionLabel>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        LabelLifetimeProjectionResult::Unchanged
-    }
-
-    fn label_blocked_by_lifetime_projections(
+    fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
