@@ -12,7 +12,7 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
     },
     error::PcgError,
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeType},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::{
@@ -340,10 +340,6 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
 {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         PcgNode::LifetimeProjection(self.with_base(self.base.to_pcg_lifetime_projection_base()))
-    }
-
-    fn node_type(&self) -> PcgNodeType {
-        PcgNodeType::LifetimeProjection
     }
 }
 

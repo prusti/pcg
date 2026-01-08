@@ -12,7 +12,7 @@ use crate::{
             PcgLifetimeProjectionLike, PlaceOrConst,
         },
     },
-    pcg::{PcgNode, PcgNodeLike, PcgNodeType},
+    pcg::{PcgNode, PcgNodeLike},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -80,10 +80,6 @@ impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.to_pcg_node(ctxt)
     }
-
-    fn node_type(&self) -> PcgNodeType {
-        PcgNodeType::LifetimeProjection
-    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionInput<'tcx> {
@@ -150,10 +146,6 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionInput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
     }
-
-    fn node_type(&self) -> PcgNodeType {
-        self.0.node_type()
-    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionInput<'tcx> {
@@ -210,10 +202,6 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
     }
-
-    fn node_type(&self) -> PcgNodeType {
-        self.0.node_type()
-    }
 }
 
 impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionOutput<'tcx> {
@@ -247,10 +235,6 @@ pub struct AbstractionInputTarget<'tcx>(pub(crate) PcgNode<'tcx>);
 impl<'tcx> PcgNodeLike<'tcx> for AbstractionInputTarget<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0
-    }
-
-    fn node_type(&self) -> PcgNodeType {
-        self.0.node_type()
     }
 }
 
@@ -317,10 +301,6 @@ where
 impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionOutput<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.0.into()
-    }
-
-    fn node_type(&self) -> PcgNodeType {
-        PcgNodeType::LifetimeProjection
     }
 }
 

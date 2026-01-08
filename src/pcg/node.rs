@@ -151,13 +151,6 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for PcgNode<
 impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
     for PcgNode<'tcx, T, U>
 {
-    fn node_type(&self) -> PcgNodeType {
-        match self {
-            PcgNode::Place(_) => PcgNodeType::Place,
-            PcgNode::LifetimeProjection(_) => PcgNodeType::LifetimeProjection,
-        }
-    }
-
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         match self {
             PcgNode::Place(p) => p.to_pcg_node(ctxt),
@@ -225,8 +218,6 @@ pub trait PcgNodeLike<'tcx>:
 {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx>;
 
-    fn node_type(&self) -> PcgNodeType;
-
     fn try_to_local_node<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<LocalNode<'tcx>>
     where
         'tcx: 'a,
@@ -282,9 +273,5 @@ impl<'tcx> LocalNodeLike<'tcx> for mir::Place<'tcx> {
 impl<'tcx> PcgNodeLike<'tcx> for mir::Place<'tcx> {
     fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.into()
-    }
-
-    fn node_type(&self) -> PcgNodeType {
-        PcgNodeType::Place
     }
 }

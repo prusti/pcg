@@ -10,7 +10,7 @@ use crate::{
             HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
         },
     },
-    pcg::{EvalStmtPhase, LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeType},
+    pcg::{EvalStmtPhase, LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::{
         mir::{self, BasicBlock, Location},
         ty,
@@ -230,10 +230,6 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
 impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
     fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
         self.to_local_node(ctxt).into()
-    }
-
-    fn node_type(&self) -> crate::pcg::PcgNodeType {
-        PcgNodeType::Place
     }
 }
 
