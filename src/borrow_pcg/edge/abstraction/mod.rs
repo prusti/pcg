@@ -147,7 +147,7 @@ impl<'tcx, T: LabelPlace<'tcx> + PcgNodeLike<'tcx>, U: LabelPlace<'tcx> + PcgNod
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         conditionally_label_places(
-            vec![&mut self.input],
+            vec![&mut self.output],
             predicate,
             labeller,
             LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Abstraction),
