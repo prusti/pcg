@@ -221,6 +221,10 @@ impl<'tcx, Ty> AssignmentData<'tcx, Ty> {
     pub fn operand_type(&self) -> OperandType {
         self.operand_type
     }
+
+    pub fn cast_kind(&self) -> Option<mir::CastKind> {
+        self.cast.as_ref().map(|cd| cd.kind)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
