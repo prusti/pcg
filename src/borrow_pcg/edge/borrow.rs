@@ -11,7 +11,7 @@ use crate::{
         },
         region_projection::LifetimeProjectionLabel,
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{LabelPlaceConditionally, PcgNode, PcgNodeLike},
     rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
@@ -83,7 +83,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        self.blocked_place.label_conditionally(
+        self.blocked_place.label_place_conditionally(
             &mut result,
             predicate,
             labeller,

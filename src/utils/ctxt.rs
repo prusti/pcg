@@ -92,6 +92,14 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.borrow_checker
     }
 
+    #[deprecated(note = "Use `.borrow_checker()` instead")]
+    pub fn bc(self) -> T
+    where
+        T: Copy,
+    {
+        self.borrow_checker
+    }
+
     pub fn body_def_path_str(&self) -> String {
         self.tcx.def_path_str(self.def_id())
     }

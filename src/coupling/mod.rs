@@ -31,7 +31,7 @@ use crate::{
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
-    pcg::PcgNodeLike,
+    pcg::{LabelPlaceConditionally, PcgNodeLike},
     pcg_validity_assert,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt,
@@ -386,7 +386,7 @@ impl<
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         for input in self.inputs.iter_mut() {
-            input.label_conditionally(
+            input.label_place_conditionally(
                 &mut result,
                 predicate,
                 labeller,
@@ -405,7 +405,7 @@ impl<
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         for output in self.outputs.iter_mut() {
-            output.label_conditionally(
+            output.label_place_conditionally(
                 &mut result,
                 predicate,
                 labeller,

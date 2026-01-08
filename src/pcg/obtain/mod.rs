@@ -20,7 +20,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, PcgMutRef, PcgNodeLike, PcgRefLike,
+        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
@@ -301,7 +301,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 );
                 let mut node = *node;
                 let mut replacements = HashSet::default();
-                node.label_conditionally(
+                node.label_place_conditionally(
                     &mut replacements,
                     &LabelNodePredicate::PlaceEquals((*place).into()),
                     &labeller,

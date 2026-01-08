@@ -227,27 +227,6 @@ pub trait PcgNodeLike<'tcx>:
 
     fn node_type(&self) -> PcgNodeType;
 
-    #[allow(private_bounds)]
-    #[allow(private_interfaces)]
-    fn label_conditionally(
-        &mut self,
-        replacements: &mut HashSet<NodeReplacement<'tcx>>,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        node_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) where
-        Self: LabelPlace<'tcx>,
-    {
-        let orig = self.to_pcg_node(ctxt);
-        if predicate.applies_to(orig, node_context) {
-            let changed = self.label_place(labeller, ctxt);
-            if changed {
-                replacements.insert(NodeReplacement::new(orig, self.to_pcg_node(ctxt)));
-            }
-        }
-    }
-
     fn try_to_local_node<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<LocalNode<'tcx>>
     where
         'tcx: 'a,
@@ -266,6 +245,29 @@ pub trait PcgNodeLike<'tcx>:
         }
     }
 }
+
+pub(crate) trait LabelPlaceConditionally<'tcx>:
+    PcgNodeLike<'tcx> + LabelPlace<'tcx>
+{
+    fn label_place_conditionally(
+        &mut self,
+        replacements: &mut HashSet<NodeReplacement<'tcx>>,
+        predicate: &LabelNodePredicate<'tcx>,
+        labeller: &impl PlaceLabeller<'tcx>,
+        node_context: LabelNodeContext,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) {
+        let orig = self.to_pcg_node(ctxt);
+        if predicate.applies_to(orig, node_context) {
+            let changed = self.label_place(labeller, ctxt);
+            if changed {
+                replacements.insert(NodeReplacement::new(orig, self.to_pcg_node(ctxt)));
+            }
+        }
+    }
+}
+
+impl<'tcx, T: PcgNodeLike<'tcx> + LabelPlace<'tcx>> LabelPlaceConditionally<'tcx> for T {}
 
 pub(crate) trait LocalNodeLike<'tcx>: Copy + PcgNodeLike<'tcx> {
     fn to_local_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx>;

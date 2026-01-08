@@ -17,7 +17,7 @@ use crate::{
         },
         region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{LabelPlaceConditionally, PcgNode, PcgNodeLike},
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
@@ -53,7 +53,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        self.long.label_conditionally(
+        self.long.label_place_conditionally(
             &mut result,
             predicate,
             labeller,
@@ -75,7 +75,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        self.short.label_conditionally(
+        self.short.label_place_conditionally(
             &mut result,
             predicate,
             labeller,
