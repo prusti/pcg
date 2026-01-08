@@ -9,9 +9,8 @@ use crate::{
             kind::BorrowPcgEdgeKind,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
-        edge_data::LabelNodePredicate,
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
-        has_pcs_elem::LabelLifetimeProjection,
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
     },
@@ -302,7 +301,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 )?;
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {
-                    expansion.label_lifetime_projection(
+                    expansion.label_blocked_lifetime_projections(
                         &LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
                         Some(label.into()),
                         ctxt.bc_ctxt(),

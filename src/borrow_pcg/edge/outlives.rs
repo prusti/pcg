@@ -7,10 +7,13 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            NodeReplacement,
+        },
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
+            PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -50,8 +53,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        let from: PcgNode<'tcx> = self.long.to_pcg_node(ctxt);
-        let changed = self.long.label_place_with_context(
+        self.long.label_conditionally(
+            &mut result,
             predicate,
             labeller,
             LabelNodeContext::new(
@@ -62,9 +65,6 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
             ),
             ctxt,
         );
-        if changed {
-            result.insert(NodeReplacement::new(from, self.long.to_pcg_node(ctxt)));
-        }
         result
     }
 
@@ -75,8 +75,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
-        let from: PcgNode<'tcx> = self.short.to_pcg_node(ctxt);
-        let changed = self.short.label_place_with_context(
+        self.short.label_conditionally(
+            &mut result,
             predicate,
             labeller,
             LabelNodeContext::new(
@@ -87,19 +87,16 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
             ),
             ctxt,
         );
-        if changed {
-            result.insert(NodeReplacement::new(from, self.short.to_pcg_node(ctxt)));
-        }
         result
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowFlowEdge<'tcx> {
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
@@ -107,15 +104,47 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowFlowEdge<'tcx> {
             predicate,
             label
         );
-        if predicate.applies_to(PcgNode::LifetimeProjection(self.long), None)
-            && predicate.applies_to(PcgNode::LifetimeProjection(self.short.rebase()), None)
+        let source_context = LabelNodeContext::new(
+            SourceOrTarget::Source,
+            BorrowPcgEdgeType::BorrowFlow {
+                future_edge_kind: self.future_edge_kind(),
+            },
+        );
+        let target_context = LabelNodeContext::new(
+            SourceOrTarget::Target,
+            BorrowPcgEdgeType::BorrowFlow {
+                future_edge_kind: self.future_edge_kind(),
+            },
+        );
+        if predicate.applies_to(PcgNode::LifetimeProjection(self.long), source_context)
+            && predicate.applies_to(
+                PcgNode::LifetimeProjection(self.short.rebase()),
+                target_context,
+            )
         {
             return LabelLifetimeProjectionResult::ShouldCollapse;
         }
-        let mut changed = self.long.label_lifetime_projection(predicate, label, ctxt);
-        changed |= self.short.label_lifetime_projection(predicate, label, ctxt);
+        let mut changed = LabelLifetimeProjectionResult::Unchanged;
+        if predicate.applies_to(PcgNode::LifetimeProjection(self.long), source_context) {
+            changed |= self.long.label_lifetime_projection(label);
+        }
+        if predicate.applies_to(
+            PcgNode::LifetimeProjection(self.short.rebase()),
+            target_context,
+        ) {
+            changed |= self.short.label_lifetime_projection(label);
+        }
         self.assert_validity(ctxt);
         changed
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        self.label_blocked_lifetime_projections(predicate, label, ctxt)
     }
 }
 

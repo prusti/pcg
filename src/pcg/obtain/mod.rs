@@ -12,7 +12,7 @@ use crate::{
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
         edge_data::LabelNodePredicate,
-        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel, SourceOrTarget},
+        has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
     },
@@ -20,7 +20,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, PcgMutRef, PcgRefLike,
+        CapabilityKind, PcgMutRef, PcgNodeLike, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
@@ -300,7 +300,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                     ctxt,
                 );
                 let mut node = *node;
-                node.label_place_with_context(
+                let mut replacements = HashSet::default();
+                node.label_conditionally(
+                    &mut replacements,
                     &LabelNodePredicate::PlaceEquals((*place).into()),
                     &labeller,
                     LabelNodeContext::new(

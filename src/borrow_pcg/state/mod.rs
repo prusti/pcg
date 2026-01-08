@@ -6,9 +6,8 @@ use crate::{
     borrow_pcg::{
         action::ApplyActionResult,
         borrow_pcg_edge::BlockingNode,
-        edge_data::{LabelEdgePlaces, display_node_replacements},
+        edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        has_pcs_elem::LabelLifetimeProjection,
         validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
     },
     pcg::{
@@ -134,7 +133,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         }
     }
 
-    fn label_lifetime_projection<'a>(
+    fn label_lifetime_projections<'a>(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
@@ -142,10 +141,17 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     ) -> bool
     where
         'tcx: 'a,
-        EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx> + Eq + std::hash::Hash,
     {
-        self.graph_mut()
-            .label_region_projection(predicate, label, ctxt)
+        let mut result =
+            self.graph_mut()
+                .label_blocked_lifetime_projections(predicate, label, ctxt.bc_ctxt());
+        result |= self.graph_mut().label_blocked_by_lifetime_projections(
+            predicate,
+            label,
+            ctxt.bc_ctxt(),
+        );
+        result
     }
 
     fn remove<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
@@ -182,7 +188,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
         'tcx: 'a,
         EdgeKind: EdgeData<'tcx>
             + LabelEdgePlaces<'tcx>
-            + LabelLifetimeProjection<'a, 'tcx>
+            + LabelEdgeLifetimeProjections<'tcx>
             + Eq
             + std::hash::Hash,
     {
@@ -196,7 +202,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                     // panic!("Capability should have been updated")
                 }
                 if restore.capability() == CapabilityKind::Exclusive {
-                    self.label_lifetime_projection(
+                    self.label_lifetime_projections(
                         &LabelNodePredicate::all_future_postfixes(restore_place),
                         None,
                         ctxt,
@@ -245,7 +251,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
                 ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt.bc_ctxt()))
             }
             BorrowPcgActionKind::LabelLifetimeProjection(action) => {
-                ApplyActionResult::from_changed(self.label_lifetime_projection(
+                ApplyActionResult::from_changed(self.label_lifetime_projections(
                     action.predicate(),
                     action.label(),
                     ctxt.bc_ctxt(),

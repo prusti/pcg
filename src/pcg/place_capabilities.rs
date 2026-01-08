@@ -361,7 +361,7 @@ where
     {
         self.insert((*place).into(), capability, ctxt);
         if capability == CapabilityKind::Exclusive.into() {
-            borrows.label_lifetime_projection(
+            borrows.label_lifetime_projections(
                 &LabelNodePredicate::all_future_postfixes(place),
                 None,
                 ctxt,

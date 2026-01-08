@@ -11,7 +11,6 @@ use super::{
     edge::outlives::BorrowFlowEdge,
     edge_data::EdgeData,
     graph::Conditioned,
-    has_pcs_elem::LabelLifetimeProjection,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     validity_conditions::ValidityConditions,
 };
@@ -21,7 +20,9 @@ use crate::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{LabelEdgePlaces, LabelNodePredicate, edgedata_enum},
+        edge_data::{
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, edgedata_enum,
+        },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LocalLifetimeProjectionBase,
     },
@@ -102,14 +103,25 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.value.label_lifetime_projection(predicate, label, ctxt)
+        self.value
+            .label_blocked_lifetime_projections(predicate, label, ctxt)
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        self.value
+            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
     }
 }
 

@@ -2,10 +2,12 @@ use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            NodeReplacement,
+        },
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
-            PlaceLabeller, SourceOrTarget,
+            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -88,23 +90,33 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for DerefEdge<'tcx> {
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
-        location: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
+        let node_context = LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref);
         if predicate.applies_to(
             PcgNode::LifetimeProjection(self.blocked_lifetime_projection.into()),
-            None,
+            node_context,
         ) {
             self.blocked_lifetime_projection =
-                self.blocked_lifetime_projection.with_label(location, ctxt);
+                self.blocked_lifetime_projection.with_label(label, ctxt);
             LabelLifetimeProjectionResult::Changed
         } else {
             LabelLifetimeProjectionResult::Unchanged
         }
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        _predicate: &LabelNodePredicate<'tcx>,
+        _label: Option<LifetimeProjectionLabel>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        LabelLifetimeProjectionResult::Unchanged
     }
 }
 
@@ -124,10 +136,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
             if let MaybeLabelledPlace::Current(place) = *blocked_place
                 && predicate.applies_to(
                     PcgNode::Place(MaybeLabelledPlace::Current(place)),
-                    Some(LabelNodeContext::new(
-                        SourceOrTarget::Source,
-                        BorrowPcgEdgeType::Deref,
-                    )),
+                    LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref),
                 )
             {
                 let from: PcgNode<'tcx> = blocked_place.to_pcg_node(ctxt);
@@ -151,7 +160,7 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         if let MaybeLabelledPlace::Current(place) = self.deref_place
             && predicate.applies_to(
                 PcgNode::Place(MaybeLabelledPlace::Current(place)),
-                Some(label_node_context),
+                label_node_context,
             )
         {
             let from: PcgNode<'tcx> = self.deref_place.to_pcg_node(ctxt);

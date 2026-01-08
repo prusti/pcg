@@ -3,9 +3,8 @@ use derive_more::From;
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
-        edge_data::LabelNodePredicate,
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
-        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
+        has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
             HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
         },
@@ -28,18 +27,14 @@ pub enum MaybeRemotePlace<'tcx> {
     Remote(RemotePlace),
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for MaybeRemotePlace<'tcx> {
-    fn label_place_with_context(
+impl<'tcx> LabelPlace<'tcx> for MaybeRemotePlace<'tcx> {
+    fn label_place(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
-            MaybeRemotePlace::Local(p) => {
-                p.label_place_with_context(predicate, labeller, label_context, ctxt)
-            }
+            MaybeRemotePlace::Local(p) => p.label_place(labeller, ctxt),
             MaybeRemotePlace::Remote(_) => false,
         }
     }

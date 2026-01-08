@@ -10,12 +10,17 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
-        edge::abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
-        edge::kind::BorrowPcgEdgeType,
-        edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement, edgedata_enum},
+        edge::{
+            abstraction::{function::FunctionCallAbstraction, r#loop::LoopAbstraction},
+            kind::BorrowPcgEdgeType,
+        },
+        edge_data::{
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
+            edgedata_enum,
+        },
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, PlaceLabeller, SourceOrTarget,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
+            PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
     },
@@ -116,11 +121,8 @@ impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> 
     }
 }
 
-impl<
-    'tcx,
-    T: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
-    U: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
-> LabelEdgePlaces<'tcx> for AbstractionBlockEdge<'tcx, T, U>
+impl<'tcx, T: LabelPlace<'tcx> + PcgNodeLike<'tcx>, U: LabelPlace<'tcx> + PcgNodeLike<'tcx>>
+    LabelEdgePlaces<'tcx> for AbstractionBlockEdge<'tcx, T, U>
 {
     fn label_blocked_places(
         &mut self,
@@ -130,14 +132,14 @@ impl<
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         let from = self.input.to_pcg_node(ctxt);
-        let changed = self.input.label_place_with_context(
-            predicate,
-            labeller,
+        if predicate.applies_to(
+            from,
             LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Abstraction),
-            ctxt,
-        );
-        if changed {
-            result.insert(NodeReplacement::new(from, self.input.to_pcg_node(ctxt)));
+        ) {
+            let changed = self.input.label_place(labeller, ctxt);
+            if changed {
+                result.insert(NodeReplacement::new(from, self.input.to_pcg_node(ctxt)));
+            }
         }
         result
     }
@@ -150,44 +152,53 @@ impl<
     ) -> HashSet<NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         let from = self.output.to_pcg_node(ctxt);
-        let changed = self.output.label_place_with_context(
-            predicate,
-            labeller,
+        if predicate.applies_to(
+            from,
             LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Abstraction),
-            ctxt,
-        );
-        if changed {
-            result.insert(NodeReplacement::new(from, self.output.to_pcg_node(ctxt)));
+        ) {
+            let changed = self.output.label_place(labeller, ctxt);
+            if changed {
+                result.insert(NodeReplacement::new(from, self.output.to_pcg_node(ctxt)));
+            }
         }
         result
     }
 }
 
 impl<
-    'tcx: 'a,
-    'a,
-    Input: LabelLifetimeProjection<'a, 'tcx>
-        + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-    Output: LabelLifetimeProjection<'a, 'tcx>
-        + PcgNodeLike<'tcx>
-        + DisplayWithCompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>,
-> LabelLifetimeProjection<'a, 'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
+    'tcx,
+    Input: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+> LabelEdgeLifetimeProjections<'tcx> for AbstractionBlockEdge<'tcx, Input, Output>
 {
-    fn label_lifetime_projection(
+    fn label_blocked_lifetime_projections(
         &mut self,
-        projection: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        let mut changed = LabelLifetimeProjectionResult::Unchanged;
-        changed |= self
-            .input
-            .label_lifetime_projection(projection, label, ctxt);
-        changed |= self
-            .output
-            .label_lifetime_projection(projection, label, ctxt);
-        changed
+        let node_context =
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Abstraction);
+        if predicate.applies_to(self.input.to_pcg_node(ctxt), node_context) {
+            self.input.label_lifetime_projection(label)
+        } else {
+            LabelLifetimeProjectionResult::Unchanged
+        }
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        let node_context =
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Abstraction);
+        if predicate.applies_to(self.output.to_pcg_node(ctxt), node_context) {
+            self.output.label_lifetime_projection(label)
+        } else {
+            LabelLifetimeProjectionResult::Unchanged
+        }
     }
 }
 

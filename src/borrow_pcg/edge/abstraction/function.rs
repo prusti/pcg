@@ -9,8 +9,11 @@ use crate::{
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
-        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionResult, PlaceLabeller},
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            NodeReplacement,
+        },
+        has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
@@ -238,14 +241,25 @@ pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdge<'tcx>,
 >;
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstraction<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for FunctionCallAbstraction<'tcx> {
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projection(predicate, label, ctxt)
+        self.edge
+            .label_blocked_lifetime_projections(predicate, label, ctxt)
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        self.edge
+            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
     }
 }
 

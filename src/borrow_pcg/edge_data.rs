@@ -193,22 +193,15 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     pub(crate) fn applies_to(
         &self,
         candidate: PcgNode<'tcx>,
-        label_context: Option<LabelNodeContext>,
+        label_context: LabelNodeContext,
     ) -> bool {
+        let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
+        let related_place = related_maybe_labelled_place.map(|p| p.place());
         match self {
-            LabelNodePredicate::PlaceEquals(place) => match candidate {
-                PcgNode::Place(mlp) => mlp.as_current_place() == Some(*place),
-                PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(*place),
-            },
-            LabelNodePredicate::PlaceIsPostfixOf(place) => match candidate {
-                PcgNode::Place(mlp) => mlp
-                    .as_current_place()
-                    .is_some_and(|p| place.is_prefix_of(p)),
-                PcgNode::LifetimeProjection(rp) => rp
-                    .base
-                    .as_current_place()
-                    .is_some_and(|p| place.is_prefix_of(p)),
-            },
+            LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
+            LabelNodePredicate::PlaceIsPostfixOf(place) => {
+                related_place.is_some_and(|p| place.is_prefix_of(p))
+            }
             LabelNodePredicate::NodeType(pcg_node_type) => match candidate {
                 PcgNode::Place(_) => *pcg_node_type == PcgNodeType::Place,
                 PcgNode::LifetimeProjection(_) => *pcg_node_type == PcgNodeType::LifetimeProjection,
@@ -220,35 +213,23 @@ impl<'tcx> LabelNodePredicate<'tcx> {
                 .iter()
                 .any(|p| p.applies_to(candidate, label_context)),
             LabelNodePredicate::Not(predicate) => !predicate.applies_to(candidate, label_context),
-            LabelNodePredicate::EdgeType(edge_type) => match candidate {
-                PcgNode::Place(_) => label_context
-                    .map(|ctx| ctx.edge_type() == *edge_type)
-                    .unwrap_or(false),
-                PcgNode::LifetimeProjection(_) => true,
-            },
-            LabelNodePredicate::InSourceNodes => match candidate {
-                PcgNode::Place(_) => label_context
-                    .map(|ctx| ctx.source_or_target() == SourceOrTarget::Source)
-                    .unwrap_or(false),
-                PcgNode::LifetimeProjection(_) => true,
-            },
-            LabelNodePredicate::InTargetNodes => match candidate {
-                PcgNode::Place(_) => label_context
-                    .map(|ctx| ctx.source_or_target() == SourceOrTarget::Target)
-                    .unwrap_or(false),
-                PcgNode::LifetimeProjection(_) => true,
-            },
-            LabelNodePredicate::LifetimeProjectionLabelEquals(label) => match candidate {
-                PcgNode::Place(_) => false,
-                PcgNode::LifetimeProjection(rp) => rp.label == *label,
-            },
-            LabelNodePredicate::PlaceLabelEquals(location) => match candidate {
-                PcgNode::Place(_) => todo!(),
-                PcgNode::LifetimeProjection(rp) => rp
-                    .base
-                    .as_local_place()
-                    .is_some_and(|p| p.location() == *location),
-            },
+            LabelNodePredicate::EdgeType(edge_type) => label_context.edge_type() == *edge_type,
+            LabelNodePredicate::InSourceNodes => {
+                label_context.source_or_target() == SourceOrTarget::Source
+            }
+            LabelNodePredicate::InTargetNodes => {
+                label_context.source_or_target() == SourceOrTarget::Target
+            }
+            LabelNodePredicate::LifetimeProjectionLabelEquals(label) => {
+                if let PcgNode::LifetimeProjection(rp) = candidate {
+                    rp.label == *label
+                } else {
+                    false
+                }
+            }
+            LabelNodePredicate::PlaceLabelEquals(location) => {
+                related_maybe_labelled_place.is_some_and(|p| p.location() == *location)
+            }
             LabelNodePredicate::ProjectionRegionIdxEquals(region_idx) => match candidate {
                 PcgNode::Place(_) => false,
                 PcgNode::LifetimeProjection(rp) => rp.region_idx == *region_idx,
@@ -315,6 +296,27 @@ pub(crate) trait LabelEdgePlaces<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>;
+}
+
+use super::has_pcs_elem::LabelLifetimeProjectionResult;
+
+/// Trait for labeling lifetime projections on edges.
+/// Checks the predicate and then applies the label operation if it matches.
+/// Analogous to `LabelEdgePlaces` for places.
+pub(crate) trait LabelEdgeLifetimeProjections<'tcx> {
+    fn label_blocked_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult;
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult;
 }
 
 macro_rules! edgedata_enum {
@@ -412,16 +414,29 @@ macro_rules! edgedata_enum {
             }
         )+
 
-        impl<'a, $tcx> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjection<'a, $tcx> for $enum_name<$tcx> {
-            fn label_lifetime_projection(
+        impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgeLifetimeProjections<$tcx> for $enum_name<$tcx> {
+            fn label_blocked_lifetime_projections(
                 &mut self,
                 predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
-                location: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
-                ctxt: CompilerCtxt<'a, 'tcx>,
+                label: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
+                ctxt: CompilerCtxt<'_, 'tcx>,
             ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
                 match self {
                     $(
-                        $enum_name::$variant_name(inner) => inner.label_lifetime_projection(predicate, location, ctxt),
+                        $enum_name::$variant_name(inner) => inner.label_blocked_lifetime_projections(predicate, label, ctxt),
+                    )+
+                }
+            }
+
+            fn label_blocked_by_lifetime_projections(
+                &mut self,
+                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
+                label: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
+                ctxt: CompilerCtxt<'_, 'tcx>,
+            ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
+                match self {
+                    $(
+                        $enum_name::$variant_name(inner) => inner.label_blocked_by_lifetime_projections(predicate, label, ctxt),
                     )+
                 }
             }

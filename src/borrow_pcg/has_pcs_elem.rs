@@ -2,7 +2,7 @@ use derive_more::From;
 
 use super::region_projection::LifetimeProjectionLabel;
 use crate::{
-    borrow_pcg::{edge::kind::BorrowPcgEdgeType, edge_data::LabelNodePredicate},
+    borrow_pcg::edge::kind::BorrowPcgEdgeType,
     utils::{CompilerCtxt, FilterMutResult, Place, SnapshotLocation},
 };
 
@@ -31,12 +31,13 @@ impl LabelLifetimeProjectionResult {
     }
 }
 
-pub trait LabelLifetimeProjection<'a, 'tcx> {
+/// Trait for labeling lifetime projections at the node level.
+/// This does NOT check predicates - it unconditionally applies the label.
+/// Analogous to `LabelPlace` for places.
+pub trait LabelLifetimeProjection<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult;
 }
 
@@ -69,32 +70,9 @@ impl LabelNodeContext {
     }
 }
 
-pub(crate) trait LabelPlaceWithContext<'tcx, T> {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: T,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool;
-}
-
-impl<'tcx, T: LabelPlace<'tcx>, U> LabelPlaceWithContext<'tcx, U> for T {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        _label_context: U,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.label_place(predicate, labeller, ctxt)
-    }
-}
-
 pub(crate) trait LabelPlace<'tcx> {
     fn label_place(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool;

@@ -22,11 +22,11 @@ use crate::{
             },
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
-        edge_data::{EdgeData, LabelEdgePlaces, LabelNodePredicate},
+        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate},
         graph::{BorrowsGraph, Conditioned},
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, SourceOrTarget,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
+            SourceOrTarget,
         },
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
@@ -307,60 +307,103 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgCoupledEdgeKind<'tcx> {
 }
 
 impl<
-    'a,
-    'tcx: 'a,
-    Input: LabelLifetimeProjection<'a, 'tcx>,
-    Output: LabelLifetimeProjection<'a, 'tcx>,
-> LabelLifetimeProjection<'a, 'tcx> for HyperEdge<Input, Output>
+    'tcx,
+    Input: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+> LabelEdgeLifetimeProjections<'tcx> for HyperEdge<Input, Output>
 {
-    fn label_lifetime_projection(
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
+        let node_context =
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled);
         let mut result = LabelLifetimeProjectionResult::Unchanged;
         for input in self.inputs.iter_mut() {
-            result |= input.label_lifetime_projection(predicate, label, ctxt);
+            if predicate.applies_to(input.to_pcg_node(ctxt), node_context) {
+                result |= input.label_lifetime_projection(label);
+            }
         }
+        result
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        let node_context =
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled);
+        let mut result = LabelLifetimeProjectionResult::Unchanged;
         for output in self.outputs.iter_mut() {
-            result |= output.label_lifetime_projection(predicate, label, ctxt);
+            if predicate.applies_to(output.to_pcg_node(ctxt), node_context) {
+                result |= output.label_lifetime_projection(label);
+            }
         }
         result
     }
 }
 
 impl<
-    'a,
-    'tcx: 'a,
+    'tcx,
     Metadata,
-    Input: LabelLifetimeProjection<'a, 'tcx>,
-    Output: LabelLifetimeProjection<'a, 'tcx>,
-> LabelLifetimeProjection<'a, 'tcx> for CoupledEdgeKind<Metadata, Input, Output>
+    Input: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+> LabelEdgeLifetimeProjections<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
-    fn label_lifetime_projection(
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projection(predicate, label, ctxt)
+        self.edge
+            .label_blocked_lifetime_projections(predicate, label, ctxt)
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        self.edge
+            .label_blocked_by_lifetime_projections(predicate, label, ctxt)
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for PcgCoupledEdgeKind<'tcx> {
+    fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
-                function.label_lifetime_projection(predicate, label, ctxt)
+                function.label_blocked_lifetime_projections(predicate, label, ctxt)
             }
             FunctionCallOrLoop::Loop(loop_) => {
-                loop_.label_lifetime_projection(predicate, label, ctxt)
+                loop_.label_blocked_lifetime_projections(predicate, label, ctxt)
+            }
+        }
+    }
+
+    fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> LabelLifetimeProjectionResult {
+        match &mut self.0 {
+            FunctionCallOrLoop::FunctionCall(function) => {
+                function.label_blocked_by_lifetime_projections(predicate, label, ctxt)
+            }
+            FunctionCallOrLoop::Loop(loop_) => {
+                loop_.label_blocked_by_lifetime_projections(predicate, label, ctxt)
             }
         }
     }
@@ -368,8 +411,8 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
 
 impl<
     'tcx,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
+    Input: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for HyperEdge<Input, Output>
 {
     fn label_blocked_places(
@@ -380,19 +423,13 @@ impl<
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         for input in self.inputs.iter_mut() {
-            let from = input.to_pcg_node(ctxt);
-            let changed = input.label_place_with_context(
+            input.label_conditionally(
+                &mut result,
                 predicate,
                 labeller,
                 LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled),
                 ctxt,
             );
-            if changed {
-                result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
-                    from,
-                    input.to_pcg_node(ctxt),
-                ));
-            }
         }
         result
     }
@@ -405,19 +442,13 @@ impl<
     ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         let mut result = HashSet::default();
         for output in self.outputs.iter_mut() {
-            let from = output.to_pcg_node(ctxt);
-            let changed = output.label_place_with_context(
+            output.label_conditionally(
+                &mut result,
                 predicate,
                 labeller,
                 LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled),
                 ctxt,
             );
-            if changed {
-                result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
-                    from,
-                    output.to_pcg_node(ctxt),
-                ));
-            }
         }
         result
     }
@@ -426,8 +457,8 @@ impl<
 impl<
     'tcx,
     Metadata,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext> + PcgNodeLike<'tcx>,
+    Input: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
     fn label_blocked_places(

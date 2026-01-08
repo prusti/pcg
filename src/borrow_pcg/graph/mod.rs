@@ -10,7 +10,8 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
-        edge_data::LabelNodePredicate, has_pcs_elem::LabelLifetimeProjection,
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
+        has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
     },
     coupling::PcgCoupledEdgeKind,
@@ -22,7 +23,8 @@ use crate::{
         middle::mir::{self},
     },
     utils::{
-        DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt,
+        HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -40,10 +42,7 @@ use super::{
     edge_data::EdgeData,
     validity_conditions::ValidityConditions,
 };
-use crate::{
-    borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
-    utils::CompilerCtxt,
-};
+use crate::borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind};
 
 use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
@@ -508,23 +507,42 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'a, 'tcx, EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash>
+#[allow(private_bounds)]
+impl<'tcx, EdgeKind: LabelEdgeLifetimeProjections<'tcx> + Eq + std::hash::Hash>
     BorrowsGraph<'tcx, EdgeKind>
 {
-    pub(crate) fn label_region_projection(
+    pub(crate) fn label_blocked_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        let mut result = false;
         self.filter_mut_edges(|edge| {
-            edge.value
-                .label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
-                .to_filter_mut_result()
-        })
+            let changed = edge
+                .value
+                .label_blocked_lifetime_projections(predicate, label, ctxt);
+            result |= changed != LabelLifetimeProjectionResult::Unchanged;
+            changed.to_filter_mut_result()
+        });
+        result
+    }
+
+    pub(crate) fn label_blocked_by_lifetime_projections(
+        &mut self,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        let mut result = false;
+        self.filter_mut_edges(|edge| {
+            let changed = edge
+                .value
+                .label_blocked_by_lifetime_projections(predicate, label, ctxt);
+            result |= changed != LabelLifetimeProjectionResult::Unchanged;
+            changed.to_filter_mut_result()
+        });
+        result
     }
 }
 impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {

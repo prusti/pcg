@@ -1,8 +1,10 @@
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
-        edge_data::LabelNodePredicate, graph::loop_abstraction::ConstructAbstractionGraphResult,
-        has_pcs_elem::LabelLifetimeProjection, region_projection::LifetimeProjectionLabel,
+        borrow_pcg_edge::BorrowPcgEdgeLike,
+        edge::kind::BorrowPcgEdgeKind,
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
+        graph::loop_abstraction::ConstructAbstractionGraphResult,
+        region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
@@ -86,12 +88,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
             {
                 let orig_rp = local_rp.with_label(None, ctxt);
                 self.filter_mut_edges(|edge| {
-                    edge.label_lifetime_projection(
-                        &LabelNodePredicate::equals_lifetime_projection(orig_rp),
-                        Some(LifetimeProjectionLabel::Future),
-                        ctxt.bc_ctxt(),
-                    )
-                    .to_filter_mut_result()
+                    edge.value
+                        .label_blocked_lifetime_projections(
+                            &LabelNodePredicate::equals_lifetime_projection(orig_rp),
+                            Some(LifetimeProjectionLabel::Future),
+                            ctxt.bc_ctxt(),
+                        )
+                        .to_filter_mut_result()
                 });
             }
         }
@@ -331,14 +334,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         for rp in to_label.iter() {
             self.filter_mut_edges(|edge| {
-                edge.label_lifetime_projection(
-                    rp,
-                    Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
-                        loop_head,
-                    ))),
-                    ctxt.ctxt,
-                )
-                .to_filter_mut_result()
+                edge.value
+                    .label_blocked_lifetime_projections(
+                        rp,
+                        Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
+                            loop_head,
+                        ))),
+                        ctxt.ctxt,
+                    )
+                    .to_filter_mut_result()
             });
         }
 
