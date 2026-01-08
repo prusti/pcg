@@ -281,8 +281,13 @@ pub(crate) mod private {
 
     #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
     pub enum FutureEdgeKind {
+        /// An edge of the form `x.f|'a -> x|'a at FUTURE`
         FromExpansion,
+
+        /// For a borrow e.g. let y = &mut x, an edge of the form `y|'a -> x|'a at FUTURE`
         FromBorrow,
+
+        /// For an expansion, an edge of the form `x|'a at loc -> x|'a at FUTURE`
         ToFutureSelf,
     }
 }

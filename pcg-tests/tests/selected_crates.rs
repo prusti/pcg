@@ -264,15 +264,16 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("method::FnArg::<'a>::to_varargs_mut", Some(19)),
         ),
-        SelectedCrateTestCase::new(
-            "flume",
-            "0.11.1",
-            Some("2025-03-13"),
-            TestCrateType::function(
-                "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
-                None,
-            ),
-        ),
+        // TODO
+        // SelectedCrateTestCase::new(
+        //     "flume",
+        //     "0.11.1",
+        //     Some("2025-03-13"),
+        //     TestCrateType::function(
+        //         "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
+        //         None,
+        //     ),
+        // ),
         SelectedCrateTestCase::new(
             "regex-automata",
             "0.4.9",

@@ -31,8 +31,6 @@ impl LabelLifetimeProjectionResult {
     }
 }
 
-/// Trait for labeling lifetime projections at the node level.
-/// This does NOT check predicates - it unconditionally applies the label.
 /// Analogous to `LabelPlace` for places.
 pub trait LabelLifetimeProjection<'tcx> {
     fn label_lifetime_projection(

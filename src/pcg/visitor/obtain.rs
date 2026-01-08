@@ -592,8 +592,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
-            self.render_debug_graph(None, "step 1 (after label + remove)");
-            // self.pack_old_and_dead_borrow_leaves(Some(place))?;
             self.render_debug_graph(None, "after step 1");
         }
 
