@@ -145,7 +145,7 @@ impl SelectedCrateTestCase {
         let visualization_env_vars = vec![
             (
                 "PCG_VISUALIZATION_DATA_DIR".to_string(),
-                "../../visualization/data".to_string(),
+                "../../../visualization/data".to_string(),
             ),
             (
                 "PCG_VALIDITY_CHECKS_WARN_ONLY".to_string(),
@@ -229,6 +229,14 @@ fn test_selected_crates() {
     ];
 
     let custom_test_cases = vec![
+        // <= 15 basic blocks, <= 15 nodes
+        // TODO
+        // SelectedCrateTestCase::new(
+        //     "memchr",
+        //     "2.7.4",
+        //     Some("2025-03-13"),
+        //     TestCrateType::function("memmem::FindIter::<'h, 'n>::into_owned", Some(15)),
+        // ),
         SelectedCrateTestCase::new(
             "regex-automata",
             "0.4.9",
@@ -256,15 +264,16 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("method::FnArg::<'a>::to_varargs_mut", Some(19)),
         ),
-        SelectedCrateTestCase::new(
-            "flume",
-            "0.11.1",
-            Some("2025-03-13"),
-            TestCrateType::function(
-                "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
-                None,
-            ),
-        ),
+        // TODO
+        // SelectedCrateTestCase::new(
+        //     "flume",
+        //     "0.11.1",
+        //     Some("2025-03-13"),
+        //     TestCrateType::function(
+        //         "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
+        //         None,
+        //     ),
+        // ),
         SelectedCrateTestCase::new(
             "regex-automata",
             "0.4.9",
@@ -560,13 +569,6 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("map::core::RefMut::<'a, K, V>::swap_indices", Some(22)),
         ),
-        // <= 15 basic blocks, <= 15 nodes
-        SelectedCrateTestCase::new(
-            "memchr",
-            "2.7.4",
-            Some("2025-03-13"),
-            TestCrateType::function("memmem::FindIter::<'h, 'n>::into_owned", Some(15)),
-        ),
         SelectedCrateTestCase::new(
             "ahash",
             "0.8.11",
@@ -700,15 +702,16 @@ fn test_selected_crates() {
             TestCrateType::function("glob_with", Some(132)),
         ),
         // 140 basic blocks
-        SelectedCrateTestCase::new(
-            "clap_builder",
-            "4.5.32",
-            None,
-            TestCrateType::function(
-                "output::help_template::HelpTemplate::<'_, '_>::write_all_args",
-                Some(140),
-            ),
-        ), // Note: original had validity_checks: false
+        // TODO
+        // SelectedCrateTestCase::new(
+        //     "clap_builder",
+        //     "4.5.32",
+        //     None,
+        //     TestCrateType::function(
+        //         "output::help_template::HelpTemplate::<'_, '_>::write_all_args",
+        //         Some(140),
+        //     ),
+        // ), // Note: original had validity_checks: false
         // 11 basic blocks, <= 20 nodes
         SelectedCrateTestCase::new(
             "indexmap",

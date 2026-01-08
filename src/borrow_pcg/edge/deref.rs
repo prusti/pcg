@@ -1,17 +1,21 @@
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            NodeReplacement, conditionally_label_places,
+        },
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller,
+            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{LocalNodeLike, PcgNodeLike},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -86,16 +90,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for DerefEdge<'tcx> {
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
-        location: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        if predicate.matches(self.blocked_lifetime_projection.into(), ctxt) {
+        let node_context = LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref);
+        if predicate.applies_to(
+            PcgNode::LifetimeProjection(self.blocked_lifetime_projection.into()),
+            node_context,
+        ) {
             self.blocked_lifetime_projection =
-                self.blocked_lifetime_projection.with_label(location, ctxt);
+                self.blocked_lifetime_projection.with_label(label, ctxt);
             LabelLifetimeProjectionResult::Changed
         } else {
             LabelLifetimeProjectionResult::Unchanged
@@ -106,41 +114,36 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for DerefEdge<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let blocked_places = vec![
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx>> = vec![
             &mut self.blocked_place,
             &mut self.blocked_lifetime_projection.base,
         ];
-        let mut changed = false;
-        for blocked_place in blocked_places {
-            if let MaybeLabelledPlace::Current(place) = blocked_place
-                && predicate.applies_to(*place, LabelNodeContext::Other, ctxt)
-            {
-                *blocked_place =
-                    MaybeLabelledPlace::new(*place, Some(labeller.place_label(*place, ctxt)));
-                changed = true;
-            }
-        }
-        changed
+        conditionally_label_places(
+            blocked_places,
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        if let MaybeLabelledPlace::Current(place) = self.deref_place
-            && predicate.applies_to(place, LabelNodeContext::TargetOfExpansion, ctxt)
-        {
-            self.deref_place =
-                MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
-            return true;
-        }
-        false
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        conditionally_label_places(
+            vec![&mut self.deref_place],
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Deref),
+            ctxt,
+        )
     }
 }
 

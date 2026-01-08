@@ -156,7 +156,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 BorrowPcgEdgeKind::BorrowPcgExpansion(e) => {
                     for node in e.blocked_nodes(ctxt) {
                         if let PcgNode::LifetimeProjection(p) = node {
-                            extend(p.to_pcg_node(ctxt), seen, &mut result, e.is_deref(ctxt));
+                            extend(p.to_pcg_node(ctxt), seen, &mut result, false);
                         }
                     }
                 }

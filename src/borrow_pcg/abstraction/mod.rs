@@ -116,7 +116,7 @@ impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
         sub: PcgRegion,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, CheckOutlivesError> {
-        Ok(ctxt.bc.outlives(sup, sub, self.location))
+        Ok(ctxt.borrow_checker.outlives(sup, sub, self.location))
     }
 }
 

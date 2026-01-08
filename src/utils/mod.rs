@@ -158,9 +158,10 @@ impl PcgSettings {
             Self::process_bool_var(&mut processed_vars, "PCG_DUMP_MIR_DATAFLOW", false);
 
         let visualization = Self::process_bool_var(&mut processed_vars, "PCG_VISUALIZATION", false);
-        let visualization_data_dir = PathBuf::from(
-            Self::process_string_var(&mut processed_vars, "PCG_VISUALIZATION_DATA_DIR")
-                .unwrap_or("../visualization/data".into()),
+        let visualization_data_dir = Self::process_path_with_default(
+            &mut processed_vars,
+            "PCG_VISUALIZATION_DATA_DIR",
+            PathBuf::from("../visualization/data"),
         );
 
         let check_annotations =
@@ -210,6 +211,28 @@ impl PcgSettings {
                     .unwrap_or_else(|_| panic!("{var_name} must be a valid usize, got: '{val}'")),
             ),
             Err(_) => None,
+        }
+    }
+
+    fn process_path_with_default(
+        processed: &mut HashSet<String>,
+        var_name: &str,
+        default: PathBuf,
+    ) -> PathBuf {
+        if let Some(user_path) = Self::process_string_var(processed, var_name) {
+            let user_path = PathBuf::from(user_path);
+            tracing::info!("Using user path for {var_name}: {:?}", user_path);
+            match user_path.canonicalize() {
+                Ok(path) => tracing::info!("Absolute path: {:?}", path),
+                Err(e) => tracing::error!("User path cannot be canonicalized: {e}"),
+            }
+            user_path
+        } else {
+            tracing::info!(
+                "Using default path for {var_name}: {:?}",
+                default.canonicalize()
+            );
+            default
         }
     }
 

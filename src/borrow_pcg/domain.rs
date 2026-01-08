@@ -4,11 +4,8 @@ use super::region_projection::LifetimeProjection;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        edge_data::LabelPlacePredicate,
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, LabelPlaceWithContext,
-            PlaceLabeller,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller,
         },
         region_projection::{
             LifetimeProjectionLabel, LocalLifetimeProjection, PcgLifetimeProjectionBaseLike,
@@ -38,17 +35,15 @@ impl<'tcx> LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx>
+impl<'tcx> LabelLifetimeProjection<'tcx>
     for PcgNode<'tcx, MaybeLabelledPlace<'tcx>, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>
 {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         match self {
-            PcgNode::LifetimeProjection(rp) => rp.label_lifetime_projection(predicate, label, ctxt),
+            PcgNode::LifetimeProjection(rp) => rp.label_lifetime_projection(label),
             PcgNode::Place(_) => LabelLifetimeProjectionResult::Unchanged,
         }
     }
@@ -62,14 +57,22 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgLifetimeProjectionLike<'tc
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstractionInput<'tcx> {
+impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.0.label_lifetime_projection(predicate, label, ctxt)
+        self.0.label_lifetime_projection(label)
+    }
+}
+
+impl<'tcx> LabelPlace<'tcx> for FunctionCallAbstractionInput<'tcx> {
+    fn label_place(
+        &mut self,
+        labeller: &impl PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.0.base.label_place(labeller, ctxt)
     }
 }
 
@@ -94,34 +97,6 @@ where
     }
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for FunctionCallAbstractionInput<'tcx> {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
-    }
-}
-
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext>
-    for LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>
-{
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.base
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
-    }
-}
-
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
 pub struct LoopAbstractionInput<'tcx>(pub(crate) PcgNode<'tcx>);
 
@@ -140,14 +115,22 @@ impl<'tcx> LoopAbstractionOutput<'tcx> {
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionInput<'tcx> {
+impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionInput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.0.label_lifetime_projection(projection, label, ctxt)
+        self.0.label_lifetime_projection(label)
+    }
+}
+
+impl<'tcx> LabelPlace<'tcx> for LoopAbstractionInput<'tcx> {
+    fn label_place(
+        &mut self,
+        labeller: &impl PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.0.label_place(labeller, ctxt)
     }
 }
 
@@ -171,19 +154,6 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LoopAbstractionInput<'tcx> {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
-    }
-}
-
 impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for LoopAbstractionInput<'tcx> {
     fn from(value: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>) -> Self {
         LoopAbstractionInput(PcgNode::LifetimeProjection(value.into()))
@@ -201,14 +171,22 @@ impl<'tcx> TryFrom<LoopAbstractionInput<'tcx>> for LifetimeProjection<'tcx> {
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstractionOutput<'tcx> {
+impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionOutput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.0.label_lifetime_projection(projection, label, ctxt)
+        self.0.label_lifetime_projection(label)
+    }
+}
+
+impl<'tcx> LabelPlace<'tcx> for LoopAbstractionOutput<'tcx> {
+    fn label_place(
+        &mut self,
+        labeller: &impl PlaceLabeller<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        self.0.label_place(labeller, ctxt)
     }
 }
 
@@ -229,19 +207,6 @@ impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
 impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionOutput<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
-    }
-}
-
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LoopAbstractionOutput<'tcx> {
-    fn label_place_with_context(
-        &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
     }
 }
 
@@ -285,23 +250,19 @@ pub struct AbstractionOutputTarget<'tcx>(pub(crate) LocalNode<'tcx>);
 impl<'tcx> LabelPlace<'tcx> for AbstractionOutputTarget<'tcx> {
     fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt)
+        self.0.label_place(labeller, ctxt)
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for AbstractionOutputTarget<'tcx> {
+impl<'tcx> LabelLifetimeProjection<'tcx> for AbstractionOutputTarget<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.0.label_lifetime_projection(projection, label, ctxt)
+        self.0.label_lifetime_projection(label)
     }
 }
 
@@ -349,14 +310,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
+impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionOutput<'tcx> {
     fn label_lifetime_projection(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.0.label_lifetime_projection(projection, label, ctxt)
+        self.0.label_lifetime_projection(label)
     }
 }
 
@@ -366,15 +325,12 @@ impl<'tcx> PcgLifetimeProjectionLike<'tcx> for FunctionCallAbstractionOutput<'tc
     }
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for FunctionCallAbstractionOutput<'tcx> {
-    fn label_place_with_context(
+impl<'tcx> LabelPlace<'tcx> for FunctionCallAbstractionOutput<'tcx> {
+    fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.0
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
+        self.0.label_place(labeller, ctxt)
     }
 }

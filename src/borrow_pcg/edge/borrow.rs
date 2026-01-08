@@ -1,14 +1,18 @@
 //! Borrow edges
 use crate::{
     borrow_pcg::{
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
+            conditionally_label_places,
+        },
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext, PlaceLabeller,
+            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::LifetimeProjectionLabel,
     },
-    pcg::PcgNode,
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
@@ -19,6 +23,7 @@ use crate::{
     },
     utils::{
         HasBorrowCheckerCtxt, HasCompilerCtxt,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -52,15 +57,18 @@ pub struct BorrowEdge<'tcx> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowEdge<'tcx> {
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
-        if predicate.matches(self.assigned_lifetime_projection(ctxt).rebase(), ctxt) {
+        if predicate.applies_to(
+            PcgNode::LifetimeProjection(self.assigned_lifetime_projection(ctxt).rebase()),
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Borrow),
+        ) {
             self.assigned_lifetime_projection_label = label;
             changed = LabelLifetimeProjectionResult::Changed;
         }
@@ -71,33 +79,39 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowEdge<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.blocked_place.label_place_with_context(
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        conditionally_label_places(
+            vec![&mut self.blocked_place],
             predicate,
             labeller,
-            LabelNodeContext::Other,
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Borrow),
             ctxt,
         )
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        // Technically, `assigned_ref` does not block this node, but this place
-        // is used to compute `assigned_region_projection` which *does* block this node
-        // So we should label it
-        self.assigned_ref.label_place_with_context(
-            predicate,
-            labeller,
-            LabelNodeContext::Other,
-            ctxt,
-        )
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let mut result = HashSet::default();
+        let initial_assigned_lifetime_projection = self.assigned_lifetime_projection(ctxt);
+        let from: PcgNode<'tcx> = initial_assigned_lifetime_projection.to_pcg_node(ctxt);
+        let node_context = LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Borrow);
+        if predicate.applies_to(from, node_context) {
+            let changed = self.assigned_ref.label_place(labeller, ctxt);
+            if changed {
+                result.insert(NodeReplacement::new(
+                    from,
+                    self.assigned_lifetime_projection(ctxt).to_pcg_node(ctxt),
+                ));
+            }
+        }
+        result
     }
 }
 

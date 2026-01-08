@@ -29,7 +29,7 @@ use crate::{
 pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
-    pub(crate) bc: T,
+    pub(crate) borrow_checker: T,
 }
 
 impl<'a, 'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
@@ -49,14 +49,18 @@ impl<'a, 'tcx, T: BorrowCheckerInterface<'tcx> + ?Sized> CompilerCtxt<'a, 'tcx, 
         CompilerCtxt {
             mir: self.mir,
             tcx: self.tcx(),
-            bc: self.bc.as_dyn(),
+            borrow_checker: self.borrow_checker.as_dyn(),
         }
     }
 }
 
 impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
-    pub fn new(mir: &'a Body<'tcx>, tcx: TyCtxt<'tcx>, bc: T) -> Self {
-        Self { mir, tcx, bc }
+    pub fn new(mir: &'a Body<'tcx>, tcx: TyCtxt<'tcx>, borrow_checker: T) -> Self {
+        Self {
+            mir,
+            tcx,
+            borrow_checker,
+        }
     }
 
     pub fn body(self) -> &'a Body<'tcx> {
@@ -81,11 +85,19 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         Ok(source.lines().map(|l| l.to_owned()).collect::<Vec<_>>())
     }
 
-    pub fn bc(&self) -> T
+    pub fn borrow_checker(self) -> T
     where
         T: Copy,
     {
-        self.bc
+        self.borrow_checker
+    }
+
+    #[deprecated(note = "Use `.borrow_checker()` instead")]
+    pub fn bc(self) -> T
+    where
+        T: Copy,
+    {
+        self.borrow_checker
     }
 
     pub fn body_def_path_str(&self) -> String {
@@ -149,7 +161,7 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
 
 impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T> {
     fn bc(&self) -> T {
-        self.bc
+        self.borrow_checker
     }
 
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, T> {

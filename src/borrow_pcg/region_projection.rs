@@ -8,12 +8,8 @@ use super::{
 };
 use crate::{
     borrow_pcg::{
-        edge_data::LabelPlacePredicate,
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
-        has_pcs_elem::{
-            LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, LabelNodeContext,
-            LabelPlaceWithContext, PlaceLabeller,
-        },
+        has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
     },
     error::PcgError,
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
@@ -173,10 +169,6 @@ impl<'tcx> From<ty::Region<'tcx>> for PcgRegion {
 }
 
 /// The index of a region within a type.
-///
-/// For example is `a` has type `A<'t>` and `b` has type `B<'u>`,
-/// an assignment e.g. `b = move a` will have region projections from `b`
-/// to `u`
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd, From)]
 pub struct RegionIdx(usize);
 
@@ -268,17 +260,13 @@ impl<'tcx, T> PlaceOrConst<'tcx, T> {
     }
 }
 
-impl<'tcx, U, T: LabelPlaceWithContext<'tcx, U>> LabelPlaceWithContext<'tcx, U>
-    for PlaceOrConst<'tcx, T>
-{
-    fn label_place_with_context(
+impl<'tcx, T: LabelPlace<'tcx>> LabelPlace<'tcx> for PlaceOrConst<'tcx, T> {
+    fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: U,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.mut_place(|p| p.label_place_with_context(predicate, labeller, label_context, ctxt))
+        self.mut_place(|p| p.label_place(labeller, ctxt))
             .unwrap_or(false)
     }
 }
@@ -398,16 +386,14 @@ pub(crate) trait PcgLifetimeProjectionLike<'tcx> {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx>;
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LifetimeProjection<'tcx> {
-    fn label_place_with_context(
+impl<'tcx> LabelPlace<'tcx> for LifetimeProjection<'tcx> {
+    fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         if let Some(p) = self.base.as_local_place_mut() {
-            p.label_place_with_context(predicate, labeller, label_context, ctxt)
+            p.label_place(labeller, ctxt)
         } else {
             false
         }
@@ -444,25 +430,16 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
     }
 }
 
-impl<'a, 'tcx, P: Copy> LabelLifetimeProjection<'a, 'tcx> for LifetimeProjection<'tcx, P>
+impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
 where
     P: PcgLifetimeProjectionBaseLike<'tcx>,
 {
     fn label_lifetime_projection(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        if predicate.matches(
-            self.with_base(self.base.to_pcg_lifetime_projection_base()),
-            ctxt,
-        ) {
-            self.label = label;
-            LabelLifetimeProjectionResult::Changed
-        } else {
-            LabelLifetimeProjectionResult::Unchanged
-        }
+        self.label = label;
+        LabelLifetimeProjectionResult::Changed
     }
 }
 
@@ -966,16 +943,13 @@ impl<'tcx> LocalLifetimeProjection<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for LocalLifetimeProjection<'tcx> {
-    fn label_place_with_context(
+impl<'tcx> LabelPlace<'tcx> for LocalLifetimeProjection<'tcx> {
+    fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        self.base
-            .label_place_with_context(predicate, labeller, label_context, ctxt)
+        self.base.label_place(labeller, ctxt)
     }
 }
 

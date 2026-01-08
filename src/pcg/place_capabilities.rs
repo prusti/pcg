@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
     error::PcgError,
@@ -192,24 +192,25 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         block_type: BlockType,
         ctxt: Ctxt,
     ) -> Result<bool, PcgError> {
-        let mut changed = false;
         // We dont change if only expanding region projections
-        if expansion.base.is_place() {
-            let base = expansion.base;
-            let base_capability = self.get(base.place(), ctxt);
-            let expanded_capability = if let Some(capability) = base_capability {
-                let concrete_cap = capability.expect_concrete();
-                let expanded = block_type.expansion_capability(base.place(), concrete_cap, ctxt);
-                SymbolicCapability::Concrete(expanded)
-            } else {
-                return Ok(true);
-            };
+        let BorrowPcgExpansion::Place(expansion) = expansion else {
+            return Ok(false);
+        };
+        let mut changed = false;
+        let base = expansion.base;
+        let base_capability = self.get(base.place(), ctxt);
+        let expanded_capability = if let Some(capability) = base_capability {
+            let concrete_cap = capability.expect_concrete();
+            let expanded = block_type.expansion_capability(base.place(), concrete_cap, ctxt);
+            SymbolicCapability::Concrete(expanded)
+        } else {
+            return Ok(true);
+        };
 
-            changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
+        changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
 
-            for p in expansion.expansion.iter() {
-                changed |= self.insert(p.place(), expanded_capability, ctxt);
-            }
+        for p in expansion.expansion.iter() {
+            changed |= self.insert(p.place(), expanded_capability, ctxt);
         }
         Ok(changed)
     }
@@ -360,8 +361,8 @@ where
     {
         self.insert((*place).into(), capability, ctxt);
         if capability == CapabilityKind::Exclusive.into() {
-            borrows.label_region_projection(
-                &LabelLifetimeProjectionPredicate::AllFuturePostfixes(place),
+            borrows.label_lifetime_projections(
+                &LabelNodePredicate::all_future_postfixes(place),
                 None,
                 ctxt,
             );

@@ -12,7 +12,7 @@ use crate::{
                 FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
             },
         },
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        edge_data::LabelNodePredicate,
         region_projection::{HasRegions, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
@@ -216,7 +216,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             if let Some(rp) = rp.try_to_local_lifetime_projection() {
                 self.record_and_apply_action(
                     BorrowPcgAction::label_lifetime_projection(
-                        LabelLifetimeProjectionPredicate::Equals(rp),
+                        LabelNodePredicate::equals_lifetime_projection(rp),
                         pre_rp.label(),
                         format!(
                             "Function call:Label Pre version of {}",

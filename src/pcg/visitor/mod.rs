@@ -1,5 +1,5 @@
 use crate::{
-    action::{BorrowPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction, PcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
@@ -20,12 +20,9 @@ use crate::{
     utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
-use crate::{
-    action::PcgActions,
-    utils::{
-        self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
-        maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
-    },
+use crate::utils::{
+    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+    maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
 use super::{AnalysisObject, EvalStmtPhase, Pcg, PcgNode};
@@ -42,7 +39,7 @@ mod upgrade;
 pub(crate) struct PcgVisitor<'pcg, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
     pcg: &'pcg mut Pcg<'a, 'tcx>,
     ctxt: Ctxt,
-    actions: PcgActions<'tcx>,
+    actions: AppliedActions<'tcx>,
     analysis_location: AnalysisLocation,
     tw: &'pcg TripleWalker<'a, 'tcx>,
 }
@@ -54,7 +51,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         analysis_location: AnalysisLocation,
         analysis_object: AnalysisObject<'_, 'tcx>,
         ctxt: Ctxt,
-    ) -> Result<PcgActions<'tcx>, PcgError> {
+    ) -> Result<AppliedActions<'tcx>, PcgError> {
         let visitor = Self::new(pcg, ctxt, tw, analysis_location);
         let actions = visitor.apply(analysis_object)?;
         Ok(actions)
@@ -69,7 +66,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         Self {
             pcg,
             ctxt,
-            actions: PcgActions::default(),
+            actions: AppliedActions::default(),
             analysis_location,
             tw,
         }
@@ -132,7 +129,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
     pub(crate) fn apply(
         mut self,
         object: AnalysisObject<'_, 'tcx>,
-    ) -> Result<PcgActions<'tcx>, PcgError> {
+    ) -> Result<AppliedActions<'tcx>, PcgError> {
         match self.phase() {
             EvalStmtPhase::PreOperands => {
                 self.perform_borrow_initial_pre_operand_actions()?;
@@ -172,10 +169,6 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     self.place_obtainer().collapse_owned_places()?;
                 }
             }
-        }
-        if self.phase() == EvalStmtPhase::PostMain {
-            // self.pcg .as_mut_ref()
-            //     .assert_validity_at_location(self.ctxt, location);
         }
         Ok(self.actions)
     }
@@ -236,8 +229,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         statement: &Statement<'tcx>,
         _location: Location,
     ) -> Result<(), PcgError> {
-        self.perform_statement_actions(statement)?;
-        Ok(())
+        self.perform_statement_actions(statement)
     }
 
     fn visit_operand_fallable(

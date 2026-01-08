@@ -24,12 +24,14 @@ impl HasSnapshotLocation for JoinObtainer<'_, '_, '_, '_, '_> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {
         match action {
             PcgAction::Borrow(action) => {
-                self.data
-                    .borrows
-                    .apply_action(action.clone(), self.data.capabilities, self.ctxt)
+                self.data.borrows.apply_action(
+                    action.clone(),
+                    self.data.capabilities,
+                    self.ctxt,
+                )?;
             }
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::StorageDead(_) => todo!(),
@@ -43,7 +45,6 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         self.ctxt,
                     )?;
                     self.actions.push(action.kind);
-                    Ok(true)
                 }
                 RepackOp::DerefShallowInit(..) => todo!(),
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -54,10 +55,10 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         self.ctxt,
                     )?;
                     self.actions.push(action.kind);
-                    Ok(true)
                 }
             },
         }
+        Ok(())
     }
 }
 

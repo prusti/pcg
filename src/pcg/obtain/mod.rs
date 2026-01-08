@@ -3,16 +3,16 @@ pub(crate) mod expand;
 use std::marker::PhantomData;
 
 use crate::{
-    action::{BorrowPcgAction, OwnedPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
-            kind::BorrowPcgEdgeKind,
+            kind::BorrowPcgEdgeType,
             outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
-        edge_data::LabelPlacePredicate,
-        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, SetLabel},
+        edge_data::LabelNodePredicate,
+        has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
     },
@@ -20,23 +20,21 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, PcgMutRef, PcgRefLike,
+        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
-        place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
-        Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
 
 pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
     pub(crate) pcg: PcgMutRef<'state, 'tcx>,
     pub(crate) ctxt: Ctxt,
-    pub(crate) actions: Option<&'state mut Vec<PcgAction<'tcx>>>,
+    pub(crate) actions: Option<&'state mut AppliedActions<'tcx>>,
     pub(crate) location: mir::Location,
     pub(crate) prev_snapshot_location: SnapshotLocation,
     pub(crate) _marker: PhantomData<&'a ()>,
@@ -69,7 +67,7 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
 
     pub(crate) fn new(
         pcg: PcgMutRef<'state, 'tcx>,
-        actions: Option<&'state mut Vec<PcgAction<'tcx>>>,
+        actions: Option<&'state mut AppliedActions<'tcx>>,
         ctxt: Ctxt,
         location: mir::Location,
         prev_snapshot_location: SnapshotLocation,
@@ -235,88 +233,6 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, place, ctxt))]
-    fn label_and_remove_capabilities_for_deref_projections_of_postfix_places(
-        &mut self,
-        place: Place<'tcx>,
-        shared_refs_only: bool,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<bool, PcgError> {
-        let place_predicate = |p| {
-            if !place.is_strict_prefix_of(p) {
-                return false;
-            }
-            if shared_refs_only {
-                p.is_shared_ref(ctxt)
-            } else {
-                p.is_ref(ctxt)
-            }
-        };
-        let derefs_to_disconnect = self
-            .borrows_state()
-            .graph
-            .edges()
-            .flat_map(|e| match e.kind() {
-                BorrowPcgEdgeKind::Deref(e)
-                    if let Some(p) = e.blocked_place.as_current_place()
-                        && place_predicate(p) =>
-                {
-                    Some(*e)
-                }
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
-        for mut rp in derefs_to_disconnect.iter().copied() {
-            tracing::debug!(
-                "Disconnecting deref projection {}",
-                rp.display_string(ctxt.bc_ctxt())
-            );
-            let conditions = self.borrows_state().graph.remove(&rp.into()).unwrap();
-            let label = self.prev_snapshot_location();
-            rp.blocked_place.label_place_with_context(
-                &LabelPlacePredicate::Exact(rp.blocked_place.place()),
-                &SetLabel(label),
-                LabelNodeContext::Other,
-                ctxt.bc_ctxt(),
-            );
-            self.capabilities()
-                .remove_all_postfixes(rp.deref_place.as_current_place().unwrap(), ctxt);
-            rp.deref_place.label_place_with_context(
-                &LabelPlacePredicate::Exact(rp.deref_place.place()),
-                &SetLabel(self.prev_snapshot_location()),
-                LabelNodeContext::TargetOfExpansion,
-                ctxt.bc_ctxt(),
-            );
-            self.apply_action(
-                BorrowPcgAction::add_edge(
-                    BorrowPcgEdge::new(rp.into(), conditions.clone()),
-                    format!(
-                        "label_deref_projections_of_postfix_places. Shared refs only: {shared_refs_only}"
-                    ),
-                    ctxt,
-                )
-                .into(),
-            )?;
-        }
-        // TODO: This could be a hack
-        if !derefs_to_disconnect.is_empty() {
-            tracing::debug!(
-                "Labeling deref projections for place {}",
-                place.display_string(ctxt.ctxt())
-            );
-            self.apply_action(
-                BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    self.prev_snapshot_location(),
-                    LabelPlaceReason::LabelDerefProjections { shared_refs_only },
-                )
-                .into(),
-            )?;
-        }
-        Ok(true)
-    }
-
     /// Collapses owned places and performs appropriate updates to lifetime projections.
     fn collapse_owned_places_and_lifetime_projections_to(
         &mut self,
@@ -342,7 +258,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             for pe in expansions {
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
-                    Some(context.clone()),
+                    Some(context.clone().into()),
                 )))?;
                 for rp in place.lifetime_projections(ctxt) {
                     let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
@@ -384,10 +300,17 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                     ctxt,
                 );
                 let mut node = *node;
-                node.label_place_with_context(
-                    &LabelPlacePredicate::Exact((*place).into()),
+                let mut replacements = HashSet::default();
+                node.label_place_conditionally(
+                    &mut replacements,
+                    &LabelNodePredicate::PlaceEquals((*place).into()),
                     &labeller,
-                    LabelNodeContext::Other,
+                    LabelNodeContext::new(
+                        SourceOrTarget::Source,
+                        BorrowPcgEdgeType::BorrowFlow {
+                            future_edge_kind: None,
+                        },
+                    ),
                     ctxt.bc_ctxt(),
                 );
                 let edge = BorrowPcgEdge::new(
@@ -414,7 +337,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 }
 
 pub(crate) trait ActionApplier<'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError>;
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError>;
 }
 
 pub(crate) trait HasSnapshotLocation {

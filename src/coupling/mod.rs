@@ -20,13 +20,16 @@ use crate::{
                 },
                 r#loop::{LoopAbstraction, LoopAbstractionEdge, LoopAbstractionEdgeMetadata},
             },
-            kind::BorrowPcgEdgeKind,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
-        edge_data::{EdgeData, LabelEdgePlaces},
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            conditionally_label_places,
+        },
         graph::{BorrowsGraph, Conditioned},
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlaceWithContext,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
+            SourceOrTarget,
         },
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
@@ -307,60 +310,66 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgCoupledEdgeKind<'tcx> {
 }
 
 impl<
-    'a,
-    'tcx: 'a,
-    Input: LabelLifetimeProjection<'a, 'tcx>,
-    Output: LabelLifetimeProjection<'a, 'tcx>,
-> LabelLifetimeProjection<'a, 'tcx> for HyperEdge<Input, Output>
+    'tcx,
+    Input: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+> LabelEdgeLifetimeProjections<'tcx> for HyperEdge<Input, Output>
 {
-    fn label_lifetime_projection(
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
+        let source_context =
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled);
+        let target_context =
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled);
         let mut result = LabelLifetimeProjectionResult::Unchanged;
         for input in self.inputs.iter_mut() {
-            result |= input.label_lifetime_projection(predicate, label, ctxt);
+            if predicate.applies_to(input.to_pcg_node(ctxt), source_context) {
+                result |= input.label_lifetime_projection(label);
+            }
         }
         for output in self.outputs.iter_mut() {
-            result |= output.label_lifetime_projection(predicate, label, ctxt);
+            if predicate.applies_to(output.to_pcg_node(ctxt), target_context) {
+                result |= output.label_lifetime_projection(label);
+            }
         }
         result
     }
 }
 
 impl<
-    'a,
-    'tcx: 'a,
+    'tcx,
     Metadata,
-    Input: LabelLifetimeProjection<'a, 'tcx>,
-    Output: LabelLifetimeProjection<'a, 'tcx>,
-> LabelLifetimeProjection<'a, 'tcx> for CoupledEdgeKind<Metadata, Input, Output>
+    Input: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>,
+> LabelEdgeLifetimeProjections<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
-    fn label_lifetime_projection(
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projection(predicate, label, ctxt)
+        self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for PcgCoupledEdgeKind<'tcx> {
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
-                function.label_lifetime_projection(predicate, label, ctxt)
+                function.label_lifetime_projections(predicate, label, ctxt)
             }
             FunctionCallOrLoop::Loop(loop_) => {
-                loop_.label_lifetime_projection(predicate, label, ctxt)
+                loop_.label_lifetime_projections(predicate, label, ctxt)
             }
         }
     }
@@ -368,61 +377,63 @@ impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for PcgCoupledEdgeKind<'tcx> {
 
 impl<
     'tcx,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Input: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for HyperEdge<Input, Output>
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let mut result = false;
-        for input in self.inputs.iter_mut() {
-            result |=
-                input.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
-        }
-        result
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
+        conditionally_label_places(
+            self.inputs.iter_mut(),
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Coupled),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        let mut result = false;
-        for output in self.outputs.iter_mut() {
-            result |=
-                output.label_place_with_context(predicate, labeller, LabelNodeContext::Other, ctxt);
-        }
-        result
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
+        conditionally_label_places(
+            self.outputs.iter_mut(),
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled),
+            ctxt,
+        )
     }
 }
 
 impl<
     'tcx,
     Metadata,
-    Input: LabelPlaceWithContext<'tcx, LabelNodeContext>,
-    Output: LabelPlaceWithContext<'tcx, LabelNodeContext>,
+    Input: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
+    Output: LabelPlace<'tcx> + PcgNodeLike<'tcx>,
 > LabelEdgePlaces<'tcx> for CoupledEdgeKind<Metadata, Input, Output>
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
@@ -430,10 +441,10 @@ impl<
 impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
                 function.label_blocked_places(predicate, labeller, ctxt)
@@ -446,10 +457,10 @@ impl<'tcx> LabelEdgePlaces<'tcx> for PcgCoupledEdgeKind<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelPlacePredicate<'tcx>,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
         labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
         match &mut self.0 {
             FunctionCallOrLoop::FunctionCall(function) => {
                 function.label_blocked_by_places(predicate, labeller, ctxt)

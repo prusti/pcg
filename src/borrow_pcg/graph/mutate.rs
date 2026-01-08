@@ -1,31 +1,16 @@
 use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
-        edge_data::LabelEdgePlaces,
+        edge_data::{LabelEdgePlaces, NodeReplacement},
         graph::Conditioned,
         has_pcs_elem::PlaceLabeller,
         validity_conditions::{PathCondition, ValidityConditions},
     },
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, Place},
+    utils::{CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, Place, data_structures::HashSet},
 };
 
 use super::BorrowsGraph;
-
-impl<'tcx, EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn label_place<'a>(
-        &mut self,
-        place: Place<'tcx>,
-        reason: LabelPlaceReason,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.mut_edges(|edge| reason.apply_to_edge(place, &mut edge.value, labeller, ctxt))
-    }
-}
 
 impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn filter_for_path(&mut self, path: &[BasicBlock], ctxt: CompilerCtxt<'_, 'tcx>) {
@@ -99,5 +84,26 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
             })
             .collect();
         changed
+    }
+
+    pub(crate) fn label_place<'a>(
+        &mut self,
+        place: Place<'tcx>,
+        reason: LabelPlaceReason,
+        labeller: &impl PlaceLabeller<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> HashSet<NodeReplacement<'tcx>>
+    where
+        'tcx: 'a,
+        EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash,
+    {
+        let mut all_replacements = HashSet::default();
+        self.mut_edges(|edge| {
+            let replacements = reason.apply_to_edge(place, &mut edge.value, labeller, ctxt);
+            let changed = !replacements.is_empty();
+            all_replacements.extend(replacements);
+            changed
+        });
+        all_replacements
     }
 }

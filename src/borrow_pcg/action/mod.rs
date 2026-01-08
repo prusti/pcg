@@ -7,14 +7,18 @@ use crate::{
     RestoreCapability, Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
-        edge::kind::BorrowPcgEdgeKind,
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate},
-        has_pcs_elem::{LabelLifetimeProjectionPredicate, PlaceLabeller},
+        edge::{
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+            outlives::private::FutureEdgeKind,
+        },
+        edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
+        has_pcs_elem::PlaceLabeller,
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
-    pcg::CapabilityKind,
+    pcg::{CapabilityKind, PcgNodeType},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
     },
@@ -22,10 +26,47 @@ use crate::{
 
 pub mod actions;
 
+/// The result of applying an action to the PCG.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+pub(crate) struct ApplyActionResult<Summary = DisplayOutput> {
+    /// Whether the action had any effect on the PCG state.
+    pub changed: bool,
+    /// A summary of the changes made by the action.
+    pub change_summary: Summary,
+}
+
+impl DebugRepr<()> for ApplyActionResult {
+    type Repr = ApplyActionResult<String>;
+
+    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
+        ApplyActionResult {
+            changed: self.changed,
+            change_summary: self.change_summary.clone().into_html().to_string(),
+        }
+    }
+}
+
+impl ApplyActionResult {
+    pub(crate) fn changed_no_display() -> Self {
+        Self {
+            changed: true,
+            change_summary: DisplayOutput::EMPTY,
+        }
+    }
+
+    pub(crate) fn from_changed(changed: bool) -> Self {
+        Self {
+            changed,
+            change_summary: DisplayOutput::EMPTY,
+        }
+    }
+}
+
 impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
     pub(crate) fn add_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> Self {
         BorrowPcgAction {
@@ -36,7 +77,7 @@ impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
 
     pub(crate) fn remove_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::RemoveEdge(edge),
@@ -49,7 +90,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     pub(crate) fn restore_capability(
         place: Place<'tcx>,
         capability: CapabilityKind,
-        debug_context: impl Into<String>,
+        debug_context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Restore(RestoreCapability::new(place, capability)),
@@ -61,7 +102,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         place: Place<'tcx>,
         from: CapabilityKind,
         to: Option<CapabilityKind>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self
     where
         'tcx: 'a,
@@ -74,24 +115,21 @@ impl<'tcx> BorrowPcgAction<'tcx> {
 
     pub(crate) fn remove_lifetime_projection_label(
         projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::LabelLifetimeProjection(
-                LabelLifetimeProjectionPredicate::Equals(projection),
-                None,
-            ),
+            kind: BorrowPcgActionKind::remove_lifetime_projection_label(projection),
             debug_context: Some(context.into()),
         }
     }
 
     pub(crate) fn label_lifetime_projection(
-        predicate: LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        context: impl Into<String>,
+        context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::LabelLifetimeProjection(predicate, label),
+            kind: BorrowPcgActionKind::label_lifetime_projection(predicate, label),
             debug_context: Some(context.into()),
         }
     }
@@ -102,7 +140,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
         reason: LabelPlaceReason,
     ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::MakePlaceOld(LabelPlaceAction {
+            kind: BorrowPcgActionKind::LabelPlace(LabelPlaceAction {
                 place,
                 location,
                 reason,
@@ -127,10 +165,7 @@ pub enum LabelPlaceReason {
     /// The place will not have any capability after the join, but reborrows derived from the dereference
     /// may still have capability.
     JoinOwnedReadAndWriteCapabilities,
-    ReAssign,
-    LabelDerefProjections {
-        shared_refs_only: bool,
-    },
+    Write,
     Collapse,
 }
 
@@ -141,29 +176,43 @@ impl LabelPlaceReason {
         edge: &mut impl LabelEdgePlaces<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         let predicate = match self {
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => LabelPlacePredicate::Postfix {
-                place,
-                label_place_in_expansion: true,
-            },
-            LabelPlaceReason::ReAssign => LabelPlacePredicate::Postfix {
-                place,
-                label_place_in_expansion: false,
-            },
-            LabelPlaceReason::Collapse => LabelPlacePredicate::Exact(place),
-            LabelPlaceReason::LabelDerefProjections { shared_refs_only } => {
-                LabelPlacePredicate::DerefPostfixOf {
-                    place,
-                    shared_refs_only,
-                }
+            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
+                LabelNodePredicate::PlaceIsPostfixOf(place)
             }
+            LabelPlaceReason::Write => LabelNodePredicate::And(vec![
+                LabelNodePredicate::PlaceIsPostfixOf(place),
+                // If the place is e.g *x or x.f, don't label it if it
+                // is the target of a borrow expansion or deref edge.
+                LabelNodePredicate::not(LabelNodePredicate::And(vec![
+                    LabelNodePredicate::PlaceEquals(place),
+                    LabelNodePredicate::InTargetNodes,
+                    LabelNodePredicate::NodeType(PcgNodeType::Place),
+                    LabelNodePredicate::Or(vec![
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowPcgExpansion),
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::Deref),
+                    ]),
+                ])),
+                // If we are writing to e.g. x.f and there's an
+                // edge "x.f|'a -> x|'a  at FUTURE", we DONT want to label the source:
+                // the stuff that will reside in x'|a will be determined by the new contents of x.f|'a
+                // We don't want an edge like "x.f at bb2[6] |'a -> x|'a at FUTURE"
+                LabelNodePredicate::not(LabelNodePredicate::And(vec![
+                    LabelNodePredicate::PlaceEquals(place),
+                    LabelNodePredicate::InSourceNodes,
+                    LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
+                        future_edge_kind: Some(FutureEdgeKind::FromExpansion),
+                    }),
+                ])),
+            ]),
+            LabelPlaceReason::Collapse => LabelNodePredicate::PlaceEquals(place),
         };
-        let mut changed = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
-        changed |= edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt());
-        changed
+        let mut result = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
+        result.extend(edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt()));
+        result
     }
 }
 
@@ -180,7 +229,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             format!(
-                "Make {} an old place ({:?})",
+                "Label place {} ({:?})",
                 self.place.display_string(ctxt),
                 self.reason
             )
@@ -189,17 +238,85 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
+mod private {
+    use crate::{
+        borrow_pcg::{
+            edge_data::LabelNodePredicate,
+            region_projection::{LifetimeProjection, LifetimeProjectionLabel},
+        },
+        pcg::PcgNode,
+        utils::{
+            HasBorrowCheckerCtxt,
+            display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+            maybe_old::MaybeLabelledPlace,
+        },
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct LabelLifetimeProjectionAction<'tcx> {
+        predicate: LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+    }
+
+    impl<'tcx> LabelLifetimeProjectionAction<'tcx> {
+        pub(crate) fn predicate(&self) -> &LabelNodePredicate<'tcx> {
+            &self.predicate
+        }
+
+        pub(crate) fn label(&self) -> Option<LifetimeProjectionLabel> {
+            self.label
+        }
+
+        pub(crate) fn new(
+            predicate: LabelNodePredicate<'tcx>,
+            label: Option<LifetimeProjectionLabel>,
+        ) -> Self {
+            Self { predicate, label }
+        }
+
+        pub(crate) fn remove_label(
+            projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        ) -> Self {
+            Self {
+                predicate: LabelNodePredicate::Equals(PcgNode::LifetimeProjection(
+                    projection.rebase(),
+                )),
+                label: None,
+            }
+        }
+    }
+
+    impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+        for LabelLifetimeProjectionAction<'tcx>
+    {
+        fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+            let predicate_label = self.predicate.display_output(ctxt, mode);
+            if let Some(label) = self.label {
+                DisplayOutput::Seq(vec![
+                    "Label lifetime projection ".into(),
+                    predicate_label,
+                    " with label ".into(),
+                    label.display_output((), mode),
+                ])
+            } else {
+                DisplayOutput::Seq(vec![
+                    "Unlabel lifetime projection ".into(),
+                    self.predicate.display_output(ctxt, mode),
+                ])
+            }
+        }
+    }
+}
+use private::LabelLifetimeProjectionAction;
+
 #[derive(Clone, Debug, PartialEq, Eq, strum_macros::EnumDiscriminants)]
 #[strum_discriminants(derive(Serialize))]
 #[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
 pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
-    LabelLifetimeProjection(
-        LabelLifetimeProjectionPredicate<'tcx>,
-        Option<LifetimeProjectionLabel>,
-    ),
+    LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx>),
     Weaken(Weaken<'tcx>),
     Restore(RestoreCapability<'tcx>),
-    MakePlaceOld(LabelPlaceAction<'tcx>),
+    LabelPlace(LabelPlaceAction<'tcx>),
     /// Remove an edge from the PCG. In terms of the PCG itself, the validity
     /// conditions associated with the edge are not relevant (there is no
     /// situation where an edge is removed only under certain conditions).
@@ -211,6 +328,21 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
     },
+}
+
+impl<'tcx> BorrowPcgActionKind<'tcx> {
+    pub(crate) fn remove_lifetime_projection_label(
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+    ) -> Self {
+        Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::remove_label(projection))
+    }
+
+    pub(crate) fn label_lifetime_projection(
+        predicate: LabelNodePredicate<'tcx>,
+        label: Option<LifetimeProjectionLabel>,
+    ) -> Self {
+        Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::new(predicate, label))
+    }
 }
 
 #[derive(Serialize)]
@@ -237,31 +369,23 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
     DisplayWithCtxt<Ctxt> for BorrowPcgActionKind<'tcx, EdgeKind>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            match self {
-                BorrowPcgActionKind::LabelLifetimeProjection(rp, label) => {
-                    format!(
-                        "Label Region Projection: {} with {:?}",
-                        rp.display_output(ctxt, mode).into_text(),
-                        label
-                    )
-                }
-                BorrowPcgActionKind::Weaken(weaken) => weaken.debug_line(ctxt.ctxt()),
-                BorrowPcgActionKind::Restore(restore_capability) => {
-                    restore_capability.debug_line(ctxt.ctxt())
-                }
-                BorrowPcgActionKind::MakePlaceOld(action) => action.display_string(ctxt),
-                BorrowPcgActionKind::RemoveEdge(edge) => {
-                    format!(
-                        "Remove Edge {}",
-                        edge.display_output(ctxt, mode).into_text()
-                    )
-                }
-                BorrowPcgActionKind::AddEdge { edge } => {
-                    format!("Add Edge {}", edge.display_output(ctxt, mode).into_text())
-                }
+        match self {
+            BorrowPcgActionKind::LabelLifetimeProjection(action) => {
+                action.display_output(ctxt, mode)
             }
-            .into(),
-        )
+            BorrowPcgActionKind::Weaken(weaken) => weaken.display_output(ctxt, mode),
+            BorrowPcgActionKind::Restore(restore_capability) => {
+                restore_capability.display_output(ctxt, mode)
+            }
+            BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
+            BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
+                vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
+                DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
+                vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
+                DisplayOutput::SPACE,
+            ),
+        }
     }
 }

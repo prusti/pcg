@@ -65,7 +65,7 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
         name: "bcfacts".into(),
     };
     let mut nodes = IdLookup::new('n');
-    for loc in ctxt.bc.output_facts.subset.values() {
+    for loc in ctxt.borrow_checker.output_facts.subset.values() {
         for (sup, subs) in loc {
             let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
             for sub in subs {
@@ -164,7 +164,7 @@ pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
     ctxt: CompilerCtxt<'a, 'tcx, &'bc RustBorrowCheckerImpl<'a, 'tcx>>,
 ) -> String {
     let regions = get_all_regions(ctxt.body(), ctxt.tcx());
-    let scc_graph = compute_region_sccs(regions, ctxt.bc.region_infer_ctxt());
+    let scc_graph = compute_region_sccs(regions, ctxt.borrow_checker.region_infer_ctxt());
     let scc_graph = scc_graph.map(
         |_, regions| {
             format!(
@@ -193,11 +193,11 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
     };
     let mut nodes = IdLookup::new('n');
     let location_index = if start {
-        ctxt.bc.location_table().start_index(location)
+        ctxt.borrow_checker.location_table().start_index(location)
     } else {
-        ctxt.bc.location_table().mid_index(location)
+        ctxt.borrow_checker.location_table().mid_index(location)
     };
-    if let Some(subset) = ctxt.bc.output_facts.subset.get(&location_index) {
+    if let Some(subset) = ctxt.borrow_checker.output_facts.subset.get(&location_index) {
         for (sup, subs) in subset {
             let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
             for sub in subs {

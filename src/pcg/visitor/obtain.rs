@@ -1,13 +1,16 @@
 use crate::{
-    action::{BorrowPcgAction, PcgAction},
+    action::{AppliedAction, BorrowPcgAction, PcgAction},
     borrow_pcg::{
-        action::LabelPlaceReason,
+        action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
-        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
-        edge_data::EdgeData,
+        edge::{
+            deref::DerefEdge,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+            outlives::private::FutureEdgeKind,
+        },
+        edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
     owned_pcg::RepackOp,
@@ -48,7 +51,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<bool, PcgError> {
+    ) -> Result<(), PcgError> {
         self.place_obtainer().record_and_apply_action(action)
     }
 }
@@ -119,7 +122,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.record_and_apply_action(PcgAction::restore_capability(
                 place,
                 restore_cap,
-                context,
+                context.to_owned(),
                 self.ctxt,
             ))?;
         }
@@ -191,7 +194,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if deref.deref_place.is_current()
             && deref.deref_place.lifetime_projections(self.ctxt).is_empty()
         {
-            self.unlabel_blocked_lifetime_projections(deref, context)
+            self.unlabel_source_lifetime_projections(deref, context)
         } else {
             Ok(())
         }
@@ -206,8 +209,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         for edge in edges {
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
-            self.record_and_apply_action(
-                BorrowPcgAction::remove_edge(borrow_edge, context).into(),
+            self.apply_action(
+                BorrowPcgAction::remove_edge(borrow_edge, context.to_owned()).into(),
             )?;
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
@@ -248,7 +251,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context,
             );
         }
-        self.record_and_apply_action(BorrowPcgAction::remove_edge(edge.clone(), context).into())?;
+        self.record_and_apply_action(
+            BorrowPcgAction::remove_edge(edge.clone(), context.to_owned()).into(),
+        )?;
 
         // This is true iff the expansion is for a place (not a region projection), and changes
         // could have been made to the root place via the expansion
@@ -257,7 +262,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // - The base has write capability, it is a mutable ref
         let is_mutable_place_expansion = if let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) =
             edge.kind()
-            && let Some(place) = expansion.base.as_current_place()
+            && let Some(place) = expansion.base().as_current_place()
         {
             matches!(
                 self.pcg
@@ -306,7 +311,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                 );
                                 self.record_and_apply_action(
                                     BorrowPcgAction::label_lifetime_projection(
-                                        LabelLifetimeProjectionPredicate::Equals(rp),
+                                        LabelNodePredicate::equals_lifetime_projection(rp),
                                         Some(self.prev_snapshot_location().into()),
                                         format!(
                                             "{}: {}",
@@ -353,7 +358,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// Accordingly, when we want to remove *y in such cases, we just remove the
     /// label rather than use the normal logic (of renaming the placeholder
     /// projection to the current one).
-    fn unlabel_blocked_lifetime_projections(
+    fn unlabel_source_lifetime_projections(
         &mut self,
         deref: &DerefEdge<'tcx>,
         context: &str,
@@ -448,7 +453,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<bool, PcgError> {
+    ) -> Result<(), PcgError> {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
@@ -468,7 +473,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.borrow.as_mut_ref(),
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
                     self.pcg.owned.perform_expand_action(
@@ -476,7 +481,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.capabilities,
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
                     let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
@@ -492,7 +497,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             analysis_ctxt,
                         );
                     }
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Collapse(collapse) => {
                     let capability_projections =
@@ -502,7 +507,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.capabilities,
                         analysis_ctxt,
                     )?;
-                    true
+                    ApplyActionResult::changed_no_display()
                 }
                 _ => unreachable!(),
             },
@@ -526,9 +531,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     pcg_ref,
                 );
             }
-            actions.push(action);
+            actions.push(AppliedAction::new(action, result));
         }
-        Ok(result)
+        Ok(())
     }
     pub(crate) fn phase(&self) -> Option<EvalStmtPhase> {
         match self.prev_snapshot_location {
@@ -541,7 +546,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {
         self.record_and_apply_action(action)
     }
 }
@@ -552,7 +557,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// Ensures that the place is expanded to the given place, with a certain
     /// capability.
     ///
-    /// This also handles corresponding region projections of the place.
+    /// This also handles corresponding lifetime projections of the place.
     #[tracing::instrument(skip(self))]
     pub(crate) fn obtain(
         &mut self,
@@ -561,27 +566,32 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ) -> Result<(), PcgError> {
         let obtain_cap = obtain_type.capability(place, self.ctxt);
 
-        // STEP 1
-        // This is to support the following kind of scenario:
-        //
-        //  - `s` is to be re-assigned or borrowed mutably at location `l`
-        //  - `s.f` is shared a reference with lifetime 'a reborrowed into `x`
-        //
-        // We want to label s.f. such that the edge {s.f@l, s.f|'a@l} ->
-        // {*s.f@l} is in the graph and redirect the borrow from *s.f to
-        // *s.f@l
-        //
-        // After performing this operation, we should try again to remove borrow
-        // PCG edges blocking `place`, since this may enable some borrow
-        // expansions to be removed (s.f was previously blocked and no longer is)
-        //
-        // Note that this could also happen when obtaining for a loop invariant
-        if !obtain_cap.is_read() {
-            self.label_and_remove_capabilities_for_deref_projections_of_postfix_places(
-                place, true, self.ctxt,
+        if obtain_cap.is_write() {
+            tracing::debug!(
+                "labeling and removing capabilities for deref projections of postfix places"
+            );
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    place,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::Write,
+                )
+                .into(),
             )?;
-            self.render_debug_graph(None, "step 1 (after label + remove)");
-            self.pack_old_and_dead_borrow_leaves(Some(place))?;
+            self.record_and_apply_action(
+                BorrowPcgAction::label_lifetime_projection(
+                    LabelNodePredicate::And(vec![
+                        LabelNodePredicate::PlaceEquals(place),
+                        LabelNodePredicate::InSourceNodes,
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowFlow {
+                            future_edge_kind: Some(FutureEdgeKind::FromExpansion),
+                        }),
+                    ]),
+                    None,
+                    "label place and update related capabilities",
+                )
+                .into(),
+            )?;
             self.render_debug_graph(None, "after step 1");
         }
 
@@ -606,7 +616,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             )
         {
             // If we want to get e.g. write permission but we currently have
-            // read permission, we will obtain read with the collpase and then
+            // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
             let collapse_cap =
                 if current_cap.map(|c| c.expect_concrete()) == Some(CapabilityKind::Read) {
@@ -663,14 +673,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         // STEP 4
         if obtain_cap.is_write() {
-            let _ = self.record_and_apply_action(
-                BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    self.prev_snapshot_location(),
-                    LabelPlaceReason::ReAssign,
-                )
-                .into(),
-            );
             // If this place is a reference or contains references, reborrows of
             // (postfixes of) place may have not yet expired, and therefore the borrowed
             // caps are still in the PCG.

@@ -3,8 +3,7 @@ use std::borrow::Cow;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        edge_data::LabelPlacePredicate,
-        has_pcs_elem::{LabelNodeContext, LabelPlaceWithContext, PlaceLabeller},
+        has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
             HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
             PlaceOrConst, RegionIdx,
@@ -361,27 +360,19 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlaceWithContext<'tcx, LabelNodeContext> for MaybeLabelledPlace<'tcx> {
-    fn label_place_with_context(
+impl<'tcx> LabelPlace<'tcx> for MaybeLabelledPlace<'tcx> {
+    fn label_place(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
-        label_context: LabelNodeContext,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         match self {
             MaybeLabelledPlace::Current(place) => {
-                if predicate.applies_to(*place, label_context, ctxt) {
-                    *self = MaybeLabelledPlace::Labelled(LabelledPlace::new(
-                        *place,
-                        labeller.place_label(*place, ctxt),
-                    ));
-                    true
-                } else {
-                    false
-                }
+                let label = labeller.place_label(*place, ctxt);
+                *self = MaybeLabelledPlace::Labelled(LabelledPlace::new(*place, label));
+                true
             }
-            _ => false,
+            MaybeLabelledPlace::Labelled(_) => false,
         }
     }
 }

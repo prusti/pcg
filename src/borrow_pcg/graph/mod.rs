@@ -10,7 +10,8 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
+        has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
     },
     coupling::PcgCoupledEdgeKind,
@@ -22,7 +23,8 @@ use crate::{
         middle::mir::{self},
     },
     utils::{
-        DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt,
+        HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -40,10 +42,7 @@ use super::{
     edge_data::EdgeData,
     validity_conditions::ValidityConditions,
 };
-use crate::{
-    borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
-    utils::CompilerCtxt,
-};
+use crate::borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind};
 
 use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
@@ -100,7 +99,7 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
         }
         for edge in self.edges() {
             if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = edge.kind()
-                && let Some(place) = e.base.as_current_place()
+                && let Some(place) = e.base().as_current_place()
                 && place.projects_shared_ref(ctxt)
             {
                 edge.check_validity(ctxt)?;
@@ -508,23 +507,25 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'a, 'tcx, EdgeKind: LabelLifetimeProjection<'a, 'tcx> + Eq + std::hash::Hash>
-    BorrowsGraph<'tcx, EdgeKind>
-{
-    pub(crate) fn label_region_projection(
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+    pub(crate) fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool
     where
-        'tcx: 'a,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx>,
     {
+        let mut result = false;
         self.filter_mut_edges(|edge| {
-            edge.value
-                .label_lifetime_projection(predicate, label, ctxt.bc_ctxt())
-                .to_filter_mut_result()
-        })
+            let changed = edge
+                .value
+                .label_lifetime_projections(predicate, label, ctxt);
+            result |= changed != LabelLifetimeProjectionResult::Unchanged;
+            changed.to_filter_mut_result()
+        });
+        result
     }
 }
 impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {

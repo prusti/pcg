@@ -1,15 +1,16 @@
 //! Definitions of edges in the Borrow PCG.
 use std::marker::PhantomData;
 
-use crate::rustc_interface::middle::mir::{self, BasicBlock, PlaceElem};
+use crate::{
+    borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
+    rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
+};
 use itertools::Itertools;
 
 use super::{
-    borrow_pcg_expansion::BorrowPcgExpansion,
     edge::outlives::BorrowFlowEdge,
     edge_data::EdgeData,
     graph::Conditioned,
-    has_pcs_elem::LabelLifetimeProjection,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
     validity_conditions::ValidityConditions,
 };
@@ -19,10 +20,10 @@ use crate::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{LabelEdgePlaces, LabelPlacePredicate, edgedata_enum},
-        has_pcs_elem::{
-            LabelLifetimeProjectionPredicate, LabelLifetimeProjectionResult, PlaceLabeller,
+        edge_data::{
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, edgedata_enum,
         },
+        has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LocalLifetimeProjectionBase,
     },
     coupling::PcgCoupledEdgeKind,
@@ -82,32 +83,35 @@ pub type BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> = Conditioned<Kind>
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
+    {
         self.value.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
+    {
         self.value
             .label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for BorrowPcgEdge<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
+    fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.value.label_lifetime_projection(predicate, label, ctxt)
+        self.value
+            .label_lifetime_projections(predicate, label, ctxt)
     }
 }
 
@@ -426,7 +430,7 @@ pub(crate) trait ToBorrowsEdge<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx>;
 }
 
-impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx, LocalNode<'tcx>> {
+impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx> {
     fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowPcgExpansion(self), conditions)
     }

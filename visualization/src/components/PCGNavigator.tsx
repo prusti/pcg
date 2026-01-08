@@ -10,6 +10,8 @@ import {
 import {
   PcgBlockVisualizationData,
   DotFileAtPhase,
+  AppliedAction,
+  ApplyActionResult,
 } from "../generated/types";
 import { actionLine } from "../actionFormatting";
 import {
@@ -24,9 +26,15 @@ type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
   | {
       type: "action";
-      phase: EvalStmtPhase | "successor";
+      phase: "successor";
       index: number;
       action: PcgAction;
+    }
+  | {
+      type: "action";
+      phase: EvalStmtPhase;
+      index: number;
+      action: AppliedAction<PcgAction, ApplyActionResult<string>>;
     };
 
 export const NAVIGATOR_DEFAULT_WIDTH = 200;
@@ -39,7 +47,10 @@ const getPCGDotGraphFilename = (
   selectedFunction: string,
   graphs: PcgBlockVisualizationData
 ): string | null => {
-  if (currentPoint.type !== "stmt" || graphs.statements.length <= currentPoint.stmt) {
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
     return null;
   }
   if (currentPoint.navigatorPoint.type === "action") {
@@ -133,12 +144,7 @@ export default function PCGNavigator({
           if (phase in programPointData.graphs.actions) {
             // Add all actions for this phase first
             programPointData.actions[phase].forEach((action, index) => {
-              if (
-                action.data.kind.type !== "MakePlaceOld" &&
-                action.data.kind.type !== "LabelLifetimeProjection"
-              ) {
-                items.push({ type: "action", phase, index, action });
-              }
+              items.push({ type: "action", phase, index, action });
             });
           }
 
@@ -154,12 +160,7 @@ export default function PCGNavigator({
       const programPointData =
         pcgData.successors[toBasicBlock(currentPoint.block2)];
       programPointData.actions.forEach((action, index) => {
-        if (
-          action.data.kind.type !== "MakePlaceOld" &&
-          action.data.kind.type !== "LabelLifetimeProjection"
-        ) {
-          items.push({ type: "action", phase: "successor", index, action });
-        }
+        items.push({ type: "action", phase: "successor", index, action });
       });
     }
 
@@ -313,6 +314,17 @@ export default function PCGNavigator({
           selectedPoint?.type === "action" &&
           selectedPoint.phase === item.phase &&
           selectedPoint.index === item.index;
+        const action =
+          item.phase === "successor" ? item.action : item.action.action;
+        let hoverText = action.data.debug_context || "";
+        const itemContent = actionLine(action.data.kind);
+        if (item.phase !== "successor") {
+          if (!hoverText) {
+            hoverText = item.action.result.change_summary;
+          } else {
+            hoverText += " " + item.action.result.change_summary;
+          }
+        }
         return (
           <div
             key={`action-${item.phase}-${item.index}-${idx}`}
@@ -332,9 +344,9 @@ export default function PCGNavigator({
                 index: item.index,
               });
             }}
-            title={item.action.data.debug_context || undefined}
+            title={hoverText || undefined}
           >
-            <code>{actionLine(item.action.data.kind)}</code>
+            <code>{itemContent}</code>
           </div>
         );
       }

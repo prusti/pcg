@@ -20,11 +20,11 @@ use rustc_interface::{
     },
     span::Span,
 };
+use serde_derive::Serialize;
 
 use crate::{
     rustc_interface::{self, middle::mir},
-    utils::HasCompilerCtxt,
-    utils::html::Html,
+    utils::{DebugRepr, HasCompilerCtxt, html::Html},
 };
 
 use super::{CompilerCtxt, Place};
@@ -50,11 +50,33 @@ impl PlaceDisplay<'_> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum DisplayOutput {
     Html(Html),
     Text(Cow<'static, str>),
     Both(Html, Cow<'static, str>),
     Seq(Vec<DisplayOutput>),
+}
+
+impl DebugRepr<()> for DisplayOutput {
+    type Repr = String;
+
+    fn debug_repr(&self, _ctxt: ()) -> Self::Repr {
+        self.clone().into_html().to_string()
+    }
+}
+
+impl From<&'static str> for DisplayOutput {
+    fn from(s: &'static str) -> Self {
+        DisplayOutput::Text(s.into())
+    }
+}
+
+impl From<String> for DisplayOutput {
+    fn from(s: String) -> Self {
+        DisplayOutput::Text(Cow::Owned(s))
+    }
 }
 
 impl DisplayOutput {
@@ -83,12 +105,28 @@ impl DisplayOutput {
                 .into(),
         }
     }
+
+    pub(crate) fn join(
+        words: impl IntoIterator<Item = DisplayOutput>,
+        separator: DisplayOutput,
+    ) -> Self {
+        let mut out = vec![];
+        let mut words = words.into_iter().peekable();
+        while let Some(word) = words.next() {
+            out.push(word);
+            if words.peek().is_some() {
+                out.push(separator.clone());
+            }
+        }
+        DisplayOutput::Seq(out)
+    }
 }
 
 #[derive(Copy, Clone)]
 pub enum OutputMode {
     Normal,
     Short,
+    /// For comparison during tests only, not intended for displaying to the user.
     Test,
 }
 

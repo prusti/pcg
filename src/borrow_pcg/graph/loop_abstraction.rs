@@ -6,9 +6,8 @@ use crate::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
         edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
-        edge_data::EdgeData,
+        edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
         region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
@@ -38,14 +37,14 @@ use crate::{
 
 pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
-    pub(crate) to_label: HashSet<LabelLifetimeProjectionPredicate<'tcx>>,
+    pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
     pub(crate) capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
 }
 
 impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
     pub(crate) fn new(
         graph: BorrowsGraph<'tcx>,
-        to_label: HashSet<LabelLifetimeProjectionPredicate<'tcx>>,
+        to_label: HashSet<LabelNodePredicate<'tcx>>,
         capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
     ) -> Self {
         Self {
@@ -91,17 +90,17 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
         matches!(self, MaybeRemoteCurrentPlace::Remote(_))
     }
 
-    fn region_projections(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<LifetimeProjection<'tcx>> {
+    fn lifetime_projections(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<LifetimeProjection<'tcx>> {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place
                 .lifetime_projections(ctxt)
                 .into_iter()
-                .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
+                .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
             MaybeRemoteCurrentPlace::Remote(place) => place
                 .lifetime_projections(ctxt)
                 .into_iter()
-                .map(|rp| rp.to_pcg_node(ctxt).try_into_region_projection().unwrap())
+                .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
         }
     }
@@ -143,7 +142,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 let relevant_root = root.relevant_place_for_blocking();
                 if blocker == relevant_root
                     || ctxt
-                        .bc
+                        .borrow_checker
                         .blocks(blocker, relevant_root, loop_head_location, ctxt)
                 {
                     tracing::debug!(
@@ -154,7 +153,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     add_block_edges(&mut expander, *root, blocker, ctxt);
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
                         for rp in root.lifetime_projections(ctxt) {
-                            to_label.insert(LabelLifetimeProjectionPredicate::AllNonFuture(
+                            to_label.insert(LabelNodePredicate::all_non_future(
                                 (*root).into(),
                                 rp.region_idx,
                             ));
@@ -172,9 +171,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 .iter_places()
                 .filter(|blocker| {
                     blocker.local != blocked_place.local
-                        && ctxt
-                            .bc
-                            .blocks(*blocker, blocked_place, loop_head_location, ctxt)
+                        && ctxt.borrow_checker.blocks(
+                            *blocker,
+                            blocked_place,
+                            loop_head_location,
+                            ctxt,
+                        )
                 })
                 .collect::<Vec<_>>();
             if !blockers.is_empty() {
@@ -187,7 +189,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     capability_updates.insert(blocked_place, Some(CapabilityKind::Read));
                 }
                 for rp in blocked_place.lifetime_projections(ctxt) {
-                    to_label.insert(LabelLifetimeProjectionPredicate::AllNonFuture(
+                    to_label.insert(LabelNodePredicate::all_non_future(
                         blocked_place.into(),
                         rp.region_idx,
                     ));
@@ -262,7 +264,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
         for rp in to_label.iter() {
             tracing::debug!("labeling {:?}", rp);
-            graph.label_region_projection(rp, Some(loop_head_label), ctxt);
+            graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
         }
         tracing::debug!("Completed loop abstraction");
         for (place, capability) in capability_updates.iter() {
@@ -488,25 +490,25 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<bool, crate::error::PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), crate::error::PcgError> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {
-                BorrowPcgActionKind::AddEdge { edge } => Ok(self.graph.insert(edge, self.ctxt)),
-                BorrowPcgActionKind::LabelLifetimeProjection(
-                    predicate,
-                    region_projection_label,
-                ) => Ok(self.graph.label_region_projection(
-                    &predicate,
-                    region_projection_label,
-                    self.ctxt,
-                )),
+                BorrowPcgActionKind::AddEdge { edge } => {
+                    self.graph.insert(edge, self.ctxt);
+                }
+                BorrowPcgActionKind::LabelLifetimeProjection(action) => {
+                    self.graph.label_lifetime_projections(
+                        action.predicate(),
+                        action.label(),
+                        self.ctxt,
+                    );
+                }
                 BorrowPcgActionKind::Weaken(_) => todo!(),
                 BorrowPcgActionKind::Restore(_) => todo!(),
-                BorrowPcgActionKind::MakePlaceOld(_) => todo!(),
+                BorrowPcgActionKind::LabelPlace(_) => todo!(),
                 BorrowPcgActionKind::RemoveEdge(borrow_pcg_edge) => {
                     self.graph.remove(borrow_pcg_edge.kind());
-                    Ok(true)
                 }
             },
             PcgAction::Owned(action) => match action.kind {
@@ -520,7 +522,8 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                 RepackOp::DerefShallowInit(_, _) => todo!(),
                 RepackOp::RegainLoanedCapability(_) => todo!(),
             },
-        }
+        };
+        Ok(())
     }
 }
 
@@ -596,11 +599,11 @@ fn add_rp_block_edges<'mir, 'tcx>(
     ctxt: CompilerCtxt<'mir, 'tcx>,
 ) {
     let blocker_rps = blocker.lifetime_projections(ctxt);
-    for blocked_rp in blocked_place.region_projections(ctxt) {
+    for blocked_rp in blocked_place.lifetime_projections(ctxt) {
         let flow_rps = blocker_rps
             .iter()
             .filter(|blocker_rp| {
-                ctxt.bc.outlives(
+                ctxt.borrow_checker.outlives(
                     blocked_rp.region(ctxt),
                     blocker_rp.region(ctxt),
                     expander.loop_head_location(),
@@ -609,12 +612,12 @@ fn add_rp_block_edges<'mir, 'tcx>(
             .copied()
             .collect::<Vec<_>>();
         if let Some(blocked_node) = blocked_rp.try_to_local_node(ctxt) {
-            let blocked_rp = blocked_node.try_into_region_projection().unwrap();
+            let blocked_rp = blocked_node.expect_lifetime_projection();
             let mut_rps = flow_rps
                 .iter()
                 .filter_map(|rp| {
                     if rp.is_invariant_in_type(ctxt)
-                        && ctxt.bc.outlives(
+                        && ctxt.borrow_checker.outlives(
                             rp.region(ctxt),
                             blocked_rp.region(ctxt),
                             expander.loop_head_location(),

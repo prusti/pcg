@@ -6,7 +6,7 @@ use crate::{
         edge::outlives::{
             AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
         },
-        has_pcs_elem::LabelLifetimeProjectionPredicate,
+        edge_data::LabelNodePredicate,
         region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
@@ -188,7 +188,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 let label = obtainer.prev_snapshot_location();
                 obtainer.apply_action(
                     BorrowPcgAction::label_lifetime_projection(
-                        LabelLifetimeProjectionPredicate::Postfix(source_proj.into()),
+                        LabelNodePredicate::postfix_lifetime_projection(source_proj.into()),
                         Some(label.into()),
                         "Label region projections of newly borrowed place",
                     )

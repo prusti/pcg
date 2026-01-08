@@ -2,15 +2,15 @@ use crate::{
     action::{BorrowPcgAction, OwnedPcgAction},
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
             deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
-        has_pcs_elem::{LabelLifetimeProjection, LabelLifetimeProjectionPredicate},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
     },
@@ -38,7 +38,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
+        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError>;
@@ -149,7 +149,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         self.capability_for_expand(expansion.base_place(), obtain_type, ctxt),
                         ctxt,
                     ),
-                    Some(format!("Expand owned place one level ({obtain_type:?})")),
+                    Some(format!("Expand owned place one level ({obtain_type:?})").into()),
                 )
                 .into(),
             )?;
@@ -201,7 +201,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if deref.blocked_lifetime_projection.label().is_some() {
                 self.apply_action(
                     BorrowPcgAction::label_lifetime_projection(
-                        LabelLifetimeProjectionPredicate::Equals(
+                        LabelNodePredicate::equals_lifetime_projection(
                             deref.blocked_lifetime_projection.with_label(None, ctxt),
                         ),
                         deref.blocked_lifetime_projection.label(),
@@ -254,8 +254,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgExpansion<'tcx, LocalNode<'tcx>> =
-            BorrowPcgExpansion::new(base.into(), expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgExpansion<'tcx> =
+            BorrowPcgExpansion::new_place_expansion(base, expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -294,11 +294,15 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
-                let mut expansion = BorrowPcgExpansion::new(base_rp.into(), place_expansion, ctxt)?;
+                let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
+                    base_rp,
+                    place_expansion,
+                    ctxt,
+                )?;
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {
-                    expansion.label_lifetime_projection(
-                        &LabelLifetimeProjectionPredicate::Equals(base_rp.into()),
+                    expansion.label_lifetime_projections(
+                        &LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
                         Some(label.into()),
                         ctxt.bc_ctxt(),
                     );
@@ -319,7 +323,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 {
                     self.apply_action(
                         BorrowPcgAction::label_lifetime_projection(
-                            LabelLifetimeProjectionPredicate::Equals(base_rp.into()),
+                            LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
                             Some(label.into()),
                             "expand_region_projections_one_level: create new RP label",
                         )
@@ -334,8 +338,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                             .iter()
                             .map(|node| {
                                 node.to_pcg_node(ctxt.bc_ctxt())
-                                    .try_into_region_projection()
-                                    .unwrap()
+                                    .expect_lifetime_projection()
                             })
                             .collect::<Vec<_>>();
                         self.add_and_update_placeholder_edges(
@@ -389,7 +392,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     BorrowFlowEdge::new(
                         origin_rp.into(),
                         future_rp,
-                        BorrowFlowEdgeKind::Future,
+                        BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
                         ctxt,
                     )
                     .into(),
@@ -409,7 +412,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         BorrowFlowEdge::new(
                             *expansion_rp,
                             future_rp,
-                            BorrowFlowEdgeKind::Future,
+                            BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
                             ctxt,
                         )
                         .into(),
@@ -421,8 +424,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 .into(),
             )?;
         }
-        self.redirect_source_of_future_edges(origin_rp, future_rp, ctxt)?;
-        Ok(())
+        self.redirect_source_of_future_edges(origin_rp, future_rp, ctxt)
     }
 
     fn redirect_source_of_future_edges(
@@ -435,20 +437,17 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             .borrows_graph()
             .edges_blocking(old_source.into(), ctxt)
             .filter_map(|edge| {
-                if let BorrowPcgEdgeKind::BorrowFlow(bf_edge) = edge.kind
-                    && bf_edge.kind == BorrowFlowEdgeKind::Future
-                    && bf_edge.short() != new_source
+                if let BorrowPcgEdgeKind::BorrowFlow(BorrowFlowEdge {
+                    kind: kind @ BorrowFlowEdgeKind::Future(_),
+                    short,
+                    ..
+                }) = edge.kind
+                    && *short != new_source
                 {
                     return Some((
                         edge.to_owned_edge(),
                         BorrowPcgEdge::new(
-                            BorrowFlowEdge::new(
-                                new_source.into(),
-                                bf_edge.short(),
-                                BorrowFlowEdgeKind::Future,
-                                ctxt,
-                            )
-                            .into(),
+                            BorrowFlowEdge::new(new_source.into(), *short, *kind, ctxt).into(),
                             edge.conditions.clone(),
                         ),
                     ));

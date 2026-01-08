@@ -11,18 +11,21 @@ use crate::{
             },
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::{EdgeData, LabelEdgePlaces, LabelPlacePredicate},
-        has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionPredicate,
-            LabelLifetimeProjectionResult, PlaceLabeller,
+        edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            NodeReplacement,
         },
+        has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
     utils::display::{DisplayOutput, OutputMode},
-    utils::{CompilerCtxt, display::DisplayWithCtxt, validity::HasValidityCheck},
+    utils::{
+        CompilerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
+        validity::HasValidityCheck,
+    },
 };
 
 pub(crate) type LoopAbstractionEdge<'tcx> =
@@ -46,14 +49,14 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
 pub type LoopAbstraction<'tcx> =
     AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
-impl<'a, 'tcx> LabelLifetimeProjection<'a, 'tcx> for LoopAbstraction<'tcx> {
-    fn label_lifetime_projection(
+impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for LoopAbstraction<'tcx> {
+    fn label_lifetime_projections(
         &mut self,
-        projection: &LabelLifetimeProjectionPredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projection(projection, label, ctxt)
+        self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
 impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
@@ -84,19 +87,19 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
 impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelPlacePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }

@@ -1,7 +1,10 @@
 use crate::{
     pcg_validity_assert,
     rustc_interface::index::{Idx, IndexVec},
-    utils::data_structures::HashMap,
+    utils::{
+        data_structures::HashMap,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 use std::{
     cell::RefCell,
@@ -491,6 +494,26 @@ impl PartialOrd for CapabilityKind {
             // All other pairs are incomparable
             _ => None,
         }
+    }
+}
+
+impl<Ctxt> DisplayWithCtxt<Ctxt> for CapabilityKind {
+    fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let str = match mode {
+            OutputMode::Normal => match self {
+                CapabilityKind::Read => "Read",
+                CapabilityKind::Write => "Write",
+                CapabilityKind::Exclusive => "Exclusive",
+                CapabilityKind::ShallowExclusive => "ShallowExclusive",
+            },
+            OutputMode::Short | OutputMode::Test => match self {
+                CapabilityKind::Read => "R",
+                CapabilityKind::Write => "W",
+                CapabilityKind::Exclusive => "E",
+                CapabilityKind::ShallowExclusive => "e",
+            },
+        };
+        DisplayOutput::Text(str.into())
     }
 }
 

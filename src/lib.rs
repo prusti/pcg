@@ -122,17 +122,22 @@ impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
     }
 }
 
-impl<'tcx> Weaken<'tcx> {
-    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Weaken<'tcx> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let to_str = match self.to {
-            Some(to) => format!("{to:?}"),
-            None => "None".to_owned(),
+            Some(to) => to.display_output(ctxt, mode),
+            None => "None".into(),
         };
-        format!(
-            "Weaken {} from {:?} to {}",
-            self.place.display_string(ctxt),
-            self.from,
-            to_str
+        DisplayOutput::join(
+            vec![
+                "Weaken".into(),
+                self.place.display_output(ctxt, mode),
+                "from".into(),
+                self.from.display_output(ctxt, mode),
+                "to".into(),
+                to_str,
+            ],
+            DisplayOutput::SPACE,
         )
     }
 }
@@ -156,15 +161,24 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
         })
     }
 }
-impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn debug_line<BC: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, BC>) -> String {
-        format!(
-            "Restore {} to {:?}",
-            self.place.display_string(ctxt),
-            self.capability,
+
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for RestoreCapability<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::join(
+            vec![
+                "Restore".into(),
+                self.place.display_output(ctxt, mode),
+                "to".into(),
+                self.capability.display_output(ctxt, mode),
+            ],
+            DisplayOutput::SPACE,
         )
     }
+}
 
+impl<'tcx> RestoreCapability<'tcx> {
     pub(crate) fn new(place: Place<'tcx>, capability: CapabilityKind) -> Self {
         Self { place, capability }
     }
@@ -200,20 +214,18 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 use borrow_pcg::action::actions::BorrowPcgActions;
 use utils::eval_stmt_data::EvalStmtData;
 
-type VisualizationActions = Vec<PcgActionDebugRepr>;
-
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgStmtVisualizationData {
-    actions: EvalStmtData<VisualizationActions>,
+    actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
 }
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 struct PcgSuccessorVisualizationData {
-    actions: VisualizationActions,
+    actions: Vec<PcgActionDebugRepr>,
 }
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
@@ -320,7 +332,7 @@ impl<'a, 'mir: 'a, 'tcx: 'mir>
     }
 
     fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
-        self.compiler_ctxt.bc()
+        self.compiler_ctxt.borrow_checker()
     }
 }
 
@@ -447,12 +459,16 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             let statements = pcg_block
                 .statements
                 .iter()
-                .map(|stmt| PcgStmtVisualizationData {
-                    actions: stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt),
-                    graphs: debug_graphs
-                        .get(stmt.location.statement_index)
-                        .cloned()
-                        .unwrap_or_default(),
+                .map(|stmt| {
+                    let actions: EvalStmtData<Vec<AppliedActionDebugRepr>> =
+                        stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt);
+                    PcgStmtVisualizationData {
+                        actions,
+                        graphs: debug_graphs
+                            .get(stmt.location.statement_index)
+                            .cloned()
+                            .unwrap_or_default(),
+                    }
                 })
                 .collect();
 
@@ -667,11 +683,13 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    action::PcgActionDebugRepr,
+    action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
-        json::ToJsonWithCtxt, mir::BasicBlock,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
+        mir::BasicBlock,
     },
 };
 
