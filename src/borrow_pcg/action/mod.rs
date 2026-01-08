@@ -196,6 +196,10 @@ impl LabelPlaceReason {
                         LabelNodePredicate::EdgeType(BorrowPcgEdgeType::Deref),
                     ]),
                 ])),
+                // If we are writing to e.g. x.f and there's an
+                // edge "x.f|'a -> x|'a  at FUTURE", we DONT want to label the source:
+                // the stuff that will reside in x'|a will be determined by the new contents of x.f|'a
+                // We don't want an edge like "x.f at bb2[6] |'a -> x|'a at FUTURE"
                 LabelNodePredicate::not(LabelNodePredicate::And(vec![
                     LabelNodePredicate::PlaceEquals(place),
                     LabelNodePredicate::InSourceNodes,

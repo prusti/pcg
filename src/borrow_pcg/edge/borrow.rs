@@ -4,6 +4,7 @@ use crate::{
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
+            conditionally_label_places,
         },
         has_pcs_elem::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
@@ -11,7 +12,7 @@ use crate::{
         },
         region_projection::LifetimeProjectionLabel,
     },
-    pcg::{LabelPlaceConditionally, PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
@@ -82,15 +83,13 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        self.blocked_place.label_place_conditionally(
-            &mut result,
+        conditionally_label_places(
+            vec![&mut self.blocked_place],
             predicate,
             labeller,
             LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Borrow),
             ctxt,
-        );
-        result
+        )
     }
 
     fn label_blocked_by_places(

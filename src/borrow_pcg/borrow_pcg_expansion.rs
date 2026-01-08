@@ -15,7 +15,8 @@ use crate::{
         borrow_pcg_expansion::internal::BorrowPcgExpansionData,
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
-            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, edgedata_enum,
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            conditionally_label_places, edgedata_enum,
         },
         has_pcs_elem::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
@@ -271,25 +272,16 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
     {
-        let mut result = crate::utils::data_structures::HashSet::default();
-        let from = self.base.to_pcg_node(ctxt);
-        if predicate.applies_to(
-            from,
+        conditionally_label_places(
+            vec![&mut self.base],
+            predicate,
+            labeller,
             LabelNodeContext::new(
                 SourceOrTarget::Source,
                 BorrowPcgEdgeType::BorrowPcgExpansion,
             ),
-        ) {
-            let changed = self.base.label_place(labeller, ctxt);
-            if changed {
-                result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
-                    from,
-                    self.base.to_pcg_node(ctxt),
-                ));
-            }
-        }
-        self.assert_validity(ctxt);
-        result
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
@@ -299,25 +291,16 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
     {
-        let mut result = crate::utils::data_structures::HashSet::default();
-        for p in &mut self.expansion {
-            let from = p.to_pcg_node(ctxt);
-            if predicate.applies_to(
-                from,
-                LabelNodeContext::new(
-                    SourceOrTarget::Target,
-                    BorrowPcgEdgeType::BorrowPcgExpansion,
-                ),
-            ) {
-                let changed = p.label_place(labeller, ctxt);
-                if changed {
-                    result.insert(crate::borrow_pcg::edge_data::NodeReplacement::new(
-                        from,
-                        p.to_pcg_node(ctxt),
-                    ));
-                }
-            }
-        }
+        let result = conditionally_label_places(
+            self.expansion.iter_mut(),
+            predicate,
+            labeller,
+            LabelNodeContext::new(
+                SourceOrTarget::Target,
+                BorrowPcgEdgeType::BorrowPcgExpansion,
+            ),
+            ctxt,
+        );
         self.assert_validity(ctxt);
         result
     }

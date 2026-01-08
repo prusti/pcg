@@ -4,7 +4,7 @@ use crate::{
         has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
         region_projection::{LifetimeProjectionLabel, RegionIdx},
     },
-    pcg::{MaybeHasLocation, PcgNode, PcgNodeType},
+    pcg::{LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeType},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
         data_structures::HashSet,
@@ -280,6 +280,20 @@ pub(crate) fn display_node_replacements<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt
         DisplayOutput::join(items, ", ".into()),
         "]".into(),
     ])
+}
+
+pub(crate) fn conditionally_label_places<'pcg, 'tcx, Node: LabelPlaceConditionally<'tcx> + 'pcg>(
+    nodes: impl IntoIterator<Item = &'pcg mut Node>,
+    predicate: &LabelNodePredicate<'tcx>,
+    labeller: &impl PlaceLabeller<'tcx>,
+    label_context: LabelNodeContext,
+    ctxt: CompilerCtxt<'_, 'tcx>,
+) -> HashSet<NodeReplacement<'tcx>> {
+    let mut result = HashSet::default();
+    for node in nodes.into_iter() {
+        node.label_place_conditionally(&mut result, predicate, labeller, label_context, ctxt);
+    }
+    result
 }
 
 pub(crate) trait LabelEdgePlaces<'tcx> {

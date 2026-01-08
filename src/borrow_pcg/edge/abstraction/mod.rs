@@ -5,6 +5,7 @@ pub(crate) mod r#type;
 
 use std::marker::PhantomData;
 
+use crate::borrow_pcg::edge_data::conditionally_label_places;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
@@ -130,18 +131,13 @@ impl<'tcx, T: LabelPlace<'tcx> + PcgNodeLike<'tcx>, U: LabelPlace<'tcx> + PcgNod
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        let from = self.input.to_pcg_node(ctxt);
-        if predicate.applies_to(
-            from,
+        conditionally_label_places(
+            vec![&mut self.input],
+            predicate,
+            labeller,
             LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Abstraction),
-        ) {
-            let changed = self.input.label_place(labeller, ctxt);
-            if changed {
-                result.insert(NodeReplacement::new(from, self.input.to_pcg_node(ctxt)));
-            }
-        }
-        result
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
@@ -150,18 +146,13 @@ impl<'tcx, T: LabelPlace<'tcx> + PcgNodeLike<'tcx>, U: LabelPlace<'tcx> + PcgNod
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
-        let from = self.output.to_pcg_node(ctxt);
-        if predicate.applies_to(
-            from,
+        conditionally_label_places(
+            vec![&mut self.input],
+            predicate,
+            labeller,
             LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Abstraction),
-        ) {
-            let changed = self.output.label_place(labeller, ctxt);
-            if changed {
-                result.insert(NodeReplacement::new(from, self.output.to_pcg_node(ctxt)));
-            }
-        }
-        result
+            ctxt,
+        )
     }
 }
 

@@ -230,11 +230,12 @@ fn test_selected_crates() {
 
     let custom_test_cases = vec![
         // <= 15 basic blocks, <= 15 nodes
+        // TODO
         // SelectedCrateTestCase::new(
         //     "memchr",
         //     "2.7.4",
         //     Some("2025-03-13"),
-        //     TestCrateType::function_debug_failure("memmem::FindIter::<'h, 'n>::into_owned", Some(15)),
+        //     TestCrateType::function("memmem::FindIter::<'h, 'n>::into_owned", Some(15)),
         // ),
         SelectedCrateTestCase::new(
             "regex-automata",
@@ -263,15 +264,15 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("method::FnArg::<'a>::to_varargs_mut", Some(19)),
         ),
-        // SelectedCrateTestCase::new(
-        //     "flume",
-        //     "0.11.1",
-        //     Some("2025-03-13"),
-        //     TestCrateType::function(
-        //         "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
-        //         None,
-        //     ),
-        // ),
+        SelectedCrateTestCase::new(
+            "flume",
+            "0.11.1",
+            Some("2025-03-13"),
+            TestCrateType::function(
+                "<select::Selector<'a, T>::recv::RecvSelection<'a, T, F, U> as select::Selection<'a, T>>::init",
+                None,
+            ),
+        ),
         SelectedCrateTestCase::new(
             "regex-automata",
             "0.4.9",
@@ -700,6 +701,7 @@ fn test_selected_crates() {
             TestCrateType::function("glob_with", Some(132)),
         ),
         // 140 basic blocks
+        // TODO
         // SelectedCrateTestCase::new(
         //     "clap_builder",
         //     "4.5.32",

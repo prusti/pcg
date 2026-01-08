@@ -4,7 +4,7 @@ use crate::{
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
-            NodeReplacement,
+            NodeReplacement, conditionally_label_places,
         },
         has_pcs_elem::{
             LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
@@ -118,25 +118,17 @@ impl<'tcx> LabelEdgePlaces<'tcx> for DerefEdge<'tcx> {
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>> {
-        let mut result = HashSet::default();
         let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx>> = vec![
             &mut self.blocked_place,
             &mut self.blocked_lifetime_projection.base,
         ];
-        for blocked_place in blocked_places {
-            if let MaybeLabelledPlace::Current(place) = *blocked_place
-                && predicate.applies_to(
-                    PcgNode::Place(MaybeLabelledPlace::Current(place)),
-                    LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref),
-                )
-            {
-                let from: PcgNode<'tcx> = blocked_place.to_pcg_node(ctxt);
-                *blocked_place =
-                    MaybeLabelledPlace::new(place, Some(labeller.place_label(place, ctxt)));
-                result.insert(NodeReplacement::new(from, blocked_place.to_pcg_node(ctxt)));
-            }
-        }
-        result
+        conditionally_label_places(
+            blocked_places,
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref),
+            ctxt,
+        )
     }
 
     fn label_blocked_by_places(
