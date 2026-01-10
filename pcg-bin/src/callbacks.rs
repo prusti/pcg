@@ -344,13 +344,16 @@ fn emit_borrowcheck_graphs<'a, 'tcx: 'a, 'bc>(
                     bc_facts_file: &mut std::fs::File,
                     ctxt: CompilerCtxt<'_, '_, &PoloniusBorrowChecker<'_, '_>>,
                 ) {
-                    let origin_contains_loan_at = ctxt.borrow_checker().origin_contains_loan_at_map(location);
+                    let origin_contains_loan_at =
+                        ctxt.borrow_checker().origin_contains_loan_at_map(location);
                     writeln!(bc_facts_file, "{location:?} Origin contains loan at:").unwrap();
                     if let Some(origin_contains_loan_at) = origin_contains_loan_at {
                         write_loans(bc, origin_contains_loan_at, bc_facts_file, ctxt);
                     }
                     writeln!(bc_facts_file, "{location:?} Origin live on entry:").unwrap();
-                    if let Some(origin_live_on_entry) = ctxt.borrow_checker().origin_live_on_entry(location) {
+                    if let Some(origin_live_on_entry) =
+                        ctxt.borrow_checker().origin_live_on_entry(location)
+                    {
                         for region in origin_live_on_entry {
                             writeln!(bc_facts_file, "  Region: {region:?}").unwrap();
                         }
