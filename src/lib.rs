@@ -146,9 +146,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 /// given capability, e.g. after a borrow expires, the borrowed place should be
 /// restored to exclusive capability.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct RestoreCapability<'tcx> {
-    place: Place<'tcx>,
+pub struct RestoreCapability<'tcx, P = Place<'tcx>> {
+    place: P,
     capability: CapabilityKind,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
@@ -178,12 +179,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn new(place: Place<'tcx>, capability: CapabilityKind) -> Self {
-        Self { place, capability }
+impl<'tcx, P: Copy> RestoreCapability<'tcx, P> {
+    pub(crate) fn new(place: P, capability: CapabilityKind) -> Self {
+        Self {
+            place,
+            capability,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn place(&self) -> Place<'tcx> {
+    pub fn place(&self) -> P {
         self.place
     }
 
@@ -191,6 +196,8 @@ impl<'tcx> RestoreCapability<'tcx> {
         self.capability
     }
 }
+
+impl<'tcx> RestoreCapability<'tcx> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {

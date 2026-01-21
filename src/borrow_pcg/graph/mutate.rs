@@ -19,7 +19,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind, P: Copy> BorrowsGraph<'tcx, EdgeKind, P> {
     fn mut_edge_conditions(&mut self, mut f: impl FnMut(&mut ValidityConditions) -> bool) -> bool {
         let mut changed = false;
         for (_, conditions) in self.edges.iter_mut() {
@@ -85,17 +85,16 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
             .collect();
         changed
     }
-
     pub(crate) fn label_place<'a>(
         &mut self,
-        place: Place<'tcx>,
+        place: P,
         reason: LabelPlaceReason,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>
     where
         'tcx: 'a,
-        EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash,
+        EdgeKind: LabelEdgePlaces<'tcx, P> + Eq + std::hash::Hash,
     {
         let mut all_replacements = HashSet::default();
         self.mut_edges(|edge| {

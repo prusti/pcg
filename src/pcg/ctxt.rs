@@ -41,8 +41,8 @@ pub trait HasSettings<'a> {
 mod private {
     use crate::{
         pcg::{BodyAnalysis, PcgArena, SymbolicCapabilityCtxt},
-        rustc_interface::middle::mir,
-        utils::{CompilerCtxt, PcgSettings},
+        rustc_interface::{RustBitSet, middle::mir},
+        utils::{CompilerCtxt, HasLocals, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
@@ -57,6 +57,18 @@ mod private {
         #[cfg(feature = "visualization")]
         pub(crate) graphs:
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
+    }
+
+    impl<'a, 'tcx: 'a> HasLocals for AnalysisCtxt<'a, 'tcx> {
+        fn always_live_locals(self) -> RustBitSet<mir::Local> {
+            self.ctxt.always_live_locals()
+        }
+        fn arg_count(self) -> usize {
+            self.ctxt.body().arg_count
+        }
+        fn local_count(self) -> usize {
+            self.ctxt.local_count()
+        }
     }
 }
 

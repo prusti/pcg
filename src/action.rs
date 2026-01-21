@@ -207,8 +207,8 @@ pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
-pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
-    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind>>;
+pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> =
+    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind, P>>;
 
 mod private {
     use serde_derive::Serialize;

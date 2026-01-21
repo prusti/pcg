@@ -64,15 +64,15 @@ pub trait EdgeData<'tcx> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum LabelNodePredicate<'tcx> {
+pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     LifetimeProjectionLabelEquals(Option<LifetimeProjectionLabel>),
     PlaceLabelEquals(Option<SnapshotLocation>),
     ProjectionRegionIdxEquals(RegionIdx),
     Equals(PcgNode<'tcx>),
     /// The place associated with the node is exactly this place.
-    PlaceEquals(Place<'tcx>),
+    PlaceEquals(P),
     /// The place associated with the node is a postfix of this place.
-    PlaceIsPostfixOf(Place<'tcx>),
+    PlaceIsPostfixOf(P),
     NodeType(PcgNodeType),
     And(Vec<Self>),
     Or(Vec<Self>),
@@ -82,14 +82,10 @@ pub enum LabelNodePredicate<'tcx> {
     InTargetNodes,
 }
 
-impl<'tcx> LabelNodePredicate<'tcx> {
-    pub(crate) fn not(self) -> Self {
-        Self::Not(Box::new(self))
-    }
-
+impl<'tcx, P: Copy> LabelNodePredicate<'tcx, P> {
     /// Creates a predicate that matches all future lifetime projections whose base
     /// is a postfix of the given place (and the base is current, not labelled).
-    pub(crate) fn all_future_postfixes(place: Place<'tcx>) -> Self {
+    pub(crate) fn all_future_postfixes(place: P) -> Self {
         Self::And(vec![
             Self::LifetimeProjectionLabelEquals(Some(LifetimeProjectionLabel::Future)),
             Self::PlaceLabelEquals(None),
@@ -97,6 +93,12 @@ impl<'tcx> LabelNodePredicate<'tcx> {
         ])
     }
 
+    pub(crate) fn not(self) -> Self {
+        Self::Not(Box::new(self))
+    }
+}
+
+impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches all non-future lifetime projections with
     /// the given base place and region index.
     pub(crate) fn all_non_future(
@@ -240,7 +242,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct NodeReplacement<'tcx> {
+pub struct NodeReplacement<'tcx> {
     pub(crate) from: PcgNode<'tcx>,
     pub(crate) to: PcgNode<'tcx>,
 }
@@ -295,18 +297,17 @@ pub(crate) fn conditionally_label_places<'pcg, 'tcx, Node: LabelPlaceConditional
     }
     result
 }
-
-pub(crate) trait LabelEdgePlaces<'tcx> {
+pub trait LabelEdgePlaces<'tcx, P = Place<'tcx>> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>;
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         labeller: &impl PlaceLabeller<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<NodeReplacement<'tcx>>;
@@ -317,10 +318,10 @@ use super::has_pcs_elem::LabelLifetimeProjectionResult;
 /// Trait for labeling lifetime projections on edges.
 /// Checks the predicate and then applies the label operation if it matches.
 /// Analogous to `LabelEdgePlaces` for places.
-pub(crate) trait LabelEdgeLifetimeProjections<'tcx> {
+pub trait LabelEdgeLifetimeProjections<'tcx, P = Place<'tcx>> {
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LabelLifetimeProjectionResult;

@@ -48,9 +48,9 @@ use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug)]
-pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> {
     pub(crate) edges: HashMap<EdgeKind, ValidityConditions>,
-    _marker: PhantomData<&'tcx ()>,
+    _marker: PhantomData<&'tcx P>,
 }
 
 impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
@@ -508,14 +508,14 @@ impl<T> Conditioned<T> {
 }
 
 impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn label_lifetime_projections(
+    pub(crate) fn label_lifetime_projections<P>(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool
     where
-        EdgeKind: LabelEdgeLifetimeProjections<'tcx>,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx, P>,
     {
         let mut result = false;
         self.filter_mut_edges(|edge| {

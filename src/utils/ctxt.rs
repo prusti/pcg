@@ -287,6 +287,12 @@ impl ProjectionKind {
     }
 }
 
+pub(crate) trait HasLocals: Copy {
+    fn always_live_locals(self) -> RustBitSet<Local>;
+    fn arg_count(self) -> usize;
+    fn local_count(self) -> usize;
+}
+
 pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
     fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(self) -> &'a Body<'tcx> {

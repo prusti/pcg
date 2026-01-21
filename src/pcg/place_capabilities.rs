@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use itertools::Itertools;
 
@@ -21,19 +21,21 @@ use crate::{
 mod private {
     use crate::{pcg::SymbolicCapability, rustc_interface::middle::mir};
 
-    use crate::utils::{HasCompilerCtxt, Place};
+    use crate::utils::{HasCompilerCtxt, HasPlace, Place, PlaceLike, PrefixRelation};
 
-    pub trait PlaceCapabilitiesReader<'tcx, T = SymbolicCapability> {
-        fn get(&self, place: Place<'tcx>, ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<T>;
+    pub trait PlaceCapabilitiesReader<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>> {
+        fn get(&self, place: P, ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<C>;
 
-        fn iter(&self) -> impl Iterator<Item = (Place<'tcx>, T)> + '_;
+        fn iter(&self) -> impl Iterator<Item = (P, C)> + '_;
 
         fn capabilities_for_strict_postfixes_of<'slf>(
             &'slf self,
-            place: Place<'tcx>,
-        ) -> impl Iterator<Item = (Place<'tcx>, T)> + 'slf
+            place: P,
+        ) -> impl Iterator<Item = (P, C)> + 'slf
         where
             'tcx: 'slf,
+            C: 'slf,
+            P: 'slf + PrefixRelation,
         {
             self.iter().filter_map(move |(p, c)| {
                 if place.is_strict_prefix_of(p) {
@@ -45,38 +47,35 @@ mod private {
         }
     }
 
-    pub trait PlaceCapabilitiesInterface<'tcx, C = SymbolicCapability>:
-        PlaceCapabilitiesReader<'tcx, C>
+    pub trait PlaceCapabilitiesInterface<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>>:
+        PlaceCapabilitiesReader<'tcx, C, P>
+    where
+        P: Copy + Eq + std::hash::Hash,
     {
-        fn insert<Ctxt>(
-            &mut self,
-            place: Place<'tcx>,
-            capability: impl Into<C>,
-            ctxt: Ctxt,
-        ) -> bool;
+        fn insert<Ctxt>(&mut self, place: P, capability: impl Into<C>, ctxt: Ctxt) -> bool;
 
-        fn remove<Ctxt>(&mut self, place: Place<'tcx>, ctxt: Ctxt) -> Option<C>;
+        fn remove<Ctxt>(&mut self, place: P, ctxt: Ctxt) -> Option<C>;
 
-        fn retain(&mut self, predicate: impl Fn(Place<'tcx>, C) -> bool);
+        fn retain(&mut self, predicate: impl Fn(P, C) -> bool);
 
-        fn iter_mut<'slf>(
-            &'slf mut self,
-        ) -> impl Iterator<Item = (&'slf Place<'tcx>, &'slf mut C)> + 'slf
+        fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
         where
             C: 'slf,
+            P: 'slf,
             'tcx: 'slf;
 
         fn owned_capabilities<'a: 'slf, 'slf, Ctxt: HasCompilerCtxt<'a, 'tcx> + 'slf>(
             &'slf mut self,
             local: mir::Local,
             ctxt: Ctxt,
-        ) -> impl Iterator<Item = (Place<'tcx>, &'slf mut C)> + 'slf
+        ) -> impl Iterator<Item = (P, &'slf mut C)> + 'slf
         where
             C: 'static,
             'tcx: 'a,
+            P: 'slf + PlaceLike<Ctxt>,
         {
             self.iter_mut().filter_map(move |(place, capability)| {
-                if place.local == local && place.is_owned(ctxt) {
+                if place.local() == local && place.is_owned(ctxt) {
                     Some((*place, capability))
                 } else {
                     None
@@ -84,59 +83,75 @@ mod private {
             })
         }
 
-        fn remove_all_postfixes(
-            &mut self,
-            place: Place<'tcx>,
-            _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-        ) {
+        fn remove_all_postfixes(&mut self, place: P, _ctxt: impl HasCompilerCtxt<'_, 'tcx>)
+        where
+            P: PrefixRelation,
+        {
             self.retain(|p, _| !place.is_prefix_of(p));
         }
     }
 }
 pub(crate) use private::*;
 
-impl<'tcx, T: Copy> PlaceCapabilitiesReader<'tcx, T> for PlaceCapabilities<'tcx, T> {
-    fn get(&self, place: Place<'tcx>, _ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<T> {
-        self.0.get(&place).copied()
+impl<'tcx, C, P> PlaceCapabilitiesReader<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
+where
+    P: Copy + Eq + std::hash::Hash + HasPlace<'tcx>,
+    C: Copy,
+{
+    fn get(&self, place: P, _ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<C> {
+        self.map.get(&place).copied()
     }
 
-    fn iter(&self) -> impl Iterator<Item = (Place<'tcx>, T)> + '_ {
-        self.0.iter().map(|(k, v)| (*k, *v))
+    fn iter(&self) -> impl Iterator<Item = (P, C)> + '_ {
+        self.map.iter().map(|(k, v)| (*k, *v))
     }
 }
 
-impl<'tcx, C: Copy> PlaceCapabilitiesInterface<'tcx, C> for PlaceCapabilities<'tcx, C> {
-    fn insert<Ctxt>(&mut self, place: Place<'tcx>, capability: impl Into<C>, _ctxt: Ctxt) -> bool {
-        self.0.insert(place, capability.into()).is_some()
+impl<'tcx, C, P> PlaceCapabilitiesInterface<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
+where
+    P: Copy + Eq + std::hash::Hash + HasPlace<'tcx>,
+    C: Copy,
+{
+    fn insert<Ctxt>(&mut self, place: P, capability: impl Into<C>, _ctxt: Ctxt) -> bool {
+        self.map.insert(place, capability.into()).is_some()
     }
 
-    fn remove<Ctxt>(&mut self, place: Place<'tcx>, _ctxt: Ctxt) -> Option<C> {
-        self.0.remove(&place)
+    fn remove<Ctxt>(&mut self, place: P, _ctxt: Ctxt) -> Option<C> {
+        self.map.remove(&place)
     }
 
-    fn retain(&mut self, predicate: impl Fn(Place<'tcx>, C) -> bool) {
-        self.0.retain(|place, cap| predicate(*place, *cap));
+    fn retain(&mut self, predicate: impl Fn(P, C) -> bool) {
+        self.map.retain(|place, cap| predicate(*place, *cap));
     }
 
-    fn iter_mut<'slf>(
-        &'slf mut self,
-    ) -> impl Iterator<Item = (&'slf Place<'tcx>, &'slf mut C)> + 'slf
+    fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
     where
         C: 'slf,
+        P: 'slf,
         'tcx: 'slf,
     {
-        self.0.iter_mut()
+        self.map.iter_mut()
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PlaceCapabilities<'tcx, T = CapabilityKind>(pub(crate) HashMap<Place<'tcx>, T>);
+pub struct PlaceCapabilities<'tcx, C = CapabilityKind, P = Place<'tcx>>
+where
+    P: Eq + std::hash::Hash,
+{
+    pub(crate) map: HashMap<P, C>,
+    pub(crate) _marker: PhantomData<&'tcx ()>,
+}
 
-impl<T> PlaceCapabilities<'_, T> {}
-
-impl<T> Default for PlaceCapabilities<'_, T> {
+impl<C, P> Default for PlaceCapabilities<'_, C, P>
+where
+    P: Eq + std::hash::Hash,
+{
     fn default() -> Self {
-        Self(HashMap::default())
+        Self {
+            map: HashMap::default(),
+            _marker: PhantomData,
+        }
     }
 }
 
@@ -375,23 +390,28 @@ where
         local: mir::Local,
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) {
-        self.0.retain(|place, _| place.local != local);
+        self.map.retain(|place, _| place.place().local != local);
     }
 }
 
-impl<C: CapabilityLike> PlaceCapabilities<'_, C> {
+impl<C: CapabilityLike, P> PlaceCapabilities<'_, C, P>
+where
+    P: Copy + Eq + std::hash::Hash,
+{
     pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, ctxt: Ctxt) -> bool
     where
         C: 'static,
     {
         let mut changed = false;
-        self.0.retain(|place, _| other.0.contains_key(place));
-        for (place, other_capability) in other.iter() {
-            if let Some(self_capability) = self.0.get(&place) {
+        self.map.retain(|place, _| other.map.contains_key(place));
+        for (place, other_capability) in other.map.iter() {
+            let place = *place;
+            let other_capability = *other_capability;
+            if let Some(self_capability) = self.map.get(&place) {
                 if let Some(c) = self_capability.minimum(other_capability, ctxt) {
-                    changed |= self.0.insert(place, c) != Some(c);
+                    changed |= self.map.insert(place, c) != Some(c);
                 } else {
-                    self.0.remove(&place);
+                    self.map.remove(&place);
                     changed = true;
                 }
             }
@@ -425,7 +445,7 @@ impl<'tcx, C: Copy + PartialEq> PlaceCapabilities<'tcx, C> {
     ) where
         'tcx: 'a,
     {
-        self.0.retain(|p, _| !place.is_strict_prefix_of(*p));
+        self.map.retain(|p, _| !place.is_strict_prefix_of(*p));
     }
 }
 

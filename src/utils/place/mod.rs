@@ -124,6 +124,20 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
     }
 }
 
+pub trait PrefixRelation {
+    fn is_prefix_of(self, other: Self) -> bool;
+    fn is_strict_prefix_of(self, other: Self) -> bool;
+}
+
+impl<'tcx> PrefixRelation for Place<'tcx> {
+    fn is_prefix_of(self, other: Self) -> bool {
+        self.is_prefix_of(other)
+    }
+    fn is_strict_prefix_of(self, other: Self) -> bool {
+        self.is_strict_prefix_of(other)
+    }
+}
+
 pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn project_deeper(
         &self,
@@ -132,6 +146,28 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     ) -> std::result::Result<Self, PcgError>;
 
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
+}
+
+pub trait PlaceLike<Ctxt>: Copy + Eq + std::hash::Hash + From<Local> {
+    fn local(self) -> Local;
+    fn is_owned(self, ctxt: Ctxt) -> bool;
+    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<Ctxt> for Place<'tcx> {
+    fn local(self) -> Local {
+        self.0.local
+    }
+    fn is_owned(self, ctxt: Ctxt) -> bool {
+        self.is_owned(ctxt)
+    }
+
+    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool {
+        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
+            return false;
+        };
+        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
+    }
 }
 
 /// A trait for PCG nodes that contain a single place.
@@ -710,20 +746,6 @@ impl<'tcx> Place<'tcx> {
         } else {
             None
         }
-    }
-
-    pub(crate) fn projects_indirection_from<'a>(
-        self,
-        other: Self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
-            return false;
-        };
-        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
     }
 
     pub(crate) fn iter_projections_after<'a>(
