@@ -462,7 +462,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, P> BorrowsGraph<'tcx, EdgeKind, P> {
     pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<ValidityConditions> {
         self.edges.remove(edge)
     }
@@ -507,19 +507,19 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn label_lifetime_projections<P>(
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, P: Copy> BorrowsGraph<'tcx, EdgeKind, P> {
+    pub(crate) fn label_lifetime_projections<P2>(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx, P>,
+        predicate: &LabelNodePredicate<'tcx, P2>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool
     where
-        EdgeKind: LabelEdgeLifetimeProjections<'tcx, P>,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx, P2>,
     {
         let mut result = false;
         self.filter_mut_edges(|edge| {
-            let changed = edge
+            let changed: LabelLifetimeProjectionResult = edge
                 .value
                 .label_lifetime_projections(predicate, label, ctxt);
             result |= changed != LabelLifetimeProjectionResult::Unchanged;
@@ -528,7 +528,7 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
         result
     }
 }
-impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, P> BorrowsGraph<'tcx, EdgeKind, P> {
     pub(crate) fn insert<'a>(
         &mut self,
         edge: BorrowPcgEdge<'tcx, EdgeKind>,

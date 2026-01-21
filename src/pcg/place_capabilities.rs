@@ -21,7 +21,7 @@ use crate::{
 mod private {
     use crate::{pcg::SymbolicCapability, rustc_interface::middle::mir};
 
-    use crate::utils::{HasCompilerCtxt, HasPlace, Place, PlaceLike, PrefixRelation};
+    use crate::utils::{HasCompilerCtxt, Place, PlaceLike, PrefixRelation};
 
     pub trait PlaceCapabilitiesReader<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>> {
         fn get(&self, place: P, ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<C>;
