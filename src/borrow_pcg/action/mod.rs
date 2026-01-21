@@ -65,7 +65,7 @@ impl ApplyActionResult {
     }
 }
 
-impl<'tcx, EdgeKind> BorrowPcgAction<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
     pub(crate) fn add_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,

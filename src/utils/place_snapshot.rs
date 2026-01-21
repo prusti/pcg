@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, marker::PhantomData};
 
 use serde_json::json;
 
@@ -168,13 +168,11 @@ impl std::fmt::Display for SnapshotLocation {
     }
 }
 
-#[deprecated(note = "Use LabelledPlace instead")]
-pub type PlaceSnapshot<'tcx> = LabelledPlace<'tcx>;
-
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LabelledPlace<'tcx> {
-    pub(crate) place: Place<'tcx>,
+pub struct LabelledPlace<'tcx, P = Place<'tcx>> {
+    pub(crate) place: P,
     pub(crate) at: SnapshotLocation,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {

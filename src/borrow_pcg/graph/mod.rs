@@ -53,7 +53,7 @@ pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx
     _marker: PhantomData<&'tcx P>,
 }
 
-impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind, P> Default for BorrowsGraph<'tcx, EdgeKind, P> {
     fn default() -> Self {
         Self {
             edges: HashMap::default(),
@@ -109,9 +109,14 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> Eq for BorrowsGraph<'tcx, Kind> {}
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, P: PartialEq + Eq> Eq
+    for BorrowsGraph<'tcx, Kind, P>
+{
+}
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> PartialEq for BorrowsGraph<'tcx, Kind> {
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, P: PartialEq> PartialEq
+    for BorrowsGraph<'tcx, Kind, P>
+{
     fn eq(&self, other: &Self) -> bool {
         self.edges == other.edges
     }

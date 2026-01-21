@@ -21,7 +21,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        CompilerCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
@@ -29,9 +29,9 @@ use crate::{
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct BorrowFlowEdge<'tcx> {
+pub struct BorrowFlowEdge<'tcx, P = Place<'tcx>> {
     source: LifetimeProjection<'tcx>,
-    pub(crate) short: LocalLifetimeProjection<'tcx>,
+    pub(crate) short: LocalLifetimeProjection<'tcx, P>,
     pub(crate) kind: BorrowFlowEdgeKind<'tcx>,
 }
 
@@ -188,10 +188,10 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> BorrowFlowEdge<'tcx> {
+impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
     pub(crate) fn new<'a>(
         long: LifetimeProjection<'tcx>,
-        short: LocalLifetimeProjection<'tcx>,
+        short: LocalLifetimeProjection<'tcx, P>,
         kind: BorrowFlowEdgeKind<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self

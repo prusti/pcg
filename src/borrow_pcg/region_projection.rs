@@ -928,10 +928,10 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     }
 }
 
-pub(crate) type LocalLifetimeProjectionBase<'tcx> = MaybeLabelledPlace<'tcx>;
+pub(crate) type LocalLifetimeProjectionBase<'tcx, P = Place<'tcx>> = MaybeLabelledPlace<'tcx, P>;
 
-pub(crate) type LocalLifetimeProjection<'tcx> =
-    LifetimeProjection<'tcx, LocalLifetimeProjectionBase<'tcx>>;
+pub(crate) type LocalLifetimeProjection<'tcx, P = Place<'tcx>> =
+    LifetimeProjection<'tcx, LocalLifetimeProjectionBase<'tcx, P>>;
 
 impl<'tcx> LocalLifetimeProjection<'tcx> {
     pub fn to_lifetime_projection(&self) -> LifetimeProjection<'tcx> {

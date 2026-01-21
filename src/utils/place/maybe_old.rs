@@ -36,13 +36,13 @@ use serde_json::json;
 pub type MaybeOldPlace<'tcx> = MaybeLabelledPlace<'tcx>;
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, From, Ord, PartialOrd, TryInto)]
-pub enum MaybeLabelledPlace<'tcx> {
-    Current(Place<'tcx>),
-    Labelled(LabelledPlace<'tcx>),
+pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
+    Current(P),
+    Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, P: HasRegions<'tcx, Ctxt>>
+    HasRegions<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P>
 {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
         self.place().regions(ctxt)
@@ -52,6 +52,15 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt>
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.place().ty(ctxt).ty
+    }
+}
+
+impl<'tcx, P: Copy> MaybeLabelledPlace<'tcx, P> {
+    fn place(self) -> P {
+        match self {
+            MaybeLabelledPlace::Current(place) => place,
+            MaybeLabelledPlace::Labelled(labelled_place) => labelled_place.place,
+        }
     }
 }
 

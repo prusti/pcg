@@ -94,14 +94,15 @@ pub struct BorrowsState<
     'a,
     'tcx,
     EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>,
+    P: PartialEq + Eq = Place<'tcx>,
 > {
-    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
+    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind, P>,
     pub(crate) validity_conditions: &'a ValidityConditions,
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default
-    for BorrowsState<'a, 'tcx, EdgeKind>
+impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash, P: PartialEq + Eq> Default
+    for BorrowsState<'a, 'tcx, EdgeKind, P>
 {
     fn default() -> Self {
         Self {
@@ -166,7 +167,7 @@ pub(crate) trait BorrowsStateLike<
     where
         'tcx: 'a,
         EdgeKind: LabelEdgePlaces<'tcx, P> + Eq + std::hash::Hash,
-        P: PlaceLike<Ctxt>,
+        P: PlaceLike<'tcx, Ctxt>,
     {
         let state = self.as_mut_ref();
         let replacements = state.graph.label_place(place, reason, labeller, ctxt);
@@ -229,7 +230,7 @@ pub(crate) trait BorrowsStateLike<
     ) -> Result<ApplyActionResult, PcgError>
     where
         'tcx: 'a,
-        P: PlaceLike<Ctxt>,
+        P: PlaceLike<'tcx, Ctxt>,
         EdgeKind: EdgeData<'tcx>
             + LabelEdgePlaces<'tcx, P>
             + LabelEdgeLifetimeProjections<'tcx, P>
@@ -327,21 +328,21 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsStateLike<'tcx, EdgeKind>
-    for BorrowsState<'a, 'tcx, EdgeKind>
+impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, P: std::hash::Hash + Copy + Eq + From<Place<'tcx>>>
+    BorrowsStateLike<'tcx, EdgeKind, P> for BorrowsState<'a, 'tcx, EdgeKind, P>
 {
-    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind> {
+    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, P> {
         BorrowStateMutRef {
             graph: &mut self.graph,
             validity_conditions: self.validity_conditions,
         }
     }
 
-    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind> {
+    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, P> {
         &self.graph
     }
 
-    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind> {
+    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind, P> {
         BorrowStateRef {
             graph: &self.graph,
             path_conditions: self.validity_conditions,
@@ -379,25 +380,34 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateMutRef<'_, 'tcx> {
 impl<
     'a,
     'tcx,
+    P: Eq + std::hash::Hash + Copy + From<Place<'tcx>>,
     EdgeKind: Eq
         + std::hash::Hash
-        + LabelEdgePlaces<'tcx>
-        + LabelEdgeLifetimeProjections<'tcx>
+        + LabelEdgePlaces<'tcx, P>
+        + LabelEdgeLifetimeProjections<'tcx, P>
         + EdgeData<'tcx>
         + From<BorrowFlowEdge<'tcx>>,
-> BorrowsState<'a, 'tcx, EdgeKind>
+> BorrowsState<'a, 'tcx, EdgeKind, P>
 {
-    fn introduce_initial_borrows<C: CapabilityLike>(
+    fn introduce_initial_borrows<C: CapabilityLike, Ctxt>(
         &mut self,
         local: mir::Local,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) {
-        let local_decl = &ctxt.ctxt.body().local_decls[local];
-        let arg_place: Place<'tcx> = local.into();
-        for region in extract_regions(local_decl.ty) {
-            let region_projection =
-                LifetimeProjection::new(arg_place.into(), region, None, ctxt.ctxt).unwrap();
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
+        ctxt: Ctxt,
+    ) where
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+        P: PlaceLike<'tcx, Ctxt>,
+        'tcx: 'a,
+    {
+        let arg_place: P = local.into();
+        for region in arg_place.regions(ctxt) {
+            let region_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx, P>>::new(
+                MaybeLabelledPlace::Current(arg_place),
+                region,
+                None,
+                ctxt,
+            )
+            .unwrap();
             assert!(
                 self.apply_action(
                     BorrowPcgAction::add_edge(
@@ -407,13 +417,12 @@ impl<
                                     RemotePlace::new(local).into(),
                                     region,
                                     None,
-                                    ctxt.ctxt,
+                                    ctxt
                                 )
                                 .unwrap_or_else(|| {
                                     panic!(
                                         "Failed to create region for remote place (for {local:?}).
-                                    Local ty: {:?} does not have region {:?}",
-                                        local_decl.ty, region
+                                    It does not have region {region:?}",
                                     );
                                 }),
                                 region_projection,
