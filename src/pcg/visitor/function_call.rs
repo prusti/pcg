@@ -126,7 +126,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "Function call",
-                        self.ctxt,
                     )
                     .into(),
                 )?;
@@ -143,7 +142,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "Function call",
-                        self.ctxt,
                     )
                     .into(),
                 )?;

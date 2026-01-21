@@ -19,7 +19,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind, P: Copy> BorrowsGraph<'tcx, EdgeKind, P> {
+impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
     fn mut_edge_conditions(&mut self, mut f: impl FnMut(&mut ValidityConditions) -> bool) -> bool {
         let mut changed = false;
         for (_, conditions) in self.edges.iter_mut() {
@@ -85,7 +85,7 @@ impl<'tcx, EdgeKind, P: Copy> BorrowsGraph<'tcx, EdgeKind, P> {
             .collect();
         changed
     }
-    pub(crate) fn label_place<'a>(
+    pub(crate) fn label_place<'a, P: Copy>(
         &mut self,
         place: P,
         reason: LabelPlaceReason,

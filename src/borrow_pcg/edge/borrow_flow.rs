@@ -188,17 +188,12 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
-    pub(crate) fn new<'a>(
+impl<'tcx, P: Copy> BorrowFlowEdge<'tcx, P> {
+    pub(crate) fn new(
         long: LifetimeProjection<'tcx>,
         short: LocalLifetimeProjection<'tcx, P>,
         kind: BorrowFlowEdgeKind<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Self
-    where
-        'tcx: 'a,
-    {
-        pcg_validity_assert!(long.to_pcg_node(ctxt.ctxt()) != short.to_pcg_node(ctxt.ctxt()));
+    ) -> Self {
         Self {
             source: long,
             short,
@@ -212,7 +207,7 @@ impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
     }
 
     /// The blocking lifetime projection. Intuitively, it must die before the `long()` projection.
-    pub fn short(&self) -> LocalLifetimeProjection<'tcx> {
+    pub fn short(&self) -> LocalLifetimeProjection<'tcx, P> {
         self.short
     }
 

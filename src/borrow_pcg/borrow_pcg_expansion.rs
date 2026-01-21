@@ -188,7 +188,8 @@ pub(crate) mod internal {
     }
 }
 
-pub type BorrowPcgPlaceExpansion<'tcx> = BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>;
+pub type BorrowPcgPlaceExpansion<'tcx, P = Place<'tcx>> =
+    BorrowPcgExpansionData<MaybeLabelledPlace<'tcx, P>>;
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgPlaceExpansion<'tcx> {
     fn label_lifetime_projections(
@@ -205,13 +206,13 @@ pub(crate) type LifetimeProjectionExpansion<'tcx> =
     BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, TryFrom)]
-pub enum BorrowPcgExpansion<'tcx> {
-    Place(BorrowPcgPlaceExpansion<'tcx>),
+pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
+    Place(BorrowPcgPlaceExpansion<'tcx, P>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
 }
 
 edgedata_enum!(
-    BorrowPcgExpansion<'tcx>,
+    BorrowPcgExpansion<'tcx, P>,
     Place(BorrowPcgPlaceExpansion<'tcx>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
 );

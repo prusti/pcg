@@ -19,9 +19,9 @@ use crate::{
 };
 
 #[derive(From, PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
-pub enum MaybeRemotePlace<'tcx> {
+pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     /// A place that has a name in the program
-    Local(MaybeLabelledPlace<'tcx>),
+    Local(MaybeLabelledPlace<'tcx, P>),
 
     /// A place that cannot be named, e.g. the source of a reference-type input argument
     Remote(RemotePlace),
@@ -125,6 +125,15 @@ impl std::fmt::Display for MaybeRemotePlace<'_> {
     }
 }
 
+impl<'tcx, P: Copy> MaybeRemotePlace<'tcx, P> {
+    pub fn as_current_place(&self) -> Option<P> {
+        match self {
+            MaybeRemotePlace::Local(p) => p.as_current_place(),
+            MaybeRemotePlace::Remote(_) => None,
+        }
+    }
+}
+
 impl<'tcx> MaybeRemotePlace<'tcx> {
     pub fn place_assigned_to_local(local: mir::Local) -> Self {
         MaybeRemotePlace::Remote(RemotePlace { local })
@@ -134,14 +143,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.place(),
             MaybeRemotePlace::Remote(rp) => rp.local.into(),
-        }
-    }
-
-    pub fn as_current_place(&self) -> Option<Place<'tcx>> {
-        if let MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place)) = self {
-            Some(*place)
-        } else {
-            None
         }
     }
 

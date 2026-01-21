@@ -41,7 +41,7 @@ pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, P: HasRegions<'tcx, Ctxt>>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, P: Copy + HasRegions<'tcx, Ctxt>>
     HasRegions<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P>
 {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
@@ -62,16 +62,15 @@ impl<'tcx, P: Copy> MaybeLabelledPlace<'tcx, P> {
             MaybeLabelledPlace::Labelled(labelled_place) => labelled_place.place,
         }
     }
-}
-
-impl<'tcx> MaybeLabelledPlace<'tcx> {
-    pub fn as_current_place(self) -> Option<Place<'tcx>> {
+    pub fn as_current_place(self) -> Option<P> {
         match self {
             MaybeLabelledPlace::Current(place) => Some(place),
             MaybeLabelledPlace::Labelled(_) => None,
         }
     }
+}
 
+impl<'tcx> MaybeLabelledPlace<'tcx> {
     pub fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,

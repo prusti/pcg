@@ -14,7 +14,9 @@ use crate::{
         CapabilityLike, SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
-    utils::{HasBorrowCheckerCtxt, PlaceLike, data_structures::HashSet, display::OutputMode},
+    utils::{
+        HasBorrowCheckerCtxt, HasLocals, PlaceLike, data_structures::HashSet, display::OutputMode,
+    },
 };
 
 use super::{
@@ -29,8 +31,8 @@ use crate::{
         action::{BorrowPcgActionKind, LabelPlaceReason},
         edge::{
             borrow::BorrowEdge,
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
         edge_data::{EdgeData, LabelNodePredicate},
         has_pcs_elem::{PlaceLabeller, SetLabel},
@@ -96,9 +98,9 @@ pub struct BorrowsState<
     EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>,
     P: PartialEq + Eq = Place<'tcx>,
 > {
-    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind, P>,
+    pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
     pub(crate) validity_conditions: &'a ValidityConditions,
-    _marker: PhantomData<&'tcx ()>,
+    _marker: PhantomData<&'tcx P>,
 }
 
 impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash, P: PartialEq + Eq> Default
@@ -119,8 +121,22 @@ pub(crate) struct BorrowStateMutRef<
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
     P: Copy = Place<'tcx>,
 > {
-    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind, P>,
+    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
     pub(crate) validity_conditions: &'pcg ValidityConditions,
+    _marker: PhantomData<&'tcx P>,
+}
+
+impl<'pcg, 'tcx, EdgeKind, P: Copy> BorrowStateMutRef<'pcg, 'tcx, EdgeKind, P> {
+    pub(crate) fn new(
+        graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
+        validity_conditions: &'pcg ValidityConditions,
+    ) -> Self {
+        Self {
+            graph,
+            validity_conditions,
+            _marker: PhantomData,
+        }
+    }
 }
 
 pub(crate) struct BorrowStateRef<
@@ -129,9 +145,23 @@ pub(crate) struct BorrowStateRef<
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
     P: Copy = Place<'tcx>,
 > {
-    pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind, P>,
+    pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
     #[allow(unused)]
     pub(crate) path_conditions: &'pcg ValidityConditions,
+    _marker: PhantomData<&'tcx P>,
+}
+
+impl<'pcg, 'tcx, EdgeKind, P: Copy> BorrowStateRef<'pcg, 'tcx, EdgeKind, P> {
+    pub(crate) fn new(
+        graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
+        validity_conditions: &'pcg ValidityConditions,
+    ) -> Self {
+        Self {
+            graph,
+            path_conditions: validity_conditions,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<'pcg, 'tcx, EdgeKind, P: Copy> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind, P> {
@@ -145,16 +175,16 @@ impl<'pcg, 'tcx, EdgeKind, P: Copy> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind
 pub(crate) trait BorrowsStateLike<
     'tcx,
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
-    P: Copy + Eq + std::hash::Hash + From<Place<'tcx>> + 'tcx = Place<'tcx>,
+    P: Copy + Eq + std::hash::Hash + 'tcx = Place<'tcx>,
 >
 {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, P>;
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind, P>;
 
-    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind, P> {
+    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind> {
         self.as_mut_ref().graph
     }
-    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, P>;
+    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind>;
 
     fn label_place_and_update_related_capabilities<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, C>(
         &mut self,
@@ -206,7 +236,7 @@ pub(crate) trait BorrowsStateLike<
     ) -> bool
     where
         'tcx: 'a,
-        EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash,
+        EdgeKind: EdgeData<'tcx, P> + Eq + std::hash::Hash,
     {
         let state = self.as_mut_ref();
         let removed = state.graph.remove(edge).is_some();
@@ -222,7 +252,7 @@ pub(crate) trait BorrowsStateLike<
         removed
     }
 
-    fn apply_action<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, C: CapabilityLike>(
+    fn apply_action<'a, Ctxt, C: CapabilityLike>(
         &mut self,
         action: BorrowPcgAction<'tcx, EdgeKind, P>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
@@ -310,10 +340,7 @@ pub(crate) trait BorrowsStateLike<
 
 impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx> {
-        BorrowStateMutRef {
-            graph: self.graph,
-            validity_conditions: self.validity_conditions,
-        }
+        BorrowStateMutRef::new(self.graph, self.validity_conditions)
     }
 
     fn graph(&self) -> &BorrowsGraph<'tcx> {
@@ -321,41 +348,29 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx> {
-        BorrowStateRef {
-            graph: self.graph,
-            path_conditions: self.validity_conditions,
-        }
+        BorrowStateRef::new(self.graph, self.validity_conditions)
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, P: std::hash::Hash + Copy + Eq + From<Place<'tcx>>>
+impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, P: std::hash::Hash + Copy + Eq>
     BorrowsStateLike<'tcx, EdgeKind, P> for BorrowsState<'a, 'tcx, EdgeKind, P>
 {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, P> {
-        BorrowStateMutRef {
-            graph: &mut self.graph,
-            validity_conditions: self.validity_conditions,
-        }
+        BorrowStateMutRef::new(&mut self.graph, self.validity_conditions)
     }
 
-    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, P> {
+    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind> {
         &self.graph
     }
 
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind, P> {
-        BorrowStateRef {
-            graph: &self.graph,
-            path_conditions: self.validity_conditions,
-        }
+        BorrowStateRef::new(&self.graph, self.validity_conditions)
     }
 }
 
 impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'pcg, 'tcx> {
     fn from(borrows_state: &'pcg mut BorrowsState<'_, 'tcx>) -> Self {
-        Self {
-            graph: &mut borrows_state.graph,
-            validity_conditions: borrows_state.validity_conditions,
-        }
+        Self::new(&mut borrows_state.graph, borrows_state.validity_conditions)
     }
 }
 
@@ -380,13 +395,13 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowStateMutRef<'_, 'tcx> {
 impl<
     'a,
     'tcx,
-    P: Eq + std::hash::Hash + Copy + From<Place<'tcx>>,
+    P: Eq + std::hash::Hash + Copy,
     EdgeKind: Eq
         + std::hash::Hash
         + LabelEdgePlaces<'tcx, P>
         + LabelEdgeLifetimeProjections<'tcx, P>
         + EdgeData<'tcx>
-        + From<BorrowFlowEdge<'tcx>>,
+        + From<BorrowFlowEdge<'tcx, P>>,
 > BorrowsState<'a, 'tcx, EdgeKind, P>
 {
     fn introduce_initial_borrows<C: CapabilityLike, Ctxt>(
@@ -395,13 +410,20 @@ impl<
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) where
-        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
         P: PlaceLike<'tcx, Ctxt>,
         'tcx: 'a,
     {
         let arg_place: P = local.into();
         for region in arg_place.regions(ctxt) {
-            let region_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx, P>>::new(
+            let source_projection =
+                LifetimeProjection::new(RemotePlace::new(local).into(), region, None, ctxt)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to create region for remote place (for {local:?}).
+                                    It does not have region {region:?}",
+                        );
+                    });
+            let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx, P>>::new(
                 MaybeLabelledPlace::Current(arg_place),
                 region,
                 None,
@@ -413,27 +435,14 @@ impl<
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
-                                LifetimeProjection::new(
-                                    RemotePlace::new(local).into(),
-                                    region,
-                                    None,
-                                    ctxt
-                                )
-                                .unwrap_or_else(|| {
-                                    panic!(
-                                        "Failed to create region for remote place (for {local:?}).
-                                    It does not have region {region:?}",
-                                    );
-                                }),
-                                region_projection,
+                                source_projection,
+                                target_projection,
                                 BorrowFlowEdgeKind::InitialBorrows,
-                                ctxt.ctxt,
                             )
                             .into(),
                             ValidityConditions::new(),
                         ),
                         "Introduce initial borrows",
-                        ctxt.ctxt,
                     ),
                     capabilities,
                     ctxt,
@@ -444,13 +453,18 @@ impl<
         }
     }
 
-    pub(crate) fn start_block(
-        capabilities: &mut PlaceCapabilities<'tcx, SymbolicCapability>,
-        analysis_ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Self {
+    pub(crate) fn start_block<Ctxt>(
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability, P>,
+        ctxt: Ctxt,
+    ) -> Self
+    where
+        P: PlaceLike<'tcx, Ctxt>,
+        Ctxt: HasLocals,
+        'tcx: 'a,
+    {
         let mut borrow = Self::default();
-        for arg in analysis_ctxt.body().args_iter() {
-            borrow.introduce_initial_borrows(arg, capabilities, analysis_ctxt);
+        for arg in ctxt.args_iter() {
+            borrow.introduce_initial_borrows(arg, capabilities, ctxt);
         }
         borrow
     }

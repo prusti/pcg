@@ -48,12 +48,12 @@ use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug)]
-pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> {
+pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
     pub(crate) edges: HashMap<EdgeKind, ValidityConditions>,
-    _marker: PhantomData<&'tcx P>,
+    _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, EdgeKind, P> Default for BorrowsGraph<'tcx, EdgeKind, P> {
+impl<'tcx, EdgeKind> Default for BorrowsGraph<'tcx, EdgeKind> {
     fn default() -> Self {
         Self {
             edges: HashMap::default(),
@@ -109,14 +109,9 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, P: PartialEq + Eq> Eq
-    for BorrowsGraph<'tcx, Kind, P>
-{
-}
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> Eq for BorrowsGraph<'tcx, Kind> {}
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, P: PartialEq> PartialEq
-    for BorrowsGraph<'tcx, Kind, P>
-{
+impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq> PartialEq for BorrowsGraph<'tcx, Kind> {
     fn eq(&self, other: &Self) -> bool {
         self.edges == other.edges
     }
@@ -279,7 +274,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind
                 && borrow.reserve_location() == location
             {
-                return Some(borrow);
+                return Some(&borrow);
             }
         }
         None
@@ -467,7 +462,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash, P> BorrowsGraph<'tcx, EdgeKind, P> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
     pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<ValidityConditions> {
         self.edges.remove(edge)
     }
@@ -512,7 +507,7 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash, P: Copy> BorrowsGraph<'tcx, EdgeKind, P> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
     pub(crate) fn label_lifetime_projections<P2>(
         &mut self,
         predicate: &LabelNodePredicate<'tcx, P2>,
@@ -533,7 +528,7 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, P: Copy> BorrowsGraph<'tcx, EdgeKind,
         result
     }
 }
-impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, P> BorrowsGraph<'tcx, EdgeKind, P> {
+impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
     pub(crate) fn insert<'a>(
         &mut self,
         edge: BorrowPcgEdge<'tcx, EdgeKind>,

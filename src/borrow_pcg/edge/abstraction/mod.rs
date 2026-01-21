@@ -6,6 +6,7 @@ pub(crate) mod r#type;
 use std::marker::PhantomData;
 
 use crate::borrow_pcg::edge_data::conditionally_label_places;
+use crate::utils::Place;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
@@ -65,12 +66,12 @@ impl<FunctionCallData, LoopData> FunctionCallOrLoop<FunctionCallData, LoopData> 
     }
 }
 
-pub type AbstractionEdge<'tcx> =
-    FunctionCallOrLoop<FunctionCallAbstraction<'tcx>, LoopAbstraction<'tcx>>;
+pub type AbstractionEdge<'tcx, P = Place<'tcx>> =
+    FunctionCallOrLoop<FunctionCallAbstraction<'tcx, P>, LoopAbstraction<'tcx>>;
 
 edgedata_enum!(
-    AbstractionEdge<'tcx>,
-    FunctionCall(FunctionCallAbstraction<'tcx>),
+    AbstractionEdge<'tcx, P>,
+    FunctionCall(FunctionCallAbstraction<'tcx, P>),
     Loop(LoopAbstraction<'tcx>),
 );
 

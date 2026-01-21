@@ -2,26 +2,27 @@ use crate::{
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
         has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
-        region_projection::{LifetimeProjectionLabel, RegionIdx},
+        region_projection::{LifetimeProjectionLabel, PcgLifetimeProjectionBase, RegionIdx},
     },
     pcg::{LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeType},
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
 
 /// A trait for data that represents a hyperedge in the Borrow PCG.
-pub trait EdgeData<'tcx> {
+pub trait EdgeData<'tcx, P: Copy + PartialEq = Place<'tcx>> {
     /// For an edge A -> B, this returns the set of nodes A. In general, the capabilities
     /// of nodes B are obtained from these nodes.
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf;
 
@@ -30,24 +31,33 @@ pub trait EdgeData<'tcx> {
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'mir;
 
-    fn blocks_node(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn blocks_node(&self, node: BlockedNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.blocked_nodes(ctxt).any(|n| n == node)
     }
 
-    fn is_blocked_by(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn is_blocked_by(&self, node: LocalNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.blocked_by_nodes(ctxt).any(|n| n == node)
     }
 
     fn nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+    ) -> Box<
+        dyn std::iter::Iterator<
+                Item = PcgNode<
+                    'tcx,
+                    MaybeLabelledPlace<'tcx, P>,
+                    PcgLifetimeProjectionBase<'tcx, P>,
+                >,
+            > + 'slf,
+    >
     where
         'tcx: 'slf,
+        P: 'slf,
     {
         Box::new(
             self.blocked_nodes(ctxt)
@@ -55,7 +65,7 @@ pub trait EdgeData<'tcx> {
         )
     }
 
-    fn references_place(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn references_place(&self, place: P, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.nodes(ctxt).any(|n| match n {
             PcgNode::Place(p) => p.as_current_place() == Some(place),
             PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(place),
@@ -329,14 +339,14 @@ pub trait LabelEdgeLifetimeProjections<'tcx, P = Place<'tcx>> {
 
 macro_rules! edgedata_enum {
     (
-        $enum_name:ident < $tcx:lifetime >,
+        $enum_name:ident < $tcx:lifetime, $p:ident >,
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
-        impl<$tcx> $crate::borrow_pcg::edge_data::EdgeData<$tcx> for $enum_name<$tcx> {
+        impl<$tcx, $p: Copy + PartialEq + Eq + std::hash::Hash> $crate::borrow_pcg::edge_data::EdgeData<$tcx, $p> for $enum_name<$tcx, $p> {
             fn blocked_nodes<'slf, BC: Copy>(
                 &'slf self,
                 ctxt: CompilerCtxt<'_, $tcx, BC>,
-            ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+            ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, $p>> + 'slf>
             where
                 'tcx: 'slf,
             {
@@ -350,7 +360,7 @@ macro_rules! edgedata_enum {
             fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
                 &'slf self,
                 ctxt: CompilerCtxt<'mir, $tcx, BC>,
-            ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf>
+            ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx, $p>> + 'slf>
             where
                 'tcx: 'mir,
             {
@@ -363,7 +373,7 @@ macro_rules! edgedata_enum {
 
             fn blocks_node<'slf>(
                 &self,
-                node: BlockedNode<'tcx>,
+                node: BlockedNode<$tcx, $p>,
                 ctxt: CompilerCtxt<'_, $tcx>,
             ) -> bool {
                 match self {
@@ -375,7 +385,7 @@ macro_rules! edgedata_enum {
 
             fn is_blocked_by<'slf>(
                 &self,
-                node: LocalNode<'tcx>,
+                node: LocalNode<$tcx, $p>,
                 ctxt: CompilerCtxt<'_, $tcx>,
             ) -> bool {
                 match self {
@@ -415,7 +425,7 @@ macro_rules! edgedata_enum {
         }
 
         $(
-            impl<$tcx> From<$inner_type> for $enum_name<$tcx> {
+            impl<$tcx, $p> From<$inner_type> for $enum_name<$tcx, $p> {
                 fn from(inner: $inner_type) -> Self {
                     $enum_name::$variant_name(inner)
                 }

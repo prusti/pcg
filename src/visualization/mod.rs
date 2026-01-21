@@ -25,7 +25,7 @@ pub use mir_graph::SourcePos;
 
 use crate::{
     borrow_pcg::{
-        edge::outlives::BorrowFlowEdgeKind, graph::BorrowsGraph,
+        edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph,
         validity_conditions::ValidityConditions,
     },
     pcg::{

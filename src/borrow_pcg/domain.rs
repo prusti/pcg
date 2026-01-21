@@ -22,8 +22,8 @@ use crate::{
 };
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref, DerefMut)]
-pub struct FunctionCallAbstractionInput<'tcx>(
-    pub(crate) LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
+pub struct FunctionCallAbstractionInput<'tcx, P = Place<'tcx>>(
+    pub(crate) LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>>,
 );
 
 impl<'tcx> LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>> {

@@ -184,7 +184,8 @@ impl Idx for RegionIdx {
 
 /// The most general base of a lifetime projection. Either a [`MaybeRemotePlace`]
 /// or a constant.
-pub type PcgLifetimeProjectionBase<'tcx> = PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>>;
+pub type PcgLifetimeProjectionBase<'tcx, P = Place<'tcx>> =
+    PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>>;
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Display)]
 pub enum PlaceOrConst<'tcx, T> {
@@ -313,13 +314,17 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
             PlaceOrConst::Const(_) => None,
         }
     }
-    pub(crate) fn as_current_place(&self) -> Option<Place<'tcx>> {
+}
+
+impl<'tcx, P: Copy> PcgLifetimeProjectionBase<'tcx, P> {
+    pub(crate) fn as_current_place(&self) -> Option<P> {
         match self {
             PlaceOrConst::Place(p) => p.as_current_place(),
             PlaceOrConst::Const(_) => None,
         }
     }
 }
+
 impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         match self {

@@ -3,7 +3,7 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::outlives::{
+        edge::borrow_flow::{
             AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
         },
         edge_data::LabelNodePredicate,
@@ -223,13 +223,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                                     source_proj.into(),
                                     target_proj.into(),
                                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal },
-                                    self.ctxt,
                                 )
                                 .into(),
                                 self.pcg.borrow.validity_conditions.clone(),
                             ),
                             "assign_post_main",
-                            self.ctxt,
                         )
                         .into(),
                     )?;

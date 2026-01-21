@@ -5,8 +5,8 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
         edge_data::LabelNodePredicate,
         region_projection::LifetimeProjection,
@@ -172,13 +172,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                         labelled_rp.into(),
                                         future_rp.into(),
                                         BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
-                                        self.ctxt,
                                     )
                                     .into(),
                                     self.pcg.borrow.validity_conditions.clone(),
                                 ),
                                 "remove_read_permission_upwards_and_label_rps",
-                                self.ctxt,
                             )
                             .into(),
                         )?;
@@ -200,13 +198,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                             BorrowFlowEdgeKind::Future(
                                                 FutureEdgeKind::FromExpansion,
                                             ),
-                                            self.ctxt,
                                         )
                                         .into(),
                                         self.pcg.borrow.validity_conditions.clone(),
                                     ),
                                     "remove_read_permission_upwards_and_label_rps",
-                                    self.ctxt,
                                 )
                                 .into(),
                             )?;

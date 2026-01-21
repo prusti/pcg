@@ -291,6 +291,9 @@ pub(crate) trait HasLocals: Copy {
     fn always_live_locals(self) -> RustBitSet<Local>;
     fn arg_count(self) -> usize;
     fn local_count(self) -> usize;
+    fn args_iter(self) -> Box<dyn Iterator<Item = Local> + 'static> {
+        Box::new((1..self.arg_count()).map(Local::from_usize))
+    }
 }
 
 pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {

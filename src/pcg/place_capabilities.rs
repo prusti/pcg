@@ -24,7 +24,7 @@ mod private {
     use crate::utils::{HasCompilerCtxt, Place, PlaceLike, PrefixRelation};
 
     pub trait PlaceCapabilitiesReader<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>> {
-        fn get(&self, place: P, ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<C>;
+        fn get<Ctxt>(&self, place: P, ctxt: Ctxt) -> Option<C>;
 
         fn iter(&self) -> impl Iterator<Item = (P, C)> + '_;
 
@@ -72,7 +72,7 @@ mod private {
         where
             C: 'static,
             'tcx: 'a,
-            P: 'slf + PlaceLike<Ctxt>,
+            P: 'slf + PlaceLike<'tcx, Ctxt>,
         {
             self.iter_mut().filter_map(move |(place, capability)| {
                 if place.local() == local && place.is_owned(ctxt) {
@@ -98,7 +98,7 @@ where
     P: Copy + Eq + std::hash::Hash + HasPlace<'tcx>,
     C: Copy,
 {
-    fn get(&self, place: P, _ctxt: impl HasCompilerCtxt<'_, 'tcx>) -> Option<C> {
+    fn get<Ctxt>(&self, place: P, _ctxt: Ctxt) -> Option<C> {
         self.map.get(&place).copied()
     }
 

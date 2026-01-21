@@ -346,10 +346,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         args: JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
-        let borrow = BorrowStateMutRef {
-            graph: self,
-            validity_conditions,
-        };
+        let borrow = BorrowStateMutRef::new(self, validity_conditions);
         let pcg = PcgMutRef::new(args.owned, borrow, args.capabilities);
         let snapshot_location = SnapshotLocation::Loop(args.self_block);
         let mut obtainer = PlaceObtainer::new(

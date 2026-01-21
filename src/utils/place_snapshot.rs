@@ -208,10 +208,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         elem: mir::PlaceElem<'tcx>,
         ctxt: Ctxt,
     ) -> std::result::Result<Self, crate::error::PcgError> {
-        Ok(LabelledPlace {
-            place: self.place.project_deeper(elem, ctxt)?,
-            at: self.at,
-        })
+        Ok(LabelledPlace::new(
+            self.place.project_deeper(elem, ctxt)?,
+            self.at,
+        ))
     }
 
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
@@ -272,6 +272,7 @@ impl<'tcx> LabelledPlace<'tcx> {
         LabelledPlace {
             place,
             at: at.into(),
+            _marker: PhantomData,
         }
     }
 
@@ -290,9 +291,6 @@ impl<'tcx> LabelledPlace<'tcx> {
     where
         'tcx: 'a,
     {
-        LabelledPlace {
-            place: self.place.with_inherent_region(ctxt),
-            at: self.at,
-        }
+        LabelledPlace::new(self.place.with_inherent_region(ctxt), self.at)
     }
 }

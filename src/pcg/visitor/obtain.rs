@@ -5,9 +5,9 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
+            borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-            outlives::private::FutureEdgeKind,
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,

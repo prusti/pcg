@@ -10,8 +10,8 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
+            borrow_flow::private::FutureEdgeKind,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-            outlives::private::FutureEdgeKind,
         },
         edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
         has_pcs_elem::PlaceLabeller,
@@ -19,7 +19,7 @@ use crate::{
     },
     pcg::{CapabilityKind, PcgNodeType},
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugRepr, HasBorrowCheckerCtxt, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -69,7 +69,6 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
     pub(crate) fn add_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,
-        _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::AddEdge { edge },

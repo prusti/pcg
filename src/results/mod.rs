@@ -162,7 +162,6 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                                     abstraction.conditions,
                                 ),
                                 "terminator",
-                                ctxt,
                             ),
                             ctxt,
                         );

@@ -3,7 +3,7 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
         region_projection::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
@@ -196,13 +196,11 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                                 source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
                                 kind(target_proj.region(self.ctxt.ctxt())),
-                                self.ctxt,
                             )
                             .into(),
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "connect_outliving_projections",
-                        self.ctxt,
                     )
                     .into(),
                 )?;

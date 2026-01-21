@@ -8,8 +8,8 @@ use crate::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
             kind::BorrowPcgEdgeType,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
@@ -321,14 +321,12 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                             field_idx: idx,
                             target_rp_index: 0, // TODO
                         },
-                        ctxt,
                     )
                     .into(),
                     self.borrows_state().validity_conditions.clone(),
                 );
                 self.apply_action(
-                    BorrowPcgAction::add_edge(edge, "create_aggregate_lifetime_projections", ctxt)
-                        .into(),
+                    BorrowPcgAction::add_edge(edge, "create_aggregate_lifetime_projections").into(),
                 )?;
             }
         }

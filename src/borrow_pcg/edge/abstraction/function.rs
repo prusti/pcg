@@ -28,9 +28,10 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::display::{DisplayOutput, OutputMode},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
+        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };
@@ -159,9 +160,9 @@ impl<'tcx> FunctionCallData<'tcx> {
     }
 }
 
-pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
+pub(crate) type FunctionCallAbstractionEdge<'tcx, P = Place<'tcx>> = AbstractionBlockEdge<
     'tcx,
-    FunctionCallAbstractionInput<'tcx>,
+    FunctionCallAbstractionInput<'tcx, P>,
     FunctionCallAbstractionOutput<'tcx>,
 >;
 
@@ -236,9 +237,9 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     }
 }
 
-pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
+pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdgeMetadata<'tcx>,
-    FunctionCallAbstractionEdge<'tcx>,
+    FunctionCallAbstractionEdge<'tcx, P>,
 >;
 
 impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for FunctionCallAbstraction<'tcx> {

@@ -2,13 +2,16 @@
 use std::marker::PhantomData;
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
+    borrow_pcg::{
+        borrow_pcg_expansion::BorrowPcgExpansion, region_projection::PcgLifetimeProjectionBase,
+    },
     rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
 };
+use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
 use super::{
-    edge::outlives::BorrowFlowEdge,
+    edge::borrow_flow::BorrowFlowEdge,
     edge_data::EdgeData,
     graph::Conditioned,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
@@ -78,7 +81,7 @@ impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> 
     }
 }
 
-pub type BorrowPcgEdge<'tcx, Kind = BorrowPcgEdgeKind<'tcx>> = Conditioned<Kind>;
+pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> = Conditioned<EdgeKind>;
 
 impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(
@@ -116,8 +119,11 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
 }
 
 /// Either a [`BorrowPcgEdge`] or a [`BorrowPcgEdgeRef`]
-pub trait BorrowPcgEdgeLike<'tcx, Kind = BorrowPcgEdgeKind<'tcx>>:
-    EdgeData<'tcx> + Clone + std::fmt::Debug
+pub trait BorrowPcgEdgeLike<
+    'tcx,
+    P: Copy + PartialEq + Eq + std::hash::Hash = Place<'tcx>,
+    Kind = BorrowPcgEdgeKind<'tcx, P>,
+>: EdgeData<'tcx, P> + Clone + std::fmt::Debug
 {
     fn kind(&self) -> &Kind;
     fn conditions(&self) -> &ValidityConditions;
@@ -126,7 +132,7 @@ pub trait BorrowPcgEdgeLike<'tcx, Kind = BorrowPcgEdgeKind<'tcx>>:
     fn blocked_places<'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> impl Iterator<Item = MaybeLabelledPlace<'tcx>> + 'slf
+    ) -> impl Iterator<Item = MaybeLabelledPlace<'tcx, P>> + 'slf
     where
         'tcx: 'slf,
     {
@@ -189,8 +195,8 @@ impl<'tcx> LocalNode<'tcx> {
 /// referring to a (potentially labelled) place, i.e. any node with an associated
 /// place.
 /// This excludes nodes that refer to remote places or constants.
-pub type LocalNode<'tcx> =
-    PcgNode<'tcx, MaybeLabelledPlace<'tcx>, LocalLifetimeProjectionBase<'tcx>>;
+pub type LocalNode<'tcx, P = Place<'tcx>> =
+    PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, LocalLifetimeProjectionBase<'tcx>>;
 
 impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
     fn is_place(&self) -> bool {
@@ -303,7 +309,8 @@ impl<'tcx> LocalNode<'tcx> {
 /// A node that could potentially be blocked in the PCG. In principle any kind
 /// of PCG node could be blocked; however this type alias should be preferred to
 /// [`PcgNode`] in contexts where the blocking is relevant.
-pub type BlockedNode<'tcx> = PcgNode<'tcx>;
+pub type BlockedNode<'tcx, P = Place<'tcx>> =
+    PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
 
 impl<'tcx> PcgNode<'tcx> {
     pub(crate) fn as_blocking_node<'a>(&self) -> Option<BlockingNode<'tcx>>
@@ -331,11 +338,13 @@ impl<'tcx> PcgNode<'tcx> {
             _ => None,
         }
     }
+}
 
-    pub(crate) fn as_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
+impl<'tcx, T: Copy, U> PcgNode<'tcx, T, U> {
+    pub(crate) fn as_place(&self) -> Option<T> {
         match self {
-            BlockedNode::Place(maybe_remote_place) => Some(*maybe_remote_place),
-            BlockedNode::LifetimeProjection(_) => None,
+            PcgNode::Place(p) => Some(*p),
+            PcgNode::LifetimeProjection(_) => None,
         }
     }
 }
@@ -352,8 +361,10 @@ impl<'tcx> From<Place<'tcx>> for BlockedNode<'tcx> {
     }
 }
 
-impl<'tcx> From<LocalNode<'tcx>> for BlockedNode<'tcx> {
-    fn from(blocking_node: LocalNode<'tcx>) -> Self {
+impl<'tcx, P> From<LocalNode<'tcx, P>>
+    for PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>
+{
+    fn from(blocking_node: LocalNode<'tcx, P>) -> Self {
         match blocking_node {
             LocalNode::Place(maybe_old_place) => BlockedNode::Place(maybe_old_place),
             LocalNode::LifetimeProjection(rp) => BlockedNode::LifetimeProjection(rp.into()),
@@ -378,11 +389,11 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
     }
 }
 
-impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> EdgeData<'tcx> for T {
+impl<'tcx, P: Eq + std::hash::Hash + Copy, T: BorrowPcgEdgeLike<'tcx, P>> EdgeData<'tcx, P> for T {
     fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'mir,
     {
@@ -392,28 +403,36 @@ impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> EdgeData<'tcx> for T {
     fn blocked_nodes<'slf, BC: Copy>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+    ) -> Box<
+        dyn std::iter::Iterator<
+                Item = PcgNode<
+                    'tcx,
+                    MaybeLabelledPlace<'tcx, P>,
+                    PcgLifetimeProjectionBase<'tcx, P>,
+                >,
+            > + 'slf,
+    >
     where
         'tcx: 'slf,
     {
         self.kind().blocked_nodes(ctxt)
     }
 
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.kind().blocks_node(node, ctxt)
     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.kind().is_blocked_by(node, ctxt)
     }
 }
 
 edgedata_enum!(
-    BorrowPcgEdgeKind<'tcx>,
+    BorrowPcgEdgeKind<'tcx, P>,
     Borrow(BorrowEdge<'tcx>),
-    BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
+    BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
     Abstraction(AbstractionEdge<'tcx>),
-    BorrowFlow(BorrowFlowEdge<'tcx>),
+    BorrowFlow(BorrowFlowEdge<'tcx, P>),
     Deref(DerefEdge<'tcx>),
     Coupled(PcgCoupledEdgeKind<'tcx>),
 );
