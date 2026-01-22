@@ -542,7 +542,6 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
     where
         'tcx: 'a,
         VC: ValidityConditionOps<Ctxt>,
-        EdgeKind: EdgeData<'tcx, Ctxt>,
     {
         if let Some(conditions) = self.edges.get_mut(&edge.value) {
             conditions.join(&edge.conditions, ctxt)

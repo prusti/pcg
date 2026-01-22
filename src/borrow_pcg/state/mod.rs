@@ -98,9 +98,10 @@ pub struct BorrowsState<
     'a,
     'tcx,
     EdgeKind: PartialEq + Eq + std::hash::Hash = BorrowPcgEdgeKind<'tcx>,
+    VC = ValidityConditions,
 > {
     pub(crate) graph: BorrowsGraph<'tcx, EdgeKind>,
-    pub(crate) validity_conditions: &'a ValidityConditions,
+    pub(crate) validity_conditions: &'a VC,
 }
 
 impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default
@@ -114,15 +115,20 @@ impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash> Default
     }
 }
 
-pub(crate) struct BorrowStateMutRef<'pcg, 'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
+pub(crate) struct BorrowStateMutRef<
+    'pcg,
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    VC = ValidityConditions,
+> {
     pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
-    pub(crate) validity_conditions: &'pcg ValidityConditions,
+    pub(crate) validity_conditions: &'pcg VC,
 }
 
-impl<'pcg, 'tcx, EdgeKind> BorrowStateMutRef<'pcg, 'tcx, EdgeKind> {
+impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateMutRef<'pcg, 'tcx, EdgeKind, VC> {
     pub(crate) fn new(
         graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
-        validity_conditions: &'pcg ValidityConditions,
+        validity_conditions: &'pcg VC,
     ) -> Self {
         Self {
             graph,
@@ -164,11 +170,12 @@ impl<'pcg, 'tcx, EdgeKind, P: Copy> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKin
 
 impl<'pcg, 'tcx, EdgeKind, P: Copy> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind, P> {}
 
-pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
-    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind>;
+pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions>
+{
+    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, VC>;
     fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind>;
 
-    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind> {
+    fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind, VC> {
         self.as_mut_ref().graph
     }
     fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind>;
@@ -215,7 +222,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
             .label_lifetime_projections(predicate, label, ctxt)
     }
 
-    fn remove<'a, P: Copy + Eq + std::hash::Hash, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, C>(
+    fn remove<'a, P: Copy + Eq + std::hash::Hash, Ctxt: Copy, C>(
         &mut self,
         edge: &EdgeKind,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
@@ -338,10 +345,10 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, P: std::hash::Hash + Copy + Eq>
-    BorrowsStateLike<'tcx, EdgeKind, P> for BorrowsState<'a, 'tcx, EdgeKind, P>
+impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsStateLike<'tcx, EdgeKind>
+    for BorrowsState<'a, 'tcx, EdgeKind>
 {
-    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, P> {
+    fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind> {
         BorrowStateMutRef::new(&mut self.graph, self.validity_conditions)
     }
 
@@ -349,7 +356,7 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, P: std::hash::Hash + Copy + Eq>
         &self.graph
     }
 
-    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind, P> {
+    fn as_ref(&self) -> BorrowStateRef<'_, 'tcx, EdgeKind> {
         BorrowStateRef::new(&self.graph, self.validity_conditions)
     }
 }
@@ -388,6 +395,7 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> 
         P: PlaceLike<'tcx, Ctxt>,
         EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+            + EdgeData<'tcx, Ctxt, P>
             + From<BorrowFlowEdge<'tcx, P>>,
         RemotePlace: HasRegions<'tcx, Ctxt>,
         'tcx: 'a,
@@ -442,6 +450,7 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> 
         P: PlaceLike<'tcx, Ctxt>,
         EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+            + EdgeData<'tcx, Ctxt, P>
             + From<BorrowFlowEdge<'tcx, P>>,
         'tcx: 'a,
     {

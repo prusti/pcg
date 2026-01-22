@@ -322,7 +322,7 @@ use private::LabelLifetimeProjectionAction;
 #[strum_discriminants(derive(Serialize))]
 #[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
 pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> {
-    LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx>),
+    LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
     Restore(RestoreCapability<'tcx, P>),
     LabelPlace(LabelPlaceAction<'tcx, P>),
