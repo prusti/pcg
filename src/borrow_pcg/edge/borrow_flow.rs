@@ -169,7 +169,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx, Ctxt, P: PartialEq + Copy> EdgeData<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+impl<'tcx, Ctxt: Copy, P: PartialEq + Copy> EdgeData<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
 where
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>: PcgNodeLike<'tcx, Ctxt, P>,
     LocalLifetimeProjection<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,

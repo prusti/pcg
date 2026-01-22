@@ -31,7 +31,7 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
         domain_data::DomainDataStates, validity::HasValidityCheck,
     },
 };
@@ -347,8 +347,8 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
-    for PcgLocation<'a, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
+    HasValidityCheck<Ctxt> for PcgLocation<'a, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // TODO

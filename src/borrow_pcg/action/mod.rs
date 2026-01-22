@@ -16,6 +16,7 @@ use crate::{
         edge_data::{LabelEdgePlaces, LabelNodePredicate, NodeReplacement},
         has_pcs_elem::PlaceLabeller,
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
+        validity_conditions::ValidityConditions,
     },
     pcg::{CapabilityKind, PcgNodeType},
     utils::{
@@ -321,7 +322,12 @@ use private::LabelLifetimeProjectionAction;
 #[derive(Clone, Debug, PartialEq, Eq, strum_macros::EnumDiscriminants)]
 #[strum_discriminants(derive(Serialize))]
 #[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
-pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> {
+pub enum BorrowPcgActionKind<
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    P = Place<'tcx>,
+    VC = ValidityConditions,
+> {
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
     Restore(RestoreCapability<'tcx, P>),
@@ -333,9 +339,9 @@ pub enum BorrowPcgActionKind<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place
     /// symbolic-execution based Prusti purification already performs some
     /// filtering on edges based on validity conditions and might want to ignore
     /// removal actions for edges that it already ignored.
-    RemoveEdge(BorrowPcgEdge<'tcx, EdgeKind>),
+    RemoveEdge(BorrowPcgEdge<'tcx, EdgeKind, VC>),
     AddEdge {
-        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
 }
 

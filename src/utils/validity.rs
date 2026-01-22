@@ -21,8 +21,10 @@ pub trait HasValidityCheck<Ctxt: DebugCtxt + Copy> {
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for mir::Local {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for mir::Local
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if ctxt.body().local_decls().len() <= self.as_usize() {
             return Err(format!(
                 "Local {:?} is out of bounds: provided MIR at {:?} only has {} local declarations",

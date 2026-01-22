@@ -1,7 +1,7 @@
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
+        borrow_pcg_edge::{BlockedNode, LocalNode},
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
@@ -149,10 +149,10 @@ impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for DerefEdge<'tc
 }
 
 impl<'tcx, Ctxt: Copy> EdgeData<'tcx, Ctxt> for DerefEdge<'tcx> {
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = crate::pcg::PcgNode<'tcx>> + 'slf>
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {

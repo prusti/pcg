@@ -8,8 +8,10 @@ use crate::{
         borrow_pcg_edge::BlockingNode,
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{HasRegions, PcgLifetimeProjectionBase},
-        validity_conditions::{EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult},
+        region_projection::{HasRegions, OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        validity_conditions::{
+            EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult, ValidityConditionOps,
+        },
     },
     pcg::{
         CapabilityLike, SymbolicCapability,
@@ -121,13 +123,13 @@ pub(crate) struct BorrowStateMutRef<
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
     VC = ValidityConditions,
 > {
-    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
+    pub(crate) graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind, VC>,
     pub(crate) validity_conditions: &'pcg VC,
 }
 
 impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateMutRef<'pcg, 'tcx, EdgeKind, VC> {
     pub(crate) fn new(
-        graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind>,
+        graph: &'pcg mut BorrowsGraph<'tcx, EdgeKind, VC>,
         validity_conditions: &'pcg VC,
     ) -> Self {
         Self {
@@ -180,7 +182,12 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     }
     fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind>;
 
-    fn label_place_and_update_related_capabilities<'a, P, Ctxt: Copy, C>(
+    fn label_place_and_update_related_capabilities<
+        'a,
+        P,
+        Ctxt: Copy + OverrideRegionDebugString,
+        C,
+    >(
         &mut self,
         place: P,
         reason: LabelPlaceReason,
@@ -246,14 +253,20 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         removed
     }
 
-    fn apply_action<'a, P: PlaceLike<'tcx, Ctxt>, Ctxt: DebugCtxt + Copy, C: CapabilityLike>(
+    fn apply_action<
+        'a,
+        P: PlaceLike<'tcx, Ctxt>,
+        Ctxt: DebugCtxt + Copy + OverrideRegionDebugString,
+        C: CapabilityLike,
+    >(
         &mut self,
-        action: BorrowPcgAction<'tcx, EdgeKind, P>,
+        action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> Result<ApplyActionResult, PcgError>
     where
         'tcx: 'a,
+        VC: ValidityConditionOps<Ctxt>,
         EdgeKind: EdgeData<'tcx, Ctxt, P>
             + LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
@@ -386,7 +399,11 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
 }
 
 impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> {
-    fn introduce_initial_borrows<P, C: CapabilityLike, Ctxt: Copy + DebugCtxt>(
+    fn introduce_initial_borrows<
+        P,
+        C: CapabilityLike,
+        Ctxt: Copy + DebugCtxt + OverrideRegionDebugString,
+    >(
         &mut self,
         local: mir::Local,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
@@ -442,7 +459,11 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsState<'a, 'tcx, EdgeKind> 
         }
     }
 
-    pub(crate) fn start_block<P, C: CapabilityLike, Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx>>(
+    pub(crate) fn start_block<
+        P,
+        C: CapabilityLike,
+        Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx> + OverrideRegionDebugString,
+    >(
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> Self

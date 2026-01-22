@@ -145,8 +145,10 @@ where
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt> for BorrowEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for BorrowEdge<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)?;
         Ok(())

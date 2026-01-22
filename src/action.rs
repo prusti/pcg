@@ -12,6 +12,7 @@ use crate::{
         },
         edge::kind::BorrowPcgEdgeKind,
         unblock_graph::BorrowPcgUnblockAction,
+        validity_conditions::ValidityConditions,
     },
     owned_pcg::{RegainedCapability, RepackOp},
     pcg::capabilities::CapabilityKind,
@@ -204,8 +205,12 @@ pub type OwnedPcgAction<'tcx> = ActionKindWithDebugInfo<RepackOp<'tcx>>;
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
-pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> =
-    ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P>>;
+pub type BorrowPcgAction<
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    P = Place<'tcx>,
+    VC = ValidityConditions,
+> = ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P, VC>>;
 
 mod private {
     use serde_derive::Serialize;

@@ -21,7 +21,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
         SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -112,8 +112,10 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
     }
 }
 
-impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for MaybeLabelledPlace<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         match self {
             MaybeLabelledPlace::Current(place) => place.check_validity(ctxt),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.check_validity(ctxt),
@@ -227,8 +229,8 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'a, 'tcx: 'a, Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for MaybeLabelledPlace<'tcx, P>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {

@@ -16,7 +16,7 @@ use crate::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Local,
-    utils::{HasCompilerCtxt, data_structures::HashSet},
+    utils::{DebugCtxt, HasCompilerCtxt, data_structures::HashSet},
 };
 use itertools::Itertools;
 
@@ -251,7 +251,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         places
     }
 
-    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
+    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &mut self,
         to: Place<'tcx>,
         _for_cap: Option<CapabilityKind>,

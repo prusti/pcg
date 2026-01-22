@@ -16,7 +16,7 @@ use crate::{
         ty,
     },
     utils::{
-        HasCompilerCtxt, PlaceProjectable,
+        DebugCtxt, HasCompilerCtxt, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
     },
@@ -237,8 +237,10 @@ impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LabelledPlace<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for LabelledPlace<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.place.check_validity(ctxt)
     }
 }

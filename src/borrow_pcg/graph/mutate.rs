@@ -37,10 +37,12 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
     ) -> bool {
         self.mut_edge_conditions(|conditions| conditions.insert(pc, ctxt.body()))
     }
+}
 
+impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn mut_edges(
         &mut self,
-        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> bool,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind, VC>) -> bool,
     ) -> bool
     where
         EdgeKind: Eq + std::hash::Hash + PartialEq,
@@ -62,7 +64,7 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
 
     pub(crate) fn filter_mut_edges(
         &mut self,
-        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> FilterMutResult,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind, VC>) -> FilterMutResult,
     ) -> bool
     where
         EdgeKind: Eq + std::hash::Hash + PartialEq,

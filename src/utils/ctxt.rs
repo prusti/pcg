@@ -46,7 +46,10 @@ impl<'a, 'tcx, BC> LocalTys<'tcx> for CompilerCtxt<'a, 'tcx, BC> {
     }
 }
 
-impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T> {
+impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T>
+where
+    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+{
     fn func_name(&self) -> String {
         self.tcx
             .def_path_str(self.mir.source.def_id().expect_local())
@@ -314,7 +317,7 @@ impl ProjectionKind {
     }
 }
 
-pub(crate) trait DebugCtxt {
+pub(crate) trait DebugCtxt: OverrideRegionDebugString {
     fn func_name(&self) -> String;
     fn num_basic_blocks(&self) -> usize;
 }
@@ -332,7 +335,7 @@ pub(crate) trait HasLocals: Copy {
     }
 }
 
-pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + DebugCtxt + Copy {
+pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
     fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
@@ -345,7 +348,7 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
-    HasCompilerCtxt<'a, 'tcx> + OverrideRegionDebugString
+    HasCompilerCtxt<'a, 'tcx> + DebugCtxt
 {
     fn bc(&self) -> BC;
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;
@@ -606,10 +609,11 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for Place<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
-        self.local.check_validity(ctxt)?;
-        Ok(())
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for Place<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
+        self.local.check_validity(ctxt)
     }
 }
 

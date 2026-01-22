@@ -27,7 +27,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, HasPlace, data_structures::HashSet,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasPlace, data_structures::HashSet,
         display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
@@ -453,7 +453,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError>
+    where
+        Ctxt: DebugCtxt,
+    {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
@@ -543,7 +546,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     }
 }
 
-impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> ActionApplier<'tcx>
+impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
     fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {

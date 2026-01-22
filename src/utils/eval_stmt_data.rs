@@ -1,6 +1,6 @@
 use crate::{
     pcg::EvalStmtPhase,
-    utils::{DebugRepr, HasCompilerCtxt, validity::HasValidityCheck},
+    utils::{DebugCtxt, DebugRepr, HasCompilerCtxt, validity::HasValidityCheck},
 };
 use serde_derive::Serialize;
 
@@ -48,7 +48,7 @@ impl<T: Default> Default for EvalStmtData<T> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<Ctxt>>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt, T: HasValidityCheck<Ctxt>>
     HasValidityCheck<Ctxt> for EvalStmtData<T>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {

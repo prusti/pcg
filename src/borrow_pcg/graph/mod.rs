@@ -342,7 +342,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'tcx: 'a,
     {
         self.edges()
-            .filter(move |edge| self.is_leaf_edge(edge, ctxt, frozen_graph))
+            .filter(move |edge| self.is_leaf_edge(edge, ctxt.bc_ctxt(), frozen_graph))
             .collect()
     }
 
@@ -416,7 +416,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// Returns true iff `edge` connects two nodes within an abstraction edge
     fn is_encapsulated_by_abstraction<
         'a,
-        Edge: BorrowPcgEdgeLike<'tcx>,
+        Edge: EdgeData<'tcx, Ctxt>,
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
     >(
         &self,
@@ -425,7 +425,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
     ) -> bool
     where
         'tcx: 'a,
-        Edge: EdgeData<'tcx, Ctxt>,
     {
         'outer: for abstraction in self.abstraction_edge_kinds() {
             for blocked in edge.blocked_nodes(ctxt) {
@@ -502,8 +501,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt>> Di
     }
 }
 
-impl<T> Conditioned<T> {
-    pub(crate) fn new(value: T, conditions: ValidityConditions) -> Self {
+impl<T, VC> Conditioned<T, VC> {
+    pub(crate) fn new(value: T, conditions: VC) -> Self {
         Self { conditions, value }
     }
 
@@ -512,7 +511,7 @@ impl<T> Conditioned<T> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn label_lifetime_projections<P, Ctxt: Copy>(
         &mut self,
         predicate: &LabelNodePredicate<'tcx, P>,

@@ -18,11 +18,12 @@ use crate::{
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
     utils::{
-        DataflowCtxt, Place, PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
-impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
+impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
     fn weaken_place_from_read_upwards(

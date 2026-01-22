@@ -14,7 +14,7 @@ use crate::{
     pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -200,7 +200,11 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn perform_collapse_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, C: CapabilityLike>(
+    pub(crate) fn perform_collapse_action<
+        'a,
+        Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+        C: CapabilityLike,
+    >(
         &mut self,
         collapse: RepackCollapse<'tcx>,
         place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C>,

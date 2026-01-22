@@ -401,12 +401,12 @@ impl<
 impl<
     'tcx,
     Ctxt: Copy,
-    P: Eq + Copy + std::fmt::Debug + std::hash::Hash,
-    Node: PartialEq + Copy + Into<LocalNode<'tcx, P>>,
+    P: Eq + Copy + std::fmt::Debug + std::hash::Hash + 'tcx,
+    Node: PartialEq + Copy + Into<LocalNode<'tcx, P>> + PcgNodeLike<'tcx, Ctxt, P>,
 > EdgeData<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
 {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
-        self.base.into().to_pcg_node(ctxt) == node.into().to_pcg_node(ctxt)
+        self.base.to_pcg_node(ctxt) == node
     }
 
     fn blocked_nodes<'slf>(
@@ -416,7 +416,7 @@ impl<
     where
         'tcx: 'slf,
     {
-        Box::new(std::iter::once(self.base.into().to_pcg_node(ctxt)))
+        Box::new(std::iter::once(self.base.to_pcg_node(ctxt)))
     }
 
     fn blocked_by_nodes<'slf>(
