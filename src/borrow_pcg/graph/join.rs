@@ -18,10 +18,12 @@ use crate::{
         },
     },
     pcg_validity_assert,
-    rustc_interface::middle::{mir, mir::BasicBlock},
+    rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, logging, logging::LogPredicate,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
+        logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
     validity_checks_enabled,
@@ -153,7 +155,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             if let BorrowPcgEdgeKind::Abstraction(_) = edge.kind() {
                 continue;
             }
-            if self.is_encapsulated_by_abstraction(&edge, ctxt) {
+            if self.is_encapsulated_by_abstraction(&edge.value, ctxt) {
                 self.remove(edge.kind());
             }
         }

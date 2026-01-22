@@ -17,7 +17,9 @@ use crate::{
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
-    utils::{DataflowCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{
+        DataflowCtxt, Place, PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+    },
 };
 
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>

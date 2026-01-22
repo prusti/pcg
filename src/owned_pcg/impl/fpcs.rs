@@ -33,7 +33,12 @@ impl Debug for OwnedPcg<'_> {
 }
 
 impl<'tcx> OwnedPcg<'tcx> {
-    pub(crate) fn start_block<'a, Ctxt: HasLocals, C: From<CapabilityKind>, P: PlaceLike<Ctxt>>(
+    pub(crate) fn start_block<
+        'a,
+        Ctxt: HasLocals,
+        C: From<CapabilityKind>,
+        P: PlaceLike<'tcx, Ctxt>,
+    >(
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> Self {

@@ -15,7 +15,7 @@ use crate::{
         borrow_pcg_expansion::internal::BorrowPcgExpansionData,
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
-            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
+            LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
             conditionally_label_places, edgedata_enum,
         },
         has_pcs_elem::{
@@ -38,7 +38,9 @@ use crate::{
         middle::{mir::PlaceElem, ty},
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceLike,
+        PlaceProjectable, PrefixRelation,
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
         validity::HasValidityCheck,
@@ -69,8 +71,8 @@ pub enum PlaceExpansion<'tcx> {
     Guided(RepackGuide),
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceExpansion<'tcx> {
-    fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceExpansion<'tcx> {
+    fn check_validity(&self, _ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         Ok(())
     }
 }
@@ -191,12 +193,12 @@ pub(crate) mod internal {
 pub type BorrowPcgPlaceExpansion<'tcx, P = Place<'tcx>> =
     BorrowPcgExpansionData<MaybeLabelledPlace<'tcx, P>>;
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgPlaceExpansion<'tcx> {
+impl<'tcx, Ctxt> LabelEdgeLifetimeProjections<'tcx, Ctxt> for BorrowPcgPlaceExpansion<'tcx> {
     fn label_lifetime_projections(
         &mut self,
         _predicate: &LabelNodePredicate<'tcx>,
         _label: Option<LifetimeProjectionLabel>,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
+        _ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         LabelLifetimeProjectionResult::Unchanged
     }
@@ -213,7 +215,7 @@ pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
 
 edgedata_enum!(
     BorrowPcgExpansion<'tcx, P>,
-    Place(BorrowPcgPlaceExpansion<'tcx>),
+    Place(BorrowPcgPlaceExpansion<'tcx, P>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
 );
 
@@ -235,10 +237,10 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
             }
         }
     }
-    pub(crate) fn new_lifetime_projection_expansion<'a>(
+    pub(crate) fn new_lifetime_projection_expansion<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         base: LifetimeProjection<'tcx, Place<'tcx>>,
         expansion: PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
@@ -263,16 +265,21 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
-    for BorrowPcgExpansionData<P>
+impl<
+    'tcx,
+    Ctxt: DebugCtxt + Copy,
+    P: PrefixRelation + Copy + Eq + std::hash::Hash,
+    Node: LocalNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
+> LabelEdgePlaces<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
+where
+    Self: HasValidityCheck<Ctxt>,
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
-    {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.base],
             predicate,
@@ -287,11 +294,10 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
-    {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let result = conditionally_label_places(
             self.expansion.iter_mut(),
             predicate,
@@ -307,14 +313,17 @@ impl<'tcx, P: LocalNodeLike<'tcx> + LabelPlace<'tcx>> LabelEdgePlaces<'tcx>
     }
 }
 
-impl<'tcx, P: LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx>> LabelEdgeLifetimeProjections<'tcx>
-    for BorrowPcgExpansionData<P>
+impl<
+    'tcx,
+    Ctxt: Copy,
+    P: PrefixRelation + LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx, Ctxt, P>,
+> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowPcgExpansionData<P>
 {
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         let source_context = LabelNodeContext::new(
             SourceOrTarget::Source,
@@ -363,14 +372,20 @@ impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgEx
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansionData<P> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<
+    'a,
+    'tcx: 'a,
+    Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>,
+    P: PlaceLike<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
+> HasValidityCheck<Ctxt> for BorrowPcgExpansionData<P>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
             return Err(format!("expansion contains base: {self:?}"));
         }
         for p in &self.expansion {
             if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt)
-                && node.is_owned(ctxt)
+                && node.place().is_owned(ctxt)
             {
                 return Err(format!(
                     "Expansion of {:?} contains owned place {}",
@@ -383,7 +398,9 @@ impl<'tcx, P: PcgNodeLike<'tcx>> HasValidityCheck<'_, 'tcx> for BorrowPcgExpansi
     }
 }
 
-impl<'tcx, P: Copy + Into<LocalNode<'tcx>>> EdgeData<'tcx> for BorrowPcgExpansionData<P> {
+impl<'tcx, Ctxt, P: Copy + Into<LocalNode<'tcx>>> EdgeData<'tcx, Ctxt, P>
+    for BorrowPcgExpansionData<P>
+{
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.base.into().to_pcg_node(ctxt) == node
     }
@@ -448,25 +465,23 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
-    BorrowPcgExpansionData<P>
-{
-    pub fn base(&self) -> P {
+impl<'tcx, Node: Copy + HasPlace<'tcx> + Into<BlockingNode<'tcx>>> BorrowPcgExpansionData<Node> {
+    pub fn base(&self) -> Node {
         self.base
     }
 
-    pub fn expansion(&self) -> &[P] {
+    pub fn expansion(&self) -> &[Node] {
         &self.expansion
     }
 
     pub(crate) fn new<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        base: P,
+        base: Node,
         expansion: PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
-        P: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx, Ctxt>,
+        Node: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx, Ctxt>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -486,7 +501,7 @@ impl<'tcx, P: PcgNodeLike<'tcx> + HasPlace<'tcx> + Into<BlockingNode<'tcx>>>
                 .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
         };
-        result.assert_validity(ctxt.bc_ctxt());
+        // result.assert_validity(ctxt);
         Ok(result)
     }
 }

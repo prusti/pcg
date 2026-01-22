@@ -249,8 +249,8 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for PlaceCapabilities<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         for (place, cap) in self.iter() {
             if place.projects_shared_ref(ctxt) && !cap.is_read() {
                 return Err(format!(

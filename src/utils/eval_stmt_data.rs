@@ -48,8 +48,8 @@ impl<T: Default> Default for EvalStmtData<T> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<'a, 'tcx, Ctxt>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for EvalStmtData<T>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<Ctxt>>
+    HasValidityCheck<Ctxt> for EvalStmtData<T>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // self.pre_operands.check_validity(ctxt)?;

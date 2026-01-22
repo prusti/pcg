@@ -5,7 +5,7 @@ use serde_derive::Serialize;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
+        borrow_pcg_edge::{BlockedNode, LocalNode},
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
@@ -15,27 +15,32 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
             PlaceLabeller, SourceOrTarget,
         },
-        region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
+        region_projection::{
+            LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection,
+            LocalLifetimeProjectionBase, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+        },
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{LabelPlaceConditionally, PcgNode, PcgNodeLike},
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
+        maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BorrowFlowEdge<'tcx, P = Place<'tcx>> {
-    source: LifetimeProjection<'tcx>,
-    pub(crate) short: LocalLifetimeProjection<'tcx, P>,
+    source: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>,
+    pub(crate) target: LocalLifetimeProjection<'tcx, P>,
     pub(crate) kind: BorrowFlowEdgeKind<'tcx>,
 }
 
-impl<'tcx> BorrowFlowEdge<'tcx> {
+impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
     pub(crate) fn future_edge_kind(self) -> Option<private::FutureEdgeKind> {
         if let BorrowFlowEdgeKind::Future(future_edge_kind) = self.kind {
             Some(future_edge_kind)
@@ -45,13 +50,19 @@ impl<'tcx> BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: Eq + std::hash::Hash + Copy + PrefixRelation>
+    LabelEdgePlaces<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+where
+    LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>:
+        LabelPlaceConditionally<'tcx, Ctxt, P>,
+    LocalLifetimeProjection<'tcx, P>: LabelPlaceConditionally<'tcx, Ctxt, P>,
+{
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let future_edge_kind = self.future_edge_kind();
         conditionally_label_places(
             vec![&mut self.source],
@@ -67,13 +78,13 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let future_edge_kind = self.future_edge_kind();
         conditionally_label_places(
-            vec![&mut self.short],
+            vec![&mut self.target],
             predicate,
             labeller,
             LabelNodeContext::new(
@@ -85,12 +96,22 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowFlowEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowFlowEdge<'tcx> {
+impl<
+    'a,
+    'tcx,
+    Ctxt: Copy + DebugCtxt,
+    P: std::fmt::Debug + Eq + Copy + PrefixRelation + std::hash::Hash,
+> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+where
+    Self: DisplayWithCtxt<Ctxt> + HasValidityCheck<Ctxt>,
+    PcgLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx>,
+    LocalLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx>,
+{
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         tracing::debug!(
             "Labeling region projection: {} (predicate: {:?}, label: {:?})",
@@ -106,7 +127,7 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowFlowEdge<'tcx> {
             LabelNodeContext::new(SourceOrTarget::Source, edge_type),
         );
         let short_matches = predicate.applies_to(
-            PcgNode::LifetimeProjection(self.short.rebase()),
+            PcgNode::LifetimeProjection(self.target.rebase()),
             LabelNodeContext::new(SourceOrTarget::Target, edge_type),
         );
         if long_matches && short_matches {
@@ -117,7 +138,7 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowFlowEdge<'tcx> {
             changed |= self.source.label_lifetime_projection(label);
         }
         if short_matches {
-            changed |= self.short.label_lifetime_projection(label);
+            changed |= self.target.label_lifetime_projection(label);
         }
         self.assert_validity(ctxt);
         changed
@@ -140,7 +161,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
             format!(
                 "{} -> {}{}",
                 DisplayWithCtxt::<_>::display_string(&self.source, ctxt),
-                self.short.display_string(ctxt),
+                self.target.display_string(ctxt),
                 type_annotation
             )
             .into(),
@@ -148,37 +169,41 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> EdgeData<'tcx> for BorrowFlowEdge<'tcx> {
-    fn blocks_node<'slf>(&self, node: PcgNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+impl<'tcx, Ctxt, P: PartialEq> EdgeData<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+where
+    LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>: PcgNodeLike<'tcx, Ctxt, P>,
+    LocalLifetimeProjection<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.source.to_pcg_node(ctxt) == node
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
-        Box::new(std::iter::once(self.source.to_pcg_node(ctxt.ctxt())))
+        Box::new(std::iter::once(self.source.to_pcg_node(ctxt)))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
+        _ctxt: Ctxt,
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
-        Box::new(std::iter::once(self.short.into()))
+        Box::new(std::iter::once(PcgNode::LifetimeProjection(self.target)))
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowFlowEdge<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.source.check_validity(ctxt)?;
-        self.short.check_validity(ctxt)?;
-        if self.source.to_pcg_node(ctxt) == self.short.to_pcg_node(ctxt) {
+        self.target.check_validity(ctxt)?;
+        if self.source.to_pcg_node(ctxt) == self.target.to_pcg_node(ctxt) {
             return Err(format!(
                 "BorrowFlowEdge: long and short are the same node: {}",
                 self.display_string(ctxt)
@@ -190,25 +215,25 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowFlowEdge<'tcx> {
 
 impl<'tcx, P: Copy> BorrowFlowEdge<'tcx, P> {
     pub(crate) fn new(
-        long: LifetimeProjection<'tcx>,
-        short: LocalLifetimeProjection<'tcx, P>,
+        source: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>,
+        target: LocalLifetimeProjection<'tcx, P>,
         kind: BorrowFlowEdgeKind<'tcx>,
     ) -> Self {
         Self {
-            source: long,
-            short,
+            source,
+            target,
             kind,
         }
     }
 
     /// The blocked lifetime projection. Intuitively, it must outlive the `short()` projection.
-    pub fn long(&self) -> LifetimeProjection<'tcx> {
+    pub fn long(&self) -> LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>> {
         self.source
     }
 
     /// The blocking lifetime projection. Intuitively, it must die before the `long()` projection.
     pub fn short(&self) -> LocalLifetimeProjection<'tcx, P> {
-        self.short
+        self.target
     }
 
     pub fn kind(&self) -> BorrowFlowEdgeKind<'tcx> {

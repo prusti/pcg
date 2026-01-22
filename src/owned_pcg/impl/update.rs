@@ -14,7 +14,10 @@ use crate::{
         triple::{PlaceCondition, Triple},
     },
     pcg_validity_assert,
-    utils::{HasBorrowCheckerCtxt, LocalMutationIsAllowed, display::DisplayWithCompilerCtxt},
+    utils::{
+        DebugCtxt, HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike,
+        display::DisplayWithCompilerCtxt,
+    },
 };
 
 use crate::rustc_interface::middle::mir::RETURN_PLACE;

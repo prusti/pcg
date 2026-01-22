@@ -106,14 +106,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Pla
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for Place<'tcx> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for Place<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.into()
     }
 }
@@ -161,7 +161,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         self.0.local
     }
     fn is_owned(self, ctxt: Ctxt) -> bool {
-        self.is_owned(ctxt)
+        !self
+            .iter_projections(ctxt.ctxt())
+            .into_iter()
+            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
     }
 
     fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool {
@@ -546,16 +549,6 @@ impl<'tcx> Place<'tcx> {
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)
             .map(|(idx, _)| idx)
-    }
-
-    pub fn is_owned<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        !self
-            .iter_projections(ctxt.ctxt())
-            .into_iter()
-            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
     }
 
     pub fn is_mut_ref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool

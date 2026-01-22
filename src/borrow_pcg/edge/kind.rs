@@ -15,7 +15,7 @@ use crate::{
 use super::borrow_flow::BorrowFlowEdge;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
+pub(crate) enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
     Borrow(BorrowEdge<'tcx>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
     Deref(DerefEdge<'tcx>),

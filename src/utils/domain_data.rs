@@ -50,8 +50,8 @@ impl<T: Clone> DomainDataStates<PcgArenaRef<'_, T>> {
         DomainDataStates(self.0.clone().map(|x| (*x).clone()))
     }
 }
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<'a, 'tcx, Ctxt>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for DomainDataStates<T>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, T: HasValidityCheck<Ctxt>>
+    HasValidityCheck<Ctxt> for DomainDataStates<T>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.0.check_validity(ctxt)

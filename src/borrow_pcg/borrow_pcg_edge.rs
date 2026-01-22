@@ -6,6 +6,7 @@ use crate::{
         borrow_pcg_expansion::BorrowPcgExpansion, region_projection::PcgLifetimeProjectionBase,
     },
     rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
+    utils::DebugCtxt,
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
@@ -81,14 +82,15 @@ impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> 
     }
 }
 
-pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> = Conditioned<EdgeKind>;
+pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions> =
+    Conditioned<EdgeKind, VC>;
 
-impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for BorrowPcgEdge<'tcx> {
     fn label_blocked_places(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        ctxt: Ctxt,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
     {
         self.value.label_blocked_places(predicate, labeller, ctxt)
@@ -97,8 +99,8 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     fn label_blocked_by_places(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        ctxt: Ctxt,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
     {
         self.value
@@ -106,12 +108,14 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowPcgEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
+impl<'tcx, P, Ctxt, EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>>
+    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowPcgEdge<'tcx, EdgeKind>
+{
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         self.value
             .label_lifetime_projections(predicate, label, ctxt)
@@ -119,22 +123,23 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgEdge<'tcx> {
 }
 
 /// Either a [`BorrowPcgEdge`] or a [`BorrowPcgEdgeRef`]
-pub trait BorrowPcgEdgeLike<
+pub(crate) trait BorrowPcgEdgeLike<
     'tcx,
     P: Copy + PartialEq + Eq + std::hash::Hash = Place<'tcx>,
     Kind = BorrowPcgEdgeKind<'tcx, P>,
->: EdgeData<'tcx, P> + Clone + std::fmt::Debug
+>: Clone + std::fmt::Debug
 {
     fn kind(&self) -> &Kind;
     fn conditions(&self) -> &ValidityConditions;
-    fn to_owned_edge(self) -> BorrowPcgEdge<'tcx>;
+    fn to_owned_edge(self) -> BorrowPcgEdge<'tcx, Kind>;
 
-    fn blocked_places<'slf>(
+    fn blocked_places<'slf, Ctxt>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> impl Iterator<Item = MaybeLabelledPlace<'tcx, P>> + 'slf
     where
         'tcx: 'slf,
+        Self: EdgeData<'tcx, Ctxt, P>,
     {
         self.blocked_nodes(ctxt)
             .flat_map(|node| node.as_place())
@@ -170,8 +175,8 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
     }
 }
 
-impl<'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<'_, 'tcx> for T {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for T {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.kind().check_validity(ctxt)
     }
 }
@@ -196,7 +201,7 @@ impl<'tcx> LocalNode<'tcx> {
 /// place.
 /// This excludes nodes that refer to remote places or constants.
 pub type LocalNode<'tcx, P = Place<'tcx>> =
-    PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, LocalLifetimeProjectionBase<'tcx>>;
+    PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, LocalLifetimeProjectionBase<'tcx, P>>;
 
 impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
     fn is_place(&self) -> bool {
@@ -282,7 +287,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeRemotePlace<'tcx> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for MaybeRemotePlace<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
@@ -389,43 +394,43 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
     }
 }
 
-impl<'tcx, P: Eq + std::hash::Hash + Copy, T: BorrowPcgEdgeLike<'tcx, P>> EdgeData<'tcx, P> for T {
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
-        &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
-    where
-        'tcx: 'mir,
-    {
-        self.kind().blocked_by_nodes(ctxt)
-    }
+// impl<'a, 'tcx, BC,  P: Eq + std::hash::Hash + Copy, T: BorrowPcgEdgeLike<'tcx, P>>
+//     EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>, P> for T
+// {
+//     fn blocked_by_nodes<'slf>(
+//         &'slf self,
+//         ctxt: CompilerCtxt<'a, 'tcx, BC>,
+//     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+//     {
+//         self.kind().blocked_by_nodes(ctxt)
+//     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
-        &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<
-        dyn std::iter::Iterator<
-                Item = PcgNode<
-                    'tcx,
-                    MaybeLabelledPlace<'tcx, P>,
-                    PcgLifetimeProjectionBase<'tcx, P>,
-                >,
-            > + 'slf,
-    >
-    where
-        'tcx: 'slf,
-    {
-        self.kind().blocked_nodes(ctxt)
-    }
+//     fn blocked_nodes<'slf>(
+//         &'slf self,
+//         ctxt: CompilerCtxt<'a, 'tcx, BC>,
+//     ) -> Box<
+//         dyn std::iter::Iterator<
+//                 Item = PcgNode<
+//                     'tcx,
+//                     MaybeLabelledPlace<'tcx, P>,
+//                     PcgLifetimeProjectionBase<'tcx, P>,
+//                 >,
+//             > + 'slf,
+//     >
+//     where
+//         'tcx: 'slf,
+//     {
+//         self.kind().blocked_nodes(ctxt)
+//     }
 
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().blocks_node(node, ctxt)
-    }
+//     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+//         self.kind().blocks_node(node, ctxt)
+//     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.kind().is_blocked_by(node, ctxt)
-    }
-}
+//     fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx, P>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+//         self.kind().is_blocked_by(node, ctxt)
+//     }
+// }
 
 edgedata_enum!(
     BorrowPcgEdgeKind<'tcx, P>,

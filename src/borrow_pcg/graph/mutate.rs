@@ -85,16 +85,15 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
             .collect();
         changed
     }
-    pub(crate) fn label_place<'a, P: Copy>(
+    pub(crate) fn label_place<P: std::hash::Hash + Eq + Copy, Ctxt: Copy>(
         &mut self,
         place: P,
         reason: LabelPlaceReason,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>>
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>>
     where
-        'tcx: 'a,
-        EdgeKind: LabelEdgePlaces<'tcx, P> + Eq + std::hash::Hash,
+        EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P> + Eq + std::hash::Hash,
     {
         let mut all_replacements = HashSet::default();
         self.mut_edges(|edge| {

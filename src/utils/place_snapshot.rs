@@ -225,20 +225,20 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
         self.to_local_node(ctxt).into()
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LabelledPlace<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LabelledPlace<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.place.check_validity(ctxt)
     }
 }

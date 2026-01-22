@@ -347,8 +347,8 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for PcgLocation<'a, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for PcgLocation<'a, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // TODO

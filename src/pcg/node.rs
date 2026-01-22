@@ -15,7 +15,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, PrefixRelation, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -40,12 +40,13 @@ pub enum PcgNode<'tcx, T = MaybeLabelledPlace<'tcx>, U = PcgLifetimeProjectionBa
     LifetimeProjection(LifetimeProjection<'tcx, U>),
 }
 
-impl<'tcx, T: LabelPlace<'tcx>, U: LabelPlace<'tcx>> LabelPlace<'tcx> for PcgNode<'tcx, T, U> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+pub(crate) type PcgNodeWithPlace<'tcx, P = Place<'tcx>> =
+    PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
+
+impl<'tcx, Ctxt, T: LabelPlace<'tcx, Ctxt>, U: LabelPlace<'tcx, Ctxt>> LabelPlace<'tcx, Ctxt>
+    for PcgNode<'tcx, T, U>
+{
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         match self {
             PcgNode::Place(p) => p.label_place(labeller, ctxt),
             PcgNode::LifetimeProjection(rp) => rp.base.label_place(labeller, ctxt),
@@ -54,20 +55,6 @@ impl<'tcx, T: LabelPlace<'tcx>, U: LabelPlace<'tcx>> LabelPlace<'tcx> for PcgNod
 }
 
 impl<'tcx> PcgNode<'tcx> {
-    pub fn related_place(self) -> Option<MaybeRemotePlace<'tcx>> {
-        match self {
-            PcgNode::Place(p) => Some(p.into()),
-            PcgNode::LifetimeProjection(rp) => match rp.base() {
-                PlaceOrConst::Place(p) => Some(p),
-                _ => None,
-            },
-        }
-    }
-
-    pub fn related_maybe_labelled_place(self) -> Option<MaybeLabelledPlace<'tcx>> {
-        self.related_place().and_then(|p| p.as_local_place())
-    }
-
     pub(crate) fn related_maybe_remote_current_place(
         &self,
     ) -> Option<MaybeRemoteCurrentPlace<'tcx>> {
@@ -78,6 +65,22 @@ impl<'tcx> PcgNode<'tcx> {
             },
             PcgNode::LifetimeProjection(rp) => rp.base().maybe_remote_current_place(),
         }
+    }
+}
+
+impl<'tcx, P: Copy> PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>> {
+    pub fn related_place(self) -> Option<MaybeRemotePlace<'tcx, P>> {
+        match self {
+            PcgNode::Place(p) => Some(p.into()),
+            PcgNode::LifetimeProjection(rp) => match rp.base {
+                PlaceOrConst::Place(p) => Some(p),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn related_maybe_labelled_place(self) -> Option<MaybeLabelledPlace<'tcx, P>> {
+        self.related_place().and_then(|p| p.as_local_place())
     }
 }
 
@@ -148,10 +151,10 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for PcgNode<
     }
 }
 
-impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
-    for PcgNode<'tcx, T, U>
+impl<'tcx, Ctxt, T: PcgNodeLike<'tcx, Ctxt>, U: PcgLifetimeProjectionBaseLike<'tcx>>
+    PcgNodeLike<'tcx, Ctxt> for PcgNode<'tcx, T, U>
 {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
         match self {
             PcgNode::Place(p) => p.to_pcg_node(ctxt),
             PcgNode::LifetimeProjection(rp) => rp.to_pcg_node(ctxt),
@@ -159,12 +162,16 @@ impl<'tcx, T: PcgNodeLike<'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>> PcgNode
     }
 }
 
-impl<'a, 'tcx, T: HasValidityCheck<'a, 'tcx>, U: PcgLifetimeProjectionBaseLike<'tcx>>
-    HasValidityCheck<'a, 'tcx> for PcgNode<'tcx, T, U>
+impl<
+    'tcx,
+    Ctxt: Copy + DebugCtxt,
+    T: HasValidityCheck<Ctxt>,
+    U: PcgLifetimeProjectionBaseLike<'tcx>,
+> HasValidityCheck<Ctxt> for PcgNode<'tcx, T, U>
 where
-    LifetimeProjection<'tcx, U>: HasValidityCheck<'a, 'tcx>,
+    LifetimeProjection<'tcx, U>: HasValidityCheck<Ctxt>,
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         match self {
             PcgNode::Place(p) => p.check_validity(ctxt),
             PcgNode::LifetimeProjection(rp) => rp.check_validity(ctxt),
@@ -175,7 +182,7 @@ where
 impl<
     'tcx,
     Ctxt,
-    T: PcgNodeLike<'tcx> + DisplayWithCtxt<Ctxt>,
+    T: PcgNodeLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
     U: PcgLifetimeProjectionBaseLike<'tcx> + DisplayWithCtxt<Ctxt>,
 > DisplayWithCtxt<Ctxt> for PcgNode<'tcx, T, U>
 where
@@ -213,21 +220,21 @@ impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHa
     }
 }
 
-pub trait PcgNodeLike<'tcx>:
+pub trait PcgNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
     Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash
 {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx>;
+    fn to_pcg_node(
+        self,
+        ctxt: Ctxt,
+    ) -> PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
 
-    fn try_to_local_node<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<LocalNode<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        match self.to_pcg_node(ctxt.ctxt()) {
+    fn try_to_local_node<'a>(self, ctxt: Ctxt) -> Option<LocalNode<'tcx, P>> {
+        match self.to_pcg_node(ctxt) {
             PcgNode::Place(p) => Some(p.into()),
-            PcgNode::LifetimeProjection(rp) => match rp.base() {
+            PcgNode::LifetimeProjection(rp) => match rp.base {
                 PlaceOrConst::Place(maybe_remote_place) => match maybe_remote_place {
                     MaybeRemotePlace::Local(maybe_old_place) => {
-                        Some(rp.with_base(maybe_old_place).to_local_node(ctxt.ctxt()))
+                        Some(rp.with_base(maybe_old_place).to_local_node(ctxt))
                     }
                     MaybeRemotePlace::Remote(_) => None,
                 },
@@ -237,16 +244,19 @@ pub trait PcgNodeLike<'tcx>:
     }
 }
 
-pub(crate) trait LabelPlaceConditionally<'tcx>:
-    PcgNodeLike<'tcx> + LabelPlace<'tcx>
+pub(crate) trait LabelPlaceConditionally<
+    'tcx,
+    Ctxt: Copy,
+    P: Eq + std::hash::Hash + Copy + PrefixRelation = Place<'tcx>,
+>: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>
 {
     fn label_place_conditionally(
         &mut self,
-        replacements: &mut HashSet<NodeReplacement<'tcx>>,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
+        replacements: &mut HashSet<NodeReplacement<'tcx, P>>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         node_context: LabelNodeContext,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) {
         let orig = self.to_pcg_node(ctxt);
         if predicate.applies_to(orig, node_context) {
@@ -258,20 +268,29 @@ pub(crate) trait LabelPlaceConditionally<'tcx>:
     }
 }
 
-impl<'tcx, T: PcgNodeLike<'tcx> + LabelPlace<'tcx>> LabelPlaceConditionally<'tcx> for T {}
-
-pub(crate) trait LocalNodeLike<'tcx>: Copy + PcgNodeLike<'tcx> {
-    fn to_local_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx>;
+impl<
+    'tcx,
+    Ctxt: DebugCtxt + Copy,
+    P: PrefixRelation + Copy + Eq + std::hash::Hash,
+    T: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
+> LabelPlaceConditionally<'tcx, Ctxt, P> for T
+{
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for mir::Place<'tcx> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+pub(crate) trait LocalNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
+    Copy + PcgNodeLike<'tcx, Ctxt, P>
+{
+    fn to_local_node(self, ctxt: Ctxt) -> LocalNode<'tcx, P>;
+}
+
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for mir::Place<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.into()
     }
 }

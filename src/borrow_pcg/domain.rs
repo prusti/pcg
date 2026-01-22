@@ -66,24 +66,20 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> 
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for FunctionCallAbstractionInput<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.0.base.label_place(labeller, ctxt)
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for FunctionCallAbstractionInput<'tcx> {
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
         self.0.to_pcg_node(ctxt)
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionInput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for FunctionCallAbstractionInput<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
@@ -124,12 +120,8 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for LoopAbstractionInput<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LoopAbstractionInput<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.0.label_place(labeller, ctxt)
     }
 }
@@ -142,14 +134,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionInput<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for LoopAbstractionInput<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.0
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionInput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstractionInput<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
@@ -180,12 +172,8 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for LoopAbstractionOutput<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for LoopAbstractionOutput<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LoopAbstractionOutput<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.0.label_place(labeller, ctxt)
     }
 }
@@ -198,14 +186,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for LoopAbstractionOutput<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for LoopAbstractionOutput<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.0.into()
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstractionOutput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstractionOutput<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
@@ -232,13 +220,13 @@ impl<'tcx> TryFrom<LoopAbstractionOutput<'tcx>> for LifetimeProjection<'tcx> {
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
 pub struct AbstractionInputTarget<'tcx>(pub(crate) PcgNode<'tcx>);
 
-impl<'tcx> PcgNodeLike<'tcx> for AbstractionInputTarget<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for AbstractionInputTarget<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.0
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionInputTarget<'tcx> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for AbstractionInputTarget<'tcx> {
     fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
@@ -247,12 +235,8 @@ impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionInputTarget<'tcx> {
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
 pub struct AbstractionOutputTarget<'tcx>(pub(crate) LocalNode<'tcx>);
 
-impl<'tcx> LabelPlace<'tcx> for AbstractionOutputTarget<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for AbstractionOutputTarget<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.0.label_place(labeller, ctxt)
     }
 }
@@ -266,8 +250,8 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for AbstractionOutputTarget<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for AbstractionOutputTarget<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for AbstractionOutputTarget<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
@@ -298,14 +282,14 @@ where
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for FunctionCallAbstractionOutput<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for FunctionCallAbstractionOutput<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.0.into()
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstractionOutput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for FunctionCallAbstractionOutput<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
@@ -325,12 +309,8 @@ impl<'tcx> PcgLifetimeProjectionLike<'tcx> for FunctionCallAbstractionOutput<'tc
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for FunctionCallAbstractionOutput<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for FunctionCallAbstractionOutput<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.0.label_place(labeller, ctxt)
     }
 }

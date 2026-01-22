@@ -21,7 +21,7 @@ use crate::{
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{place::Place, validity::HasValidityCheck},
+    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
     validity_checks_enabled,
 };
 
@@ -30,6 +30,16 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) borrow_checker: T,
+}
+
+impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T> {
+    fn func_name(&self) -> String {
+        self.tcx
+            .def_path_str(self.mir.source.def_id().expect_local())
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.mir.basic_blocks.len()
+    }
 }
 
 impl<'a, 'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
@@ -287,6 +297,11 @@ impl ProjectionKind {
     }
 }
 
+pub(crate) trait DebugCtxt {
+    fn func_name(&self) -> String;
+    fn num_basic_blocks(&self) -> usize;
+}
+
 pub(crate) trait HasLocals: Copy {
     fn always_live_locals(self) -> RustBitSet<Local>;
     fn arg_count(self) -> usize;
@@ -296,7 +311,7 @@ pub(crate) trait HasLocals: Copy {
     }
 }
 
-pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
+pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + DebugCtxt + Copy {
     fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
@@ -570,8 +585,8 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for Place<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for Place<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.local.check_validity(ctxt)?;
         Ok(())
     }

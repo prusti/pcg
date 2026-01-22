@@ -193,6 +193,24 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
+impl<'tcx> From<RemotePlace> for PlaceOrConst<'tcx, RemotePlace> {
+    fn from(place: RemotePlace) -> Self {
+        PlaceOrConst::Place(place.into())
+    }
+}
+
+impl<'tcx, P> From<RemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
+    fn from(place: RemotePlace) -> Self {
+        PlaceOrConst::Place(place.into())
+    }
+}
+
+impl<'tcx, P> From<MaybeLabelledPlace<'tcx, P>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
+    fn from(place: MaybeLabelledPlace<'tcx, P>) -> Self {
+        PlaceOrConst::Place(place.into())
+    }
+}
+
 impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
@@ -261,12 +279,8 @@ impl<'tcx, T> PlaceOrConst<'tcx, T> {
     }
 }
 
-impl<'tcx, T: LabelPlace<'tcx>> LabelPlace<'tcx> for PlaceOrConst<'tcx, T> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt, T: LabelPlace<'tcx, Ctxt>> LabelPlace<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.mut_place(|p| p.label_place(labeller, ctxt))
             .unwrap_or(false)
     }
@@ -325,8 +339,8 @@ impl<'tcx, P: Copy> PcgLifetimeProjectionBase<'tcx, P> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for PcgLifetimeProjectionBase<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PcgLifetimeProjectionBase<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         match self {
             PlaceOrConst::Place(p) => p.check_validity(ctxt),
             PlaceOrConst::Const(_) => todo!(),
@@ -340,10 +354,10 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tc
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx>
+impl<'tcx, Ctxt, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx, Ctxt>
     for LifetimeProjection<'tcx, T>
 {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         PcgNode::LifetimeProjection(self.with_base(self.base.to_pcg_lifetime_projection_base()))
     }
 }
@@ -380,8 +394,8 @@ pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeP
 
 /// A lifetime projection b↓r, where `b` is a base and `r` is a region.
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LifetimeProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> {
-    pub(crate) base: P,
+pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> {
+    pub(crate) base: Base,
     pub(crate) region_idx: RegionIdx,
     pub(crate) label: Option<LifetimeProjectionLabel>,
     phantom: PhantomData<&'tcx ()>,
@@ -391,12 +405,8 @@ pub(crate) trait PcgLifetimeProjectionLike<'tcx> {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx>;
 }
 
-impl<'tcx> LabelPlace<'tcx> for LifetimeProjection<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LifetimeProjection<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         if let Some(p) = self.base.as_local_place_mut() {
             p.label_place(labeller, ctxt)
         } else {
@@ -541,10 +551,10 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> LifetimeProjection<'tcx, T> {
     }
 
     #[must_use]
-    pub(crate) fn with_label<'a>(
+    pub(crate) fn with_label<'a, Ctxt>(
         self,
         label: Option<LifetimeProjectionLabel>,
-        _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        _ctxt: Ctxt,
     ) -> LifetimeProjection<'tcx, T>
     where
         'tcx: 'a,
@@ -602,14 +612,14 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx>>
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, Place<'tcx>> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LifetimeProjection<'tcx, Place<'tcx>> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self.with_base(MaybeLabelledPlace::Current(self.base)))
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::LifetimeProjection(self)
     }
 }
@@ -623,7 +633,6 @@ pub trait HasRegions<'tcx, Ctxt> {
     where
         'tcx: 'a,
         Self: Sized + Copy + std::fmt::Debug,
-        Ctxt: HasCompilerCtxt<'a, 'tcx>,
     {
         self.regions(ctxt)
             .into_iter()
@@ -902,9 +911,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
         &mut self.base
     }
 
-    pub(crate) fn rebase<U: PcgLifetimeProjectionBaseLike<'tcx> + From<T>>(
-        self,
-    ) -> LifetimeProjection<'tcx, U>
+    pub(crate) fn rebase<U: From<T>>(self) -> LifetimeProjection<'tcx, U>
     where
         T: Copy,
     {
@@ -948,12 +955,8 @@ impl<'tcx> LocalLifetimeProjection<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for LocalLifetimeProjection<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LocalLifetimeProjection<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         self.base.label_place(labeller, ctxt)
     }
 }

@@ -17,7 +17,7 @@ use crate::{
         triple::TripleWalker,
     },
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
-    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use crate::utils::{

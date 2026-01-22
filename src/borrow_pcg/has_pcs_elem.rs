@@ -68,23 +68,19 @@ impl LabelNodeContext {
     }
 }
 
-pub(crate) trait LabelPlace<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool;
+pub(crate) trait LabelPlace<'tcx, Ctxt, P = Place<'tcx>> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool;
 }
 
-pub trait PlaceLabeller<'tcx> {
-    fn place_label(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> SnapshotLocation;
+pub trait PlaceLabeller<'tcx, Ctxt, P = Place<'tcx>> {
+    fn place_label(&self, place: P, ctxt: Ctxt) -> SnapshotLocation;
 }
 
 #[derive(From)]
 pub(crate) struct SetLabel(pub(crate) SnapshotLocation);
 
-impl<'tcx> PlaceLabeller<'tcx> for SetLabel {
-    fn place_label(&self, _place: Place<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> SnapshotLocation {
+impl<'tcx, Ctxt, P> PlaceLabeller<'tcx, Ctxt, P> for SetLabel {
+    fn place_label(&self, _place: P, _ctxt: Ctxt) -> SnapshotLocation {
         self.0
     }
 }

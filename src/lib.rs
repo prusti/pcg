@@ -343,6 +343,15 @@ impl<'a, 'mir: 'a, 'tcx: 'mir>
     }
 }
 
+impl<'mir, 'tcx> DebugCtxt for &PcgCtxt<'mir, 'tcx> {
+    fn func_name(&self) -> String {
+        self.compiler_ctxt.func_name()
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.compiler_ctxt.num_basic_blocks()
+    }
+}
+
 impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
     fn ctxt(self) -> CompilerCtxt<'mir, 'tcx, ()> {
         CompilerCtxt::new(self.compiler_ctxt.mir, self.compiler_ctxt.tcx, ())
@@ -633,7 +642,7 @@ macro_rules! pcg_validity_assert {
         {
             let ctxt = $ctxt;
             let loc = $loc;
-            let func_name = ctxt.tcx().def_path_str(ctxt.body().source.def_id());
+            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
             let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*));
         }
@@ -641,7 +650,7 @@ macro_rules! pcg_validity_assert {
     (@parse_context $cond:expr, [$ctxt:tt], $($arg:tt)*) => {
         {
             let ctxt = $ctxt;
-            let func_name = ctxt.tcx().def_path_str(ctxt.body().source.def_id());
+            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
             let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*));
         }
@@ -656,7 +665,7 @@ macro_rules! pcg_validity_assert {
                 // Generate test case format if we're in a crate
                 if let Ok(crate_name) = std::env::var("CARGO_CRATE_NAME") {
                     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string());
-                    let num_bbs = $ctxt.body().basic_blocks.len();
+                    let num_bbs = $crate::utils::ctxt::DebugCtxt::num_basic_blocks(&$ctxt);
                     let test_case = format!("{};{};2025-03-13;{};{}",
                         crate_name, crate_version, $func_name, num_bbs);
                     tracing::error!("To reproduce this failure, use test case: {}", test_case);
@@ -693,7 +702,7 @@ use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         mir::BasicBlock,

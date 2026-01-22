@@ -72,7 +72,7 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::AddEdge { edge },
-            debug_context: Some(context.into()),
+            debug_info: Some(context.into()),
         }
     }
 
@@ -82,7 +82,7 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::RemoveEdge(edge),
-            debug_context: Some(context.into()),
+            debug_info: Some(context.into()),
         }
     }
 }
@@ -95,7 +95,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Restore(RestoreCapability::new(place, capability)),
-            debug_context: Some(debug_context.into()),
+            debug_info: Some(debug_context.into()),
         }
     }
 
@@ -110,7 +110,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::Weaken(Weaken::new(place, from, to)),
-            debug_context: Some(context.into()),
+            debug_info: Some(context.into()),
         }
     }
 
@@ -120,7 +120,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::remove_lifetime_projection_label(projection),
-            debug_context: Some(context.into()),
+            debug_info: Some(context.into()),
         }
     }
 
@@ -131,7 +131,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::label_lifetime_projection(predicate, label),
-            debug_context: Some(context.into()),
+            debug_info: Some(context.into()),
         }
     }
 
@@ -142,7 +142,7 @@ impl<'tcx> BorrowPcgAction<'tcx> {
     ) -> Self {
         BorrowPcgAction {
             kind: BorrowPcgActionKind::LabelPlace(LabelPlaceAction::new(place, location, reason)),
-            debug_context: None,
+            debug_info: None,
         }
     }
 }
@@ -167,13 +167,13 @@ pub enum LabelPlaceReason {
 }
 
 impl LabelPlaceReason {
-    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, P: Copy>(
+    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, Ctxt, P: Copy + Eq + std::hash::Hash>(
         self,
         place: P,
-        edge: &mut impl LabelEdgePlaces<'tcx, P>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        edge: &mut impl LabelEdgePlaces<'tcx, Ctxt, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let predicate: LabelNodePredicate<'tcx, P> = match self {
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
@@ -207,8 +207,8 @@ impl LabelPlaceReason {
             ]),
             LabelPlaceReason::Collapse => LabelNodePredicate::PlaceEquals(place),
         };
-        let mut result = edge.label_blocked_by_places(&predicate, labeller, ctxt.bc_ctxt());
-        result.extend(edge.label_blocked_places(&predicate, labeller, ctxt.bc_ctxt()));
+        let mut result = edge.label_blocked_by_places(&predicate, labeller, ctxt);
+        result.extend(edge.label_blocked_places(&predicate, labeller, ctxt));
         result
     }
 }

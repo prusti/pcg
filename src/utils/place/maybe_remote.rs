@@ -18,7 +18,7 @@ use crate::{
     },
 };
 
-#[derive(From, PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
 pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     /// A place that has a name in the program
     Local(MaybeLabelledPlace<'tcx, P>),
@@ -27,12 +27,20 @@ pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     Remote(RemotePlace),
 }
 
-impl<'tcx> LabelPlace<'tcx> for MaybeRemotePlace<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, P> From<RemotePlace> for MaybeRemotePlace<'tcx, P> {
+    fn from(place: RemotePlace) -> Self {
+        MaybeRemotePlace::Remote(place)
+    }
+}
+
+impl<'tcx, P> From<MaybeLabelledPlace<'tcx, P>> for MaybeRemotePlace<'tcx, P> {
+    fn from(place: MaybeLabelledPlace<'tcx, P>) -> Self {
+        MaybeRemotePlace::Local(place)
+    }
+}
+
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         match self {
             MaybeRemotePlace::Local(p) => p.label_place(labeller, ctxt),
             MaybeRemotePlace::Remote(_) => false,
@@ -132,6 +140,13 @@ impl<'tcx, P: Copy> MaybeRemotePlace<'tcx, P> {
             MaybeRemotePlace::Remote(_) => None,
         }
     }
+
+    pub fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx, P>> {
+        match self {
+            MaybeRemotePlace::Local(p) => Some(*p),
+            MaybeRemotePlace::Remote(_) => None,
+        }
+    }
 }
 
 impl<'tcx> MaybeRemotePlace<'tcx> {
@@ -149,13 +164,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
             MaybeRemotePlace::Local(p) => Some(p),
-            MaybeRemotePlace::Remote(_) => None,
-        }
-    }
-
-    pub fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
-        match self {
-            MaybeRemotePlace::Local(p) => Some(*p),
             MaybeRemotePlace::Remote(_) => None,
         }
     }

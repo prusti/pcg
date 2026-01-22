@@ -1,11 +1,11 @@
 use crate::rustc_interface::middle::mir::HasLocalDecls;
 
-use crate::utils::HasCompilerCtxt;
+use crate::utils::{DebugCtxt, HasCompilerCtxt};
 use crate::{pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir};
 
 use super::CompilerCtxt;
 
-pub trait HasValidityCheck<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> = CompilerCtxt<'a, 'tcx>> {
+pub trait HasValidityCheck<Ctxt: DebugCtxt + Copy> {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String>;
 
     fn assert_validity(&self, ctxt: Ctxt) {
@@ -21,8 +21,8 @@ pub trait HasValidityCheck<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> = Compi
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for mir::Local {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for mir::Local {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         if ctxt.body().local_decls().len() <= self.as_usize() {
             return Err(format!(
                 "Local {:?} is out of bounds: provided MIR at {:?} only has {} local declarations",

@@ -13,6 +13,7 @@ use crate::{
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
+        validity_conditions::ValidityConditionOps,
     },
     coupling::PcgCoupledEdgeKind,
     error::PcgUnsupportedError,
@@ -24,7 +25,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugImgcat, HasBorrowCheckerCtxt,
-        HasCompilerCtxt, Place,
+        HasCompilerCtxt, Place, PlaceLike,
         data_structures::{HashMap, HashSet},
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -48,8 +49,8 @@ use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
 /// The Borrow PCG Graph.
 #[derive(Clone, Debug)]
-pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> {
-    pub(crate) edges: HashMap<EdgeKind, ValidityConditions>,
+pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions> {
+    pub(crate) edges: HashMap<EdgeKind, VC>,
     _marker: PhantomData<&'tcx ()>,
 }
 
@@ -71,8 +72,8 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowsGraph<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowsGraph<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
         for node in nodes.iter() {
             if let Some(PcgNode::LifetimeProjection(rp)) = node.try_to_local_node(ctxt)
@@ -375,7 +376,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.contains(node.into(), ctxt)
             && match node.into().as_local_node() {
                 Some(node) => match node {
-                    PcgNode::Place(place) if place.is_owned(ctxt) => true,
+                    PcgNode::Place(place) if place.place().is_owned(ctxt) => true,
                     _ => !self.has_edge_blocked_by(node, ctxt),
                 },
                 None => true,
@@ -413,15 +414,19 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     /// Returns true iff `edge` connects two nodes within an abstraction edge
-    fn is_encapsulated_by_abstraction<'a>(
+    fn is_encapsulated_by_abstraction<
+        'a,
+        Edge: BorrowPcgEdgeLike<'tcx>,
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+    >(
         &self,
-        edge: &impl BorrowPcgEdgeLike<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        edge: &Edge,
+        ctxt: Ctxt,
     ) -> bool
     where
         'tcx: 'a,
+        Edge: EdgeData<'tcx, Ctxt>,
     {
-        let ctxt = ctxt.bc_ctxt();
         'outer: for abstraction in self.abstraction_edge_kinds() {
             for blocked in edge.blocked_nodes(ctxt) {
                 if !abstraction.blocks_node(blocked, ctxt) {
@@ -508,14 +513,14 @@ impl<T> Conditioned<T> {
 }
 
 impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn label_lifetime_projections<P2>(
+    pub(crate) fn label_lifetime_projections<P, Ctxt>(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx, P2>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> bool
     where
-        EdgeKind: LabelEdgeLifetimeProjections<'tcx, P2>,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
     {
         let mut result = false;
         self.filter_mut_edges(|edge| {
@@ -528,17 +533,18 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
         result
     }
 }
-impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn insert<'a>(
+impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+    pub(crate) fn insert<'a, Ctxt: Copy>(
         &mut self,
-        edge: BorrowPcgEdge<'tcx, EdgeKind>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
+        ctxt: Ctxt,
     ) -> bool
     where
         'tcx: 'a,
+        VC: ValidityConditionOps<Ctxt>,
     {
         if let Some(conditions) = self.edges.get_mut(&edge.value) {
-            conditions.join(&edge.conditions, ctxt.body())
+            conditions.join(&edge.conditions, ctxt)
         } else {
             self.edges.insert(edge.value, edge.conditions);
             true

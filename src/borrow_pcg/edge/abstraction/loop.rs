@@ -21,9 +21,10 @@ use crate::{
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::display::{DisplayOutput, OutputMode},
     utils::{
-        CompilerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
+        CompilerCtxt, DebugCtxt,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };
@@ -49,23 +50,23 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
 pub type LoopAbstraction<'tcx> =
     AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for LoopAbstraction<'tcx> {
+impl<'tcx, Ctxt: Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt> for LoopAbstraction<'tcx> {
     fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
-impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'tcx> {
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'a, 'tcx>) -> bool {
         self.edge.blocks_node(node, ctxt)
     }
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
@@ -73,9 +74,9 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
         self.edge.blocked_nodes(ctxt)
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
@@ -84,12 +85,12 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for LoopAbstraction<'tcx> {
     fn label_blocked_places(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        ctxt: Ctxt,
     ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
@@ -97,14 +98,14 @@ impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
     fn label_blocked_by_places(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        ctxt: Ctxt,
     ) -> HashSet<NodeReplacement<'tcx>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstraction<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'tcx> {
+    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         self.edge.check_validity(ctxt)
     }
 }

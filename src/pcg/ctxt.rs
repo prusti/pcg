@@ -42,7 +42,7 @@ mod private {
     use crate::{
         pcg::{BodyAnalysis, PcgArena, SymbolicCapabilityCtxt},
         rustc_interface::{RustBitSet, middle::mir},
-        utils::{CompilerCtxt, HasLocals, PcgSettings},
+        utils::{CompilerCtxt, DebugCtxt, HasLocals, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
@@ -57,6 +57,15 @@ mod private {
         #[cfg(feature = "visualization")]
         pub(crate) graphs:
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
+    }
+
+    impl<'a, 'tcx: 'a> DebugCtxt for AnalysisCtxt<'a, 'tcx> {
+        fn func_name(&self) -> String {
+            self.ctxt.func_name()
+        }
+        fn num_basic_blocks(&self) -> usize {
+            self.ctxt.num_basic_blocks()
+        }
     }
 
     impl<'a, 'tcx: 'a> HasLocals for AnalysisCtxt<'a, 'tcx> {

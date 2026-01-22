@@ -20,8 +20,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -41,8 +41,8 @@ pub struct Pcg<
     pub(crate) capabilities: Capabilities,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for Pcg<'a, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for Pcg<'a, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
         self.as_ref().check_validity(ctxt)
@@ -180,8 +180,8 @@ impl<'tcx> PcgRefLike<'tcx> for PcgRef<'_, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for PcgRef<'_, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for PcgRef<'_, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
         self.capabilities

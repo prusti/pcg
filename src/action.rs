@@ -16,7 +16,7 @@ use crate::{
     owned_pcg::{RegainedCapability, RepackOp},
     pcg::capabilities::CapabilityKind,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -164,21 +164,18 @@ impl<'tcx> PcgActions<'tcx> {
 /// action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct ActionKindWithDebugCtxt<T, Ctxt = Option<DisplayOutput>> {
+pub struct ActionKindWithDebugInfo<T, DebugInfo = Option<DisplayOutput>> {
     pub(crate) kind: T,
-    pub(crate) debug_context: Ctxt,
+    pub(crate) debug_info: DebugInfo,
 }
 
-impl<T> ActionKindWithDebugCtxt<T> {
+impl<T> ActionKindWithDebugInfo<T> {
     pub fn kind(&self) -> &T {
         &self.kind
     }
 
-    pub(crate) fn new(kind: T, debug_context: Option<DisplayOutput>) -> Self {
-        Self {
-            kind,
-            debug_context,
-        }
+    pub(crate) fn new(kind: T, debug_info: Option<DisplayOutput>) -> Self {
+        Self { kind, debug_info }
     }
 
     pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
@@ -189,12 +186,12 @@ impl<T> ActionKindWithDebugCtxt<T> {
     }
 }
 
-impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugCtxt<T> {
-    type Repr = ActionKindWithDebugCtxt<T::Repr, Option<String>>;
+impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugInfo<T> {
+    type Repr = ActionKindWithDebugInfo<T::Repr, Option<String>>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
-        ActionKindWithDebugCtxt {
+        ActionKindWithDebugInfo {
             kind: self.kind.debug_repr(ctxt),
-            debug_context: self.debug_context.as_ref().map(|ctxt| ctxt.debug_repr(())),
+            debug_info: self.debug_info.as_ref().map(|ctxt| ctxt.debug_repr(())),
         }
     }
 }
@@ -202,13 +199,13 @@ impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugCtxt<T> {
 /// An action applied to the Owned PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
-pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
+pub type OwnedPcgAction<'tcx> = ActionKindWithDebugInfo<RepackOp<'tcx>>;
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
 pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, P = Place<'tcx>> =
-    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind, P>>;
+    ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P>>;
 
 mod private {
     use serde_derive::Serialize;
@@ -239,8 +236,8 @@ pub type PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
     private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind>, OwnedPcgAction<'tcx>>;
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
-    ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, Option<String>>,
-    ActionKindWithDebugCtxt<RepackOp<'static, String, String, String>, Option<String>>,
+    ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
+    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, Option<String>>,
 >;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
@@ -268,7 +265,7 @@ impl<'tcx> PcgAction<'tcx> {
         if place.is_owned(ctxt) {
             PcgAction::Owned(OwnedPcgAction {
                 kind: RepackOp::RegainLoanedCapability(RegainedCapability::new(place, capability)),
-                debug_context: Some(debug_context),
+                debug_info: Some(debug_context),
             })
         } else {
             BorrowPcgAction::restore_capability(place, capability, debug_context).into()

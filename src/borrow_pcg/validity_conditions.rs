@@ -270,6 +270,33 @@ pub(crate) enum JoinValidityConditionsResult {
     Unchanged,
 }
 
+pub(crate) trait ValidityConditionOps<Ctxt> {
+    fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool;
+}
+
+struct NoValidityConditions;
+
+impl<Ctxt> ValidityConditionOps<Ctxt> for NoValidityConditions {
+    fn join(&mut self, _other: &Self, _ctxt: Ctxt) -> bool {
+        false
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>> ValidityConditionOps<Ctxt>
+    for ValidityConditions
+{
+    fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool {
+        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
+            self.join_result(other, ctxt.body())
+        {
+            *self = *new_validity_conditions;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl ValidityConditions {
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -325,17 +352,6 @@ impl ValidityConditions {
             JoinValidityConditionsResult::Changed(Box::new(slf))
         } else {
             JoinValidityConditionsResult::Unchanged
-        }
-    }
-
-    pub(crate) fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> bool {
-        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
-            self.join_result(other, body)
-        {
-            *self = *new_validity_conditions;
-            true
-        } else {
-            false
         }
     }
 
