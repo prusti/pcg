@@ -6,7 +6,7 @@ use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
     BodyAndBorrows,
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::{HasRegions, PcgRegion},
+    borrow_pcg::region_projection::{HasRegions, OverrideRegionDebugString, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -39,6 +39,12 @@ pub(crate) struct RustBorrowCheckerData<'mir, 'tcx: 'mir> {
     pub(crate) region_cx: &'mir RegionInferenceContext<'tcx>,
     #[cfg(feature = "visualization")]
     pub(crate) pretty_printer: RegionPrettyPrinter<'mir, 'tcx>,
+}
+
+impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for RustBorrowCheckerData<'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+        self.pretty_printer.override_region_debug_string(region)
+    }
 }
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
@@ -84,6 +90,13 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
 pub struct PoloniusBorrowChecker<'mir, 'tcx: 'mir> {
     pub output_facts: PoloniusOutput,
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
+}
+
+impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for PoloniusBorrowChecker<'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+        self.borrow_checker_data
+            .override_region_debug_string(region)
+    }
 }
 
 impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
@@ -170,17 +183,6 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
-    #[cfg(feature = "visualization")]
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.borrow_checker_data
-            .pretty_printer
-            .lookup(region)
-            .map(|s| s.as_str())
-    }
-    #[cfg(not(feature = "visualization"))]
-    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
-        None
-    }
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let regions: Vec<_> = match node {
             PcgNode::Place(place) => place.regions(self.ctxt()).into_iter().collect(),
@@ -272,6 +274,13 @@ pub struct NllBorrowCheckerImpl<'mir, 'tcx: 'mir> {
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
 }
 
+impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for NllBorrowCheckerImpl<'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+        self.borrow_checker_data
+            .override_region_debug_string(region)
+    }
+}
+
 impl<'mir, 'tcx: 'mir> NllBorrowCheckerImpl<'mir, 'tcx> {
     pub fn new<T: BodyAndBorrows<'tcx>>(tcx: ty::TyCtxt<'tcx>, body: &'mir T) -> Self {
         let borrow_checker_data = RustBorrowCheckerData::new(tcx, body);
@@ -284,17 +293,6 @@ impl<'mir, 'tcx: 'mir> NllBorrowCheckerImpl<'mir, 'tcx> {
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
-    #[cfg(feature = "visualization")]
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.borrow_checker_data
-            .pretty_printer
-            .lookup(region)
-            .map(|s| s.as_str())
-    }
-    #[cfg(not(feature = "visualization"))]
-    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
-        None
-    }
     fn input_facts(&self) -> &PoloniusInput {
         self.borrow_checker_data.input_facts
     }

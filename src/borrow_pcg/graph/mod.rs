@@ -18,7 +18,7 @@ use crate::{
     coupling::PcgCoupledEdgeKind,
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         data_structures::fx::FxHashSet,
         middle::mir::{self},
@@ -316,17 +316,17 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// `blocking_map` can be provided to use a shared cache for computation
     /// of blocking calculations. The argument should be used if this function
     /// is to be called multiple times on the same graph.
-    pub(crate) fn is_leaf_edge<'graph, 'a: 'graph, 'bc: 'graph>(
+    pub(crate) fn is_leaf_edge<'graph, Edge, Ctxt: Copy>(
         &'graph self,
-        edge: &impl BorrowPcgEdgeLike<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        edge: &Edge,
+        ctxt: Ctxt,
         blocking_map: &FrozenGraphRef<'graph, 'tcx>,
     ) -> bool
     where
-        'tcx: 'a,
+        Edge: EdgeData<'tcx, Ctxt>,
     {
-        for n in edge.blocked_by_nodes(ctxt.bc_ctxt()) {
-            if blocking_map.has_edge_blocking(n.into(), ctxt.bc_ctxt()) {
+        for n in edge.blocked_by_nodes(ctxt) {
+            if blocking_map.has_edge_blocking(n.into(), ctxt) {
                 return false;
             }
         }
@@ -443,7 +443,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         false
     }
 
-    pub(crate) fn edges_blocking<'slf, 'a: 'slf, 'bc: 'slf>(
+    pub(crate) fn edges_blocking<'slf, 'a: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
@@ -467,14 +467,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 }
 
-impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<ValidityConditions> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+    pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<VC> {
         self.edges.remove(edge)
     }
 
     pub fn edges<'slf>(
         &'slf self,
-    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind>> + 'slf {
+    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>> + 'slf {
         self.edges
             .iter()
             .map(|(kind, conditions)| BorrowPcgEdgeRef::new(kind, conditions))
@@ -513,7 +513,7 @@ impl<T> Conditioned<T> {
 }
 
 impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
-    pub(crate) fn label_lifetime_projections<P, Ctxt>(
+    pub(crate) fn label_lifetime_projections<P, Ctxt: Copy>(
         &mut self,
         predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
@@ -533,7 +533,7 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash> BorrowsGraph<'tcx, EdgeKind> {
         result
     }
 }
-impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn insert<'a, Ctxt: Copy>(
         &mut self,
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
@@ -542,6 +542,7 @@ impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, VC> BorrowsGraph<'tc
     where
         'tcx: 'a,
         VC: ValidityConditionOps<Ctxt>,
+        EdgeKind: EdgeData<'tcx, Ctxt>,
     {
         if let Some(conditions) = self.edges.get_mut(&edge.value) {
             conditions.join(&edge.conditions, ctxt)
@@ -551,24 +552,26 @@ impl<'tcx, EdgeKind: EdgeData<'tcx> + Eq + std::hash::Hash, VC> BorrowsGraph<'tc
         }
     }
 
-    pub(crate) fn contains<'a, T: Into<PcgNode<'tcx>>>(
+    pub(crate) fn contains<
+        'a,
+        P: Copy + PartialEq,
+        T: Into<PcgNodeWithPlace<'tcx, P>>,
+        Ctxt: Copy,
+    >(
         &self,
         node: T,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> bool
     where
         'tcx: 'a,
+        EdgeKind: EdgeData<'tcx, Ctxt, P>,
     {
         let node = node.into();
         self.edges().any(|edge| {
-            edge.kind.blocks_node(node, ctxt.bc_ctxt())
+            edge.kind.blocks_node(node, ctxt)
                 || node
-                    .as_blocking_node()
-                    .map(|blocking| {
-                        edge.kind
-                            .blocked_by_nodes(ctxt.bc_ctxt())
-                            .contains(&blocking)
-                    })
+                    .as_local_node()
+                    .map(|blocking| edge.kind.blocked_by_nodes(ctxt).contains(&blocking))
                     .unwrap_or(false)
         })
     }

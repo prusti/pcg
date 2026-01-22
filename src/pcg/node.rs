@@ -151,10 +151,10 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>> for PcgNode<
     }
 }
 
-impl<'tcx, Ctxt, T: PcgNodeLike<'tcx, Ctxt>, U: PcgLifetimeProjectionBaseLike<'tcx>>
-    PcgNodeLike<'tcx, Ctxt> for PcgNode<'tcx, T, U>
+impl<'tcx, Ctxt, P, T: PcgNodeLike<'tcx, Ctxt, P>, U: PcgLifetimeProjectionBaseLike<'tcx, P>>
+    PcgNodeLike<'tcx, Ctxt, P> for PcgNode<'tcx, T, U>
 {
-    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
         match self {
             PcgNode::Place(p) => p.to_pcg_node(ctxt),
             PcgNode::LifetimeProjection(rp) => rp.to_pcg_node(ctxt),
@@ -223,10 +223,7 @@ impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHa
 pub trait PcgNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
     Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash
 {
-    fn to_pcg_node(
-        self,
-        ctxt: Ctxt,
-    ) -> PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P>;
 
     fn try_to_local_node<'a>(self, ctxt: Ctxt) -> Option<LocalNode<'tcx, P>> {
         match self.to_pcg_node(ctxt) {

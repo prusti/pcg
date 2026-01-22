@@ -8,8 +8,8 @@ use crate::{
             LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller,
         },
         region_projection::{
-            LifetimeProjectionLabel, LocalLifetimeProjection, PcgLifetimeProjectionBaseLike,
-            PcgLifetimeProjectionLike, PlaceOrConst,
+            LifetimeProjectionLabel, LocalLifetimeProjection, OverrideRegionDebugString,
+            PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike, PlaceOrConst,
         },
     },
     pcg::{PcgNode, PcgNodeLike},
@@ -126,8 +126,8 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for LoopAbstractionInput<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugString>
+    DisplayWithCtxt<Ctxt> for LoopAbstractionInput<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> crate::utils::display::DisplayOutput {
         self.0.display_output(ctxt, mode)

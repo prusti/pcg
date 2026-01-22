@@ -3,7 +3,8 @@ use std::borrow::Cow;
 use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
-        edge::kind::BorrowPcgEdgeKind,
+        edge::{borrow_flow::BorrowFlowEdge, kind::BorrowPcgEdgeKind},
+        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
@@ -11,7 +12,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind,
+        CapabilityKind, CapabilityLike,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -20,9 +21,9 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasLocals, LocalTys, Place,
+        PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -403,8 +404,26 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         result.extend(capabilities);
         result
     }
-    pub(crate) fn start_block(analysis_ctxt: AnalysisCtxt<'a, 'tcx>) -> Self {
-        let mut capabilities = PlaceCapabilities::default();
+}
+
+impl<
+    'a,
+    'tcx: 'a,
+    C: CapabilityLike,
+    P: Eq + std::hash::Hash + Copy,
+    EdgeKind: Eq + std::hash::Hash + From<BorrowFlowEdge<'tcx, P>>,
+> Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, P>, EdgeKind>
+{
+    pub(crate) fn start_block<Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx>>(
+        analysis_ctxt: Ctxt,
+    ) -> Self
+    where
+        P: PlaceLike<'tcx, Ctxt>,
+        EdgeKind: EdgeData<'tcx, Ctxt, P>
+            + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+            + LabelEdgePlaces<'tcx, Ctxt, P>,
+    {
+        let mut capabilities: PlaceCapabilities<'tcx, C, P> = PlaceCapabilities::default();
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {

@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{PcgRegion, TyVarianceVisitor},
+        region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -30,6 +30,20 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) borrow_checker: T,
+}
+
+impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
+    for CompilerCtxt<'a, 'tcx, &'bc BC>
+{
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.borrow_checker.override_region_debug_string(region)
+    }
+}
+
+impl<'a, 'tcx, BC> LocalTys<'tcx> for CompilerCtxt<'a, 'tcx, BC> {
+    fn local_ty(&self, local: Local) -> ty::Ty<'tcx> {
+        self.mir.local_decls()[local].ty
+    }
 }
 
 impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T> {
@@ -169,7 +183,10 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
     }
 }
 
-impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T> {
+impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T>
+where
+    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+{
     fn bc(&self) -> T {
         self.borrow_checker
     }
@@ -302,6 +319,10 @@ pub(crate) trait DebugCtxt {
     fn num_basic_blocks(&self) -> usize;
 }
 
+pub(crate) trait LocalTys<'tcx> {
+    fn local_ty(&self, local: Local) -> ty::Ty<'tcx>;
+}
+
 pub(crate) trait HasLocals: Copy {
     fn always_live_locals(self) -> RustBitSet<Local>;
     fn arg_count(self) -> usize;
@@ -324,7 +345,7 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
-    HasCompilerCtxt<'a, 'tcx>
+    HasCompilerCtxt<'a, 'tcx> + OverrideRegionDebugString
 {
     fn bc(&self) -> BC;
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;

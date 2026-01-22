@@ -255,20 +255,20 @@ mod private {
         },
         pcg::PcgNode,
         utils::{
-            HasBorrowCheckerCtxt,
+            HasBorrowCheckerCtxt, Place,
             display::{DisplayOutput, DisplayWithCtxt, OutputMode},
             maybe_old::MaybeLabelledPlace,
         },
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub struct LabelLifetimeProjectionAction<'tcx> {
-        predicate: LabelNodePredicate<'tcx>,
+    pub struct LabelLifetimeProjectionAction<'tcx, P = Place<'tcx>> {
+        predicate: LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
     }
 
-    impl<'tcx> LabelLifetimeProjectionAction<'tcx> {
-        pub(crate) fn predicate(&self) -> &LabelNodePredicate<'tcx> {
+    impl<'tcx, P: Copy> LabelLifetimeProjectionAction<'tcx, P> {
+        pub(crate) fn predicate(&self) -> &LabelNodePredicate<'tcx, P> {
             &self.predicate
         }
 
@@ -277,14 +277,14 @@ mod private {
         }
 
         pub(crate) fn new(
-            predicate: LabelNodePredicate<'tcx>,
+            predicate: LabelNodePredicate<'tcx, P>,
             label: Option<LifetimeProjectionLabel>,
         ) -> Self {
             Self { predicate, label }
         }
 
         pub(crate) fn remove_label(
-            projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+            projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
         ) -> Self {
             Self {
                 predicate: LabelNodePredicate::Equals(PcgNode::LifetimeProjection(

@@ -3,7 +3,10 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdgeRef,
         edge::kind::BorrowPcgEdgeType,
         has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
-        region_projection::{LifetimeProjectionLabel, PcgLifetimeProjectionBase, RegionIdx},
+        region_projection::{
+            LifetimeProjectionLabel, OverrideRegionDebugString, PcgLifetimeProjectionBase,
+            RegionIdx,
+        },
     },
     pcg::{LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeType, PcgNodeWithPlace},
     utils::{
@@ -17,7 +20,7 @@ use crate::{
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
 
 /// A trait for data that represents a hyperedge in the Borrow PCG.
-pub(crate) trait EdgeData<'tcx, Ctxt, P: Copy + PartialEq = Place<'tcx>> {
+pub(crate) trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     /// For an edge A -> B, this returns the set of nodes A. In general, the capabilities
     /// of nodes B are obtained from these nodes.
     fn blocked_nodes<'slf>(
@@ -75,7 +78,7 @@ pub(crate) trait EdgeData<'tcx, Ctxt, P: Copy + PartialEq = Place<'tcx>> {
 }
 
 impl<'a, 'graph, 'tcx, BC: Copy> EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>>
-    for BorrowPcgEdgeRef<'graph, 'tcx>
+    for BorrowPcgEdgeRef<'tcx, 'graph>
 {
     fn blocked_nodes<'slf>(
         &'slf self,
@@ -191,8 +194,8 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for LabelNodePredicate<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugString>
+    DisplayWithCtxt<Ctxt> for LabelNodePredicate<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
@@ -399,7 +402,7 @@ macro_rules! edgedata_enum {
         $enum_name:ident < $tcx:lifetime, $p:ident >,
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
-        impl<$tcx, Ctxt, $p: Copy + PartialEq + Eq + std::hash::Hash> $crate::borrow_pcg::edge_data::EdgeData<$tcx, Ctxt, $p> for $enum_name<$tcx, $p> {
+        impl<$tcx, Ctxt: Copy, $p: Copy + PartialEq + Eq + std::hash::Hash> $crate::borrow_pcg::edge_data::EdgeData<$tcx, Ctxt, $p> for $enum_name<$tcx, $p> {
             fn blocked_nodes<'slf>(
                 &'slf self,
                 ctxt: Ctxt,
@@ -502,7 +505,7 @@ macro_rules! edgedata_enum {
             }
         }
 
-        impl<$tcx, Ctxt> HasValidityCheck<Ctxt> for $enum_name<$tcx> {
+        impl<$tcx, Ctxt: Copy + DebugCtxt> HasValidityCheck<Ctxt> for $enum_name<$tcx> {
             fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
                 match self {
                     $(

@@ -130,7 +130,7 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 ),
             }
 
-            write_pcg_dot_graph_to_file(pcg, self.ctxt, location, &filename).unwrap();
+            write_pcg_dot_graph_to_file(pcg, self.ctxt.as_dyn(), location, &filename).unwrap();
         }
     }
 }

@@ -183,9 +183,9 @@ pub(crate) mod internal {
     /// (e.g. {x↓'a} -> {x.f↓'a, x.g↓'a}) where the expanded part is in the Borrow
     /// PCG.
     #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-    pub struct BorrowPcgExpansionData<P> {
-        pub(crate) base: P,
-        pub(crate) expansion: Vec<P>,
+    pub struct BorrowPcgExpansionData<Node> {
+        pub(crate) base: Node,
+        pub(crate) expansion: Vec<Node>,
         pub(crate) guide: Option<RepackGuide>,
     }
 }
@@ -398,29 +398,33 @@ impl<
     }
 }
 
-impl<'tcx, Ctxt, P: Copy + Into<LocalNode<'tcx>>> EdgeData<'tcx, Ctxt, P>
-    for BorrowPcgExpansionData<P>
+impl<
+    'tcx,
+    Ctxt: Copy,
+    P: Eq + Copy + std::fmt::Debug + std::hash::Hash,
+    Node: PartialEq + Copy + Into<LocalNode<'tcx, P>>,
+> EdgeData<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
 {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
-        self.base.into().to_pcg_node(ctxt) == node
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
+        self.base.into().to_pcg_node(ctxt) == node.into().to_pcg_node(ctxt)
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
         Box::new(std::iter::once(self.base.into().to_pcg_node(ctxt)))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        _ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
         Box::new(self.expansion.iter().map(|p| (*p).into()))
     }

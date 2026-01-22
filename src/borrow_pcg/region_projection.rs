@@ -12,7 +12,7 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
     },
     error::PcgError,
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::{
@@ -51,10 +51,14 @@ pub enum PcgRegionInternalError {
     RegionIndexOutOfBounds(RegionIdx),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RegionVid {
+pub(crate) trait OverrideRegionDebugString {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str>;
+}
+
+impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for RegionVid {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
-            if let Some(string) = ctxt.bc().override_region_debug_string(*self) {
+            if let Some(string) = ctxt.override_region_debug_string(*self) {
                 string.to_owned()
             } else {
                 format!("{self:?}")
@@ -64,42 +68,28 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     }
 }
 
+struct NoOverride;
+
+impl OverrideRegionDebugString for NoOverride {
+    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str> {
+        None
+    }
+}
+
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.output(None, OutputMode::Normal).into_text())
+        write!(
+            f,
+            "{}",
+            self.display_output(NoOverride, OutputMode::Normal)
+                .into_text()
+        )
     }
 }
 
 impl PcgRegion {
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
-    }
-    pub fn output(&self, ctxt: Option<CompilerCtxt<'_, '_>>, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            match self {
-                PcgRegion::RegionVid(vid) => {
-                    if let Some(ctxt) = ctxt {
-                        vid.display_string(ctxt)
-                    } else {
-                        format!("{vid:?}")
-                    }
-                }
-                PcgRegion::ReErased => "ReErased".to_owned(),
-                PcgRegion::ReStatic => "ReStatic".to_owned(),
-                PcgRegion::ReBound(debruijn_index, region) => {
-                    format!("ReBound({debruijn_index:?}, {region:?})")
-                }
-                PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})"),
-                PcgRegion::PcgInternalError(pcg_region_internal_error) => {
-                    format!("{pcg_region_internal_error:?}")
-                }
-                PcgRegion::RePlaceholder(placeholder) => format!("RePlaceholder({placeholder:?})"),
-                PcgRegion::ReEarlyParam(early_param_region) => {
-                    format!("ReEarlyParam({early_param_region:?})")
-                }
-            }
-            .into(),
-        )
     }
 
     pub fn vid(&self) -> Option<RegionVid> {
@@ -145,9 +135,26 @@ impl PcgRegion {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PcgRegion {
+impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        self.output(Some(ctxt.bc_ctxt()), mode)
+        match self {
+            PcgRegion::RegionVid(vid) => vid.display_output(ctxt, mode),
+            PcgRegion::ReErased => "ReErased".into(),
+            PcgRegion::ReStatic => "ReStatic".into(),
+            PcgRegion::ReBound(debruijn_index, region) => {
+                format!("ReBound({debruijn_index:?}, {region:?})").into()
+            }
+            PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})").into(),
+            PcgRegion::PcgInternalError(pcg_region_internal_error) => {
+                format!("{pcg_region_internal_error:?}").into()
+            }
+            PcgRegion::RePlaceholder(placeholder) => {
+                format!("RePlaceholder({placeholder:?})").into()
+            }
+            PcgRegion::ReEarlyParam(early_param_region) => {
+                format!("ReEarlyParam({early_param_region:?})").into()
+            }
+        }
     }
 }
 
@@ -220,7 +227,7 @@ impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, 
     }
 }
 
-impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasRegions<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
+impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> HasRegions<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
         extract_regions(self.rust_ty(ctxt))
     }
@@ -321,19 +328,19 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
             PlaceOrConst::Const(_) => None,
         }
     }
-
-    pub(crate) fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
-        match self {
-            PlaceOrConst::Place(p) => p.as_local_place(),
-            PlaceOrConst::Const(_) => None,
-        }
-    }
 }
 
 impl<'tcx, P: Copy> PcgLifetimeProjectionBase<'tcx, P> {
     pub(crate) fn as_current_place(&self) -> Option<P> {
         match self {
             PlaceOrConst::Place(p) => p.as_current_place(),
+            PlaceOrConst::Const(_) => None,
+        }
+    }
+
+    pub(crate) fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx, P>> {
+        match self {
+            PlaceOrConst::Place(p) => p.as_local_place(),
             PlaceOrConst::Const(_) => None,
         }
     }
@@ -354,10 +361,10 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PcgLifetimeProjectionBase<'tc
     }
 }
 
-impl<'tcx, Ctxt, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgNodeLike<'tcx, Ctxt>
+impl<'tcx, Ctxt, P, T: PcgLifetimeProjectionBaseLike<'tcx, P>> PcgNodeLike<'tcx, Ctxt, P>
     for LifetimeProjection<'tcx, T>
 {
-    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
         PcgNode::LifetimeProjection(self.with_base(self.base.to_pcg_lifetime_projection_base()))
     }
 }
@@ -624,7 +631,7 @@ impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LifetimeProjection<'tcx, MaybeLab
     }
 }
 
-pub trait HasRegions<'tcx, Ctxt> {
+pub trait HasRegions<'tcx, Ctxt: Copy> {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion>;
     fn lifetime_projections<'a>(
         self,
@@ -646,14 +653,16 @@ pub trait HasTy<'tcx, Ctxt> {
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
-pub trait PcgLifetimeProjectionBaseLike<'tcx>:
+pub trait PcgLifetimeProjectionBaseLike<'tcx, P = Place<'tcx>>:
     Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
 {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx>;
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P>;
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LocalLifetimeProjectionBase<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx, P>
+    for LocalLifetimeProjectionBase<'tcx, P>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
         PlaceOrConst::Place((*self).into())
     }
 }
@@ -667,12 +676,14 @@ impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for PlaceOrConst<'tcx, MaybeLabel
 impl<
     'a,
     'tcx: 'a,
-    Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+    Ctxt: Copy,
     T: PcgLifetimeProjectionBaseLike<'tcx>
         + DisplayWithCtxt<Ctxt>
         + HasTy<'tcx, Ctxt>
         + HasRegions<'tcx, Ctxt>,
 > DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
+where
+    PcgRegion: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
@@ -684,7 +695,7 @@ impl<
         DisplayOutput::Seq(vec![
             self.base.display_output(ctxt, mode),
             DisplayOutput::DOWN_ARROW,
-            self.region(ctxt).display_output(ctxt.bc_ctxt(), mode),
+            self.region(ctxt).display_output(ctxt, mode),
             label_part,
         ])
     }
@@ -720,12 +731,6 @@ impl<'tcx> TryFrom<LifetimeProjection<'tcx, MaybeRemotePlace<'tcx>>>
             label: rp.label,
             phantom: PhantomData,
         })
-    }
-}
-
-impl<'tcx> From<MaybeLabelledPlace<'tcx>> for PcgLifetimeProjectionBase<'tcx> {
-    fn from(place: MaybeLabelledPlace<'tcx>) -> Self {
-        PlaceOrConst::Place(place.into())
     }
 }
 
@@ -824,7 +829,7 @@ impl<
     T: HasTy<'tcx, CompilerCtxt<'a, 'tcx>>
         + HasRegions<'tcx, CompilerCtxt<'a, 'tcx>>
         + PcgLifetimeProjectionBaseLike<'tcx>,
-> HasValidityCheck<'a, 'tcx> for LifetimeProjection<'tcx, T>
+> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
@@ -853,7 +858,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
-    pub fn new<'a, Ctxt>(
+    pub fn new<'a, Ctxt: Copy>(
         base: T,
         region: PcgRegion,
         label: Option<LifetimeProjectionLabel>,
@@ -880,7 +885,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub fn region<'a, Ctxt>(&self, ctxt: Ctxt) -> PcgRegion
+    pub fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion
     where
         'tcx: 'a,
         T: HasRegions<'tcx, Ctxt>,
@@ -979,11 +984,5 @@ impl<'tcx> LifetimeProjection<'tcx> {
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
         self.as_local_region_projection()
             .and_then(|rp| rp.deref(ctxt))
-    }
-}
-
-impl From<RemotePlace> for PcgLifetimeProjectionBase<'_> {
-    fn from(remote_place: RemotePlace) -> Self {
-        PlaceOrConst::Place(remote_place.into())
     }
 }

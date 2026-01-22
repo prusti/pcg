@@ -6,7 +6,7 @@ use itertools::Itertools;
 use crate::{
     borrow_pcg::{
         AbstractionInputTarget, AbstractionOutputTarget, MakeFunctionShapeError,
-        borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_edge::{BorrowPcgEdge, LocalNode},
         domain::{
             FunctionCallAbstractionInput, FunctionCallAbstractionOutput, LoopAbstractionInput,
             LoopAbstractionOutput,
@@ -303,8 +303,8 @@ pub type LoopCoupledEdgeKind<'tcx> = CoupledEdgeKind<
     LoopAbstractionOutput<'tcx>,
 >;
 
-impl<'tcx, Ctxt> HasValidityCheck<Ctxt> for PcgCoupledEdgeKind<'tcx> {
-    fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'tcx, Ctxt: Copy + DebugCtxt> HasValidityCheck<Ctxt> for PcgCoupledEdgeKind<'tcx> {
+    fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         todo!()
     }
 }
@@ -866,10 +866,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, T: DisplayWithCtxt<Ctxt
     }
 }
 
-impl<'tcx> EdgeData<'tcx> for PcgCoupledEdgeKind<'tcx> {
-    fn blocked_nodes<'slf, BC: Copy>(
+impl<'a, 'tcx, BC: Copy> EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>> for PcgCoupledEdgeKind<'tcx> {
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = crate::pcg::PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
@@ -877,23 +877,25 @@ impl<'tcx> EdgeData<'tcx> for PcgCoupledEdgeKind<'tcx> {
         Box::new(self.inputs(ctxt).into_iter().map(|input| input.0))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        _ctxt: CompilerCtxt<'mir, 'tcx, BC>,
+        _ctxt: CompilerCtxt<'a, 'tcx, BC>,
     ) -> Box<
         dyn std::iter::Iterator<Item = crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf,
     >
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
         Box::new(self.outputs().into_iter().map(|output| output.0))
     }
 }
 
-impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdgeKind<'tcx, T> {
-    fn blocked_nodes<'slf, BC: Copy>(
+impl<'a, 'tcx, BC: Copy, T: EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>>>
+    EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>> for MaybeCoupledEdgeKind<'tcx, T>
+{
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx, BC>,
     ) -> Box<dyn std::iter::Iterator<Item = crate::pcg::PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
@@ -904,14 +906,12 @@ impl<'tcx, T: EdgeData<'tcx>> EdgeData<'tcx> for MaybeCoupledEdgeKind<'tcx, T> {
         }
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<
-        dyn std::iter::Iterator<Item = crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf,
-    >
+        ctxt: CompilerCtxt<'a, 'tcx, BC>,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
         match self {
             MaybeCoupledEdgeKind::Coupled(coupled) => coupled.blocked_by_nodes(ctxt),

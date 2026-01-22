@@ -95,7 +95,7 @@ pub(crate) use private::*;
 
 impl<'tcx, C, P> PlaceCapabilitiesReader<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
 where
-    P: Copy + Eq + std::hash::Hash + HasPlace<'tcx>,
+    P: Copy + Eq + std::hash::Hash,
     C: Copy,
 {
     fn get<Ctxt>(&self, place: P, _ctxt: Ctxt) -> Option<C> {
@@ -109,7 +109,7 @@ where
 
 impl<'tcx, C, P> PlaceCapabilitiesInterface<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
 where
-    P: Copy + Eq + std::hash::Hash + HasPlace<'tcx>,
+    P: Copy + Eq + std::hash::Hash,
     C: Copy,
 {
     fn insert<Ctxt>(&mut self, place: P, capability: impl Into<C>, _ctxt: Ctxt) -> bool {

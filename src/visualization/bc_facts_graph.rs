@@ -7,7 +7,7 @@ use crate::{
     borrow_checker::{
         BorrowCheckerInterface, RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker,
     },
-    borrow_pcg::visitor::extract_regions,
+    borrow_pcg::{region_projection::OverrideRegionDebugString, visitor::extract_regions},
     rustc_interface::{
         borrowck::{PoloniusRegionVid, RegionInferenceContext},
         middle::{
@@ -27,25 +27,18 @@ use super::{
     node::IdLookup,
 };
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for PoloniusRegionVid
-{
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+impl<'a, 'tcx: 'a, Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PoloniusRegionVid {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let region: RegionVid = (*self).into();
-        DisplayOutput::Text(region.display_string(ctxt).into())
+        region.display_output(ctxt, mode)
     }
 }
 
-fn get_id<
-    'a,
-    'tcx: 'a,
-    T: Clone + Eq + DisplayWithCompilerCtxt<'a, 'tcx, &'a BC>,
-    BC: BorrowCheckerInterface<'tcx> + ?Sized + 'a,
->(
+fn get_id<Ctxt, T: Clone + Eq + DisplayWithCtxt<Ctxt>>(
     elem: &T,
     nodes: &mut IdLookup<T>,
     graph_nodes: &mut Vec<DotNode>,
-    ctxt: CompilerCtxt<'a, 'tcx, &'a BC>,
+    ctxt: Ctxt,
 ) -> String {
     if let Some(id) = nodes.existing_id(elem) {
         id.to_string()
@@ -67,9 +60,9 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
     let mut nodes = IdLookup::new('n');
     for loc in ctxt.borrow_checker.output_facts.subset.values() {
         for (sup, subs) in loc {
-            let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
+            let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt);
             for sub in subs {
-                let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
+                let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt);
                 let edge = DotEdge {
                     id: None,
                     from: sup_node.to_string(),
@@ -90,6 +83,12 @@ pub struct RegionPrettyPrinter<'bc, 'tcx> {
     sccs: RefCell<Option<petgraph::Graph<Vec<RegionVid>, ()>>>,
     region_to_string: BTreeMap<RegionVid, String>,
     region_infer_ctxt: &'bc RegionInferenceContext<'tcx>,
+}
+
+impl<'bc, 'tcx> OverrideRegionDebugString for RegionPrettyPrinter<'bc, 'tcx> {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+        self.region_to_string.get(&region).map(|s| s.as_str())
+    }
 }
 
 impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
@@ -171,7 +170,7 @@ pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
                 "[{}]",
                 regions
                     .iter()
-                    .map(|r| r.display_string(ctxt.as_dyn()))
+                    .map(|r| r.display_string(ctxt))
                     .collect::<Vec<_>>()
                     .join(", ")
             )
@@ -199,9 +198,9 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
     };
     if let Some(subset) = ctxt.borrow_checker.output_facts.subset.get(&location_index) {
         for (sup, subs) in subset {
-            let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
+            let sup_node = get_id(sup, &mut nodes, &mut graph.nodes, ctxt);
             for sub in subs {
-                let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt.as_dyn());
+                let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt);
                 graph.edges.push(DotEdge {
                     id: None,
                     from: sup_node.to_string(),

@@ -18,10 +18,10 @@ struct Alias<'tcx> {
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
-    pub(crate) fn ancestor_edges<'graph, 'mir: 'graph, 'bc: 'graph>(
+    pub(crate) fn ancestor_edges<'graph, 'a: 'graph>(
         &'graph self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> {
         let mut result: FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> = FxHashSet::default();
         let mut stack = vec![node];

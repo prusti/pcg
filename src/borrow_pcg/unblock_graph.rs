@@ -4,8 +4,9 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_pcg::borrow_pcg_edge::BorrowPcgEdge, error::PcgInternalError,
-    utils::data_structures::HashSet,
+    borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
+    error::PcgInternalError,
+    utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
 };
 
 use super::borrow_pcg_edge::{BlockedNode, BorrowPcgEdgeLike};
@@ -45,15 +46,17 @@ impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
     }
 }
 
-impl<'tcx, Edge: EdgeData<'tcx> + std::fmt::Debug + Clone + Eq + std::hash::Hash>
-    UnblockGraph<'tcx, Edge>
-{
+impl<'tcx, Edge: std::fmt::Debug + Clone + Eq + std::hash::Hash> UnblockGraph<'tcx, Edge> {
     /// Returns an ordered list of actions to unblock the edges in the graph.
     /// This is essentially a topological sort of the edges.
-    pub fn actions(
+    pub fn actions<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         self,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx, Edge>>, PcgInternalError> {
+        ctxt: Ctxt,
+    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx, Edge>>, PcgInternalError>
+    where
+        'tcx: 'a,
+        Edge: EdgeData<'tcx, Ctxt>,
+    {
         let mut edges = self.edges;
         let mut actions = vec![];
 
@@ -151,27 +154,37 @@ impl<'tcx> UnblockGraph<'tcx> {
         self.edges.insert(unblock_edge)
     }
 
-    pub(crate) fn kill_edge(
+    pub(crate) fn kill_edge<
+        'a,
+        Edge: BorrowPcgEdgeLike<'tcx>,
+        Ctxt: Copy + HasBorrowCheckerCtxt<'a, 'tcx>,
+    >(
         &mut self,
-        edge: impl BorrowPcgEdgeLike<'tcx>,
-        borrows: &BorrowsState<'_, 'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) {
+        edge: Edge,
+        borrows: &BorrowsState<'a, 'tcx>,
+        ctxt: Ctxt,
+    ) where
+        'tcx: 'a,
+        Edge: EdgeData<'tcx, Ctxt>,
+    {
         if self.add_dependency(edge.clone().to_owned_edge()) {
             for blocking_node in edge.blocked_by_nodes(ctxt) {
-                self.unblock_node(blocking_node.into(), borrows, ctxt);
+                self.unblock_node(blocking_node.into(), borrows, ctxt.bc_ctxt());
             }
         }
     }
 
     #[tracing::instrument(skip(self, borrows, ctxt))]
-    pub(crate) fn unblock_node(
-        &mut self,
+    pub(crate) fn unblock_node<'a: 'slf, 'slf, Ctxt: Copy + HasBorrowCheckerCtxt<'a, 'tcx>>(
+        &'slf mut self,
         node: BlockedNode<'tcx>,
-        borrows: &BorrowsState<'_, 'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) {
-        for edge in borrows.edges_blocking(node, ctxt) {
+        borrows: &'slf BorrowsState<'a, 'tcx>,
+        ctxt: Ctxt,
+    ) where
+        'tcx: 'a,
+        BorrowPcgEdgeRef<'tcx, 'slf>: EdgeData<'tcx, Ctxt>,
+    {
+        for edge in borrows.edges_blocking(node, ctxt.bc_ctxt()) {
             self.kill_edge(edge, borrows, ctxt);
         }
     }

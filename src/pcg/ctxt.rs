@@ -40,9 +40,13 @@ pub trait HasSettings<'a> {
 
 mod private {
     use crate::{
+        borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::{BodyAnalysis, PcgArena, SymbolicCapabilityCtxt},
-        rustc_interface::{RustBitSet, middle::mir},
-        utils::{CompilerCtxt, DebugCtxt, HasLocals, PcgSettings},
+        rustc_interface::{
+            RustBitSet,
+            middle::{mir, ty},
+        },
+        utils::{CompilerCtxt, DebugCtxt, HasLocals, LocalTys, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
@@ -57,6 +61,20 @@ mod private {
         #[cfg(feature = "visualization")]
         pub(crate) graphs:
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
+    }
+
+    impl<'a, 'tcx: 'a> LocalTys<'tcx> for AnalysisCtxt<'a, 'tcx> {
+        fn local_ty(&self, local: mir::Local) -> ty::Ty<'tcx> {
+            self.ctxt.local_ty(local)
+        }
+    }
+
+    impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
+        fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+            self.ctxt
+                .borrow_checker
+                .override_region_debug_string(region)
+        }
     }
 
     impl<'a, 'tcx: 'a> DebugCtxt for AnalysisCtxt<'a, 'tcx> {
