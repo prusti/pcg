@@ -85,7 +85,7 @@ impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'t
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for LoopAbstraction<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy, P> LabelEdgePlaces<'tcx, Ctxt> for LoopAbstraction<'tcx> {
     fn label_blocked_places(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,

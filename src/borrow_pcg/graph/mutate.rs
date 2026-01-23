@@ -7,7 +7,9 @@ use crate::{
         validity_conditions::{PathCondition, ValidityConditions},
     },
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, data_structures::HashSet},
+    utils::{
+        CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, PcgPlace, data_structures::HashSet,
+    },
 };
 
 use super::BorrowsGraph;
@@ -87,7 +89,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
             .collect();
         changed
     }
-    pub(crate) fn label_place<P: std::hash::Hash + Eq + Copy, Ctxt: Copy>(
+    pub(crate) fn label_place<P: PcgPlace<'tcx, Ctxt>, Ctxt: Copy>(
         &mut self,
         place: P,
         reason: LabelPlaceReason,

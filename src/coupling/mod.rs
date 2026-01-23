@@ -37,7 +37,7 @@ use crate::{
     pcg::PcgNodeLike,
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt,
         data_structures::{HashMap, HashSet},
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
@@ -416,9 +416,10 @@ impl<
 }
 
 impl<
+    'a,
     'tcx,
     Metadata,
-    Ctxt: Copy + DebugCtxt,
+    Ctxt: Copy + DebugCtxt + HasCompilerCtxt<'a, 'tcx>,
     Input: LabelPlace<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
     Output: LabelPlace<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
 > LabelEdgePlaces<'tcx, Ctxt> for CoupledEdgeKind<Metadata, Input, Output>
@@ -442,7 +443,9 @@ impl<
     }
 }
 
-impl<'tcx, Ctxt: Copy + DebugCtxt> LabelEdgePlaces<'tcx, Ctxt> for PcgCoupledEdgeKind<'tcx> {
+impl<'a, 'tcx, Ctxt: Copy + DebugCtxt + HasCompilerCtxt<'a, 'tcx>> LabelEdgePlaces<'tcx, Ctxt>
+    for PcgCoupledEdgeKind<'tcx>
+{
     fn label_blocked_places(
         &mut self,
         predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,

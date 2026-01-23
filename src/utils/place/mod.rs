@@ -156,7 +156,7 @@ pub trait PcgPlace<'tcx, Ctxt: Copy> = Copy
     + HasTy<'tcx, Ctxt>
     + PrefixRelation;
 
-pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> {
+pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
     fn local(self) -> Local;
     fn is_owned(self, ctxt: Ctxt) -> bool;
     fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;

@@ -396,12 +396,12 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
 edgedata_enum!(
     crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind,
     BorrowPcgEdgeKind<'tcx, P>,
-    Borrow(BorrowEdge<'tcx, P>),
-    BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
-    Abstraction(AbstractionEdge<'tcx, P>),
-    BorrowFlow(BorrowFlowEdge<'tcx, P>),
-    Deref(DerefEdge<'tcx>),
-    Coupled(PcgCoupledEdgeKind<'tcx>),
+    Borrow(crate::borrow_pcg::edge::borrow::BorrowEdge<'tcx, P>),
+    BorrowPcgExpansion(crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx, P>),
+    Abstraction(crate::borrow_pcg::edge::abstraction::AbstractionEdge<'tcx, P>),
+    BorrowFlow(crate::borrow_pcg::edge::borrow_flow::BorrowFlowEdge<'tcx, P>),
+    Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx>),
+    Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx>),
 );
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
