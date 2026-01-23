@@ -242,12 +242,14 @@ pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWi
     FunctionCallAbstractionEdge<'tcx, P>,
 >;
 
-impl<'tcx, Ctxt: Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt> for FunctionCallAbstraction<'tcx> {
+impl<'tcx, Ctxt: Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt>
+    for FunctionCallAbstraction<'tcx, P>
+{
     fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
@@ -273,7 +275,7 @@ impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for FunctionCallA
     }
 }
 
-impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for FunctionCallAbstraction<'tcx> {
+impl<'a, 'tcx: 'a, P> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for FunctionCallAbstraction<'tcx> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.edge.blocks_node(node, ctxt)
     }

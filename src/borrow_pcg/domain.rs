@@ -35,8 +35,11 @@ impl<'tcx> LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx>
-    for PcgNode<'tcx, MaybeLabelledPlace<'tcx>, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>
+impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx>
+    for PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>>
+where
+    LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>>:
+        LabelLifetimeProjection<'tcx>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -57,7 +60,11 @@ impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgLifetimeProjectionLike<'tc
     }
 }
 
-impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> {
+impl<'tcx, P> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx, P>
+where
+    LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>>:
+        LabelLifetimeProjection<'tcx>,
+{
     fn label_lifetime_projection(
         &mut self,
         label: Option<LifetimeProjectionLabel>,
@@ -66,8 +73,11 @@ impl<'tcx> LabelLifetimeProjection<'tcx> for FunctionCallAbstractionInput<'tcx> 
     }
 }
 
-impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for FunctionCallAbstractionInput<'tcx> {
-    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
+impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P> for FunctionCallAbstractionInput<'tcx, P>
+where
+    PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>: LabelPlace<'tcx, Ctxt, P>,
+{
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool {
         self.0.base.label_place(labeller, ctxt)
     }
 }

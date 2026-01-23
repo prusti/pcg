@@ -148,9 +148,10 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
-pub trait PlaceLike<'tcx, Ctxt: Copy>:
-    std::fmt::Debug + Copy + Eq + std::hash::Hash + From<Local> + HasRegions<'tcx, Ctxt>
-{
+pub trait PcgPlace<'tcx, Ctxt: Copy> =
+    Copy + Eq + std::hash::Hash + std::fmt::Debug + HasRegions<'tcx, Ctxt> + HasTy<'tcx, Ctxt>;
+
+pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> {
     fn local(self) -> Local;
     fn is_owned(self, ctxt: Ctxt) -> bool;
     fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;

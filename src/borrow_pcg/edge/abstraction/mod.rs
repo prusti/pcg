@@ -66,14 +66,14 @@ impl<FunctionCallData, LoopData> FunctionCallOrLoop<FunctionCallData, LoopData> 
     }
 }
 
-pub type AbstractionEdge<'tcx, P = Place<'tcx>> =
-    FunctionCallOrLoop<FunctionCallAbstraction<'tcx, P>, LoopAbstraction<'tcx>>;
-
 edgedata_enum!(
     AbstractionEdge<'tcx, P>,
     FunctionCall(FunctionCallAbstraction<'tcx, P>),
     Loop(LoopAbstraction<'tcx>),
 );
+
+pub type AbstractionEdge<'tcx, P = Place<'tcx>> =
+    FunctionCallOrLoop<FunctionCallAbstraction<'tcx, P>, LoopAbstraction<'tcx>>;
 
 impl<'tcx> AbstractionEdge<'tcx> {
     /// Creates a singleton coupling hyperedge from this edge.
