@@ -213,7 +213,7 @@ pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
 }
 
-edgedata_enum!(
+edgedata_enum!(<'tcx, P>
     BorrowPcgExpansion<'tcx, P>,
     Place(BorrowPcgPlaceExpansion<'tcx, P>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),

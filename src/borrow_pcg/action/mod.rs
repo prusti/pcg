@@ -168,7 +168,7 @@ pub enum LabelPlaceReason {
 }
 
 impl LabelPlaceReason {
-    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, Ctxt, P: Copy + Eq + std::hash::Hash>(
+    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, Ctxt: Copy, P: Copy + Eq + std::hash::Hash>(
         self,
         place: P,
         edge: &mut impl LabelEdgePlaces<'tcx, Ctxt, P>,
