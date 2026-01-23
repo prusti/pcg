@@ -15,6 +15,7 @@ use crate::{
         self, CompilerCtxt, HasCompilerCtxt, HasLocals, LocalTys, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
+        maybe_remote::MaybeRemotePlace,
         validity::HasValidityCheck,
     },
 };
@@ -70,8 +71,10 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, MaybeRemotePlace<'tcx, P>> for RemotePlace {
+    fn to_pcg_lifetime_projection_base(
+        &self,
+    ) -> PcgLifetimeProjectionBase<'tcx, MaybeRemotePlace<'tcx, P>> {
         PlaceOrConst::Place((*self).into())
     }
 }

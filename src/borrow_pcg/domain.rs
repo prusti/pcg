@@ -9,7 +9,8 @@ use crate::{
         },
         region_projection::{
             LifetimeProjectionLabel, LocalLifetimeProjection, OverrideRegionDebugString,
-            PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike, PlaceOrConst,
+            PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike,
+            PlaceOrConst,
         },
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
@@ -52,10 +53,13 @@ where
     }
 }
 
-impl<'tcx, T: PcgLifetimeProjectionBaseLike<'tcx>> PcgLifetimeProjectionLike<'tcx>
+impl<'tcx, P, T: PcgLifetimeProjectionBaseLike<'tcx, P>>
+    PcgLifetimeProjectionLike<'tcx, PcgLifetimeProjectionBase<'tcx, P>>
     for LifetimeProjection<'tcx, T>
 {
-    fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx> {
+    fn to_pcg_lifetime_projection(
+        self,
+    ) -> LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>> {
         self.with_base(self.base.to_pcg_lifetime_projection_base())
     }
 }
@@ -104,7 +108,7 @@ where
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
-pub struct LoopAbstractionInput<'tcx>(pub(crate) PcgNode<'tcx>);
+pub struct LoopAbstractionInput<'tcx, P = Place<'tcx>>(pub(crate) PcgNodeWithPlace<'tcx, P>);
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
 pub struct LoopAbstractionOutput<'tcx>(pub(crate) LocalNode<'tcx>);

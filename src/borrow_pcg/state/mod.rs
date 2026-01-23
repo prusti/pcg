@@ -24,7 +24,7 @@ use crate::{
 };
 
 use super::{
-    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, ToBorrowsEdge},
+    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef},
     graph::BorrowsGraph,
     validity_conditions::{PathCondition, ValidityConditions},
     visitor::extract_regions,
@@ -560,7 +560,10 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             ctxt,
         );
         assert!(self.graph.insert(
-            borrow_edge.to_borrow_pcg_edge(self.validity_conditions.clone()),
+            BorrowPcgEdge::new(
+                BorrowPcgEdgeKind::Borrow(borrow_edge),
+                self.validity_conditions.clone(),
+            ),
             ctxt.ctxt()
         ));
 

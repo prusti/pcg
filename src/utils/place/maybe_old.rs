@@ -11,7 +11,7 @@ use crate::{
         visitor::extract_regions,
     },
     error::PcgError,
-    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
+    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         PlaceTy,
         index::IndexVec,
@@ -21,8 +21,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
+        PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,
@@ -35,7 +35,7 @@ use serde_json::json;
 #[deprecated(note = "Use MaybeLabelledPlace instead")]
 pub type MaybeOldPlace<'tcx> = MaybeLabelledPlace<'tcx>;
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, From, Ord, PartialOrd, TryInto)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, From, Ord, PartialOrd)]
 pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Current(P),
     Labelled(LabelledPlace<'tcx, P>),
@@ -81,17 +81,12 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
-    fn to_local_node(self, ctxt: Ctxt) -> LocalNode<'tcx> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.to_local_node(ctxt),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_local_node(ctxt),
-        }
-    }
-}
-
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
-    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt, P> PcgNodeLike<'tcx, Ctxt, P> for MaybeLabelledPlace<'tcx, P>
+where
+    P: PcgNodeLike<'tcx, Ctxt, P>,
+    LabelledPlace<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,
+{
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
         match self {
             MaybeLabelledPlace::Current(place) => place.to_pcg_node(ctxt),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(ctxt),

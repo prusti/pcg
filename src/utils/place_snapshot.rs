@@ -19,6 +19,8 @@ use crate::{
         DebugCtxt, HasCompilerCtxt, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
+        maybe_old::MaybeLabelledPlace,
+        maybe_remote::MaybeRemotePlace,
     },
 };
 
@@ -219,9 +221,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        PlaceOrConst::Place((*self).into())
+impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy>
+    PcgLifetimeProjectionBaseLike<'tcx, MaybeRemotePlace<'tcx, P>> for LabelledPlace<'tcx, P>
+{
+    fn to_pcg_lifetime_projection_base(
+        &self,
+    ) -> PcgLifetimeProjectionBase<'tcx, MaybeRemotePlace<'tcx, P>> {
+        PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Labelled(*self)))
     }
 }
 

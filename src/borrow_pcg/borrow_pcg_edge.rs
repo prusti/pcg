@@ -3,11 +3,12 @@ use std::marker::PhantomData;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion, region_projection::PcgLifetimeProjectionBase,
+        borrow_pcg_expansion::BorrowPcgExpansion, edge_data::NodeReplacement,
+        region_projection::PcgLifetimeProjectionBase,
     },
     pcg::{PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
-    utils::DebugCtxt,
+    utils::{DebugCtxt, PcgPlace, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
@@ -91,24 +92,26 @@ impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> 
 pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions> =
     Conditioned<EdgeKind, VC>;
 
-impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for BorrowPcgEdge<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for BorrowPcgEdge<'tcx, BorrowPcgEdgeKind<'tcx, P>>
+where
+    BorrowPcgEdgeKind<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,
+{
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
-    {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.value.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx>>
-    {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.value
             .label_blocked_by_places(predicate, labeller, ctxt)
     }
@@ -178,12 +181,6 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
 
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx> {
         BorrowPcgEdge::new(self.kind.clone(), self.conditions.clone())
-    }
-}
-
-impl<'a, 'tcx, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for T {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
-        self.kind().check_validity(ctxt)
     }
 }
 
@@ -366,13 +363,11 @@ impl<'tcx> From<Place<'tcx>> for BlockedNode<'tcx> {
     }
 }
 
-impl<'tcx, P> From<LocalNode<'tcx, P>>
-    for PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>
-{
+impl<'tcx, P: Copy> From<LocalNode<'tcx, P>> for PcgNodeWithPlace<'tcx, P> {
     fn from(blocking_node: LocalNode<'tcx, P>) -> Self {
         match blocking_node {
             LocalNode::Place(maybe_old_place) => BlockedNode::Place(maybe_old_place),
-            LocalNode::LifetimeProjection(rp) => BlockedNode::LifetimeProjection(rp.into()),
+            LocalNode::LifetimeProjection(rp) => BlockedNode::LifetimeProjection(rp.rebase()),
         }
     }
 }
@@ -400,8 +395,8 @@ edgedata_enum!(
     BorrowPcgExpansion(crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx, P>),
     Abstraction(crate::borrow_pcg::edge::abstraction::AbstractionEdge<'tcx, P>),
     BorrowFlow(crate::borrow_pcg::edge::borrow_flow::BorrowFlowEdge<'tcx, P>),
-    Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx>),
-    Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx>),
+    Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx, P>),
+    Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx, P>),
 );
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
@@ -409,39 +404,5 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         (*self).display_output(ctxt, mode)
-    }
-}
-
-pub(crate) trait ToBorrowsEdge<'tcx> {
-    fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx>;
-}
-
-impl<'tcx> ToBorrowsEdge<'tcx> for BorrowPcgExpansion<'tcx> {
-    fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowPcgExpansion(self), conditions)
-    }
-}
-
-impl<'tcx> ToBorrowsEdge<'tcx> for AbstractionEdge<'tcx> {
-    fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge::new(BorrowPcgEdgeKind::Abstraction(self), conditions)
-    }
-}
-
-impl<'tcx> ToBorrowsEdge<'tcx> for BorrowEdge<'tcx> {
-    fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge::new(BorrowPcgEdgeKind::Borrow(self), conditions)
-    }
-}
-
-impl<'tcx> ToBorrowsEdge<'tcx> for BorrowFlowEdge<'tcx> {
-    fn to_borrow_pcg_edge(self, conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge::new(BorrowPcgEdgeKind::BorrowFlow(self), conditions)
-    }
-}
-
-impl<'tcx, T: ToBorrowsEdge<'tcx>> From<Conditioned<T>> for BorrowPcgEdge<'tcx> {
-    fn from(val: Conditioned<T>) -> Self {
-        val.value.to_borrow_pcg_edge(val.conditions)
     }
 }

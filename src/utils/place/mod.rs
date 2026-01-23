@@ -16,10 +16,11 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase, PlaceOrConst},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
+    pcg::PcgNodeWithPlace,
     rustc_interface::{
         VariantIdx,
         ast::Mutability,
@@ -30,7 +31,10 @@ use crate::{
             ty::{self, Ty, TyKind},
         },
     },
-    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
+    utils::{
+        HasCompilerCtxt, LabelledPlace, data_structures::HashSet, json::ToJsonWithCtxt,
+        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace,
+    },
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
@@ -106,24 +110,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Pla
     }
 }
 
-impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for Place<'tcx> {
-    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
-        LocalNode::Place(self.into())
-    }
-}
-
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for Place<'tcx> {
-    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
-        self.into()
-    }
-}
-
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        (*self).into()
-    }
-}
-
 pub trait PrefixRelation {
     fn is_prefix_of(self, other: Self) -> bool;
     fn is_strict_prefix_of(self, other: Self) -> bool;
@@ -148,13 +134,30 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
-pub trait PcgPlace<'tcx, Ctxt: Copy> = Copy
-    + Eq
-    + std::hash::Hash
-    + std::fmt::Debug
-    + HasRegions<'tcx, Ctxt>
-    + HasTy<'tcx, Ctxt>
-    + PrefixRelation;
+pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
+
+pub trait PcgPlace<'tcx, Ctxt: Copy> =
+    PcgNodeComponent + HasRegions<'tcx, Ctxt> + HasTy<'tcx, Ctxt> + PrefixRelation;
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P> for P {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
+        LocalNode::Place(self.into())
+    }
+}
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P>
+    for MaybeLabelledPlace<'tcx, P>
+{
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
+        LocalNode::Place(self.into())
+    }
+}
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> PcgNodeLike<'tcx, Ctxt, P> for P {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self.into())
+    }
+}
 
 pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
     fn local(self) -> Local;

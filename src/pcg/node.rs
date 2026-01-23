@@ -15,7 +15,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, PrefixRelation, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
+        SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -179,23 +180,14 @@ where
     }
 }
 
-impl<
-    'tcx,
-    Ctxt,
-    T: PcgNodeLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-    U: PcgLifetimeProjectionBaseLike<'tcx> + DisplayWithCtxt<Ctxt>,
-> DisplayWithCtxt<Ctxt> for PcgNode<'tcx, T, U>
-where
-    LifetimeProjection<'tcx, U>: DisplayWithCtxt<Ctxt>,
+impl<'tcx, Ctxt, T: DisplayWithCtxt<Ctxt>, U: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for PcgNode<'tcx, T, U>
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            match self {
-                PcgNode::Place(p) => p.display_string(ctxt),
-                PcgNode::LifetimeProjection(rp) => rp.display_string(ctxt),
-            }
-            .into(),
-        )
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        match self {
+            PcgNode::Place(p) => p.display_output(ctxt, mode),
+            PcgNode::LifetimeProjection(rp) => rp.display_output(ctxt, mode),
+        }
     }
 }
 
@@ -209,13 +201,11 @@ pub trait MaybeHasLocation {
     fn location(&self) -> Option<SnapshotLocation>;
 }
 
-impl<'tcx, T: MaybeHasLocation, U: PcgLifetimeProjectionBaseLike<'tcx> + MaybeHasLocation>
-    MaybeHasLocation for PcgNode<'tcx, T, U>
-{
+impl<'tcx, T: MaybeHasLocation, U: MaybeHasLocation> MaybeHasLocation for PcgNode<'tcx, T, U> {
     fn location(&self) -> Option<SnapshotLocation> {
         match self {
             PcgNode::Place(place) => place.location(),
-            PcgNode::LifetimeProjection(region_projection) => region_projection.base().location(),
+            PcgNode::LifetimeProjection(region_projection) => region_projection.base.location(),
         }
     }
 }
@@ -241,37 +231,26 @@ pub trait PcgNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
     }
 }
 
-pub(crate) trait LabelPlaceConditionally<
+pub(crate) fn label_place_conditionally<
     'tcx,
-    Ctxt: Copy,
-    P: Eq + std::hash::Hash + Copy + PrefixRelation = Place<'tcx>,
->: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>
-{
-    fn label_place_conditionally(
-        &mut self,
-        replacements: &mut HashSet<NodeReplacement<'tcx, P>>,
-        predicate: &LabelNodePredicate<'tcx, P>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
-        node_context: LabelNodeContext,
-        ctxt: Ctxt,
-    ) {
-        let orig = self.to_pcg_node(ctxt);
-        if predicate.applies_to(orig, node_context) {
-            let changed = self.label_place(labeller, ctxt);
-            if changed {
-                replacements.insert(NodeReplacement::new(orig, self.to_pcg_node(ctxt)));
-            }
+    Ctxt,
+    P: PcgPlace<'tcx, Ctxt>,
+    N: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
+>(
+    node: &mut N,
+    replacements: &mut HashSet<NodeReplacement<'tcx, P>>,
+    predicate: &LabelNodePredicate<'tcx, P>,
+    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+    node_context: LabelNodeContext,
+    ctxt: Ctxt,
+) {
+    let orig = node.to_pcg_node(ctxt);
+    if predicate.applies_to(orig, node_context) {
+        let changed = node.label_place(labeller, ctxt);
+        if changed {
+            replacements.insert(NodeReplacement::new(orig, node.to_pcg_node(ctxt)));
         }
     }
-}
-
-impl<
-    'tcx,
-    Ctxt: DebugCtxt + Copy,
-    P: PrefixRelation + Copy + Eq + std::hash::Hash,
-    T: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
-> LabelPlaceConditionally<'tcx, Ctxt, P> for T
-{
 }
 
 pub(crate) trait LocalNodeLike<'tcx, Ctxt, P = Place<'tcx>>:

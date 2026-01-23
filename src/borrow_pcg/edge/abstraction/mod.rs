@@ -6,7 +6,7 @@ pub(crate) mod r#type;
 use std::marker::PhantomData;
 
 use crate::borrow_pcg::edge_data::conditionally_label_places;
-use crate::utils::{DebugCtxt, Place};
+use crate::utils::{DebugCtxt, PcgPlace, Place};
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
@@ -70,11 +70,11 @@ edgedata_enum!(
     crate::borrow_pcg::edge::abstraction::AbstractionEdge,
     AbstractionEdge<'tcx, P>,
     FunctionCall(super::function::FunctionCallAbstraction<'tcx, P>),
-    Loop(super::r#loop::LoopAbstraction<'tcx>),
+    Loop(super::r#loop::LoopAbstraction<'tcx, P>),
 );
 
 pub type AbstractionEdge<'tcx, P = Place<'tcx>> =
-    FunctionCallOrLoop<FunctionCallAbstraction<'tcx, P>, LoopAbstraction<'tcx>>;
+    FunctionCallOrLoop<FunctionCallAbstraction<'tcx, P>, LoopAbstraction<'tcx, P>>;
 
 impl<'tcx> AbstractionEdge<'tcx> {
     /// Creates a singleton coupling hyperedge from this edge.
@@ -127,16 +127,17 @@ impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> 
 impl<
     'tcx,
     Ctxt: DebugCtxt + Copy,
-    T: LabelPlace<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
-    U: LabelPlace<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
-> LabelEdgePlaces<'tcx, Ctxt> for AbstractionBlockEdge<'tcx, T, U>
+    P: PcgPlace<'tcx, Ctxt>,
+    T: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
+    U: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
+> LabelEdgePlaces<'tcx, Ctxt, P> for AbstractionBlockEdge<'tcx, T, U>
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.input],
             predicate,
@@ -148,10 +149,10 @@ impl<
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.output],
             predicate,

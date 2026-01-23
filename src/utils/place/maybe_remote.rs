@@ -93,8 +93,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeR
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx, P>> PcgLifetimeProjectionBaseLike<'tcx, P>
+    for MaybeRemotePlace<'tcx, P>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_lifetime_projection_base(),
             MaybeRemotePlace::Remote(rp) => (*rp).into(),

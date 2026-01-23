@@ -4,8 +4,11 @@ use crate::{
     action::PcgAction,
     borrow_pcg::{
         action::BorrowPcgActionKind,
-        borrow_pcg_edge::{BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode, ToBorrowsEdge},
-        edge::abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
+        edge::{
+            abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
+            kind::BorrowPcgEdgeKind,
+        },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
@@ -584,7 +587,10 @@ fn add_block_edge<'tcx, 'mir>(
     let long_edge = AbstractionBlockEdge::new_checked(long.into(), short.into(), ctxt);
     let loop_edge = LoopAbstraction::new(long_edge, expander.loop_head_block);
     expander.graph.insert(
-        loop_edge.to_borrow_pcg_edge(expander.validity_conditions.clone()),
+        BorrowPcgEdge::new(
+            BorrowPcgEdgeKind::Abstraction(loop_edge.into()),
+            expander.validity_conditions.clone(),
+        ),
         ctxt,
     );
 }

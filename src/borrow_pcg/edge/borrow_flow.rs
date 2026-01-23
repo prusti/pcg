@@ -12,15 +12,16 @@ use crate::{
             NodeReplacement, conditionally_label_places,
         },
         has_pcs_elem::{
-            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext,
+            LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
             PlaceLabeller, SourceOrTarget,
         },
         region_projection::{
-            LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection,
-            LocalLifetimeProjectionBase, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+            LifetimeProjection, LifetimeProjectionLabel, LifetimeProjectionWithPlace,
+            LocalLifetimeProjection, LocalLifetimeProjectionBase, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBaseLike,
         },
     },
-    pcg::{LabelPlaceConditionally, PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike},
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
@@ -53,9 +54,8 @@ impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
 impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for BorrowFlowEdge<'tcx, P>
 where
-    LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>:
-        LabelPlaceConditionally<'tcx, Ctxt, P>,
-    LocalLifetimeProjection<'tcx, P>: LabelPlaceConditionally<'tcx, Ctxt, P>,
+    LifetimeProjectionWithPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
+    LocalLifetimeProjection<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
 {
     fn label_blocked_places(
         &mut self,
@@ -96,16 +96,12 @@ where
     }
 }
 
-impl<
-    'a,
-    'tcx,
-    Ctxt: Copy + DebugCtxt,
-    P: std::fmt::Debug + Eq + Copy + PrefixRelation + std::hash::Hash,
-> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+impl<'a, 'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
+    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
 where
     Self: DisplayWithCtxt<Ctxt> + HasValidityCheck<Ctxt>,
-    PcgLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx>,
-    LocalLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx>,
+    PcgLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx, P>,
+    LocalLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx, P>,
 {
     fn label_lifetime_projections(
         &mut self,
@@ -199,11 +195,17 @@ where
     }
 }
 
-impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowFlowEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt>
+    for BorrowFlowEdge<'tcx, P>
+where
+    Self: DisplayWithCtxt<Ctxt>,
+    LifetimeProjectionWithPlace<'tcx, P>: HasValidityCheck<Ctxt>,
+    LocalLifetimeProjection<'tcx, P>: HasValidityCheck<Ctxt>,
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.source.check_validity(ctxt)?;
         self.target.check_validity(ctxt)?;
-        if self.source.to_pcg_node(ctxt) == self.target.to_pcg_node(ctxt) {
+        if self.source == self.target.rebase() {
             return Err(format!(
                 "BorrowFlowEdge: long and short are the same node: {}",
                 self.display_string(ctxt)

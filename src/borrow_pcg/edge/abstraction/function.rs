@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use derive_more::{Deref, DerefMut};
+
 use crate::{
     borrow_pcg::{
         FunctionData,
@@ -174,9 +176,11 @@ impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Deref, DerefMut)]
 pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) metadata: Metadata,
+    #[deref]
+    #[deref_mut]
     pub(crate) edge: Edge,
 }
 
@@ -244,6 +248,8 @@ pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWi
 
 impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
 {
     fn label_lifetime_projections(
         &mut self,
@@ -257,6 +263,8 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tc
 
 impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,
 {
     fn label_blocked_places(
         &mut self,
@@ -279,6 +287,8 @@ impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx
 
 impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
 {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.edge.blocks_node(node, ctxt)

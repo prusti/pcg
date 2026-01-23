@@ -193,7 +193,7 @@ pub(crate) mod internal {
 pub type BorrowPcgPlaceExpansion<'tcx, P = Place<'tcx>> =
     BorrowPcgExpansionData<MaybeLabelledPlace<'tcx, P>>;
 
-impl<'tcx, Ctxt> LabelEdgeLifetimeProjections<'tcx, Ctxt> for BorrowPcgPlaceExpansion<'tcx> {
+impl<'tcx, Ctxt, P> LabelEdgeLifetimeProjections<'tcx, Ctxt> for BorrowPcgPlaceExpansion<'tcx, P> {
     fn label_lifetime_projections(
         &mut self,
         _predicate: &LabelNodePredicate<'tcx>,
