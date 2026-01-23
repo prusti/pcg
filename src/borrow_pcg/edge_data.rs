@@ -402,7 +402,12 @@ macro_rules! edgedata_enum {
         $enum_name:ident < $tcx:lifetime, $p:ident >,
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
-        impl<$tcx, Ctxt: Copy, $p: Copy + PartialEq + Eq + std::hash::Hash> $crate::borrow_pcg::edge_data::EdgeData<$tcx, Ctxt, $p> for $enum_name<$tcx, $p> {
+        impl<$tcx,
+            Ctxt: Copy,
+            $p: Copy + PartialEq + Eq + std::hash::Hash + std::fmt::Debug +
+            $crate::borrow_pcg::region_projection::HasRegions<'tcx, Ctxt> +
+            $crate::borrow_pcg::region_projection::HasTy<'tcx, Ctxt>>
+            $crate::borrow_pcg::edge_data::EdgeData<$tcx, Ctxt, $p> for $enum_name<$tcx, $p> {
             fn blocked_nodes<'slf>(
                 &'slf self,
                 ctxt: Ctxt,
@@ -421,6 +426,8 @@ macro_rules! edgedata_enum {
                 &'slf self,
                 ctxt: Ctxt,
             ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx, $p>> + 'slf>
+            where
+                'tcx: 'slf,
             {
                 match self {
                     $(
