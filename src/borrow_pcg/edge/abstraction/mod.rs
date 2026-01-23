@@ -66,7 +66,7 @@ impl<FunctionCallData, LoopData> FunctionCallOrLoop<FunctionCallData, LoopData> 
     }
 }
 
-edgedata_enum!(
+edgedata_enum!(<'tcx, P>
     AbstractionEdge<'tcx, P>,
     FunctionCall(FunctionCallAbstraction<'tcx, P>),
     Loop(LoopAbstraction<'tcx>),

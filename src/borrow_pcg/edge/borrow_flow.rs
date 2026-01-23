@@ -24,7 +24,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
@@ -50,8 +50,8 @@ impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
     }
 }
 
-impl<'tcx, Ctxt: Copy + DebugCtxt, P: Eq + std::hash::Hash + Copy + PrefixRelation>
-    LabelEdgePlaces<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for BorrowFlowEdge<'tcx, P>
 where
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>:
         LabelPlaceConditionally<'tcx, Ctxt, P>,

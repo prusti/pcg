@@ -148,8 +148,13 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
-pub trait PcgPlace<'tcx, Ctxt: Copy> =
-    Copy + Eq + std::hash::Hash + std::fmt::Debug + HasRegions<'tcx, Ctxt> + HasTy<'tcx, Ctxt>;
+pub trait PcgPlace<'tcx, Ctxt: Copy> = Copy
+    + Eq
+    + std::hash::Hash
+    + std::fmt::Debug
+    + HasRegions<'tcx, Ctxt>
+    + HasTy<'tcx, Ctxt>
+    + PrefixRelation;
 
 pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> {
     fn local(self) -> Local;

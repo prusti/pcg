@@ -38,8 +38,8 @@ use crate::{
         middle::{mir::PlaceElem, ty},
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceLike,
-        PlaceProjectable, PrefixRelation,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgPlace, Place,
+        PlaceLike, PlaceProjectable, PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
@@ -213,7 +213,7 @@ pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
 }
 
-edgedata_enum!(<'tcx, P>
+edgedata_enum!(
     BorrowPcgExpansion<'tcx, P>,
     Place(BorrowPcgPlaceExpansion<'tcx, P>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
@@ -268,7 +268,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
 impl<
     'tcx,
     Ctxt: DebugCtxt + Copy,
-    P: PrefixRelation + Copy + Eq + std::hash::Hash,
+    P: PcgPlace<'tcx, Ctxt>,
     Node: LocalNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
 > LabelEdgePlaces<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
 where

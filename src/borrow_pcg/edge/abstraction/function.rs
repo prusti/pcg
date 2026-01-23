@@ -17,7 +17,7 @@ use crate::{
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
-    pcg::PcgNode,
+    pcg::{PcgNode, PcgNodeWithPlace},
     rustc_interface::{
         hir::def_id::DefId,
         infer::infer::TyCtxtInferExt,
@@ -29,7 +29,7 @@ use crate::{
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
@@ -242,12 +242,12 @@ pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWi
     FunctionCallAbstractionEdge<'tcx, P>,
 >;
 
-impl<'tcx, Ctxt: Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt>
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
 {
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
@@ -255,35 +255,39 @@ impl<'tcx, Ctxt: Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt>
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt> for FunctionCallAbstraction<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for FunctionCallAbstraction<'tcx, P>
+{
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
 
-impl<'a, 'tcx: 'a, P> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for FunctionCallAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+    for FunctionCallAbstraction<'tcx, P>
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.edge.blocks_node(node, ctxt)
     }
 
     fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = PcgNodeWithPlace<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -292,8 +296,8 @@ impl<'a, 'tcx: 'a, P> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for FunctionCallAbs
 
     fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

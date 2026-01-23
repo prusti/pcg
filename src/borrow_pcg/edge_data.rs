@@ -398,7 +398,7 @@ pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P = Place<'tcx>> {
 }
 
 macro_rules! edgedata_enum {
-    (<$tcx:lifetime, $p:ident>
+    (
         $enum:path
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
@@ -407,14 +407,14 @@ macro_rules! edgedata_enum {
                 use $crate::borrow_pcg::edge_data::{EdgeData, LabelEdgePlaces, LabelEdgeLifetimeProjections};
                 use $crate::utils::place::PcgPlace;
                 use std::iter::Iterator;
-            impl<$tcx,
+            impl<'tcx,
                 Ctxt: Copy,
-                $p: PcgPlace<$tcx, Ctxt>>
-                $crate::borrow_pcg::edge_data::EdgeData<$tcx, Ctxt, $p> for $enum {
+                P: PcgPlace<'tcx, Ctxt>>
+                $crate::borrow_pcg::edge_data::EdgeData<'tcx, Ctxt, P> for $enum {
                 fn blocked_nodes<'slf>(
                     &'slf self,
                     ctxt: Ctxt,
-                ) -> Box<dyn Iterator<Item = BlockedNode<$tcx, $p>> + 'slf>
+                ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
                 where
                     'tcx: 'slf,
                 {
@@ -428,7 +428,7 @@ macro_rules! edgedata_enum {
                 fn blocked_by_nodes<'slf>(
                     &'slf self,
                     ctxt: Ctxt,
-                ) -> Box<dyn Iterator<Item = LocalNode<$tcx, $p>> + 'slf>
+                ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
                 where
                     'tcx: 'slf,
                 {
@@ -441,7 +441,7 @@ macro_rules! edgedata_enum {
 
                 fn blocks_node<'slf>(
                     &self,
-                    node: BlockedNode<$tcx, $p>,
+                    node: BlockedNode<'tcx, P>,
                     ctxt: Ctxt,
                 ) -> bool {
                     match self {
@@ -453,7 +453,7 @@ macro_rules! edgedata_enum {
 
                 fn is_blocked_by<'slf>(
                     &self,
-                    node: LocalNode<$tcx, $p>,
+                    node: LocalNode<'tcx, P>,
                     ctxt: Ctxt,
                 ) -> bool {
                     match self {
@@ -468,13 +468,13 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::edge_data::{LabelNodePredicate, NodeReplacement};
             use $crate::utils::data_structures::HashSet;
 
-            impl<$tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgePlaces<$tcx, Ctxt, $p> for $enum_name<$tcx, $p> {
+            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> {
                 fn label_blocked_places(
                     &mut self,
-                    predicate: &LabelNodePredicate<$tcx, $p>,
-                    labeller: &impl PlaceLabeller<$tcx, Ctxt, $p>,
+                    predicate: &LabelNodePredicate<'tcx, P>,
+                    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
                     ctxt: Ctxt
-                ) -> HashSet<NodeReplacement<$tcx, $p>> {
+                ) -> HashSet<NodeReplacement<'tcx, P>> {
                     match self {
                         $(
                             $enum_name::$variant_name(inner) => inner.label_blocked_places(predicate, labeller, ctxt),
@@ -484,10 +484,10 @@ macro_rules! edgedata_enum {
 
                 fn label_blocked_by_places(
                     &mut self,
-                    predicate: &LabelNodePredicate<$tcx, $p>,
-                    labeller: &impl PlaceLabeller<$tcx, Ctxt, $p>,
+                    predicate: &LabelNodePredicate<'tcx, P>,
+                    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
                     ctxt: Ctxt
-                ) -> HashSet<NodeReplacement<$tcx, $p>> {
+                ) -> HashSet<NodeReplacement<'tcx, P>> {
                     match self {
                         $(
                             $enum_name::$variant_name(inner) =>
@@ -498,7 +498,7 @@ macro_rules! edgedata_enum {
             }
 
             $(
-                impl<$tcx, $p> From<$inner_type> for $enum_name<$tcx, $p> {
+                impl<'tcx, P> From<$inner_type> for $enum_name<'tcx, P> {
                     fn from(inner: $inner_type) -> Self {
                         $enum_name::$variant_name(inner)
                     }
@@ -508,10 +508,10 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
             use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
 
-            impl<$tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgeLifetimeProjections<$tcx, Ctxt, $p> for $enum {
+            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum {
                 fn label_lifetime_projections(
                     &mut self,
-                    predicate: &LabelNodePredicate<$tcx, $p>,
+                    predicate: &LabelNodePredicate<'tcx, P>,
                     label: Option<LifetimeProjectionLabel>,
                     ctxt: Ctxt,
                 ) -> LabelLifetimeProjectionResult {
@@ -526,7 +526,7 @@ macro_rules! edgedata_enum {
 
             use $crate::HasValidityCheck;
 
-            impl<$tcx, Ctxt: Copy + $crate::DebugCtxt> HasValidityCheck<Ctxt> for $enum {
+            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt> HasValidityCheck<Ctxt> for $enum {
                 fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
                     match self {
                         $(
@@ -539,7 +539,7 @@ macro_rules! edgedata_enum {
             use $crate::utils::display::DisplayWithCtxt;
             use $crate::utils::HasBorrowCheckerCtxt;
 
-            impl<'a, $tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, $tcx>> DisplayWithCtxt<Ctxt> for $enum {
+            impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for $enum {
                 fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
                     match self {
                         $(

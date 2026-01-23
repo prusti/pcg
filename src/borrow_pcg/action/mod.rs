@@ -20,7 +20,7 @@ use crate::{
     },
     pcg::{CapabilityKind, PcgNodeType},
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        DebugRepr, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -168,7 +168,7 @@ pub enum LabelPlaceReason {
 }
 
 impl LabelPlaceReason {
-    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, Ctxt: Copy, P: Copy + Eq + std::hash::Hash>(
+    pub(crate) fn apply_to_edge<'a, 'tcx: 'a, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>>(
         self,
         place: P,
         edge: &mut impl LabelEdgePlaces<'tcx, Ctxt, P>,

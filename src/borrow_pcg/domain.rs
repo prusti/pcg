@@ -12,9 +12,9 @@ use crate::{
             PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike, PlaceOrConst,
         },
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -228,16 +228,21 @@ impl<'tcx> TryFrom<LoopAbstractionOutput<'tcx>> for LifetimeProjection<'tcx> {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From, Deref)]
-pub struct AbstractionInputTarget<'tcx>(pub(crate) PcgNode<'tcx>);
+pub struct AbstractionInputTarget<'tcx, P = Place<'tcx>>(pub(crate) PcgNodeWithPlace<'tcx, P>);
 
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for AbstractionInputTarget<'tcx> {
-    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> PcgNodeLike<'tcx, Ctxt, P>
+    for AbstractionInputTarget<'tcx, P>
+{
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
         self.0
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for AbstractionInputTarget<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'tcx, Ctxt: Copy + DebugCtxt, P> HasValidityCheck<Ctxt> for AbstractionInputTarget<'tcx, P>
+where
+    PcgNodeWithPlace<'tcx, P>: HasValidityCheck<Ctxt>,
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }
