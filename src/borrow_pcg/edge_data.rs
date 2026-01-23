@@ -385,6 +385,8 @@ macro_rules! label_edge_places_wrapper {
     ) => {
         impl<'tcx, Ctxt: DebugCtxt + Copy, P: $crate::utils::PcgPlace<'tcx, Ctxt>>
             LabelEdgePlaces<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelEdgePlaces<'tcx, Ctxt, P>,
         {
             fn label_blocked_places(
                 &mut self,
@@ -392,7 +394,9 @@ macro_rules! label_edge_places_wrapper {
                 labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
                 ctxt: Ctxt,
             ) -> HashSet<NodeReplacement<'tcx, P>> {
-                (*self).label_blocked_places(predicate, labeller, ctxt)
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_blocked_places(predicate, labeller, ctxt)
             }
 
             fn label_blocked_by_places(
@@ -401,7 +405,9 @@ macro_rules! label_edge_places_wrapper {
                 labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
                 ctxt: Ctxt,
             ) -> HashSet<NodeReplacement<'tcx, P>> {
-                (*self).label_blocked_by_places(predicate, labeller, ctxt)
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_blocked_by_places(predicate, labeller, ctxt)
             }
         }
     };
