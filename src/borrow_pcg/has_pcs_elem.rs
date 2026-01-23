@@ -39,6 +39,25 @@ pub trait LabelLifetimeProjection<'tcx> {
     ) -> LabelLifetimeProjectionResult;
 }
 
+macro_rules! label_lifetime_projection_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, P> LabelLifetimeProjection<'tcx> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelLifetimeProjection<'tcx>,
+        {
+            fn label_lifetime_projection(
+                &mut self,
+                label: Option<LifetimeProjectionLabel>,
+            ) -> LabelLifetimeProjectionResult {
+                use std::ops::DerefMut;
+                self.deref_mut().label_lifetime_projection(label)
+            }
+        }
+    };
+}
+
+pub(crate) use label_lifetime_projection_wrapper;
+
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub(crate) enum SourceOrTarget {
     Source,
@@ -71,6 +90,26 @@ impl LabelNodeContext {
 pub(crate) trait LabelPlace<'tcx, Ctxt, P = Place<'tcx>> {
     fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool;
 }
+
+macro_rules! label_place_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelPlace<'tcx, Ctxt, P>,
+        {
+            fn label_place(
+                &mut self,
+                labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                ctxt: Ctxt,
+            ) -> bool {
+                use std::ops::DerefMut;
+                self.deref_mut().label_place(labeller, ctxt)
+            }
+        }
+    };
+}
+
+pub(crate) use label_place_wrapper;
 
 pub trait PlaceLabeller<'tcx, Ctxt, P = Place<'tcx>> {
     fn place_label(&self, place: P, ctxt: Ctxt) -> SnapshotLocation;

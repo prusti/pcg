@@ -207,6 +207,14 @@ pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
     ValidityConditions(SmallVec::new_const());
 pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
 
+impl ValidityConditionsLike for ValidityConditions {
+    const EMPTY: &'static Self = &EMPTY_VALIDITY_CONDITIONS;
+}
+
+impl ValidityConditionsLike for NoValidityConditions {
+    const EMPTY: &'static Self = &NoValidityConditions;
+}
+
 impl ValidityConditions {
     pub(crate) fn conditional_string<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
@@ -275,6 +283,10 @@ pub(crate) trait ValidityConditionOps<Ctxt> {
 }
 
 struct NoValidityConditions;
+
+pub(crate) trait ValidityConditionsLike: Clone + 'static {
+    const EMPTY: &'static Self;
+}
 
 impl<Ctxt> ValidityConditionOps<Ctxt> for NoValidityConditions {
     fn join(&mut self, _other: &Self, _ctxt: Ctxt) -> bool {

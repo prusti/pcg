@@ -21,8 +21,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
-        PlaceProjectable, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
+        PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,
@@ -49,9 +49,9 @@ impl<'tcx, Ctxt: Copy, P: Copy + HasRegions<'tcx, Ctxt>> HasRegions<'tcx, Ctxt>
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        self.place().ty(ctxt).ty
+        self.place().rust_ty(ctxt)
     }
 }
 
@@ -81,16 +81,14 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt, P> PcgNodeLike<'tcx, Ctxt, P> for MaybeLabelledPlace<'tcx, P>
-where
-    P: PcgNodeLike<'tcx, Ctxt, P>,
-    LabelledPlace<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,
-{
-    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.to_pcg_node(ctxt),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(ctxt),
-        }
+impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for MaybeLabelledPlace<'tcx, P> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self.into())
+    }
+}
+impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for LabelledPlace<'tcx, P> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self.into())
     }
 }
 
@@ -174,8 +172,8 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt>> PlaceProjectable<'tcx, Ctxt>
+    for MaybeLabelledPlace<'tcx, P>
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         Ok(match self {

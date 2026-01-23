@@ -8,7 +8,7 @@ use crate::{
     },
     pcg::{PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
-    utils::{DebugCtxt, PcgPlace, data_structures::HashSet},
+    utils::{DebugCtxt, PcgNodeComponent, PcgPlace, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
@@ -75,7 +75,7 @@ impl<'tcx, 'graph, EdgeKind, VC> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC> {
     }
 }
 
-impl<'tcx, 'graph, EdgeKind> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
+impl<'tcx, 'graph, EdgeKind, VC> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC> {
     pub fn kind(&self) -> &EdgeKind {
         self.kind
     }
@@ -305,8 +305,8 @@ impl<T: std::fmt::Display> std::fmt::Display for PcgNode<'_, T> {
     }
 }
 
-impl<'tcx> LocalNode<'tcx> {
-    pub fn as_current_place(self) -> Option<Place<'tcx>> {
+impl<'tcx, P: PcgNodeComponent> LocalNode<'tcx, P> {
+    pub fn as_current_place(self) -> Option<P> {
         match self {
             LocalNode::Place(MaybeLabelledPlace::Current(place)) => Some(place),
             _ => None,

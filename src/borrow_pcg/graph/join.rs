@@ -2,10 +2,10 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
-        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
+        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::ConstructAbstractionGraphResult,
         region_projection::LifetimeProjectionLabel,
-        validity_conditions::ValidityConditions,
+        validity_conditions::{ValidityConditions, ValidityConditionsLike},
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsages,
@@ -20,7 +20,8 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, PcgNodeComponent, PlaceLike,
+        SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
@@ -74,13 +75,18 @@ impl<'tcx> BorrowsGraph<'tcx> {
             });
         }
     }
+}
 
-    fn apply_placeholder_labels<'mir>(
+impl<'tcx, P: PcgNodeComponent, VC: ValidityConditionsLike>
+    BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC>
+{
+    fn apply_placeholder_labels<Ctxt: Copy + DebugCtxt>(
         &mut self,
         _capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-        ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx>,
+        ctxt: Ctxt,
     ) where
-        'tcx: 'mir,
+        BorrowPcgEdgeKind<'tcx, P>:
+            EdgeData<'tcx, Ctxt, P> + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
     {
         let nodes = self.nodes(ctxt);
         for node in nodes {
@@ -94,7 +100,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .label_lifetime_projections(
                             &LabelNodePredicate::equals_lifetime_projection(orig_rp),
                             Some(LifetimeProjectionLabel::Future),
-                            ctxt.bc_ctxt(),
+                            ctxt,
                         )
                         .to_filter_mut_result()
                 });

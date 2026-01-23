@@ -16,7 +16,7 @@ use crate::{
         ty,
     },
     utils::{
-        DebugCtxt, HasCompilerCtxt, PlaceProjectable,
+        DebugCtxt, HasCompilerCtxt, PcgNodeComponent, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -202,8 +202,8 @@ impl DisplayWithCtxt<()> for SnapshotLocation {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
-    for LabelledPlace<'tcx>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt>> PlaceProjectable<'tcx, Ctxt>
+    for LabelledPlace<'tcx, P>
 {
     fn project_deeper(
         &self,
@@ -218,22 +218,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
 
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
         todo!()
-    }
-}
-
-impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy>
-    PcgLifetimeProjectionBaseLike<'tcx, MaybeRemotePlace<'tcx, P>> for LabelledPlace<'tcx, P>
-{
-    fn to_pcg_lifetime_projection_base(
-        &self,
-    ) -> PcgLifetimeProjectionBase<'tcx, MaybeRemotePlace<'tcx, P>> {
-        PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Labelled(*self)))
-    }
-}
-
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
-    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
-        self.to_local_node(ctxt).into()
     }
 }
 
@@ -275,8 +259,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Lab
     }
 }
 
-impl<'tcx> LabelledPlace<'tcx> {
-    pub fn new<T: Into<SnapshotLocation>>(place: Place<'tcx>, at: T) -> Self {
+impl<'tcx, P: PcgNodeComponent> LabelledPlace<'tcx, P> {
+    pub fn new<T: Into<SnapshotLocation>>(place: P, at: T) -> Self {
         LabelledPlace {
             place,
             at: at.into(),
@@ -284,7 +268,7 @@ impl<'tcx> LabelledPlace<'tcx> {
         }
     }
 
-    pub fn place(&self) -> Place<'tcx> {
+    pub fn place(&self) -> P {
         self.place
     }
 
@@ -295,7 +279,7 @@ impl<'tcx> LabelledPlace<'tcx> {
     pub(crate) fn with_inherent_region<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> LabelledPlace<'tcx>
+    ) -> LabelledPlace<'tcx, P>
     where
         'tcx: 'a,
     {

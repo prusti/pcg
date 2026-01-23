@@ -40,6 +40,12 @@ impl RemotePlace {
     }
 }
 
+impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, P> for RemotePlace {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
+        PlaceOrConst::Place(MaybeRemotePlace::Remote(*self))
+    }
+}
+
 impl<'tcx> From<LifetimeProjection<'tcx, RemotePlace>> for PcgNode<'tcx> {
     fn from(projection: LifetimeProjection<'tcx, RemotePlace>) -> Self {
         PcgNode::LifetimeProjection(projection.rebase())
@@ -68,14 +74,6 @@ impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for RemoteP
 impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
     fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(format!("Remote({:?})", self.local).into())
-    }
-}
-
-impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, MaybeRemotePlace<'tcx, P>> for RemotePlace {
-    fn to_pcg_lifetime_projection_base(
-        &self,
-    ) -> PcgLifetimeProjectionBase<'tcx, MaybeRemotePlace<'tcx, P>> {
-        PlaceOrConst::Place((*self).into())
     }
 }
 

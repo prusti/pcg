@@ -22,8 +22,11 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasLocals, LocalTys, Place,
-        PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
-        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
+        PlaceLike,
+        data_structures::HashSet,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -418,7 +421,7 @@ impl<
         analysis_ctxt: Ctxt,
     ) -> Self
     where
-        P: PlaceLike<'tcx, Ctxt>,
+        P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         EdgeKind: EdgeData<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
             + LabelEdgePlaces<'tcx, Ctxt, P>,

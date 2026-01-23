@@ -136,8 +136,13 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
 
 pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
 
-pub trait PcgPlace<'tcx, Ctxt: Copy> =
-    PcgNodeComponent + HasRegions<'tcx, Ctxt> + HasTy<'tcx, Ctxt> + PrefixRelation;
+pub trait PcgPlace<'tcx, Ctxt: Copy> = PlaceProjectable<'tcx, Ctxt>
+    + PcgNodeComponent
+    + HasRegions<'tcx, Ctxt>
+    + HasTy<'tcx, Ctxt>
+    + PrefixRelation
+    + Ord
+    + 'tcx;
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P> for P {
     fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
@@ -163,6 +168,11 @@ pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
     fn local(self) -> Local;
     fn is_owned(self, ctxt: Ctxt) -> bool;
     fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;
+    fn expansion_places(
+        self,
+        expansion: &PlaceExpansion<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
@@ -182,15 +192,23 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         };
         projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
     }
+
+    fn expansion_places(
+        self,
+        expansion: &PlaceExpansion<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError> {
+        self.expansion_places(expansion, ctxt)
+    }
 }
 
 /// A trait for PCG nodes that contain a single place.
-pub trait HasPlace<'tcx>: Sized {
+pub trait HasPlace<'tcx, P = Place<'tcx>>: Sized {
     fn is_place(&self) -> bool;
 
-    fn place(&self) -> Place<'tcx>;
+    fn place(&self) -> P;
 
-    fn place_mut(&mut self) -> &mut Place<'tcx>;
+    fn place_mut(&mut self) -> &mut P;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt> for Place<'tcx> {

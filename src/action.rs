@@ -16,8 +16,9 @@ use crate::{
     },
     owned_pcg::{RegainedCapability, RepackOp},
     pcg::capabilities::CapabilityKind,
+    rustc_interface::middle::mir,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
+        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgNodeComponent, Place, PlaceLike,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -200,7 +201,8 @@ impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugInfo<T> {
 /// An action applied to the Owned PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
-pub type OwnedPcgAction<'tcx> = ActionKindWithDebugInfo<RepackOp<'tcx>>;
+pub type OwnedPcgAction<'tcx, P = Place<'tcx>> =
+    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>>;
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
@@ -225,20 +227,24 @@ mod private {
 }
 
 impl<'tcx, EdgeKind> From<BorrowPcgAction<'tcx, EdgeKind>> for PcgAction<'tcx, EdgeKind> {
-    fn from(action: BorrowPcgAction<'tcx, EdgeKind>) -> Self {
-        PcgAction::Borrow(action)
+    fn from(action: BorrowPcgAction<'tcx, EdgeKind>) -> PcgAction<'tcx, EdgeKind> {
+        PcgAction::<'tcx, EdgeKind>::Borrow(action)
     }
 }
 
-impl<'tcx> From<OwnedPcgAction<'tcx>> for PcgAction<'tcx> {
+impl<'tcx, EdgeKind> From<OwnedPcgAction<'tcx>> for PcgAction<'tcx, EdgeKind> {
     fn from(action: OwnedPcgAction<'tcx>) -> Self {
-        PcgAction::Owned(action)
+        PcgAction::<'tcx, EdgeKind>::Owned(action)
     }
 }
 
 /// An action applied to the PCG during the PCG analysis.
-pub type PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
-    private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind>, OwnedPcgAction<'tcx>>;
+pub type PcgAction<
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    P = Place<'tcx>,
+    VC = ValidityConditions,
+> = private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind, P, VC>, OwnedPcgAction<'tcx, P>>;
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
     ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
@@ -256,19 +262,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
     }
 }
 
-impl<'tcx> PcgAction<'tcx> {
-    pub(crate) fn restore_capability<'a>(
-        place: Place<'tcx>,
+impl<'tcx, EdgeKind, P: PcgNodeComponent, VC> PcgAction<'tcx, EdgeKind, P, VC> {
+    pub(crate) fn restore_capability<Ctxt>(
+        place: P,
         capability: CapabilityKind,
         debug_context: impl Into<DisplayOutput>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Self
     where
-        'tcx: 'a,
+        P: PlaceLike<'tcx, Ctxt>,
     {
         let debug_context: DisplayOutput = debug_context.into();
         if place.is_owned(ctxt) {
-            PcgAction::Owned(OwnedPcgAction {
+            PcgAction::<'tcx, EdgeKind, P, VC>::Owned(OwnedPcgAction {
                 kind: RepackOp::RegainLoanedCapability(RegainedCapability::new(place, capability)),
                 debug_info: Some(debug_context),
             })
@@ -277,12 +283,11 @@ impl<'tcx> PcgAction<'tcx> {
         }
     }
 
-    pub(crate) fn debug_line<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &self,
-        ctxt: Ctxt,
-    ) -> Cow<'static, str>
+    pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
-        'tcx: 'a,
+        BorrowPcgActionKind<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
+        OwnedPcgAction<'tcx, P>: DisplayWithCtxt<Ctxt>,
+        P: DisplayWithCtxt<Ctxt>,
     {
         match self {
             PcgAction::Borrow(action) => action.debug_line(ctxt),

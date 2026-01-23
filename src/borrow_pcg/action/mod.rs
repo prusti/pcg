@@ -20,7 +20,7 @@ use crate::{
     },
     pcg::{CapabilityKind, PcgNodeType},
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
+        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -88,61 +88,64 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
     }
 }
 
-impl<'tcx> BorrowPcgAction<'tcx> {
+impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn restore_capability(
-        place: Place<'tcx>,
+        place: P,
         capability: CapabilityKind,
         debug_context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::Restore(RestoreCapability::new(place, capability)),
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Restore(
+                RestoreCapability::new(place, capability),
+            ),
             debug_info: Some(debug_context.into()),
         }
     }
 
-    pub(crate) fn weaken<'a>(
-        place: Place<'tcx>,
+    pub(crate) fn weaken(
+        place: P,
         from: CapabilityKind,
         to: Option<CapabilityKind>,
         context: impl Into<DisplayOutput>,
-    ) -> Self
-    where
-        'tcx: 'a,
-    {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::Weaken(Weaken::new(place, from, to)),
+    ) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Weaken(
+                Weaken::new(place, from, to),
+            ),
             debug_info: Some(context.into()),
         }
     }
 
     pub(crate) fn remove_lifetime_projection_label(
-        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::remove_lifetime_projection_label(projection),
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::remove_lifetime_projection_label(projection),
             debug_info: Some(context.into()),
         }
     }
 
     pub(crate) fn label_lifetime_projection(
-        predicate: LabelNodePredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::label_lifetime_projection(predicate, label),
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::label_lifetime_projection(predicate, label),
             debug_info: Some(context.into()),
         }
     }
 
     pub(crate) fn label_place_and_update_related_capabilities(
-        place: Place<'tcx>,
+        place: P,
         location: SnapshotLocation,
         reason: LabelPlaceReason,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::LabelPlace(LabelPlaceAction::new(place, location, reason)),
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::LabelPlace(
+                LabelPlaceAction::new(place, location, reason),
+            ),
             debug_info: None,
         }
     }
@@ -345,15 +348,15 @@ pub enum BorrowPcgActionKind<
     },
 }
 
-impl<'tcx> BorrowPcgActionKind<'tcx> {
+impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgActionKind<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn remove_lifetime_projection_label(
-        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
     ) -> Self {
         Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::remove_label(projection))
     }
 
     pub(crate) fn label_lifetime_projection(
-        predicate: LabelNodePredicate<'tcx>,
+        predicate: LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
     ) -> Self {
         Self::LabelLifetimeProjection(LabelLifetimeProjectionAction::new(predicate, label))

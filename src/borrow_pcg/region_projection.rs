@@ -200,6 +200,42 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
+impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx, Place<'tcx>> for Place<'tcx> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, Place<'tcx>> {
+        PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Current(*self)))
+    }
+}
+
+impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P> for PlaceOrConst<'tcx, P> {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
+        match self {
+            PlaceOrConst::Place(p) => {
+                PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Current(*p)))
+            }
+            PlaceOrConst::Const(c) => PlaceOrConst::Const(*c),
+        }
+    }
+}
+
+impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P>
+    for PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
+        match self {
+            PlaceOrConst::Place(p) => PlaceOrConst::Place(MaybeRemotePlace::Local(*p)),
+            PlaceOrConst::Const(c) => PlaceOrConst::Const(*c),
+        }
+    }
+}
+
+impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P>
+    for PcgLifetimeProjectionBase<'tcx, P>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
+        *self
+    }
+}
+
 impl<'tcx> From<RemotePlace> for PlaceOrConst<'tcx, RemotePlace> {
     fn from(place: RemotePlace) -> Self {
         PlaceOrConst::Place(place.into())
@@ -344,14 +380,6 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PcgLifetimeProjectio
     }
 }
 
-impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P>
-    for PcgLifetimeProjectionBase<'tcx, P>
-{
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
-        *self
-    }
-}
-
 impl<'tcx, Ctxt, P, T: PcgLifetimeProjectionBaseLike<'tcx, P>> PcgNodeLike<'tcx, Ctxt, P>
     for LifetimeProjection<'tcx, T>
 {
@@ -446,10 +474,7 @@ impl<'tcx, T, P> TryFrom<PcgNode<'tcx, T, P>> for LifetimeProjection<'tcx, P> {
     }
 }
 
-impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P>
-where
-    P: PcgLifetimeProjectionBaseLike<'tcx, P>,
-{
+impl<'tcx, P: Copy> LabelLifetimeProjection<'tcx> for LifetimeProjection<'tcx, P> {
     fn label_lifetime_projection(
         &mut self,
         label: Option<LifetimeProjectionLabel>,
@@ -646,6 +671,12 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
 
 pub trait HasTy<'tcx, Ctxt> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
+    fn is_raw_ptr(&self, ctxt: Ctxt) -> bool {
+        self.rust_ty(ctxt).is_raw_ptr()
+    }
+    fn is_ref(&self, ctxt: Ctxt) -> bool {
+        self.rust_ty(ctxt).is_ref()
+    }
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
@@ -660,22 +691,6 @@ impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjecti
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
         PlaceOrConst::Place((*self).into())
-    }
-}
-
-impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx, P>
-    for P
-{
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
-        PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Current(*self)))
-    }
-}
-
-impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx, P>
-    for PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>
-{
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
-        self.map_place(Into::into)
     }
 }
 

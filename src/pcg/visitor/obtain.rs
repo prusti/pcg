@@ -27,8 +27,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, HasPlace, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
 use std::cmp::Ordering;
@@ -455,7 +455,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         action: PcgAction<'tcx>,
     ) -> Result<(), PcgError>
     where
-        Ctxt: DebugCtxt,
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
     {
         tracing::debug!(
             "Applying Action: {}",

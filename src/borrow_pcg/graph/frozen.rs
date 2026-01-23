@@ -6,12 +6,15 @@ use itertools::Itertools;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdgeRef, LocalNode},
+        edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData,
+        validity_conditions::ValidityConditions,
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::data_structures::fx::{FxHashMap, FxHashSet},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgNodeComponent, Place,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -32,12 +35,67 @@ pub(crate) type CachedLeafEdges<'graph, 'tcx> = Vec<BorrowPcgEdgeRef<'tcx, 'grap
 ///
 /// It contains a reference to a Borrow PCG and mutable data structures for
 /// caching intermediate query results.
-pub struct FrozenGraphRef<'graph, 'tcx> {
-    graph: &'graph BorrowsGraph<'tcx>,
-    nodes_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
+pub struct FrozenGraphRef<
+    'graph,
+    'tcx,
+    P = Place<'tcx>,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    VC = ValidityConditions,
+> {
+    graph: &'graph BorrowsGraph<'tcx, EdgeKind, VC>,
+    nodes_cache: RefCell<Option<FxHashSet<PcgNodeWithPlace<'tcx, P>>>>,
     edges_blocking_cache: RefCell<FxHashMap<PcgNode<'tcx>, CachedBlockingEdges<'graph, 'tcx>>>,
     leaf_edges_cache: RefCell<Option<CachedLeafEdges<'graph, 'tcx>>>,
     roots_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
+}
+
+impl<'graph, 'tcx, P: PcgNodeComponent, VC>
+    FrozenGraphRef<'graph, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC>
+{
+    pub(crate) fn is_leaf<'slf, Ctxt: Copy + DebugCtxt>(
+        &'slf self,
+        node: LocalNode<'tcx, P>,
+        ctxt: Ctxt,
+    ) -> bool
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.graph
+            .edges()
+            .all(|edge| !edge.kind.blocks_node(node.into(), ctxt))
+    }
+
+    pub fn leaf_nodes<'slf, Ctxt: Copy + DebugCtxt>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Vec<LocalNode<'tcx, P>>
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.nodes(ctxt)
+            .iter()
+            .filter_map(|node| node.try_to_local_node(ctxt))
+            .filter(|node| self.is_leaf(*node, ctxt))
+            .collect()
+    }
+
+    pub fn nodes<'slf, Ctxt: Copy + DebugCtxt>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Ref<'slf, FxHashSet<PcgNodeWithPlace<'tcx, P>>>
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        {
+            let nodes = self.nodes_cache.borrow();
+            if nodes.is_some() {
+                return Ref::map(nodes, |o| o.as_ref().unwrap());
+            }
+        }
+        let nodes = self.graph.nodes(ctxt);
+        self.nodes_cache.replace(Some(nodes));
+        Ref::map(self.nodes_cache.borrow(), |o| o.as_ref().unwrap())
+    }
 }
 
 impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
@@ -124,24 +182,6 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
         true
     }
 
-    pub fn nodes<'slf, 'a: 'graph>(
-        &'slf self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Ref<'slf, FxHashSet<PcgNode<'tcx>>>
-    where
-        'tcx: 'a,
-    {
-        {
-            let nodes = self.nodes_cache.borrow();
-            if nodes.is_some() {
-                return Ref::map(nodes, |o| o.as_ref().unwrap());
-            }
-        }
-        let nodes = self.graph.nodes(ctxt);
-        self.nodes_cache.replace(Some(nodes));
-        Ref::map(self.nodes_cache.borrow(), |o| o.as_ref().unwrap())
-    }
-
     pub fn roots<'slf, 'bc: 'graph>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
@@ -173,33 +213,6 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
         let edges: CachedLeafEdges<'graph, 'tcx> = self.graph.leaf_edges_set(ctxt, self);
         self.leaf_edges_cache.replace(Some(edges.clone()));
         edges
-    }
-
-    pub fn leaf_nodes<'slf, 'a: 'graph>(
-        &'slf self,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Vec<LocalNode<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        self.nodes(ctxt)
-            .iter()
-            .filter_map(|node| node.try_to_local_node(ctxt))
-            .filter(|node| self.is_leaf(*node, ctxt))
-            .collect()
-    }
-
-    pub(crate) fn is_leaf<'slf, 'a: 'graph>(
-        &'slf self,
-        node: LocalNode<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.graph
-            .edges()
-            .all(|edge| !edge.blocks_node(node.into(), ctxt.bc_ctxt()))
     }
 
     pub fn get_edges_blocking<'slf, 'mir: 'graph, 'bc: 'graph>(

@@ -21,6 +21,21 @@ pub trait HasValidityCheck<Ctxt: DebugCtxt + Copy> {
     }
 }
 
+macro_rules! has_validity_check_node_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, Ctxt: DebugCtxt + Copy, P> HasValidityCheck<Ctxt> for $ty
+        where
+            <Self as std::ops::Deref>::Target: HasValidityCheck<Ctxt>,
+        {
+            fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
+                use std::ops::Deref;
+                self.deref().check_validity(ctxt)
+            }
+        }
+    };
+}
+pub(crate) use has_validity_check_node_wrapper;
+
 impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
     for mir::Local
 {

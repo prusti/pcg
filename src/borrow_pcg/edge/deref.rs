@@ -8,7 +8,8 @@ use crate::{
             NodeReplacement, conditionally_label_places,
         },
         has_pcs_elem::{
-            LabelLifetimeProjectionResult, LabelNodeContext, PlaceLabeller, SourceOrTarget,
+            LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
+            SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
@@ -91,16 +92,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     }
 }
 
-impl<'tcx, Ctxt> LabelEdgeLifetimeProjections<'tcx, Ctxt> for DerefEdge<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for DerefEdge<'tcx, P>
+{
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         let node_context = LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Deref);
         if predicate.applies_to(
-            PcgNode::LifetimeProjection(self.blocked_lifetime_projection.into()),
+            PcgNode::LifetimeProjection(self.blocked_lifetime_projection.rebase()),
             node_context,
         ) {
             self.blocked_lifetime_projection =
@@ -114,13 +117,15 @@ impl<'tcx, Ctxt> LabelEdgeLifetimeProjections<'tcx, Ctxt> for DerefEdge<'tcx> {
 
 impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for DerefEdge<'tcx, P>
+where
+    MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx, P>> = vec![
             &mut self.blocked_place,
             &mut self.blocked_lifetime_projection.base,
@@ -136,10 +141,10 @@ impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.deref_place],
             predicate,

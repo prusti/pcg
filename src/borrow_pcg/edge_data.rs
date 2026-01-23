@@ -4,8 +4,8 @@ use crate::{
         edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
-            LifetimeProjectionLabel, OverrideRegionDebugString, PcgLifetimeProjectionBase,
-            RegionIdx,
+            LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
+            PcgLifetimeProjectionBase, RegionIdx,
         },
     },
     pcg::{
@@ -13,7 +13,8 @@ use crate::{
         label_place_conditionally,
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, PrefixRelation, SnapshotLocation,
+        CompilerCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation,
+        SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -178,13 +179,12 @@ impl<'tcx> LabelNodePredicate<'tcx> {
             Self::LifetimeProjectionLabelEquals(projection.label()),
         ])
     }
+}
 
+impl<'tcx, P: PcgNodeComponent> LabelNodePredicate<'tcx, P> {
     /// Creates a predicate that matches exactly the given lifetime projection.
     pub(crate) fn equals_lifetime_projection(
-        projection: crate::borrow_pcg::region_projection::LifetimeProjection<
-            'tcx,
-            crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
-        >,
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
     ) -> Self {
         Self::Equals(PcgNode::LifetimeProjection(projection.rebase()))
     }
@@ -420,7 +420,7 @@ use super::has_pcs_elem::LabelLifetimeProjectionResult;
 /// Trait for labeling lifetime projections on edges.
 /// Checks the predicate and then applies the label operation if it matches.
 /// Analogous to `LabelEdgePlaces` for places.
-pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P = Place<'tcx>> {
+pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P> {
     fn label_lifetime_projections(
         &mut self,
         predicate: &LabelNodePredicate<'tcx, P>,
@@ -428,6 +428,30 @@ pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P = Place<'tcx>> {
         ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult;
 }
+
+macro_rules! label_edge_lifetime_projections_wrapper {
+    (
+        $ty:ty
+    ) => {
+        impl<'tcx, Ctxt: DebugCtxt + Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+        {
+            fn label_lifetime_projections(
+                &mut self,
+                predicate: &LabelNodePredicate<'tcx, P>,
+                label: Option<LifetimeProjectionLabel>,
+                ctxt: Ctxt,
+            ) -> LabelLifetimeProjectionResult {
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_lifetime_projections(predicate, label, ctxt)
+            }
+        }
+    };
+}
+
+pub(crate) use label_edge_lifetime_projections_wrapper;
 
 macro_rules! edgedata_enum {
     (

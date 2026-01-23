@@ -154,6 +154,22 @@ pub trait DisplayWithCtxt<Ctxt> {
     }
 }
 
+macro_rules! display_with_ctxt_node_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, Ctxt: Copy, P> DisplayWithCtxt<Ctxt> for $ty
+        where
+            <Self as std::ops::Deref>::Target: DisplayWithCtxt<Ctxt>,
+        {
+            fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+                use std::ops::Deref;
+                self.deref().display_output(ctxt, mode)
+            }
+        }
+    };
+}
+
+pub(crate) use display_with_ctxt_node_wrapper;
+
 pub trait DisplayWithCompilerCtxt<'a, 'tcx: 'a, BC: Copy> =
     DisplayWithCtxt<CompilerCtxt<'a, 'tcx, BC>>;
 

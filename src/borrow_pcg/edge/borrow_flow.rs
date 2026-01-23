@@ -100,8 +100,8 @@ impl<'a, 'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
     LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
 where
     Self: DisplayWithCtxt<Ctxt> + HasValidityCheck<Ctxt>,
-    PcgLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx, P>,
-    LocalLifetimeProjectionBase<'tcx, P>: PcgLifetimeProjectionBaseLike<'tcx, P>,
+    LifetimeProjectionWithPlace<'tcx, P>: LabelLifetimeProjection<'tcx>,
+    LocalLifetimeProjection<'tcx, P>: LabelLifetimeProjection<'tcx>,
 {
     fn label_lifetime_projections(
         &mut self,

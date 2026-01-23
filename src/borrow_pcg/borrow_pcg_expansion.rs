@@ -38,8 +38,8 @@ use crate::{
         middle::{mir::PlaceElem, ty},
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgPlace, Place,
-        PlaceLike, PlaceProjectable, PrefixRelation,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent,
+        PcgPlace, Place, PlaceLike, PlaceProjectable, PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
@@ -193,10 +193,12 @@ pub(crate) mod internal {
 pub type BorrowPcgPlaceExpansion<'tcx, P = Place<'tcx>> =
     BorrowPcgExpansionData<MaybeLabelledPlace<'tcx, P>>;
 
-impl<'tcx, Ctxt, P> LabelEdgeLifetimeProjections<'tcx, Ctxt> for BorrowPcgPlaceExpansion<'tcx, P> {
+impl<'tcx, Ctxt, P> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for BorrowPcgPlaceExpansion<'tcx, P>
+{
     fn label_lifetime_projections(
         &mut self,
-        _predicate: &LabelNodePredicate<'tcx>,
+        _predicate: &LabelNodePredicate<'tcx, P>,
         _label: Option<LifetimeProjectionLabel>,
         _ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
@@ -204,50 +206,60 @@ impl<'tcx, Ctxt, P> LabelEdgeLifetimeProjections<'tcx, Ctxt> for BorrowPcgPlaceE
     }
 }
 
-pub(crate) type LifetimeProjectionExpansion<'tcx> =
-    BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>;
+pub(crate) type LifetimeProjectionExpansion<'tcx, P = Place<'tcx>> =
+    BorrowPcgExpansionData<LocalLifetimeProjection<'tcx, P>>;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash, TryFrom)]
 pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
     Place(BorrowPcgPlaceExpansion<'tcx, P>),
-    LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
+    LifetimeProjection(LifetimeProjectionExpansion<'tcx, P>),
 }
 
 edgedata_enum!(
     crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     BorrowPcgExpansion<'tcx, P>,
     Place(crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgPlaceExpansion<'tcx, P>),
-    LifetimeProjection(crate::borrow_pcg::borrow_pcg_expansion::LifetimeProjectionExpansion<'tcx>),
+    LifetimeProjection(
+        crate::borrow_pcg::borrow_pcg_expansion::LifetimeProjectionExpansion<'tcx, P>,
+    ),
 );
 
-impl<'tcx> BorrowPcgExpansion<'tcx> {
-    pub fn base(&self) -> LocalNode<'tcx> {
+impl<'tcx, P: PcgNodeComponent> BorrowPcgExpansion<'tcx, P> {
+    pub fn base(&self) -> LocalNode<'tcx, P> {
         match self {
             BorrowPcgExpansion::Place(expansion) => expansion.base.into(),
-            BorrowPcgExpansion::LifetimeProjection(expansion) => expansion.base.into(),
+            BorrowPcgExpansion::LifetimeProjection(expansion) => {
+                PcgNode::LifetimeProjection(expansion.base)
+            }
         }
     }
 
-    pub fn expansion(&self) -> Vec<LocalNode<'tcx>> {
+    pub fn expansion(&self) -> Vec<LocalNode<'tcx, P>> {
         match self {
             BorrowPcgExpansion::Place(expansion) => {
                 expansion.expansion.iter().map(|p| (*p).into()).collect()
             }
-            BorrowPcgExpansion::LifetimeProjection(expansion) => {
-                expansion.expansion.iter().map(|p| (*p).into()).collect()
-            }
+            BorrowPcgExpansion::LifetimeProjection(expansion) => expansion
+                .expansion
+                .iter()
+                .map(|p| PcgNode::LifetimeProjection(*p))
+                .collect(),
         }
     }
-    pub(crate) fn new_lifetime_projection_expansion<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        base: LifetimeProjection<'tcx, Place<'tcx>>,
+    pub(crate) fn new_lifetime_projection_expansion<Ctxt: Copy>(
+        base: LifetimeProjection<'tcx, P>,
         expansion: PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
-        'tcx: 'a,
+        P: PlaceLike<'tcx, Ctxt>,
     {
         Ok(BorrowPcgExpansion::LifetimeProjection(
-            BorrowPcgExpansionData::new(base.rebase(), expansion, ctxt)?,
+            BorrowPcgExpansionData::new(
+                base.with_base(MaybeLabelledPlace::Current(base.base)),
+                expansion,
+                ctxt,
+            )?,
         ))
     }
     pub(crate) fn new_place_expansion<'a>(
@@ -314,11 +326,10 @@ where
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: Copy,
-    P: PrefixRelation + LabelLifetimeProjection<'tcx> + PcgNodeLike<'tcx, Ctxt, P>,
-> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowPcgExpansionData<P>
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for LifetimeProjectionExpansion<'tcx, P>
+where
+    LocalLifetimeProjection<'tcx, P>: LabelLifetimeProjection<'tcx>,
 {
     fn label_lifetime_projections(
         &mut self,
@@ -376,8 +387,8 @@ impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgEx
 impl<
     'a,
     'tcx: 'a,
-    Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>,
-    P: PlaceLike<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt>,
+    Ctxt: DebugCtxt + Copy,
+    P: PlaceLike<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt, P> + DisplayWithCtxt<Ctxt>,
 > HasValidityCheck<Ctxt> for BorrowPcgExpansionData<P>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
@@ -470,7 +481,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
 }
 
-impl<'tcx, Node: Copy + HasPlace<'tcx> + Into<BlockingNode<'tcx>>> BorrowPcgExpansionData<Node> {
+impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
     pub fn base(&self) -> Node {
         self.base
     }
@@ -479,14 +490,13 @@ impl<'tcx, Node: Copy + HasPlace<'tcx> + Into<BlockingNode<'tcx>>> BorrowPcgExpa
         &self.expansion
     }
 
-    pub(crate) fn new<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn new<Ctxt, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
         base: Node,
         expansion: PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
-        'tcx: 'a,
-        Node: Ord + HasPlace<'tcx> + PlaceProjectable<'tcx, Ctxt>,
+        Node: Ord + HasPlace<'tcx, P> + PlaceProjectable<'tcx, Ctxt>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -495,7 +505,7 @@ impl<'tcx, Node: Copy + HasPlace<'tcx> + Into<BlockingNode<'tcx>>> BorrowPcgExpa
             !(base.is_place() && base.place().is_ref(ctxt) && expansion == PlaceExpansion::Deref),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
-            base.place().display_string(ctxt.ctxt())
+            base.place().display_string(ctxt)
         );
         let result = Self {
             base,

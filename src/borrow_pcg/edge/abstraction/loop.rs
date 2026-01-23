@@ -13,7 +13,7 @@ use crate::{
         },
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
-            NodeReplacement, label_edge_places_wrapper,
+            NodeReplacement, label_edge_lifetime_projections_wrapper, label_edge_places_wrapper,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
@@ -25,7 +25,7 @@ use crate::{
         CompilerCtxt, DebugCtxt, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        validity::HasValidityCheck,
+        validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
 };
 
@@ -51,17 +51,8 @@ pub type LoopAbstraction<'tcx, P = Place<'tcx>> =
     AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx, P>>;
 
 label_edge_places_wrapper!(LoopAbstraction<'tcx, P>);
+label_edge_lifetime_projections_wrapper!(LoopAbstraction<'tcx, P>);
 
-impl<'tcx, Ctxt: Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt> for LoopAbstraction<'tcx> {
-    fn label_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: Ctxt,
-    ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projections(predicate, label, ctxt)
-    }
-}
 impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'tcx> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'a, 'tcx>) -> bool {
         self.edge.blocks_node(node, ctxt)
@@ -87,11 +78,7 @@ impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'t
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
-        self.edge.check_validity(ctxt)
-    }
-}
+has_validity_check_node_wrapper!(LoopAbstraction<'tcx, P>);
 
 impl<'tcx> LoopAbstraction<'tcx> {
     pub(crate) fn new(

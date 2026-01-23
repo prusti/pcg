@@ -34,7 +34,7 @@ use crate::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        validity::HasValidityCheck,
+        validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
 };
 
@@ -315,11 +315,7 @@ where
     }
 }
 
-impl<'a, 'tcx: 'a> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for FunctionCallAbstraction<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
-        self.edge.check_validity(ctxt)
-    }
-}
+has_validity_check_node_wrapper!(FunctionCallAbstraction<'tcx, P>);
 
 impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>

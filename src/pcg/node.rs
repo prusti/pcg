@@ -9,8 +9,8 @@ use crate::{
             PlaceLabeller,
         },
         region_projection::{
-            LifetimeProjection, LifetimeProjectionLabel, PcgLifetimeProjectionBase,
-            PcgLifetimeProjectionBaseLike, PlaceOrConst,
+            HasRegions, LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
+            PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
         },
     },
     rustc_interface::middle::mir,
@@ -111,10 +111,9 @@ impl<'tcx> From<LoopAbstractionInput<'tcx>> for PcgNode<'tcx> {
     }
 }
 
-impl<'tcx, T, U: Copy + PcgLifetimeProjectionBaseLike<'tcx>> LabelLifetimeProjection<'tcx>
-    for PcgNode<'tcx, T, U>
+impl<'tcx, T, U> LabelLifetimeProjection<'tcx> for PcgNode<'tcx, T, U>
 where
-    PcgLifetimeProjectionBase<'tcx>: From<U>,
+    LifetimeProjection<'tcx, U>: LabelLifetimeProjection<'tcx>,
 {
     fn label_lifetime_projection(
         &mut self,
@@ -163,12 +162,8 @@ impl<'tcx, Ctxt, P, T: PcgNodeLike<'tcx, Ctxt, P>, U: PcgLifetimeProjectionBaseL
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: Copy + DebugCtxt,
-    T: HasValidityCheck<Ctxt>,
-    U: PcgLifetimeProjectionBaseLike<'tcx>,
-> HasValidityCheck<Ctxt> for PcgNode<'tcx, T, U>
+impl<'tcx, Ctxt: Copy + DebugCtxt, T: HasValidityCheck<Ctxt>, U> HasValidityCheck<Ctxt>
+    for PcgNode<'tcx, T, U>
 where
     LifetimeProjection<'tcx, U>: HasValidityCheck<Ctxt>,
 {
@@ -180,8 +175,9 @@ where
     }
 }
 
-impl<'tcx, Ctxt, T: DisplayWithCtxt<Ctxt>, U: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
-    for PcgNode<'tcx, T, U>
+impl<'tcx, Ctxt, T: DisplayWithCtxt<Ctxt>, U> DisplayWithCtxt<Ctxt> for PcgNode<'tcx, T, U>
+where
+    LifetimeProjection<'tcx, U>: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
@@ -210,7 +206,7 @@ impl<'tcx, T: MaybeHasLocation, U: MaybeHasLocation> MaybeHasLocation for PcgNod
     }
 }
 
-pub trait PcgNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
+pub trait PcgNodeLike<'tcx, Ctxt, P>:
     Clone + Copy + std::fmt::Debug + Eq + PartialEq + std::hash::Hash
 {
     fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P>;
@@ -230,6 +226,21 @@ pub trait PcgNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
         }
     }
 }
+
+macro_rules! pcg_node_like_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, Ctxt, P: $crate::utils::PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: PcgNodeLike<'tcx, Ctxt, P>,
+        {
+            fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+                use std::ops::Deref;
+                self.deref().to_pcg_node(ctxt)
+            }
+        }
+    };
+}
+pub(crate) use pcg_node_like_wrapper;
 
 pub(crate) fn label_place_conditionally<
     'tcx,
@@ -265,7 +276,7 @@ impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
+impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt, Place<'tcx>> for mir::Place<'tcx> {
     fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
         self.into()
     }

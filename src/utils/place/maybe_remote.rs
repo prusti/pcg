@@ -11,7 +11,7 @@ use crate::{
     },
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, HasPlace, LabelledPlace, Place,
+        CompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
@@ -84,10 +84,13 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx, P>
+where
+    RemotePlace: HasTy<'tcx, Ctxt>,
+{
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
-            MaybeRemotePlace::Local(p) => p.ty(ctxt).ty,
+            MaybeRemotePlace::Local(p) => p.rust_ty(ctxt),
             MaybeRemotePlace::Remote(rp) => rp.rust_ty(ctxt),
         }
     }

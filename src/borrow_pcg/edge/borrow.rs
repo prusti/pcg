@@ -25,7 +25,7 @@ use crate::{
         },
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PrefixRelation,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
@@ -90,17 +90,8 @@ impl<
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: DebugCtxt + Copy,
-    P: Eq
-        + Copy
-        + PrefixRelation
-        + std::hash::Hash
-        + std::fmt::Debug
-        + HasTy<'tcx, Ctxt>
-        + HasRegions<'tcx, Ctxt>,
-> LabelEdgePlaces<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for BorrowEdge<'tcx, P>
 where
     MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
     MaybeLabelledPlace<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,

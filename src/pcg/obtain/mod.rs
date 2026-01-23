@@ -20,7 +20,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
+        CapabilityKind, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
