@@ -393,12 +393,11 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
         &self.value
     }
 }
-
 edgedata_enum!(
     BorrowPcgEdgeKind<'tcx, P>,
-    Borrow(BorrowEdge<'tcx>),
+    Borrow(BorrowEdge<'tcx, P>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
-    Abstraction(AbstractionEdge<'tcx>),
+    Abstraction(AbstractionEdge<'tcx, P>),
     BorrowFlow(BorrowFlowEdge<'tcx, P>),
     Deref(DerefEdge<'tcx>),
     Coupled(PcgCoupledEdgeKind<'tcx>),

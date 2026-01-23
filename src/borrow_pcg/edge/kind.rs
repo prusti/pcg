@@ -16,10 +16,10 @@ use super::borrow_flow::BorrowFlowEdge;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
-    Borrow(BorrowEdge<'tcx>),
-    BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
+    Borrow(BorrowEdge<'tcx, P>),
+    BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
     Deref(DerefEdge<'tcx>),
-    Abstraction(AbstractionEdge<'tcx>),
+    Abstraction(AbstractionEdge<'tcx, P>),
     BorrowFlow(BorrowFlowEdge<'tcx, P>),
     Coupled(PcgCoupledEdgeKind<'tcx>),
 }
