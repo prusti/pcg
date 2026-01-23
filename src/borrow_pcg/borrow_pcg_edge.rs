@@ -394,6 +394,7 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
     }
 }
 edgedata_enum!(
+    crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind,
     BorrowPcgEdgeKind<'tcx, P>,
     Borrow(BorrowEdge<'tcx, P>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),

@@ -399,10 +399,12 @@ pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P = Place<'tcx>> {
 
 macro_rules! edgedata_enum {
     (
-        $enum:path
+        $enum_path:path,
+        $enum_name:ident<'tcx, P>,
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
             mod generated_impls {
+                use $enum_path;
                 use $crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, LocalNode};
                 use $crate::borrow_pcg::edge_data::{EdgeData, LabelEdgePlaces, LabelEdgeLifetimeProjections};
                 use $crate::utils::place::PcgPlace;
@@ -410,7 +412,7 @@ macro_rules! edgedata_enum {
             impl<'tcx,
                 Ctxt: Copy,
                 P: PcgPlace<'tcx, Ctxt>>
-                $crate::borrow_pcg::edge_data::EdgeData<'tcx, Ctxt, P> for $enum {
+                $crate::borrow_pcg::edge_data::EdgeData<'tcx, Ctxt, P> for $enum_name<'tcx, P> {
                 fn blocked_nodes<'slf>(
                     &'slf self,
                     ctxt: Ctxt,
@@ -508,7 +510,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
             use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum {
+            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> {
                 fn label_lifetime_projections(
                     &mut self,
                     predicate: &LabelNodePredicate<'tcx, P>,
@@ -526,7 +528,7 @@ macro_rules! edgedata_enum {
 
             use $crate::HasValidityCheck;
 
-            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt> HasValidityCheck<Ctxt> for $enum {
+            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> {
                 fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
                     match self {
                         $(
@@ -539,7 +541,7 @@ macro_rules! edgedata_enum {
             use $crate::utils::display::DisplayWithCtxt;
             use $crate::utils::HasBorrowCheckerCtxt;
 
-            impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for $enum {
+            impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for $enum_name<'tcx, P> {
                 fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
                     match self {
                         $(

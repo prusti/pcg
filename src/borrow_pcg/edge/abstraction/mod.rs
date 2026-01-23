@@ -66,7 +66,8 @@ impl<FunctionCallData, LoopData> FunctionCallOrLoop<FunctionCallData, LoopData> 
     }
 }
 
-edgedata_enum!(<'tcx, P>
+edgedata_enum!(
+    crate::borrow_pcg::edge::abstraction::AbstractionEdge,
     AbstractionEdge<'tcx, P>,
     FunctionCall(FunctionCallAbstraction<'tcx, P>),
     Loop(LoopAbstraction<'tcx>),

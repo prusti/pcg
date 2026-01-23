@@ -214,6 +214,7 @@ pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
 }
 
 edgedata_enum!(
+    crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     BorrowPcgExpansion<'tcx, P>,
     Place(BorrowPcgPlaceExpansion<'tcx, P>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),
