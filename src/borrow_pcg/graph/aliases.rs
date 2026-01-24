@@ -40,11 +40,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
         result
     }
-    pub(crate) fn aliases<BC: Copy>(
+    pub(crate) fn aliases<'a>(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> FxHashSet<PcgNode<'tcx>> {
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> FxHashSet<PcgNode<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut result: FxHashSet<PcgNode<'tcx>> = FxHashSet::default();
         result.insert(node.into());
         let mut stack = vec![node];
@@ -60,11 +63,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn aliases_all_projections<BC: Copy>(
+    pub(crate) fn aliases_all_projections<'a>(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> FxHashSet<PcgNode<'tcx>> {
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> FxHashSet<PcgNode<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut results: FxHashSet<Alias<'tcx>> = FxHashSet::default();
         for (place, proj) in node.iter_projections(ctxt) {
             results.insert(Alias {
@@ -115,13 +121,16 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     #[tracing::instrument(skip(self, ctxt, seen, direct))]
-    fn direct_aliases<BC: Copy>(
+    fn direct_aliases<'a>(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
         seen: &mut FxHashSet<PcgNode<'tcx>>,
         direct: bool,
-    ) -> FxHashSet<Alias<'tcx>> {
+    ) -> FxHashSet<Alias<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut result = HashSet::default();
         result.insert(Alias {
             node: node.into(),

@@ -319,7 +319,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'tcx: 'a,
     {
         self.frozen_graph()
-            .leaf_nodes(ctxt)
+            .leaf_nodes(ctxt.bc_ctxt())
             .into_iter()
             .filter_map(|node| match node {
                 PcgNode::Place(place) => place.as_current_place(),
@@ -480,7 +480,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     where
         'tcx: 'a,
     {
-        self.edges_blocking(node, ctxt).collect()
+        self.edges_blocking(node, ctxt.bc_ctxt()).collect()
     }
 }
 
