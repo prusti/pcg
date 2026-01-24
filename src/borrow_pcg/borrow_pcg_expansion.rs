@@ -491,7 +491,7 @@ impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
         &self.expansion
     }
 
-    pub(crate) fn new<Ctxt, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
+    pub(crate) fn new<Ctxt: DebugCtxt, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
         base: Node,
         expansion: PlaceExpansion<'tcx>,
         ctxt: Ctxt,

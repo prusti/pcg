@@ -75,32 +75,28 @@ impl<'tcx> BorrowsGraph<'tcx> {
             });
         }
     }
-}
 
-impl<'tcx, P: PcgNodeComponent, VC: ValidityConditionsLike>
-    BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC>
-{
-    fn apply_placeholder_labels<Ctxt: Copy + DebugCtxt>(
+    fn apply_placeholder_labels<'mir>(
         &mut self,
         _capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-        ctxt: Ctxt,
+        ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx>,
     ) where
-        BorrowPcgEdgeKind<'tcx, P>:
-            EdgeData<'tcx, Ctxt, P> + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+        'tcx: 'mir,
     {
-        let nodes = self.nodes(ctxt);
+        let nodes = self.nodes(ctxt.bc_ctxt());
         for node in nodes {
             if let PcgNode::LifetimeProjection(rp) = node
                 && rp.is_future()
-                && let Some(PcgNode::LifetimeProjection(local_rp)) = rp.try_to_local_node(ctxt)
+                && let Some(PcgNode::LifetimeProjection(local_rp)) =
+                    rp.try_to_local_node(ctxt.bc_ctxt())
             {
-                let orig_rp = local_rp.with_label(None, ctxt);
+                let orig_rp = local_rp.with_label(None, ctxt.bc_ctxt());
                 self.filter_mut_edges(|edge| {
                     edge.value
                         .label_lifetime_projections(
                             &LabelNodePredicate::equals_lifetime_projection(orig_rp),
                             Some(LifetimeProjectionLabel::Future),
-                            ctxt,
+                            ctxt.bc_ctxt(),
                         )
                         .to_filter_mut_result()
                 });
@@ -161,7 +157,7 @@ impl<'tcx, P: PcgNodeComponent, VC: ValidityConditionsLike>
             if let BorrowPcgEdgeKind::Abstraction(_) = edge.kind() {
                 continue;
             }
-            if self.is_encapsulated_by_abstraction(&edge.value, ctxt) {
+            if self.is_encapsulated_by_abstraction(&edge.value, ctxt.ctxt) {
                 self.remove(edge.kind());
             }
         }
