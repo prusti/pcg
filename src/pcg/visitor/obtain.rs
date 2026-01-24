@@ -466,7 +466,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
                 action.clone(),
                 self.pcg.capabilities,
-                analysis_ctxt,
+                analysis_ctxt.bc_ctxt(),
             )?,
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
