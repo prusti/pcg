@@ -202,7 +202,7 @@ impl DisplayWithCtxt<()> for SnapshotLocation {
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt>> PlaceProjectable<'tcx, Ctxt>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent> PlaceProjectable<'tcx, Ctxt>
     for LabelledPlace<'tcx, P>
 {
     fn project_deeper(
