@@ -42,8 +42,14 @@ pub(crate) struct RustBorrowCheckerData<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for RustBorrowCheckerData<'mir, 'tcx> {
+    #[cfg(feature = "visualization")]
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
         self.pretty_printer.override_region_debug_string(region)
+    }
+
+    #[cfg(not(feature = "visualization"))]
+    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str> {
+        None
     }
 }
 
