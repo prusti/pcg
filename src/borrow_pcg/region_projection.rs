@@ -244,7 +244,7 @@ impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P>
 
 impl<'tcx> From<RemotePlace> for PlaceOrConst<'tcx, RemotePlace> {
     fn from(place: RemotePlace) -> Self {
-        PlaceOrConst::Place(place.into())
+        PlaceOrConst::Place(place)
     }
 }
 
@@ -451,7 +451,8 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LifetimeProjection<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
+impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P>
+    for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
 where
     MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
 {
@@ -1007,7 +1008,6 @@ impl<'tcx> LocalLifetimeProjection<'tcx> {
         self.base.local()
     }
 }
-
 
 impl<'tcx> LifetimeProjection<'tcx> {
     fn as_local_region_projection(

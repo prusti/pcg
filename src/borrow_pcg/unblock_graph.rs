@@ -121,7 +121,7 @@ impl<'tcx> UnblockGraph<'tcx> {
                         .into_iter()
                         .map(|edge| {
                             MaybeCoupledEdgeKind::NotCoupled(
-                                edge.map(|e| BorrowPcgEdgeKind::Abstraction(e)),
+                                edge.map(BorrowPcgEdgeKind::Abstraction),
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -161,6 +161,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         self.edges.insert(unblock_edge)
     }
 
+    #[allow(clippy::multiple_bound_locations)]
     pub(crate) fn kill_edge<
         'a,
         Edge: BorrowPcgEdgeLike<'tcx>,

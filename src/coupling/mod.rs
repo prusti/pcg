@@ -455,7 +455,7 @@ impl<
     }
 }
 
-impl<'a, 'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for PcgCoupledEdgeKind<'tcx, P>
 where
     FunctionCallCoupledEdgeKind<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,

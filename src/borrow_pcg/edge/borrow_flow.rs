@@ -92,7 +92,7 @@ where
     }
 }
 
-impl<'a, 'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
     LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
 where
     Self: DisplayWithCtxt<Ctxt> + HasValidityCheck<Ctxt>,

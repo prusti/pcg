@@ -45,9 +45,7 @@ use crate::{
     },
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgNode,
-        ctxt::AnalysisCtxt,
-        place_capabilities::PlaceCapabilitiesInterface,
+        CapabilityKind, PcgNode, ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface,
     },
     pcg_validity_assert,
     rustc_interface::middle::{
@@ -74,10 +72,8 @@ fn map_label_predicate<'tcx, P: Copy>(
             LabelNodePredicate::ProjectionRegionIdxEquals(*region_idx)
         }
         LabelNodePredicate::Equals(node) => LabelNodePredicate::Equals(*node),
-        LabelNodePredicate::PlaceEquals(place) => LabelNodePredicate::PlaceEquals((*place).into()),
-        LabelNodePredicate::PlaceIsPostfixOf(place) => {
-            LabelNodePredicate::PlaceIsPostfixOf((*place).into())
-        }
+        LabelNodePredicate::PlaceEquals(place) => LabelNodePredicate::PlaceEquals(*place),
+        LabelNodePredicate::PlaceIsPostfixOf(place) => LabelNodePredicate::PlaceIsPostfixOf(*place),
         LabelNodePredicate::NodeType(node_type) => LabelNodePredicate::NodeType(*node_type),
         LabelNodePredicate::And(predicates) => {
             LabelNodePredicate::And(predicates.iter().map(map_label_predicate).collect())
@@ -245,7 +241,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 if !state.graph.contains(node, ctxt)
                     && let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
                 {
-                    let _ = capabilities.remove(place.into(), ctxt);
+                    let _ = capabilities.remove(place, ctxt);
                 }
             }
         }

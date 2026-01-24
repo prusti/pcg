@@ -82,7 +82,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
 impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for MaybeLabelledPlace<'tcx, P> {
     fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
-        PcgNode::Place(self.into())
+        PcgNode::Place(self)
     }
 }
 impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for LabelledPlace<'tcx, P> {
@@ -171,8 +171,8 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent> PlaceProjectable<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx, P>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
+    PlaceProjectable<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P>
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         Ok(match self {
@@ -221,7 +221,7 @@ impl<'tcx, P: Copy> HasPlace<'tcx, P> for MaybeLabelledPlace<'tcx, P> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+impl<'tcx, Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for MaybeLabelledPlace<'tcx, P>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {

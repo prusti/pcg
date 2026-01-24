@@ -72,8 +72,8 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<Ctxt> for BorrowsGraph<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for BorrowsGraph<'tcx>
 where
     BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt, Place<'tcx>> + DisplayWithCtxt<Ctxt>,
 {
@@ -293,7 +293,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .into_iter()
                         .map(|edge| {
                             let borrow_pcg_edge: BorrowPcgEdge<'tcx> =
-                                edge.map(|e| BorrowPcgEdgeKind::Abstraction(e));
+                                edge.map(BorrowPcgEdgeKind::Abstraction);
                             (
                                 MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.value),
                                 borrow_pcg_edge.conditions,
@@ -364,7 +364,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind
                 && borrow.reserve_location() == location
             {
-                return Some(&borrow);
+                return Some(borrow);
             }
         }
         None

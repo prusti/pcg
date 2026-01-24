@@ -215,6 +215,7 @@ pub enum BorrowPcgExpansion<'tcx, P = Place<'tcx>> {
     LifetimeProjection(LifetimeProjectionExpansion<'tcx, P>),
 }
 
+#[rustfmt::skip]
 edgedata_enum!(
     crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     BorrowPcgExpansion<'tcx, P>,
@@ -385,8 +386,8 @@ impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgEx
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
-    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
@@ -407,8 +408,8 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
-    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if self.expansion.contains(&self.base) {

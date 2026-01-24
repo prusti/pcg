@@ -285,7 +285,7 @@ where
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
 where
     FunctionCallAbstractionEdge<'tcx, P>: EdgeData<'tcx, Ctxt, P>,

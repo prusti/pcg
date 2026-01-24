@@ -13,8 +13,7 @@ use crate::{
         PcgNodeWithPlace,
     },
     utils::{
-        HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation,
-        SnapshotLocation,
+        HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,

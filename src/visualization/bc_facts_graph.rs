@@ -25,7 +25,7 @@ use super::{
     node::IdLookup,
 };
 
-impl<'a, 'tcx: 'a, Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PoloniusRegionVid {
+impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PoloniusRegionVid {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let region: RegionVid = (*self).into();
         region.display_output(ctxt, mode)

@@ -51,7 +51,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 let target: utils::Place<'tcx> = (*target).into();
                 // Any references to target should be made old because it
                 // will be overwritten in the assignment.
-                if target.is_ref(self.ctxt) && self.pcg.borrow.graph().contains(target, self.ctxt.bc_ctxt()) {
+                if target.is_ref(self.ctxt)
+                    && self
+                        .pcg
+                        .borrow
+                        .graph()
+                        .contains(target, self.ctxt.bc_ctxt())
+                {
                     // The permission to the target may have been Read originally.
                     // Now, because it's been made old, the non-old place should be a leaf,
                     // and its permission should be Exclusive.

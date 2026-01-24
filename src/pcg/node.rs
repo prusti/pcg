@@ -216,13 +216,10 @@ pub trait PcgNodeLike<'tcx, Ctxt, P>:
     {
         match self.to_pcg_node(ctxt) {
             PcgNode::Place(p) => Some(p.into()),
-            PcgNode::LifetimeProjection(rp) => {
-                if let Some(local_place) = rp.base.as_local_place() {
-                    Some(LocalNode::LifetimeProjection(rp.with_base(local_place)))
-                } else {
-                    None
-                }
-            }
+            PcgNode::LifetimeProjection(rp) => rp
+                .base
+                .as_local_place()
+                .map(|local_place| LocalNode::LifetimeProjection(rp.with_base(local_place))),
         }
     }
 }

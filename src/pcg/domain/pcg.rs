@@ -21,9 +21,7 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
-        data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
-        maybe_old::MaybeLabelledPlace,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -407,10 +405,12 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, C: CapabilityLike> Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, Place<'tcx>>, BorrowPcgEdgeKind<'tcx>>
+impl<'a, 'tcx: 'a, C: CapabilityLike>
+    Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, Place<'tcx>>, BorrowPcgEdgeKind<'tcx>>
 {
     pub(crate) fn start_block(analysis_ctxt: AnalysisCtxt<'a, 'tcx>) -> Self {
-        let mut capabilities: PlaceCapabilities<'tcx, C, Place<'tcx>> = PlaceCapabilities::default();
+        let mut capabilities: PlaceCapabilities<'tcx, C, Place<'tcx>> =
+            PlaceCapabilities::default();
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {

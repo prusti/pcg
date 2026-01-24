@@ -32,7 +32,8 @@ use crate::{
         },
     },
     utils::{
-        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt, maybe_old::MaybeLabelledPlace,
+        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -107,6 +108,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Pla
     }
 }
 
+#[allow(clippy::wrong_self_convention)]
 pub trait PrefixRelation {
     fn is_prefix_of(self, other: Self) -> bool;
     fn is_strict_prefix_of(self, other: Self) -> bool;
@@ -151,7 +153,7 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P>
     for MaybeLabelledPlace<'tcx, P>
 {
     fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
-        LocalNode::Place(self.into())
+        LocalNode::Place(self)
     }
 }
 

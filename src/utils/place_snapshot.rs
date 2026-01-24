@@ -4,10 +4,7 @@ use serde_json::json;
 
 use super::{Place, validity::HasValidityCheck};
 use crate::{
-    borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
-        region_projection::HasTy,
-    },
+    borrow_pcg::{borrow_pcg_edge::LocalNode, region_projection::HasTy},
     pcg::{EvalStmtPhase, LocalNodeLike},
     rustc_interface::middle::{
         mir::{self, BasicBlock, Location},
@@ -198,8 +195,8 @@ impl DisplayWithCtxt<()> for SnapshotLocation {
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent> PlaceProjectable<'tcx, Ctxt>
-    for LabelledPlace<'tcx, P>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
+    PlaceProjectable<'tcx, Ctxt> for LabelledPlace<'tcx, P>
 {
     fn project_deeper(
         &self,
