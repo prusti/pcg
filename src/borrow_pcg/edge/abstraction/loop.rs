@@ -13,10 +13,9 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
     },
-    pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
     utils::{
-        CompilerCtxt, DebugCtxt, Place,
+        DebugCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
@@ -47,14 +46,19 @@ pub type LoopAbstraction<'tcx, P = Place<'tcx>> =
 label_edge_places_wrapper!(LoopAbstraction<'tcx, P>);
 label_edge_lifetime_projections_wrapper!(LoopAbstraction<'tcx, P>);
 
-impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'a, 'tcx>) -> bool {
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+    for LoopAbstraction<'tcx, P>
+where
+    LoopAbstractionEdge<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.edge.blocks_node(node, ctxt)
     }
+
     fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -63,8 +67,8 @@ impl<'a, 'tcx: 'a> EdgeData<'tcx, CompilerCtxt<'a, 'tcx>> for LoopAbstraction<'t
 
     fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

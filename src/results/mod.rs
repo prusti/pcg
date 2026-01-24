@@ -10,11 +10,14 @@ use derive_more::Deref;
 
 use crate::{
     action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
-    borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
+    borrow_pcg::{
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
+        region_projection::PlaceOrConst,
+    },
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgSuccessor, ctxt::HasSettings,
+        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
         place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
@@ -379,12 +382,27 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
     ) -> FxHashSet<mir::Place<'tcx>> {
         let place: Place<'tcx> = place.into();
         let ctxt = CompilerCtxt::new(body, tcx, ());
-        // TODO: The full aliases computation requires borrow checker context.
-        // The BorrowsGraph::aliases method now expects CompilerCtxt with BC context.
-        // For now, return just the place itself converted to MIR place.
-        let mut result = FxHashSet::default();
-        result.insert(place.to_rust_place(ctxt));
-        result
+        self.states[EvalStmtPhase::PostMain]
+            .borrow
+            .graph()
+            .aliases(place.into(), ctxt)
+            .into_iter()
+            .flat_map(|p| match p {
+                PcgNode::Place(p) => p.as_current_place(),
+                PcgNode::LifetimeProjection(p) => match p.base() {
+                    PlaceOrConst::Place(p) => {
+                        let assoc_place = p.related_local_place();
+                        if assoc_place.is_ref(ctxt) {
+                            Some(assoc_place.project_deref(ctxt))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                },
+            })
+            .map(|p| p.to_rust_place(ctxt))
+            .collect()
     }
 
     pub(crate) fn debug_lines(

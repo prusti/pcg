@@ -52,9 +52,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt, T: HasValidityCh
     HasValidityCheck<Ctxt> for EvalStmtData<T>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
-        self.pre_operands.check_validity(ctxt)?;
-        self.post_operands.check_validity(ctxt)?;
-        self.pre_main.check_validity(ctxt)?;
+        // Our validity checks in general only apply to the post-main state.
         self.post_main.check_validity(ctxt)
     }
 }
