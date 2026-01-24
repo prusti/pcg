@@ -72,14 +72,10 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: Copy + DebugCtxt,
-    P: PcgPlace<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-    VC: Eq + std::hash::Hash,
-> HasValidityCheck<Ctxt> for BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC>
+impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt + HasCompilerCtxt<'a, 'tcx>>
+    HasValidityCheck<Ctxt> for BorrowsGraph<'tcx>
 where
-    BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P> + DisplayWithCtxt<Ctxt>,
+    BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt, Place<'tcx>> + DisplayWithCtxt<Ctxt>,
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         let nodes = self.nodes(ctxt);

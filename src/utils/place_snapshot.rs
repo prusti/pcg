@@ -275,11 +275,13 @@ impl<'tcx, P: PcgNodeComponent> LabelledPlace<'tcx, P> {
     pub fn at(&self) -> SnapshotLocation {
         self.at
     }
+}
 
+impl<'tcx> LabelledPlace<'tcx> {
     pub(crate) fn with_inherent_region<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> LabelledPlace<'tcx, P>
+    ) -> LabelledPlace<'tcx>
     where
         'tcx: 'a,
     {

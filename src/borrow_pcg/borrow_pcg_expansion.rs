@@ -385,12 +385,8 @@ impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgEx
     }
 }
 
-impl<
-    'a,
-    'tcx: 'a,
-    Ctxt: DebugCtxt + Copy,
-    P: PlaceLike<'tcx, Ctxt> + PcgNodeLike<'tcx, Ctxt, P> + DisplayWithCtxt<Ctxt>,
-> HasValidityCheck<Ctxt> for BorrowPcgExpansionData<P>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
+    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if self.expansion.contains(&self.base) {
@@ -398,6 +394,29 @@ impl<
         }
         for p in &self.expansion {
             if let Some(PcgNode::Place(node)) = p.try_to_local_node(ctxt)
+                && node.place().is_owned(ctxt)
+            {
+                return Err(format!(
+                    "Expansion of {:?} contains owned place {}",
+                    self,
+                    node.place().display_string(ctxt)
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
+    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<LifetimeProjection<'tcx>>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
+        if self.expansion.contains(&self.base) {
+            return Err(format!("expansion contains base: {self:?}"));
+        }
+        for p in &self.expansion {
+            let local_node: Option<LocalNode<'tcx>> = p.try_to_local_node(ctxt);
+            if let Some(PcgNode::Place(node)) = local_node
                 && node.place().is_owned(ctxt)
             {
                 return Err(format!(
