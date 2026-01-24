@@ -81,8 +81,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut current = place;
         while self.pcg.capabilities.get(current, self.ctxt) == Some(CapabilityKind::Read.into()) {
             self.weaken_place_from_read_upwards(current, debug_ctxt)?;
-            let leaf_nodes = self.pcg.borrow.graph.frozen_graph().leaf_nodes(self.ctxt);
-            for place in self.pcg.borrow.graph.places(self.ctxt) {
+            let leaf_nodes = self.pcg.borrow.graph.frozen_graph().leaf_nodes(self.ctxt.bc_ctxt());
+            for place in self.pcg.borrow.graph.places(self.ctxt.bc_ctxt()) {
                 if prev != Some(place)
                     && current.is_prefix_exact(place)
                     && leaf_nodes.contains(&place.into())
@@ -126,7 +126,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     .pcg
                     .borrow
                     .graph
-                    .edges_blocking(current_rp.into(), self.ctxt)
+                    .edges_blocking(current_rp.into(), self.ctxt.bc_ctxt())
                     .collect::<Vec<_>>();
                 if !edges_blocking_current_rp.is_empty() {
                     let labelled_rp = current_rp

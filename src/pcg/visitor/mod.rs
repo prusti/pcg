@@ -91,7 +91,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             self.activate_twophase_borrow_created_at(created_location)?;
         }
         let frozen_graph = self.pcg.borrow.graph.frozen_graph();
-        let leaf_nodes = frozen_graph.leaf_nodes(self.ctxt);
+        let leaf_nodes = frozen_graph.leaf_nodes(self.ctxt.bc_ctxt());
         let leaf_future_node_places = leaf_nodes
             .iter()
             .filter_map(|node| match node {
@@ -348,7 +348,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 let expansion_places = local_expansions.all_children_of(place, self.ctxt);
                 if expansion_places
                     .iter()
-                    .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt))
+                    .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt.bc_ctxt()))
                     && let Some(candidate_cap) = self
                         .pcg
                         .capabilities

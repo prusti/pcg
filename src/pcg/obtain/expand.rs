@@ -239,7 +239,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         };
         if self
             .borrows_graph()
-            .contains_borrow_pcg_expansion(&expanded_place, ctxt)?
+            .contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())?
         {
             return Ok(false);
         }
@@ -428,7 +428,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError> {
         let to_replace = self
             .borrows_graph()
-            .edges_blocking(old_source.into(), ctxt)
+            .edges_blocking(old_source.into(), ctxt.bc_ctxt())
             .filter_map(|edge| {
                 if let BorrowPcgEdgeKind::BorrowFlow(BorrowFlowEdge {
                     kind: kind @ BorrowFlowEdgeKind::Future(_),

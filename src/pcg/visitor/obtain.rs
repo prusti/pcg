@@ -145,7 +145,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         let fg = self.pcg.borrow.graph.frozen_graph();
-        let blocked_nodes = edge.blocked_nodes(self.ctxt.ctxt());
+        let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
         // After removing an edge, some nodes may become accessible, their capabilities should be restored
         let to_restore = blocked_nodes

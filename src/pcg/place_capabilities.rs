@@ -379,7 +379,7 @@ where
             borrows.label_lifetime_projections(
                 &LabelNodePredicate::all_future_postfixes(place),
                 None,
-                ctxt,
+                ctxt.bc_ctxt(),
             );
         }
         Ok(())

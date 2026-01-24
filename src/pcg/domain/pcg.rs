@@ -149,7 +149,7 @@ pub(crate) trait PcgRefLike<'tcx> {
         'tcx: 'a,
     {
         let mut leaf_places = self.owned_pcg().leaf_places(ctxt);
-        leaf_places.retain(|p| !self.borrows_graph().places(ctxt).contains(p));
+        leaf_places.retain(|p| !self.borrows_graph().places(ctxt.bc_ctxt()).contains(p));
         leaf_places.extend(self.borrows_graph().leaf_places(ctxt));
         leaf_places
     }
@@ -200,7 +200,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
-                && !self.borrow.graph.places(ctxt).contains(&place)
+                && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",
@@ -277,7 +277,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         if self
             .borrow
             .graph()
-            .edges_blocking(place.into(), ctxt)
+            .edges_blocking(place.into(), ctxt.bc_ctxt())
             .any(|e| matches!(e.kind, BorrowPcgEdgeKind::BorrowPcgExpansion(_)))
         {
             return false;
