@@ -450,6 +450,29 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LifetimeProjection<'tcx> {
     }
 }
 
+impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
+where
+    MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
+{
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool {
+        self.base.label_place(labeller, ctxt)
+    }
+}
+
+impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P>
+    for LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx, P>>>
+where
+    MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
+{
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool {
+        if let PlaceOrConst::Place(p) = &mut self.base {
+            p.label_place(labeller, ctxt)
+        } else {
+            false
+        }
+    }
+}
+
 impl<P> LifetimeProjection<'_, P> {
     pub(crate) fn is_future(&self) -> bool {
         self.label == Some(LifetimeProjectionLabel::Future)
@@ -982,11 +1005,6 @@ impl<'tcx> LocalLifetimeProjection<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LocalLifetimeProjection<'tcx> {
-    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
-        self.base.label_place(labeller, ctxt)
-    }
-}
 
 impl<'tcx> LifetimeProjection<'tcx> {
     fn as_local_region_projection(
