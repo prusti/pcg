@@ -2,6 +2,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeRef,
         edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+        graph::Conditioned,
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
             LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
@@ -48,6 +49,69 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
 
     fn is_blocked_by(&self, node: LocalNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.blocked_by_nodes(ctxt).any(|n| n == node)
+    }
+
+    fn nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<
+        dyn std::iter::Iterator<
+                Item = PcgNode<
+                    'tcx,
+                    MaybeLabelledPlace<'tcx, P>,
+                    PcgLifetimeProjectionBase<'tcx, P>,
+                >,
+            > + 'slf,
+    >
+    where
+        'tcx: 'slf,
+        P: 'slf,
+    {
+        Box::new(
+            self.blocked_nodes(ctxt)
+                .chain(self.blocked_by_nodes(ctxt).map(|n| n.into())),
+        )
+    }
+
+    fn references_place(&self, place: P, ctxt: Ctxt) -> bool {
+        self.nodes(ctxt).any(|n| match n {
+            PcgNode::Place(p) => p.as_current_place() == Some(place),
+            PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(place),
+        })
+    }
+}
+
+impl<'tcx, Ctxt: Copy, C, P: PcgNodeComponent> EdgeData<'tcx, Ctxt, P>
+    for Conditioned<BorrowPcgEdgeKind<'tcx, P>, C>
+where
+    BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+{
+    fn blocked_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.value.blocked_nodes(ctxt)
+    }
+
+    fn blocked_by_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.value.blocked_by_nodes(ctxt)
+    }
+
+    fn blocks_node(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
+        self.value.blocks_node(node, ctxt)
+    }
+
+    fn is_blocked_by(&self, node: LocalNode<'tcx, P>, ctxt: Ctxt) -> bool {
+        self.value.is_blocked_by(node, ctxt)
     }
 
     fn nodes<'slf>(
