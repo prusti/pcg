@@ -172,7 +172,7 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt>> PlaceProjectable<'tcx, Ctxt>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent> PlaceProjectable<'tcx, Ctxt>
     for MaybeLabelledPlace<'tcx, P>
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
