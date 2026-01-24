@@ -186,7 +186,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     fn label_place_and_update_related_capabilities<
         'a,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        Ctxt: Copy + OverrideRegionDebugString,
+        Ctxt: Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
         C,
     >(
         &mut self,
@@ -256,7 +256,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
 
     fn apply_action<
         'a,
-        Ctxt: DebugCtxt + Copy + OverrideRegionDebugString,
+        Ctxt: DebugCtxt + Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
         P: PcgPlace<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         C: CapabilityLike,
     >(
@@ -443,7 +443,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                         "Introduce initial borrows",
                     ),
                     capabilities,
-                    ctxt,
+                    ctxt.bc_ctxt(),
                 )
                 .unwrap()
                 .changed
