@@ -123,7 +123,7 @@ impl<'tcx, P, Ctxt, EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>>
 }
 
 /// Either a [`BorrowPcgEdge`] or a [`BorrowPcgEdgeRef`]
-pub(crate) trait BorrowPcgEdgeLike<
+pub trait BorrowPcgEdgeLike<
     'tcx,
     P: Copy + PartialEq + Eq + std::hash::Hash + 'tcx = Place<'tcx>,
     Kind = BorrowPcgEdgeKind<'tcx, P>,

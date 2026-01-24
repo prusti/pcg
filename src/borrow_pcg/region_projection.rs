@@ -704,6 +704,12 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
 
 pub trait HasTy<'tcx, Ctxt> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
+    #[rustversion::before(2025-03-01)]
+    fn is_raw_ptr(&self, ctxt: Ctxt) -> bool {
+        self.rust_ty(ctxt).is_unsafe_ptr()
+    }
+
+    #[rustversion::since(2025-03-01)]
     fn is_raw_ptr(&self, ctxt: Ctxt) -> bool {
         self.rust_ty(ctxt).is_raw_ptr()
     }
