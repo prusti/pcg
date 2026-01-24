@@ -380,6 +380,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
         let place: Place<'tcx> = place.into();
         let ctxt = CompilerCtxt::new(body, tcx, ());
         // TODO: The full aliases computation requires borrow checker context.
+        // The BorrowsGraph::aliases method now expects CompilerCtxt with BC context.
         // For now, return just the place itself converted to MIR place.
         let mut result = FxHashSet::default();
         result.insert(place.to_rust_place(ctxt));
