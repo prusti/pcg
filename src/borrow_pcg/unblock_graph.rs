@@ -4,7 +4,10 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
+    borrow_pcg::{
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
+        edge::kind::BorrowPcgEdgeKind,
+    },
     error::PcgInternalError,
     utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
 };
@@ -116,7 +119,11 @@ impl<'tcx> UnblockGraph<'tcx> {
                         .collect::<Vec<_>>(),
                     MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
                         .into_iter()
-                        .map(|edge| MaybeCoupledEdgeKind::NotCoupled(edge.into()))
+                        .map(|edge| {
+                            MaybeCoupledEdgeKind::NotCoupled(
+                                edge.map(|e| BorrowPcgEdgeKind::Abstraction(e)),
+                            )
+                        })
                         .collect::<Vec<_>>(),
                 }),
         );

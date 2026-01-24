@@ -292,7 +292,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
                         .into_iter()
                         .map(|edge| {
-                            let borrow_pcg_edge: BorrowPcgEdge<'tcx> = edge.into();
+                            let borrow_pcg_edge: BorrowPcgEdge<'tcx> =
+                                edge.map(|e| BorrowPcgEdgeKind::Abstraction(e));
                             (
                                 MaybeCoupledEdgeKind::NotCoupled(borrow_pcg_edge.value),
                                 borrow_pcg_edge.conditions,
@@ -522,6 +523,13 @@ impl<T, VC> Conditioned<T, VC> {
 
     pub fn value(&self) -> &T {
         &self.value
+    }
+
+    pub(crate) fn map<U>(self, f: impl FnOnce(T) -> U) -> Conditioned<U, VC> {
+        Conditioned {
+            value: f(self.value),
+            conditions: self.conditions,
+        }
     }
 }
 

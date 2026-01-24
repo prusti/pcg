@@ -675,8 +675,10 @@ impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LifetimeProjection<'tcx, Place<'t
     }
 }
 
-impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
-    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
+    for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
+{
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
         LocalNode::LifetimeProjection(self)
     }
 }

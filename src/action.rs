@@ -198,6 +198,12 @@ impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugInfo<T> {
     }
 }
 
+impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDebugInfo<T> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.kind.display_output(ctxt, mode)
+    }
+}
+
 /// An action applied to the Owned PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
