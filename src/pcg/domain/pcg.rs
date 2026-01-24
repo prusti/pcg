@@ -20,9 +20,10 @@ use crate::{
         triple::Triple,
     },
     rustc_interface::middle::mir,
+    OverrideRegionDebugString,
     utils::{
-        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasLocals, LocalTys, Place,
-        PlaceLike,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals,
+        LocalTys, Place, PlaceLike,
         data_structures::HashSet,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
         maybe_old::MaybeLabelledPlace,
@@ -409,24 +410,19 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 }
 
-impl<
-    'a,
-    'tcx: 'a,
-    C: CapabilityLike,
-    P: Eq + std::hash::Hash + Copy,
-    EdgeKind: Eq + std::hash::Hash + From<BorrowFlowEdge<'tcx, P>>,
-> Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, P>, EdgeKind>
+impl<'a, 'tcx: 'a, C: CapabilityLike> Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, Place<'tcx>>, BorrowPcgEdgeKind<'tcx>>
 {
-    pub(crate) fn start_block<Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx>>(
+    pub(crate) fn start_block<Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx> + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>>(
         analysis_ctxt: Ctxt,
     ) -> Self
     where
-        P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        EdgeKind: EdgeData<'tcx, Ctxt, P>
-            + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
-            + LabelEdgePlaces<'tcx, Ctxt, P>,
+        Place<'tcx>: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
+        BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt, Place<'tcx>>
+            + LabelEdgeLifetimeProjections<'tcx, Ctxt, Place<'tcx>>
+            + LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
+            + From<BorrowFlowEdge<'tcx, Place<'tcx>>>,
     {
-        let mut capabilities: PlaceCapabilities<'tcx, C, P> = PlaceCapabilities::default();
+        let mut capabilities: PlaceCapabilities<'tcx, C, Place<'tcx>> = PlaceCapabilities::default();
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {

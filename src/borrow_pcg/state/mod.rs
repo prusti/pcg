@@ -19,8 +19,8 @@ use crate::{
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasLocals, HasTyCtxt, LocalTys, PcgPlace, PlaceLike,
-        data_structures::HashSet,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, HasTyCtxt, LocalTys, PcgPlace,
+        PlaceLike, data_structures::HashSet,
         display::{DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
     },
@@ -403,25 +403,21 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
 impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_initial_borrows<
-        P,
-        C: CapabilityLike,
-        Ctxt: Copy + DebugCtxt + OverrideRegionDebugString,
-    >(
+    fn introduce_initial_borrows<'b, C: CapabilityLike, Ctxt: Copy + DebugCtxt + OverrideRegionDebugString + HasCompilerCtxt<'b, 'tcx>>(
         &mut self,
         local: mir::Local,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
         ctxt: Ctxt,
     ) where
-        P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, P>
-            + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
-            + EdgeData<'tcx, Ctxt, P>
-            + From<BorrowFlowEdge<'tcx, P>>,
+        Place<'tcx>: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
+        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
+            + LabelEdgeLifetimeProjections<'tcx, Ctxt, Place<'tcx>>
+            + EdgeData<'tcx, Ctxt, Place<'tcx>>
+            + From<BorrowFlowEdge<'tcx, Place<'tcx>>>,
         RemotePlace: HasRegions<'tcx, Ctxt>,
-        'tcx: 'a,
+        'tcx: 'a + 'b,
     {
-        let arg_place: P = local.into();
+        let arg_place: Place<'tcx> = local.into();
         for region in arg_place.regions(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
                 LifetimeProjection::new(RemotePlace::new(local), region, None, ctxt)
@@ -431,9 +427,9 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                                     It does not have region {region:?}",
                         );
                     });
-            let source_projection: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>> =
+            let source_projection: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx>> =
                 source_projection.rebase();
-            let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx, P>>::new(
+            let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx>>::new(
                 MaybeLabelledPlace::Current(arg_place),
                 region,
                 None,
@@ -464,19 +460,20 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
     }
 
     pub(crate) fn start_block<
-        P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
+        'b,
         C: CapabilityLike,
-        Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx> + OverrideRegionDebugString,
+        Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx> + OverrideRegionDebugString + HasCompilerCtxt<'b, 'tcx>,
     >(
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
         ctxt: Ctxt,
     ) -> Self
     where
-        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, P>
-            + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
-            + EdgeData<'tcx, Ctxt, P>
-            + From<BorrowFlowEdge<'tcx, P>>,
-        'tcx: 'a,
+        Place<'tcx>: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
+        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
+            + LabelEdgeLifetimeProjections<'tcx, Ctxt, Place<'tcx>>
+            + EdgeData<'tcx, Ctxt, Place<'tcx>>
+            + From<BorrowFlowEdge<'tcx, Place<'tcx>>>,
+        'tcx: 'a + 'b,
     {
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
