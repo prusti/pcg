@@ -403,20 +403,12 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
 impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_initial_borrows<'b, C: CapabilityLike, Ctxt: Copy + DebugCtxt + OverrideRegionDebugString + HasCompilerCtxt<'b, 'tcx>>(
+    fn introduce_initial_borrows<C: CapabilityLike>(
         &mut self,
         local: mir::Local,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
-        ctxt: Ctxt,
-    ) where
-        Place<'tcx>: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
-            + LabelEdgeLifetimeProjections<'tcx, Ctxt, Place<'tcx>>
-            + EdgeData<'tcx, Ctxt, Place<'tcx>>
-            + From<BorrowFlowEdge<'tcx, Place<'tcx>>>,
-        RemotePlace: HasRegions<'tcx, Ctxt>,
-        'tcx: 'a + 'b,
-    {
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
         let arg_place: Place<'tcx> = local.into();
         for region in arg_place.regions(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
@@ -459,22 +451,10 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         }
     }
 
-    pub(crate) fn start_block<
-        'b,
-        C: CapabilityLike,
-        Ctxt: DebugCtxt + HasLocals + LocalTys<'tcx> + OverrideRegionDebugString + HasCompilerCtxt<'b, 'tcx>,
-    >(
+    pub(crate) fn start_block<C: CapabilityLike>(
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
-        ctxt: Ctxt,
-    ) -> Self
-    where
-        Place<'tcx>: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
-            + LabelEdgeLifetimeProjections<'tcx, Ctxt, Place<'tcx>>
-            + EdgeData<'tcx, Ctxt, Place<'tcx>>
-            + From<BorrowFlowEdge<'tcx, Place<'tcx>>>,
-        'tcx: 'a + 'b,
-    {
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) -> Self {
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
             borrow.introduce_initial_borrows(arg, capabilities, ctxt);
