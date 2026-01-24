@@ -15,8 +15,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
-        SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place,
+        PrefixRelation, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -211,18 +211,19 @@ pub trait PcgNodeLike<'tcx, Ctxt, P>:
 {
     fn to_pcg_node(self, ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P>;
 
-    fn try_to_local_node<'a>(self, ctxt: Ctxt) -> Option<LocalNode<'tcx, P>> {
+    fn try_to_local_node(self, ctxt: Ctxt) -> Option<LocalNode<'tcx, P>>
+    where
+        P: Copy,
+    {
         match self.to_pcg_node(ctxt) {
             PcgNode::Place(p) => Some(p.into()),
-            PcgNode::LifetimeProjection(rp) => match rp.base {
-                PlaceOrConst::Place(maybe_remote_place) => match maybe_remote_place {
-                    MaybeRemotePlace::Local(maybe_old_place) => {
-                        Some(rp.with_base(maybe_old_place).to_local_node(ctxt))
-                    }
-                    MaybeRemotePlace::Remote(_) => None,
-                },
-                PlaceOrConst::Const(_) => None,
-            },
+            PcgNode::LifetimeProjection(rp) => {
+                if let Some(local_place) = rp.base.as_local_place() {
+                    Some(LocalNode::LifetimeProjection(rp.with_base(local_place)))
+                } else {
+                    None
+                }
+            }
         }
     }
 }

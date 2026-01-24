@@ -72,7 +72,7 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt + HasCompilerCtxt<'a, 'tcx>>
+impl<'a, 'tcx: 'a, Ctxt: Copy + DebugCtxt + HasBorrowCheckerCtxt<'a, 'tcx>>
     HasValidityCheck<Ctxt> for BorrowsGraph<'tcx>
 where
     BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt, Place<'tcx>> + DisplayWithCtxt<Ctxt>,
@@ -110,7 +110,7 @@ where
                 && let Some(place) = e.base().as_current_place()
                 && place.projects_shared_ref(ctxt)
             {
-                edge.check_validity(ctxt)?;
+                edge.check_validity(ctxt.bc_ctxt())?;
             }
         }
         Ok(())
