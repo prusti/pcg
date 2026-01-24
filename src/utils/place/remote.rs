@@ -12,7 +12,7 @@ use crate::{
         middle::{mir, ty},
     },
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, HasLocals, LocalTys, Place,
+        self, CompilerCtxt, HasCompilerCtxt, LocalTys,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,

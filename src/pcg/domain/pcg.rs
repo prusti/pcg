@@ -3,8 +3,7 @@ use std::borrow::Cow;
 use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
-        edge::{borrow_flow::BorrowFlowEdge, kind::BorrowPcgEdgeKind},
-        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces},
+        edge::kind::BorrowPcgEdgeKind,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
@@ -21,9 +20,9 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
         data_structures::HashSet,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+        display::DisplayWithCompilerCtxt,
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },

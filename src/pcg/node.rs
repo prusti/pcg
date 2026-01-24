@@ -9,14 +9,13 @@ use crate::{
             PlaceLabeller,
         },
         region_projection::{
-            HasRegions, LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
-            PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
+            LifetimeProjection, LifetimeProjectionLabel, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBaseLike, PlaceOrConst,
         },
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place,
-        PrefixRelation, SnapshotLocation,
+        DebugCtxt, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,

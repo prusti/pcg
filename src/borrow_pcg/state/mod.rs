@@ -1,6 +1,6 @@
 //! The data structure representing the state of the Borrow PCG.
 
-use std::{borrow::Cow, marker::PhantomData};
+use std::borrow::Cow;
 
 use crate::{
     borrow_pcg::{
@@ -8,19 +8,18 @@ use crate::{
         borrow_pcg_edge::BlockingNode,
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{HasRegions, OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
         validity_conditions::{
-            EMPTY_VALIDITY_CONDITIONS_REF, JoinValidityConditionsResult, ValidityConditionOps,
-            ValidityConditionsLike,
+            JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
     },
     pcg::{
-        CapabilityLike, PcgNodeWithPlace, SymbolicCapability,
+        CapabilityLike, PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, HasTyCtxt, LocalTys, PcgPlace,
-        PlaceLike, data_structures::HashSet,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
+        data_structures::HashSet,
         display::{DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
     },
@@ -30,7 +29,6 @@ use super::{
     borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef},
     graph::BorrowsGraph,
     validity_conditions::{PathCondition, ValidityConditions},
-    visitor::extract_regions,
 };
 use crate::{
     action::BorrowPcgAction,
@@ -49,7 +47,7 @@ use crate::{
     pcg::{
         CapabilityKind, PcgNode,
         ctxt::AnalysisCtxt,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
+        place_capabilities::PlaceCapabilitiesInterface,
     },
     pcg_validity_assert,
     rustc_interface::middle::{

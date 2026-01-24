@@ -51,7 +51,7 @@ pub enum PcgRegionInternalError {
     RegionIndexOutOfBounds(RegionIdx),
 }
 
-pub(crate) trait OverrideRegionDebugString {
+pub trait OverrideRegionDebugString {
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str>;
 }
 
@@ -313,6 +313,7 @@ impl<'tcx, T> PlaceOrConst<'tcx, T> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn map_place<U>(self, f: impl FnOnce(T) -> U) -> PlaceOrConst<'tcx, U> {
         match self {
             PlaceOrConst::Place(p) => PlaceOrConst::Place(f(p)),

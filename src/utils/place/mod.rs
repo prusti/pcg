@@ -16,7 +16,7 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase, PlaceOrConst},
+        region_projection::{HasRegions, HasTy},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -32,8 +32,7 @@ use crate::{
         },
     },
     utils::{
-        HasCompilerCtxt, LabelledPlace, data_structures::HashSet, json::ToJsonWithCtxt,
-        maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace,
+        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -41,9 +40,7 @@ use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
-        },
+        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
@@ -124,7 +121,7 @@ impl<'tcx> PrefixRelation for Place<'tcx> {
     }
 }
 
-pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
+pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn project_deeper(
         &self,
         elem: PlaceElem<'tcx>,

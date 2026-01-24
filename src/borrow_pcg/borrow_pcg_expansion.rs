@@ -5,7 +5,7 @@ use derive_more::{From, TryFrom};
 use itertools::Itertools;
 
 use super::{
-    borrow_pcg_edge::{BlockedNode, BlockingNode, LocalNode},
+    borrow_pcg_edge::{BlockedNode, LocalNode},
     edge_data::EdgeData,
     has_pcs_elem::LabelLifetimeProjection,
     region_projection::LifetimeProjectionLabel,
@@ -39,7 +39,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent,
-        PcgPlace, Place, PlaceLike, PlaceProjectable, PrefixRelation,
+        PcgPlace, Place, PlaceLike, PlaceProjectable,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},

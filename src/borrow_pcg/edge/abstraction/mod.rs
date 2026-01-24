@@ -6,9 +6,8 @@ pub(crate) mod r#type;
 use std::marker::PhantomData;
 
 use crate::borrow_pcg::edge_data::conditionally_label_places;
-use crate::utils::{DebugCtxt, PcgNodeComponent, PcgPlace, Place};
+use crate::utils::{DebugCtxt, PcgPlace, Place};
 use crate::{
-    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
@@ -29,7 +28,6 @@ use crate::{
     coupling::HyperEdge,
     pcg::PcgNodeLike,
     utils::{
-        HasBorrowCheckerCtxt,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
@@ -44,7 +42,7 @@ use crate::{
         region_projection::LifetimeProjection,
     },
     pcg::PcgNode,
-    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
+    utils::validity::HasValidityCheck,
 };
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]

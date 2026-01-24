@@ -18,7 +18,7 @@ use crate::{
     pcg::capabilities::CapabilityKind,
     rustc_interface::middle::mir,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgNodeComponent, Place, PlaceLike,
+        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place, PlaceLike,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };

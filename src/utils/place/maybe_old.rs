@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
         has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
             HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
@@ -11,7 +10,7 @@ use crate::{
         visitor::extract_regions,
     },
     error::PcgError,
-    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         PlaceTy,
         index::IndexVec,
@@ -29,7 +28,7 @@ use crate::{
         validity::HasValidityCheck,
     },
 };
-use derive_more::{From, TryInto};
+use derive_more::From;
 use serde_json::json;
 
 #[deprecated(note = "Use MaybeLabelledPlace instead")]
@@ -255,6 +254,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().projection
     }
 
+    #[allow(dead_code)]
     pub(crate) fn deref_to_rp<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
@@ -266,6 +266,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn base_lifetime_projection<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,

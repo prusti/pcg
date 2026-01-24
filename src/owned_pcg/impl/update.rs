@@ -15,8 +15,7 @@ use crate::{
     },
     pcg_validity_assert,
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike,
-        display::DisplayWithCompilerCtxt,
+        HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike, display::DisplayWithCompilerCtxt,
     },
 };
 

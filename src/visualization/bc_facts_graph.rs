@@ -4,9 +4,7 @@ use itertools::Itertools;
 use petgraph::graph::NodeIndex;
 
 use crate::{
-    borrow_checker::{
-        BorrowCheckerInterface, RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker,
-    },
+    borrow_checker::{RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker},
     borrow_pcg::{region_projection::OverrideRegionDebugString, visitor::extract_regions},
     rustc_interface::{
         borrowck::{PoloniusRegionVid, RegionInferenceContext},
@@ -16,7 +14,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt,
+        CompilerCtxt,
         callbacks::RustBorrowCheckerImpl,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
     },
@@ -82,6 +80,7 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
 pub struct RegionPrettyPrinter<'bc, 'tcx> {
     sccs: RefCell<Option<petgraph::Graph<Vec<RegionVid>, ()>>>,
     region_to_string: BTreeMap<RegionVid, String>,
+    #[allow(dead_code)]
     region_infer_ctxt: &'bc RegionInferenceContext<'tcx>,
 }
 
@@ -105,6 +104,7 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
         self.sccs.borrow_mut().take();
     }
 
+    #[allow(dead_code)]
     pub(crate) fn lookup(&self, region: RegionVid) -> Option<&String> {
         if self.sccs.borrow().is_none() {
             let regions = self.region_to_string.keys().cloned().collect();

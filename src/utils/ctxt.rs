@@ -323,12 +323,12 @@ impl ProjectionKind {
     }
 }
 
-pub(crate) trait DebugCtxt: OverrideRegionDebugString {
+pub trait DebugCtxt: OverrideRegionDebugString {
     fn func_name(&self) -> String;
     fn num_basic_blocks(&self) -> usize;
 }
 
-pub(crate) trait LocalTys<'tcx> {
+pub trait LocalTys<'tcx> {
     fn local_ty(&self, local: Local) -> ty::Ty<'tcx>;
 }
 

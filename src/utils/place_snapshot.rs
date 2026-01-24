@@ -2,15 +2,13 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use serde_json::json;
 
-use super::{CompilerCtxt, Place, validity::HasValidityCheck};
+use super::{Place, validity::HasValidityCheck};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
-        },
+        region_projection::HasTy,
     },
-    pcg::{EvalStmtPhase, LocalNodeLike, PcgNode, PcgNodeLike},
+    pcg::{EvalStmtPhase, LocalNodeLike},
     rustc_interface::middle::{
         mir::{self, BasicBlock, Location},
         ty,
@@ -19,8 +17,6 @@ use crate::{
         DebugCtxt, HasCompilerCtxt, PcgNodeComponent, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
-        maybe_old::MaybeLabelledPlace,
-        maybe_remote::MaybeRemotePlace,
     },
 };
 

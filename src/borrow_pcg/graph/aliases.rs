@@ -12,6 +12,7 @@ use crate::{
 use super::BorrowsGraph;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
+#[allow(dead_code)]
 struct Alias<'tcx> {
     node: PcgNode<'tcx>,
     exact_alias: bool,

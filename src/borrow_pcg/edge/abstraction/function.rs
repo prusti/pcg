@@ -19,7 +19,7 @@ use crate::{
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
-    pcg::{PcgNode, PcgNodeWithPlace},
+    pcg::PcgNodeWithPlace,
     rustc_interface::{
         hir::def_id::DefId,
         infer::infer::TyCtxtInferExt,

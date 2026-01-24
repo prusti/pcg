@@ -10,14 +10,11 @@ use derive_more::Deref;
 
 use crate::{
     action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
-    borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::PlaceOrConst,
-    },
+    borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
+        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgSuccessor, ctxt::HasSettings,
         place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{

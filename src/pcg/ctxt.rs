@@ -249,6 +249,7 @@ impl<'a, 'tcx> HasBorrowCheckerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
+    #[allow(dead_code)]
     pub(crate) fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.ctxt.tcx()
     }

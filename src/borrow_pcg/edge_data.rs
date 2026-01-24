@@ -13,7 +13,7 @@ use crate::{
         PcgNodeWithPlace,
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation,
+        HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation,
         SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -24,7 +24,7 @@ use crate::{
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
 
 /// A trait for data that represents a hyperedge in the Borrow PCG.
-pub(crate) trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
+pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     /// For an edge A -> B, this returns the set of nodes A. In general, the capabilities
     /// of nodes B are obtained from these nodes.
     fn blocked_nodes<'slf>(

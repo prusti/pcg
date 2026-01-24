@@ -2,10 +2,10 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
-        edge_data::{EdgeData, LabelEdgeLifetimeProjections, LabelNodePredicate},
+        edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::ConstructAbstractionGraphResult,
         region_projection::LifetimeProjectionLabel,
-        validity_conditions::{ValidityConditions, ValidityConditionsLike},
+        validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsages,
@@ -20,8 +20,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, PcgNodeComponent, PlaceLike,
-        SnapshotLocation,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},

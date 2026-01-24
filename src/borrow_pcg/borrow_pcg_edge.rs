@@ -2,19 +2,14 @@
 use std::marker::PhantomData;
 
 use crate::{
-    borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion, edge_data::NodeReplacement,
-        region_projection::PcgLifetimeProjectionBase,
-    },
-    pcg::{PcgNodeLike, PcgNodeWithPlace},
+    borrow_pcg::{edge_data::NodeReplacement, region_projection::PcgLifetimeProjectionBase},
+    pcg::PcgNodeWithPlace,
     rustc_interface::middle::mir::{self, BasicBlock, PlaceElem},
     utils::{DebugCtxt, PcgNodeComponent, PcgPlace, data_structures::HashSet},
 };
-use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
 use super::{
-    edge::borrow_flow::BorrowFlowEdge,
     edge_data::EdgeData,
     graph::Conditioned,
     region_projection::{LifetimeProjection, LifetimeProjectionLabel, LocalLifetimeProjection},
@@ -22,17 +17,13 @@ use super::{
 };
 use crate::{
     borrow_pcg::{
-        edge::{
-            abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge,
-            kind::BorrowPcgEdgeKind,
-        },
+        edge::kind::BorrowPcgEdgeKind,
         edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, edgedata_enum,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LocalLifetimeProjectionBase,
     },
-    coupling::PcgCoupledEdgeKind,
     error::PcgError,
     pcg::PcgNode,
     utils::{
@@ -142,6 +133,7 @@ pub(crate) trait BorrowPcgEdgeLike<
     fn conditions(&self) -> &ValidityConditions;
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx, Kind>;
 
+    #[allow(dead_code)]
     fn blocked_places<'slf, Ctxt: Copy>(
         &'slf self,
         ctxt: Ctxt,
@@ -349,6 +341,7 @@ impl<'tcx, P: Copy> PcgNodeWithPlace<'tcx, P> {
 }
 
 impl<'tcx, T: Copy, U> PcgNode<'tcx, T, U> {
+    #[allow(dead_code)]
     pub(crate) fn as_place(&self) -> Option<T> {
         match self {
             PcgNode::Place(p) => Some(*p),

@@ -3,21 +3,15 @@ use derive_more::From;
 use super::AbstractionBlockEdge;
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode},
+        borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::LoopAbstractionOutput,
-        edge::{
-            abstraction::{
-                AbstractionEdge, LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata,
-            },
-            kind::BorrowPcgEdgeKind,
-        },
+        edge::abstraction::{LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata},
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
             NodeReplacement, label_edge_lifetime_projections_wrapper, label_edge_places_wrapper,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
-        validity_conditions::ValidityConditions,
     },
     pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},

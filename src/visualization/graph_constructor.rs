@@ -11,7 +11,7 @@ use crate::{
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
     utils::{
-        CompilerCtxt, HasPlace, Place, PlaceLike, SnapshotLocation,
+        CompilerCtxt, Place, PlaceLike, SnapshotLocation,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
     },
 };

@@ -17,19 +17,15 @@ use crate::{
         },
         region_projection::{
             LifetimeProjection, LifetimeProjectionLabel, LifetimeProjectionWithPlace,
-            LocalLifetimeProjection, LocalLifetimeProjectionBase, PcgLifetimeProjectionBase,
-            PcgLifetimeProjectionBaseLike,
+            LocalLifetimeProjection, PcgLifetimeProjectionBase,
         },
     },
     pcg::{PcgNode, PcgNodeLike},
-    pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
-        PrefixRelation,
+        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, PcgPlace, Place,
         data_structures::HashSet,
-        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
-        maybe_old::MaybeLabelledPlace,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
     },
 };

@@ -10,10 +10,7 @@ use crate::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
         },
-        region_projection::{
-            HasRegions, HasTy, LifetimeProjectionLabel, PcgLifetimeProjectionBase,
-            PcgLifetimeProjectionBaseLike, PlaceOrConst,
-        },
+        region_projection::{HasRegions, HasTy, LifetimeProjectionLabel},
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{

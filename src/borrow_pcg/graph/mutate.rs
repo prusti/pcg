@@ -7,9 +7,7 @@ use crate::{
         validity_conditions::{PathCondition, ValidityConditions},
     },
     rustc_interface::middle::mir::BasicBlock,
-    utils::{
-        CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, PcgPlace, data_structures::HashSet,
-    },
+    utils::{CompilerCtxt, FilterMutResult, PcgPlace, data_structures::HashSet},
 };
 
 use super::BorrowsGraph;

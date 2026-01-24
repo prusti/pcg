@@ -3,7 +3,7 @@ use derive_more::From;
 use super::region_projection::LifetimeProjectionLabel;
 use crate::{
     borrow_pcg::edge::kind::BorrowPcgEdgeType,
-    utils::{CompilerCtxt, FilterMutResult, Place, SnapshotLocation},
+    utils::{FilterMutResult, Place, SnapshotLocation},
 };
 
 impl std::ops::BitOrAssign for LabelLifetimeProjectionResult {

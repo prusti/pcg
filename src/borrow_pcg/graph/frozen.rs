@@ -13,7 +13,7 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::data_structures::fx::{FxHashMap, FxHashSet},
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgNodeComponent, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, Place,
         display::DisplayWithCompilerCtxt,
     },
 };

@@ -1,5 +1,3 @@
-use derive_more::From;
-
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{

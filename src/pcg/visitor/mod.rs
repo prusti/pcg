@@ -21,7 +21,7 @@ use crate::{
 };
 
 use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
     maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
