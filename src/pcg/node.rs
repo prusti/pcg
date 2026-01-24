@@ -242,26 +242,30 @@ macro_rules! pcg_node_like_wrapper {
 }
 pub(crate) use pcg_node_like_wrapper;
 
-pub(crate) fn label_place_conditionally<
-    'tcx,
-    Ctxt,
-    P: PcgPlace<'tcx, Ctxt>,
-    N: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
->(
-    node: &mut N,
-    replacements: &mut HashSet<NodeReplacement<'tcx, P>>,
-    predicate: &LabelNodePredicate<'tcx, P>,
-    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
-    node_context: LabelNodeContext,
-    ctxt: Ctxt,
-) {
-    let orig = node.to_pcg_node(ctxt);
-    if predicate.applies_to(orig, node_context) {
-        let changed = node.label_place(labeller, ctxt);
-        if changed {
-            replacements.insert(NodeReplacement::new(orig, node.to_pcg_node(ctxt)));
+pub(crate) trait LabelPlaceConditionally<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>>:
+    PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>
+{
+    fn label_place_conditionally(
+        &mut self,
+        replacements: &mut HashSet<NodeReplacement<'tcx, P>>,
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        node_context: LabelNodeContext,
+        ctxt: Ctxt,
+    ) {
+        let orig = self.to_pcg_node(ctxt);
+        if predicate.applies_to(orig, node_context) {
+            let changed = self.label_place(labeller, ctxt);
+            if changed {
+                replacements.insert(NodeReplacement::new(orig, self.to_pcg_node(ctxt)));
+            }
         }
     }
+}
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>, T: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>>
+    LabelPlaceConditionally<'tcx, Ctxt, P> for T
+{
 }
 
 pub(crate) trait LocalNodeLike<'tcx, Ctxt, P = Place<'tcx>>:

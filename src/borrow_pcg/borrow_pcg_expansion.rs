@@ -408,7 +408,7 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
 }
 
 impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>>
-    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<LifetimeProjection<'tcx>>
+    HasValidityCheck<Ctxt> for BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         if self.expansion.contains(&self.base) {

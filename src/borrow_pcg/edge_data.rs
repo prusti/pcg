@@ -9,8 +9,8 @@ use crate::{
         },
     },
     pcg::{
-        MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType, PcgNodeWithPlace,
-        label_place_conditionally,
+        LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType,
+        PcgNodeWithPlace,
     },
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation,
@@ -359,7 +359,7 @@ pub(crate) fn conditionally_label_places<
 ) -> HashSet<NodeReplacement<'tcx, P>> {
     let mut result = HashSet::default();
     for node in nodes.into_iter() {
-        label_place_conditionally(node, &mut result, predicate, labeller, label_context, ctxt);
+        node.label_place_conditionally(&mut result, predicate, labeller, label_context, ctxt);
     }
     result
 }
