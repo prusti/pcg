@@ -400,7 +400,9 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKind, VC> {
+impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKind, VC> {}
+
+impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
     fn introduce_initial_borrows<
         P,
         C: CapabilityLike,
@@ -412,7 +414,7 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKi
         ctxt: Ctxt,
     ) where
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P>
+        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
             + EdgeData<'tcx, Ctxt, P>
             + From<BorrowFlowEdge<'tcx, P>>,
@@ -470,7 +472,7 @@ impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKi
         ctxt: Ctxt,
     ) -> Self
     where
-        EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P>
+        BorrowPcgEdgeKind<'tcx>: LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
             + EdgeData<'tcx, Ctxt, P>
             + From<BorrowFlowEdge<'tcx, P>>,
