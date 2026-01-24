@@ -282,6 +282,7 @@ pub(crate) trait ValidityConditionOps<Ctxt> {
     fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool;
 }
 
+#[derive(Clone)]
 struct NoValidityConditions;
 
 pub(crate) trait ValidityConditionsLike: Clone + 'static {

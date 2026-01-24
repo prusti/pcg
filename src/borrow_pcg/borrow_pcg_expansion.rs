@@ -219,9 +219,7 @@ edgedata_enum!(
     crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     BorrowPcgExpansion<'tcx, P>,
     Place(crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgPlaceExpansion<'tcx, P>),
-    LifetimeProjection(
-        crate::borrow_pcg::borrow_pcg_expansion::LifetimeProjectionExpansion<'tcx, P>,
-    ),
+    LifetimeProjection(crate::borrow_pcg::borrow_pcg_expansion::LifetimeProjectionExpansion<'tcx, P>),
 );
 
 impl<'tcx, P: PcgNodeComponent> BorrowPcgExpansion<'tcx, P> {
@@ -246,13 +244,16 @@ impl<'tcx, P: PcgNodeComponent> BorrowPcgExpansion<'tcx, P> {
                 .collect(),
         }
     }
-    pub(crate) fn new_lifetime_projection_expansion<Ctxt: Copy>(
-        base: LifetimeProjection<'tcx, P>,
+}
+
+impl<'tcx> BorrowPcgExpansion<'tcx> {
+    pub(crate) fn new_lifetime_projection_expansion<'a>(
+        base: LifetimeProjection<'tcx, Place<'tcx>>,
         expansion: PlaceExpansion<'tcx>,
-        ctxt: Ctxt,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, PcgError>
     where
-        P: PlaceLike<'tcx, Ctxt>,
+        'tcx: 'a,
     {
         Ok(BorrowPcgExpansion::LifetimeProjection(
             BorrowPcgExpansionData::new(

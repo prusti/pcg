@@ -203,17 +203,17 @@ impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt>> PlaceProjectable<'tcx, C
     }
 }
 
-impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn place(&self) -> Place<'tcx> {
+impl<'tcx, P: Copy> HasPlace<'tcx, P> for MaybeLabelledPlace<'tcx, P> {
+    fn place(&self) -> P {
         match self {
             MaybeLabelledPlace::Current(place) => *place,
-            MaybeLabelledPlace::Labelled(old_place) => old_place.place,
+            MaybeLabelledPlace::Labelled(labelled_place) => labelled_place.place,
         }
     }
-    fn place_mut(&mut self) -> &mut Place<'tcx> {
+    fn place_mut(&mut self) -> &mut P {
         match self {
             MaybeLabelledPlace::Current(place) => place,
-            MaybeLabelledPlace::Labelled(old_place) => &mut old_place.place,
+            MaybeLabelledPlace::Labelled(labelled_place) => &mut labelled_place.place,
         }
     }
 

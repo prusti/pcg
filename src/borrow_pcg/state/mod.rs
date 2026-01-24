@@ -148,14 +148,14 @@ pub(crate) struct BorrowStateRef<
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
     VC = ValidityConditions,
 > {
-    pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
+    pub(crate) graph: &'pcg BorrowsGraph<'tcx, EdgeKind, VC>,
     #[allow(unused)]
     pub(crate) validity_conditions: &'pcg VC,
 }
 
 impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
     pub(crate) fn new(
-        graph: &'pcg BorrowsGraph<'tcx, EdgeKind>,
+        graph: &'pcg BorrowsGraph<'tcx, EdgeKind, VC>,
         validity_conditions: &'pcg VC,
     ) -> Self {
         Self {
@@ -165,13 +165,13 @@ impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
     }
 }
 
-impl<'pcg, 'tcx, EdgeKind, P: Copy> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind, P> {
+impl<'pcg, 'tcx, EdgeKind, VC> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'pcg, 'tcx, EdgeKind, P: Copy> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind, P> {}
+impl<'pcg, 'tcx, EdgeKind, VC> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {}
 
 pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions>
 {
@@ -181,7 +181,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     fn graph_mut(&mut self) -> &mut BorrowsGraph<'tcx, EdgeKind, VC> {
         self.as_mut_ref().graph
     }
-    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind>;
+    fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, VC>;
 
     fn label_place_and_update_related_capabilities<
         'a,

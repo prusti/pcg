@@ -825,12 +825,12 @@ impl<
     }
 }
 
-impl<'tcx, T: HasPlace<'tcx>> HasPlace<'tcx> for LifetimeProjection<'tcx, T> {
-    fn place(&self) -> Place<'tcx> {
+impl<'tcx, P, T: HasPlace<'tcx, P>> HasPlace<'tcx, P> for LifetimeProjection<'tcx, T> {
+    fn place(&self) -> P {
         self.base.place()
     }
 
-    fn place_mut(&mut self) -> &mut Place<'tcx> {
+    fn place_mut(&mut self) -> &mut P {
         self.base.place_mut()
     }
 
