@@ -510,13 +510,14 @@ impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
         &self.expansion
     }
 
-    pub(crate) fn new<Ctxt: DebugCtxt, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
+    pub(crate) fn new<Ctxt: DebugCtxt + Copy, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
         base: Node,
         expansion: PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
         Node: Ord + HasPlace<'tcx, P> + PlaceProjectable<'tcx, Ctxt>,
+        Self: HasValidityCheck<Ctxt>,
     {
         if base.place().is_raw_ptr(ctxt) {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
@@ -536,7 +537,7 @@ impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
                 .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
         };
-        // result.assert_validity(ctxt);
+        result.assert_validity(ctxt);
         Ok(result)
     }
 }
