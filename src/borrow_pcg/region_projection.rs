@@ -76,6 +76,12 @@ impl OverrideRegionDebugString for NoOverride {
     }
 }
 
+impl OverrideRegionDebugString for () {
+    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str> {
+        None
+    }
+}
+
 impl std::fmt::Display for PcgRegion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(

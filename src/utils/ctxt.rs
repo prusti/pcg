@@ -40,6 +40,12 @@ impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugS
     }
 }
 
+impl<'a, 'tcx> OverrideRegionDebugString for CompilerCtxt<'a, 'tcx, ()> {
+    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
+        None
+    }
+}
+
 impl<'a, 'tcx, BC> LocalTys<'tcx> for CompilerCtxt<'a, 'tcx, BC> {
     fn local_ty(&self, local: Local) -> ty::Ty<'tcx> {
         self.mir.local_decls()[local].ty
