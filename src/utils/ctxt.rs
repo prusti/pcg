@@ -337,7 +337,9 @@ pub(crate) trait HasLocals: Copy {
     fn arg_count(self) -> usize;
     fn local_count(self) -> usize;
     fn args_iter(self) -> Box<dyn Iterator<Item = Local> + 'static> {
-        Box::new((1..self.arg_count()).map(Local::from_usize))
+        // For a function with `N` arguments, the local _0 is the return place,
+        // and the arguments are _1, ..., _N.
+        Box::new((1..self.arg_count() + 1).map(Local::from_usize))
     }
 }
 
