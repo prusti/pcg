@@ -40,9 +40,13 @@ pub trait HasSettings<'a> {
 
 mod private {
     use crate::{
+        borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::{BodyAnalysis, PcgArena, SymbolicCapabilityCtxt},
-        rustc_interface::middle::mir,
-        utils::{CompilerCtxt, PcgSettings},
+        rustc_interface::{
+            RustBitSet,
+            middle::{mir, ty},
+        },
+        utils::{CompilerCtxt, DebugCtxt, HasLocals, LocalTys, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
@@ -57,6 +61,41 @@ mod private {
         #[cfg(feature = "visualization")]
         pub(crate) graphs:
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
+    }
+
+    impl<'a, 'tcx: 'a> LocalTys<'tcx> for AnalysisCtxt<'a, 'tcx> {
+        fn local_ty(&self, local: mir::Local) -> ty::Ty<'tcx> {
+            self.ctxt.local_ty(local)
+        }
+    }
+
+    impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
+        fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+            self.ctxt
+                .borrow_checker
+                .override_region_debug_string(region)
+        }
+    }
+
+    impl<'a, 'tcx: 'a> DebugCtxt for AnalysisCtxt<'a, 'tcx> {
+        fn func_name(&self) -> String {
+            self.ctxt.func_name()
+        }
+        fn num_basic_blocks(&self) -> usize {
+            self.ctxt.num_basic_blocks()
+        }
+    }
+
+    impl<'a, 'tcx: 'a> HasLocals for AnalysisCtxt<'a, 'tcx> {
+        fn always_live_locals(self) -> RustBitSet<mir::Local> {
+            self.ctxt.always_live_locals()
+        }
+        fn arg_count(self) -> usize {
+            self.ctxt.body().arg_count
+        }
+        fn local_count(self) -> usize {
+            self.ctxt.local_count()
+        }
     }
 }
 
@@ -210,6 +249,7 @@ impl<'a, 'tcx> HasBorrowCheckerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
+    #[allow(dead_code)]
     pub(crate) fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.ctxt.tcx()
     }

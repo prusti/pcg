@@ -16,10 +16,11 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, HasTy},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
+    pcg::PcgNodeWithPlace,
     rustc_interface::{
         VariantIdx,
         ast::Mutability,
@@ -30,16 +31,17 @@ use crate::{
             ty::{self, Ty, TyKind},
         },
     },
-    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
+    utils::{
+        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
+        maybe_old::MaybeLabelledPlace,
+    },
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionBaseLike, PcgRegion, RegionIdx,
-        },
+        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
@@ -106,25 +108,22 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Pla
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for Place<'tcx> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
-        LocalNode::Place(self.into())
+#[allow(clippy::wrong_self_convention)]
+pub trait PrefixRelation {
+    fn is_prefix_of(self, other: Self) -> bool;
+    fn is_strict_prefix_of(self, other: Self) -> bool;
+}
+
+impl<'tcx> PrefixRelation for Place<'tcx> {
+    fn is_prefix_of(self, other: Self) -> bool {
+        self.is_prefix_of(other)
+    }
+    fn is_strict_prefix_of(self, other: Self) -> bool {
+        self.is_strict_prefix_of(other)
     }
 }
 
-impl<'tcx> PcgNodeLike<'tcx> for Place<'tcx> {
-    fn to_pcg_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.into()
-    }
-}
-
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for Place<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        (*self).into()
-    }
-}
-
-pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
+pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn project_deeper(
         &self,
         elem: PlaceElem<'tcx>,
@@ -134,13 +133,81 @@ pub(crate) trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
+pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
+
+pub trait PcgPlace<'tcx, Ctxt: Copy> = PlaceProjectable<'tcx, Ctxt>
+    + PcgNodeComponent
+    + HasRegions<'tcx, Ctxt>
+    + HasTy<'tcx, Ctxt>
+    + PrefixRelation
+    + Ord
+    + 'tcx;
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P> for P {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
+        LocalNode::Place(self.into())
+    }
+}
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P>
+    for MaybeLabelledPlace<'tcx, P>
+{
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
+        LocalNode::Place(self)
+    }
+}
+
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> PcgNodeLike<'tcx, Ctxt, P> for P {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self.into())
+    }
+}
+
+pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
+    fn local(self) -> Local;
+    fn is_owned(self, ctxt: Ctxt) -> bool;
+    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;
+    fn expansion_places(
+        self,
+        expansion: &PlaceExpansion<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
+    fn local(self) -> Local {
+        self.0.local
+    }
+    fn is_owned(self, ctxt: Ctxt) -> bool {
+        !self
+            .iter_projections(ctxt.ctxt())
+            .into_iter()
+            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
+    }
+
+    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool {
+        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
+            return false;
+        };
+        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
+    }
+
+    fn expansion_places(
+        self,
+        expansion: &PlaceExpansion<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError> {
+        self.expansion_places(expansion, ctxt)
+    }
+}
+
 /// A trait for PCG nodes that contain a single place.
-pub trait HasPlace<'tcx>: Sized {
+pub trait HasPlace<'tcx, P = Place<'tcx>>: Sized {
     fn is_place(&self) -> bool;
 
-    fn place(&self) -> Place<'tcx>;
+    fn place(&self) -> P;
 
-    fn place_mut(&mut self) -> &mut Place<'tcx>;
+    fn place_mut(&mut self) -> &mut P;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt> for Place<'tcx> {
@@ -510,16 +577,6 @@ impl<'tcx> Place<'tcx> {
             .map(|(idx, _)| idx)
     }
 
-    pub fn is_owned<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        !self
-            .iter_projections(ctxt.ctxt())
-            .into_iter()
-            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
-    }
-
     pub fn is_mut_ref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
@@ -710,20 +767,6 @@ impl<'tcx> Place<'tcx> {
         } else {
             None
         }
-    }
-
-    pub(crate) fn projects_indirection_from<'a>(
-        self,
-        other: Self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
-            return false;
-        };
-        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
     }
 
     pub(crate) fn iter_projections_after<'a>(

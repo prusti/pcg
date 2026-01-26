@@ -10,9 +10,9 @@ use crate::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
         },
-        region_projection::LifetimeProjectionLabel,
+        region_projection::{HasRegions, HasTy, LifetimeProjectionLabel},
     },
-    pcg::{PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
@@ -22,7 +22,7 @@ use crate::{
         },
     },
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
@@ -39,11 +39,11 @@ use crate::{
 
 /// A borrow that is explicit in the MIR (e.g. `let x = &mut y;`)
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct BorrowEdge<'tcx> {
+pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     /// The place that is blocked by the borrow, e.g. the y in `let x = &mut y;`
-    pub(crate) blocked_place: MaybeLabelledPlace<'tcx>,
+    pub(crate) blocked_place: MaybeLabelledPlace<'tcx, P>,
     /// The place that is assigned by the borrow, e.g. the x in `let x = &mut y;`
-    pub(crate) assigned_ref: MaybeLabelledPlace<'tcx>,
+    pub(crate) assigned_ref: MaybeLabelledPlace<'tcx, P>,
     kind: mir::BorrowKind,
 
     /// The location when the borrow was created
@@ -57,12 +57,23 @@ pub struct BorrowEdge<'tcx> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowEdge<'tcx> {
+impl<
+    'tcx,
+    Ctxt: DebugCtxt + Copy,
+    P: PartialEq
+        + Eq
+        + Copy
+        + PrefixRelation
+        + std::fmt::Debug
+        + HasTy<'tcx, Ctxt>
+        + HasRegions<'tcx, Ctxt>,
+> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+{
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         let mut changed = LabelLifetimeProjectionResult::Unchanged;
         if predicate.applies_to(
@@ -76,13 +87,19 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowEdge<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for BorrowEdge<'tcx, P>
+where
+    MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
+    MaybeLabelledPlace<'tcx, P>: PcgNodeLike<'tcx, Ctxt, P>,
+    LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>: PcgNodeLike<'tcx, Ctxt, P>,
+{
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.blocked_place],
             predicate,
@@ -94,13 +111,14 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         let mut result = HashSet::default();
         let initial_assigned_lifetime_projection = self.assigned_lifetime_projection(ctxt);
-        let from: PcgNode<'tcx> = initial_assigned_lifetime_projection.to_pcg_node(ctxt);
+        let from: PcgNodeWithPlace<'tcx, P> =
+            PcgNode::LifetimeProjection(initial_assigned_lifetime_projection.rebase());
         let node_context = LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Borrow);
         if predicate.applies_to(from, node_context) {
             let changed = self.assigned_ref.label_place(labeller, ctxt);
@@ -115,8 +133,10 @@ impl<'tcx> LabelEdgePlaces<'tcx> for BorrowEdge<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for BorrowEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for BorrowEdge<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.assigned_ref.check_validity(ctxt)?;
         Ok(())
@@ -147,15 +167,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Bo
     }
 }
 
-impl<'tcx> EdgeData<'tcx> for BorrowEdge<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+impl<
+    'tcx,
+    Ctxt: Copy,
+    P: PartialEq + std::fmt::Debug + Copy + HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
+> EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, _ctxt: Ctxt) -> bool {
         match node {
             PcgNode::Place(p) => self.blocked_place == p,
             _ => false,
         }
     }
 
-    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn is_blocked_by<'slf>(&self, node: LocalNode<'tcx, P>, ctxt: Ctxt) -> bool {
         match node {
             PcgNode::Place(_) => false,
             PcgNode::LifetimeProjection(region_projection) => {
@@ -164,22 +189,22 @@ impl<'tcx> EdgeData<'tcx> for BorrowEdge<'tcx> {
         }
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
-        _ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx>> + 'slf>
+        _ctxt: Ctxt,
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
         Box::new(std::iter::once(self.blocked_place.into()))
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
         let rp = self.assigned_lifetime_projection(ctxt);
         Box::new(std::iter::once(LocalNode::LifetimeProjection(rp)))
@@ -245,23 +270,24 @@ impl<'tcx> BorrowEdge<'tcx> {
     pub fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
         self.assigned_ref.project_deref(ctxt)
     }
-
+}
+impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
     /// The region projection associated with the *type* of the assigned place
     /// of the borrow. For example in `let x: &'x mut i32 = ???`, the assigned
     /// region projection is `x↓'x`.
-    pub(crate) fn assigned_lifetime_projection<'a>(
+    pub(crate) fn assigned_lifetime_projection<Ctxt: Copy>(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>
+        ctxt: Ctxt,
+    ) -> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
     where
-        'tcx: 'a,
+        P: HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
     {
-        match self.assigned_ref.ty(ctxt).ty.kind() {
+        match self.assigned_ref.place().rust_ty(ctxt).kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
                 self.assigned_ref,
                 (*region).into(),
                 self.assigned_lifetime_projection_label,
-                ctxt.ctxt(),
+                ctxt,
             )
             .unwrap(),
             other => unreachable!("{:?}", other),

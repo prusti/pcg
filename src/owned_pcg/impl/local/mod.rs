@@ -16,7 +16,7 @@ use crate::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Local,
-    utils::{HasCompilerCtxt, data_structures::HashSet},
+    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use itertools::Itertools;
 
@@ -76,8 +76,8 @@ impl<'tcx> OwnedPcgLocal<'tcx> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub(crate) struct ExpandedPlace<'tcx> {
-    pub(crate) place: Place<'tcx>,
+pub(crate) struct ExpandedPlace<'tcx, P = Place<'tcx>> {
+    pub(crate) place: P,
     pub(crate) expansion: PlaceExpansion<'tcx>,
 }
 
@@ -88,13 +88,15 @@ impl<'tcx> ExpandedPlace<'tcx> {
     pub(crate) fn guide(&self) -> Option<RepackGuide> {
         self.expansion.guide()
     }
+}
 
-    pub(crate) fn expansion_places<'a>(
+impl<'tcx, P> ExpandedPlace<'tcx, P> {
+    pub(crate) fn expansion_places<Ctxt>(
         &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<HashSet<Place<'tcx>>, PcgUnsupportedError>
+        ctxt: Ctxt,
+    ) -> std::result::Result<HashSet<P>, PcgUnsupportedError>
     where
-        'tcx: 'a,
+        P: PlaceLike<'tcx, Ctxt>,
     {
         Ok(self
             .place
@@ -251,7 +253,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         places
     }
 
-    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
+    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &mut self,
         to: Place<'tcx>,
         _for_cap: Option<CapabilityKind>,

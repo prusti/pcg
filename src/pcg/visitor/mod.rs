@@ -3,7 +3,7 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::outlives::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
         region_projection::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
@@ -17,11 +17,11 @@ use crate::{
         triple::TripleWalker,
     },
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
-    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
     maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
@@ -91,7 +91,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             self.activate_twophase_borrow_created_at(created_location)?;
         }
         let frozen_graph = self.pcg.borrow.graph.frozen_graph();
-        let leaf_nodes = frozen_graph.leaf_nodes(self.ctxt);
+        let leaf_nodes = frozen_graph.leaf_nodes(self.ctxt.bc_ctxt());
         let leaf_future_node_places = leaf_nodes
             .iter()
             .filter_map(|node| match node {
@@ -196,13 +196,11 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                                 source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
                                 kind(target_proj.region(self.ctxt.ctxt())),
-                                self.ctxt,
                             )
                             .into(),
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "connect_outliving_projections",
-                        self.ctxt,
                     )
                     .into(),
                 )?;
@@ -350,7 +348,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 let expansion_places = local_expansions.all_children_of(place, self.ctxt);
                 if expansion_places
                     .iter()
-                    .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt))
+                    .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt.bc_ctxt()))
                     && let Some(candidate_cap) = self
                         .pcg
                         .capabilities

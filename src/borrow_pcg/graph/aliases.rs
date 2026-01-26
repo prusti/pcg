@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdgeRef, LocalNode},
-        edge::{kind::BorrowPcgEdgeKind, outlives::BorrowFlowEdgeKind},
+        edge::{borrow_flow::BorrowFlowEdgeKind, kind::BorrowPcgEdgeKind},
         edge_data::EdgeData,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
@@ -12,16 +12,17 @@ use crate::{
 use super::BorrowsGraph;
 
 #[derive(Eq, PartialEq, Hash, Debug)]
+#[allow(dead_code)]
 struct Alias<'tcx> {
     node: PcgNode<'tcx>,
     exact_alias: bool,
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
-    pub(crate) fn ancestor_edges<'graph, 'mir: 'graph, 'bc: 'graph>(
+    pub(crate) fn ancestor_edges<'graph, 'a: 'graph>(
         &'graph self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'mir, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> {
         let mut result: FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> = FxHashSet::default();
         let mut stack = vec![node];
@@ -40,10 +41,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
         result
     }
-    pub(crate) fn aliases<BC: Copy>(
+    pub(crate) fn aliases(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, ()>,
     ) -> FxHashSet<PcgNode<'tcx>> {
         let mut result: FxHashSet<PcgNode<'tcx>> = FxHashSet::default();
         result.insert(node.into());
@@ -60,10 +61,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn aliases_all_projections<BC: Copy>(
+    fn aliases_all_projections(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, ()>,
     ) -> FxHashSet<PcgNode<'tcx>> {
         let mut results: FxHashSet<Alias<'tcx>> = FxHashSet::default();
         for (place, proj) in node.iter_projections(ctxt) {
@@ -115,10 +116,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     #[tracing::instrument(skip(self, ctxt, seen, direct))]
-    fn direct_aliases<BC: Copy>(
+    fn direct_aliases(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
+        ctxt: CompilerCtxt<'_, 'tcx, ()>,
         seen: &mut FxHashSet<PcgNode<'tcx>>,
         direct: bool,
     ) -> FxHashSet<Alias<'tcx>> {

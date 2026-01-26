@@ -5,9 +5,9 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
+            borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-            outlives::private::FutureEdgeKind,
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
@@ -27,8 +27,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, HasPlace, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
 use std::cmp::Ordering;
@@ -145,7 +145,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         let fg = self.pcg.borrow.graph.frozen_graph();
-        let blocked_nodes = edge.blocked_nodes(self.ctxt.ctxt());
+        let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
         // After removing an edge, some nodes may become accessible, their capabilities should be restored
         let to_restore = blocked_nodes
@@ -453,7 +453,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError>
+    where
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+    {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
@@ -463,7 +466,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
                 action.clone(),
                 self.pcg.capabilities,
-                analysis_ctxt,
+                analysis_ctxt.bc_ctxt(),
             )?,
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -543,7 +546,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     }
 }
 
-impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> ActionApplier<'tcx>
+impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
     fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {

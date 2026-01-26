@@ -1,22 +1,17 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, marker::PhantomData};
 
 use serde_json::json;
 
-use super::{CompilerCtxt, Place, validity::HasValidityCheck};
+use super::{Place, validity::HasValidityCheck};
 use crate::{
-    borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
-        region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
-        },
-    },
-    pcg::{EvalStmtPhase, LocalNodeLike, PcgNode, PcgNodeLike},
+    borrow_pcg::{borrow_pcg_edge::LocalNode, region_projection::HasTy},
+    pcg::{EvalStmtPhase, LocalNodeLike},
     rustc_interface::middle::{
         mir::{self, BasicBlock, Location},
         ty,
     },
     utils::{
-        HasCompilerCtxt, PlaceProjectable,
+        DebugCtxt, HasCompilerCtxt, PcgNodeComponent, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
     },
@@ -168,13 +163,11 @@ impl std::fmt::Display for SnapshotLocation {
     }
 }
 
-#[deprecated(note = "Use LabelledPlace instead")]
-pub type PlaceSnapshot<'tcx> = LabelledPlace<'tcx>;
-
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LabelledPlace<'tcx> {
-    pub(crate) place: Place<'tcx>,
+pub struct LabelledPlace<'tcx, P = Place<'tcx>> {
+    pub(crate) place: P,
     pub(crate) at: SnapshotLocation,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for LabelledPlace<'tcx> {
@@ -202,18 +195,18 @@ impl DisplayWithCtxt<()> for SnapshotLocation {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
-    for LabelledPlace<'tcx>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
+    PlaceProjectable<'tcx, Ctxt> for LabelledPlace<'tcx, P>
 {
     fn project_deeper(
         &self,
         elem: mir::PlaceElem<'tcx>,
         ctxt: Ctxt,
     ) -> std::result::Result<Self, crate::error::PcgError> {
-        Ok(LabelledPlace {
-            place: self.place.project_deeper(elem, ctxt)?,
-            at: self.at,
-        })
+        Ok(LabelledPlace::new(
+            self.place.project_deeper(elem, ctxt)?,
+            self.at,
+        ))
     }
 
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, mir::PlaceElem<'tcx>)> {
@@ -221,26 +214,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        PlaceOrConst::Place((*self).into())
-    }
-}
-
-impl<'tcx> PcgNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        self.to_local_node(ctxt).into()
-    }
-}
-
-impl<'tcx> LocalNodeLike<'tcx> for LabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, _ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
+impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
+    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
         LocalNode::Place(self.into())
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LabelledPlace<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for LabelledPlace<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.place.check_validity(ctxt)
     }
 }
@@ -269,22 +252,25 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Lab
     }
 }
 
-impl<'tcx> LabelledPlace<'tcx> {
-    pub fn new<T: Into<SnapshotLocation>>(place: Place<'tcx>, at: T) -> Self {
+impl<'tcx, P: PcgNodeComponent> LabelledPlace<'tcx, P> {
+    pub fn new<T: Into<SnapshotLocation>>(place: P, at: T) -> Self {
         LabelledPlace {
             place,
             at: at.into(),
+            _marker: PhantomData,
         }
     }
 
-    pub fn place(&self) -> Place<'tcx> {
+    pub fn place(&self) -> P {
         self.place
     }
 
     pub fn at(&self) -> SnapshotLocation {
         self.at
     }
+}
 
+impl<'tcx> LabelledPlace<'tcx> {
     pub(crate) fn with_inherent_region<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -292,9 +278,6 @@ impl<'tcx> LabelledPlace<'tcx> {
     where
         'tcx: 'a,
     {
-        LabelledPlace {
-            place: self.place.with_inherent_region(ctxt),
-            at: self.at,
-        }
+        LabelledPlace::new(self.place.with_inherent_region(ctxt), self.at)
     }
 }

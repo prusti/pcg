@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{PcgRegion, TyVarianceVisitor},
+        region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -21,7 +21,7 @@ use crate::{
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{place::Place, validity::HasValidityCheck},
+    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
     validity_checks_enabled,
 };
 
@@ -30,6 +30,39 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) mir: &'a Body<'tcx>,
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) borrow_checker: T,
+}
+
+impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
+    for CompilerCtxt<'a, 'tcx, &'bc BC>
+{
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.borrow_checker.override_region_debug_string(region)
+    }
+}
+
+impl<'a, 'tcx> OverrideRegionDebugString for CompilerCtxt<'a, 'tcx, ()> {
+    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
+        None
+    }
+}
+
+impl<'a, 'tcx, BC> LocalTys<'tcx> for CompilerCtxt<'a, 'tcx, BC> {
+    fn local_ty(&self, local: Local) -> ty::Ty<'tcx> {
+        self.mir.local_decls()[local].ty
+    }
+}
+
+impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T>
+where
+    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+{
+    fn func_name(&self) -> String {
+        self.tcx
+            .def_path_str(self.mir.source.def_id().expect_local())
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.mir.basic_blocks.len()
+    }
 }
 
 impl<'a, 'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
@@ -159,7 +192,10 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
     }
 }
 
-impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T> {
+impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T>
+where
+    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+{
     fn bc(&self) -> T {
         self.borrow_checker
     }
@@ -287,6 +323,26 @@ impl ProjectionKind {
     }
 }
 
+pub trait DebugCtxt: OverrideRegionDebugString {
+    fn func_name(&self) -> String;
+    fn num_basic_blocks(&self) -> usize;
+}
+
+pub trait LocalTys<'tcx> {
+    fn local_ty(&self, local: Local) -> ty::Ty<'tcx>;
+}
+
+pub(crate) trait HasLocals: Copy {
+    fn always_live_locals(self) -> RustBitSet<Local>;
+    fn arg_count(self) -> usize;
+    fn local_count(self) -> usize;
+    fn args_iter(self) -> Box<dyn Iterator<Item = Local> + 'static> {
+        // For a function with `N` arguments, the local _0 is the return place,
+        // and the arguments are _1, ..., _N.
+        Box::new((1..self.arg_count() + 1).map(Local::from_usize))
+    }
+}
+
 pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
     fn ctxt(self) -> CompilerCtxt<'a, 'tcx, ()>;
     fn body(self) -> &'a Body<'tcx> {
@@ -300,7 +356,7 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
-    HasCompilerCtxt<'a, 'tcx>
+    HasCompilerCtxt<'a, 'tcx> + DebugCtxt
 {
     fn bc(&self) -> BC;
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;
@@ -561,10 +617,11 @@ impl<'tcx> Place<'tcx> {
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for Place<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
-        self.local.check_validity(ctxt)?;
-        Ok(())
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for Place<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
+        self.local.check_validity(ctxt)
     }
 }
 

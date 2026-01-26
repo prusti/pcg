@@ -161,9 +161,13 @@ mod private {
 
     use crate::{
         borrow_checker::BorrowCheckerInterface,
+        borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::DomainDataWithCtxt,
+        rustc_interface::middle::ty,
         rustc_interface::middle::ty::TyCtxt,
-        utils::{CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings},
+        utils::{
+            CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        },
     };
 
     #[derive(Clone, From, Eq)]
@@ -219,9 +223,26 @@ mod private {
         }
     }
 
+    impl<'a, 'tcx: 'a> DebugCtxt for ResultsCtxt<'a, 'tcx> {
+        fn func_name(&self) -> String {
+            self.ctxt.func_name()
+        }
+        fn num_basic_blocks(&self) -> usize {
+            self.ctxt.num_basic_blocks()
+        }
+    }
+
     impl<'a, 'tcx: 'a> HasTyCtxt<'tcx> for ResultsCtxt<'a, 'tcx> {
         fn tcx(&self) -> TyCtxt<'tcx> {
             self.ctxt.tcx
+        }
+    }
+
+    impl<'a, 'tcx: 'a> OverrideRegionDebugString for ResultsCtxt<'a, 'tcx> {
+        fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+            self.ctxt
+                .borrow_checker
+                .override_region_debug_string(region)
         }
     }
 

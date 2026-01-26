@@ -146,9 +146,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 /// given capability, e.g. after a borrow expires, the borrowed place should be
 /// restored to exclusive capability.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct RestoreCapability<'tcx> {
-    place: Place<'tcx>,
+pub struct RestoreCapability<'tcx, P = Place<'tcx>> {
+    place: P,
     capability: CapabilityKind,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
@@ -178,12 +179,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> RestoreCapability<'tcx> {
-    pub(crate) fn new(place: Place<'tcx>, capability: CapabilityKind) -> Self {
-        Self { place, capability }
+impl<'tcx, P: Copy> RestoreCapability<'tcx, P> {
+    pub(crate) fn new(place: P, capability: CapabilityKind) -> Self {
+        Self {
+            place,
+            capability,
+            _marker: PhantomData,
+        }
     }
 
-    pub fn place(&self) -> Place<'tcx> {
+    pub fn place(&self) -> P {
         self.place
     }
 
@@ -191,6 +196,8 @@ impl<'tcx> RestoreCapability<'tcx> {
         self.capability
     }
 }
+
+impl<'tcx> RestoreCapability<'tcx> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
@@ -323,16 +330,33 @@ pub struct PcgCtxt<'a, 'tcx> {
     pub(crate) arena: bumpalo::Bump,
 }
 
+impl<'a, 'mir: 'a, 'tcx: 'mir> OverrideRegionDebugString for &'a PcgCtxt<'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.compiler_ctxt
+            .borrow_checker
+            .override_region_debug_string(region)
+    }
+}
+
 impl<'a, 'mir: 'a, 'tcx: 'mir>
     HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
     for &'a PcgCtxt<'mir, 'tcx>
 {
     fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
-        self.compiler_ctxt
+        self.compiler_ctxt.as_dyn()
     }
 
     fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
         self.compiler_ctxt.borrow_checker()
+    }
+}
+
+impl<'mir, 'tcx> DebugCtxt for &PcgCtxt<'mir, 'tcx> {
+    fn func_name(&self) -> String {
+        self.compiler_ctxt.func_name()
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.compiler_ctxt.num_basic_blocks()
     }
 }
 
@@ -626,7 +650,7 @@ macro_rules! pcg_validity_assert {
         {
             let ctxt = $ctxt;
             let loc = $loc;
-            let func_name = ctxt.tcx().def_path_str(ctxt.body().source.def_id());
+            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
             let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*));
         }
@@ -634,7 +658,7 @@ macro_rules! pcg_validity_assert {
     (@parse_context $cond:expr, [$ctxt:tt], $($arg:tt)*) => {
         {
             let ctxt = $ctxt;
-            let func_name = ctxt.tcx().def_path_str(ctxt.body().source.def_id());
+            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
             let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*));
         }
@@ -649,7 +673,7 @@ macro_rules! pcg_validity_assert {
                 // Generate test case format if we're in a crate
                 if let Ok(crate_name) = std::env::var("CARGO_CRATE_NAME") {
                     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string());
-                    let num_bbs = $ctxt.body().basic_blocks.len();
+                    let num_bbs = $crate::utils::ctxt::DebugCtxt::num_basic_blocks(&$ctxt);
                     let test_case = format!("{};{};2025-03-13;{};{}",
                         crate_name, crate_version, $func_name, num_bbs);
                     tracing::error!("To reproduce this failure, use test case: {}", test_case);
@@ -685,8 +709,9 @@ pub(crate) use pcg_validity_expect_some;
 use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
+    borrow_pcg::region_projection::OverrideRegionDebugString,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         mir::BasicBlock,

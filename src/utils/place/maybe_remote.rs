@@ -1,5 +1,3 @@
-use derive_more::From;
-
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
@@ -11,28 +9,36 @@ use crate::{
     },
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, HasPlace, LabelledPlace, Place,
+        CompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
     },
 };
 
-#[derive(From, PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
-pub enum MaybeRemotePlace<'tcx> {
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
+pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     /// A place that has a name in the program
-    Local(MaybeLabelledPlace<'tcx>),
+    Local(MaybeLabelledPlace<'tcx, P>),
 
     /// A place that cannot be named, e.g. the source of a reference-type input argument
     Remote(RemotePlace),
 }
 
-impl<'tcx> LabelPlace<'tcx> for MaybeRemotePlace<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, P> From<RemotePlace> for MaybeRemotePlace<'tcx, P> {
+    fn from(place: RemotePlace) -> Self {
+        MaybeRemotePlace::Remote(place)
+    }
+}
+
+impl<'tcx, P> From<MaybeLabelledPlace<'tcx, P>> for MaybeRemotePlace<'tcx, P> {
+    fn from(place: MaybeLabelledPlace<'tcx, P>) -> Self {
+        MaybeRemotePlace::Local(place)
+    }
+}
+
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         match self {
             MaybeRemotePlace::Local(p) => p.label_place(labeller, ctxt),
             MaybeRemotePlace::Remote(_) => false,
@@ -76,17 +82,22 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx, P>
+where
+    RemotePlace: HasTy<'tcx, Ctxt>,
+{
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
-            MaybeRemotePlace::Local(p) => p.ty(ctxt).ty,
+            MaybeRemotePlace::Local(p) => p.rust_ty(ctxt),
             MaybeRemotePlace::Remote(rp) => rp.rust_ty(ctxt),
         }
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for MaybeRemotePlace<'tcx> {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
+impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx, P>> PcgLifetimeProjectionBaseLike<'tcx, P>
+    for MaybeRemotePlace<'tcx, P>
+{
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_lifetime_projection_base(),
             MaybeRemotePlace::Remote(rp) => (*rp).into(),
@@ -125,6 +136,22 @@ impl std::fmt::Display for MaybeRemotePlace<'_> {
     }
 }
 
+impl<'tcx, P: Copy> MaybeRemotePlace<'tcx, P> {
+    pub fn as_current_place(&self) -> Option<P> {
+        match self {
+            MaybeRemotePlace::Local(p) => p.as_current_place(),
+            MaybeRemotePlace::Remote(_) => None,
+        }
+    }
+
+    pub fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx, P>> {
+        match self {
+            MaybeRemotePlace::Local(p) => Some(*p),
+            MaybeRemotePlace::Remote(_) => None,
+        }
+    }
+}
+
 impl<'tcx> MaybeRemotePlace<'tcx> {
     pub fn place_assigned_to_local(local: mir::Local) -> Self {
         MaybeRemotePlace::Remote(RemotePlace { local })
@@ -137,24 +164,9 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         }
     }
 
-    pub fn as_current_place(&self) -> Option<Place<'tcx>> {
-        if let MaybeRemotePlace::Local(MaybeLabelledPlace::Current(place)) = self {
-            Some(*place)
-        } else {
-            None
-        }
-    }
-
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
             MaybeRemotePlace::Local(p) => Some(p),
-            MaybeRemotePlace::Remote(_) => None,
-        }
-    }
-
-    pub fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx>> {
-        match self {
-            MaybeRemotePlace::Local(p) => Some(*p),
             MaybeRemotePlace::Remote(_) => None,
         }
     }

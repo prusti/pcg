@@ -7,7 +7,7 @@ use crate::{
         validity_conditions::{PathCondition, ValidityConditions},
     },
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, FilterMutResult, HasBorrowCheckerCtxt, Place, data_structures::HashSet},
+    utils::{CompilerCtxt, FilterMutResult, PcgPlace, data_structures::HashSet},
 };
 
 use super::BorrowsGraph;
@@ -37,10 +37,12 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
     ) -> bool {
         self.mut_edge_conditions(|conditions| conditions.insert(pc, ctxt.body()))
     }
+}
 
+impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn mut_edges(
         &mut self,
-        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> bool,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind, VC>) -> bool,
     ) -> bool
     where
         EdgeKind: Eq + std::hash::Hash + PartialEq,
@@ -62,7 +64,7 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
 
     pub(crate) fn filter_mut_edges(
         &mut self,
-        mut f: impl FnMut(&mut Conditioned<EdgeKind>) -> FilterMutResult,
+        mut f: impl FnMut(&mut Conditioned<EdgeKind, VC>) -> FilterMutResult,
     ) -> bool
     where
         EdgeKind: Eq + std::hash::Hash + PartialEq,
@@ -85,17 +87,15 @@ impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
             .collect();
         changed
     }
-
-    pub(crate) fn label_place<'a>(
+    pub(crate) fn label_place<P: PcgPlace<'tcx, Ctxt>, Ctxt: Copy>(
         &mut self,
-        place: Place<'tcx>,
+        place: P,
         reason: LabelPlaceReason,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>>
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>>
     where
-        'tcx: 'a,
-        EdgeKind: LabelEdgePlaces<'tcx> + Eq + std::hash::Hash,
+        EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P> + Eq + std::hash::Hash,
     {
         let mut all_replacements = HashSet::default();
         self.mut_edges(|edge| {

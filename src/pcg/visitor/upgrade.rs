@@ -5,8 +5,8 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
         edge_data::LabelNodePredicate,
         region_projection::LifetimeProjection,
@@ -17,10 +17,13 @@ use crate::{
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
-    utils::{DataflowCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
+    },
 };
 
-impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
+impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
     fn weaken_place_from_read_upwards(
@@ -78,8 +81,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         let mut current = place;
         while self.pcg.capabilities.get(current, self.ctxt) == Some(CapabilityKind::Read.into()) {
             self.weaken_place_from_read_upwards(current, debug_ctxt)?;
-            let leaf_nodes = self.pcg.borrow.graph.frozen_graph().leaf_nodes(self.ctxt);
-            for place in self.pcg.borrow.graph.places(self.ctxt) {
+            let leaf_nodes = self
+                .pcg
+                .borrow
+                .graph
+                .frozen_graph()
+                .leaf_nodes(self.ctxt.bc_ctxt());
+            for place in self.pcg.borrow.graph.places(self.ctxt.bc_ctxt()) {
                 if prev != Some(place)
                     && current.is_prefix_exact(place)
                     && leaf_nodes.contains(&place.into())
@@ -123,7 +131,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .pcg
                     .borrow
                     .graph
-                    .edges_blocking(current_rp.into(), self.ctxt)
+                    .edges_blocking(current_rp.into(), self.ctxt.bc_ctxt())
                     .collect::<Vec<_>>();
                 if !edges_blocking_current_rp.is_empty() {
                     let labelled_rp = current_rp
@@ -172,13 +180,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                         labelled_rp.into(),
                                         future_rp.into(),
                                         BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
-                                        self.ctxt,
                                     )
                                     .into(),
                                     self.pcg.borrow.validity_conditions.clone(),
                                 ),
                                 "remove_read_permission_upwards_and_label_rps",
-                                self.ctxt,
                             )
                             .into(),
                         )?;
@@ -200,13 +206,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                                             BorrowFlowEdgeKind::Future(
                                                 FutureEdgeKind::FromExpansion,
                                             ),
-                                            self.ctxt,
                                         )
                                         .into(),
                                         self.pcg.borrow.validity_conditions.clone(),
                                     ),
                                     "remove_read_permission_upwards_and_label_rps",
-                                    self.ctxt,
                                 )
                                 .into(),
                             )?;

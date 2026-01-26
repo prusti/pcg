@@ -3,33 +3,27 @@ use derive_more::From;
 use super::AbstractionBlockEdge;
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, LocalNode, ToBorrowsEdge},
+        borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::LoopAbstractionOutput,
-        edge::{
-            abstraction::{
-                AbstractionEdge, LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata,
-            },
-            kind::BorrowPcgEdgeKind,
-        },
+        edge::abstraction::{LoopAbstractionInput, function::AbstractionBlockEdgeWithMetadata},
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate,
-            NodeReplacement,
+            NodeReplacement, label_edge_lifetime_projections_wrapper, label_edge_places_wrapper,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
-        validity_conditions::ValidityConditions,
     },
-    pcg::PcgNode,
     rustc_interface::middle::mir::{self, BasicBlock, Location},
-    utils::display::{DisplayOutput, OutputMode},
     utils::{
-        CompilerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
-        validity::HasValidityCheck,
+        DebugCtxt, PcgPlace, Place,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
 };
 
-pub(crate) type LoopAbstractionEdge<'tcx> =
-    AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx>, LoopAbstractionOutput<'tcx>>;
+pub(crate) type LoopAbstractionEdge<'tcx, P = Place<'tcx>> =
+    AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx, P>, LoopAbstractionOutput<'tcx>>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
 pub struct LoopAbstractionEdgeMetadata(mir::BasicBlock);
@@ -46,37 +40,35 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for LoopAbstractionEdgeMetadata {
     }
 }
 
-pub type LoopAbstraction<'tcx> =
-    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx>>;
+pub type LoopAbstraction<'tcx, P = Place<'tcx>> =
+    AbstractionBlockEdgeWithMetadata<LoopAbstractionEdgeMetadata, LoopAbstractionEdge<'tcx, P>>;
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for LoopAbstraction<'tcx> {
-    fn label_lifetime_projections(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LabelLifetimeProjectionResult {
-        self.edge.label_lifetime_projections(predicate, label, ctxt)
-    }
-}
-impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+label_edge_places_wrapper!(LoopAbstraction<'tcx, P>);
+label_edge_lifetime_projections_wrapper!(LoopAbstraction<'tcx, P>);
+
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+    for LoopAbstraction<'tcx, P>
+where
+    LoopAbstractionEdge<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.edge.blocks_node(node, ctxt)
     }
-    fn blocked_nodes<'slf, BC: Copy>(
+
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
         self.edge.blocked_nodes(ctxt)
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -84,39 +76,7 @@ impl<'tcx> EdgeData<'tcx> for LoopAbstraction<'tcx> {
     }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for LoopAbstraction<'tcx> {
-    fn label_blocked_places(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
-        self.edge.label_blocked_places(predicate, labeller, ctxt)
-    }
-
-    fn label_blocked_by_places(
-        &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
-        self.edge.label_blocked_by_places(predicate, labeller, ctxt)
-    }
-}
-impl<'tcx> HasValidityCheck<'_, 'tcx> for LoopAbstraction<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
-        self.edge.check_validity(ctxt)
-    }
-}
-
-impl<'tcx> ToBorrowsEdge<'tcx> for LoopAbstraction<'tcx> {
-    fn to_borrow_pcg_edge(self, path_conditions: ValidityConditions) -> BorrowPcgEdge<'tcx> {
-        BorrowPcgEdge::new(
-            BorrowPcgEdgeKind::Abstraction(AbstractionEdge::Loop(self)),
-            path_conditions,
-        )
-    }
-}
+has_validity_check_node_wrapper!(LoopAbstraction<'tcx, P>);
 
 impl<'tcx> LoopAbstraction<'tcx> {
     pub(crate) fn new(

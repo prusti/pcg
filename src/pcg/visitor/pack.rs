@@ -13,7 +13,7 @@ use crate::{
         obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
-        DataflowCtxt, HasPlace, Place,
+        DataflowCtxt, DebugCtxt, HasPlace, Place,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -97,7 +97,9 @@ impl<'tcx> EdgesToRemove<'tcx> {
     }
 }
 
-impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg, 'a, 'tcx, Ctxt> {
+impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
+    PlaceObtainer<'pcg, 'a, 'tcx, Ctxt>
+{
     /// Removes leaves that are old or dead (based on the borrow checker). This
     /// function should called prior to evaluating the effect of the statement
     /// at `location`.

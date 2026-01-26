@@ -31,7 +31,7 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
         domain_data::DomainDataStates, validity::HasValidityCheck,
     },
 };
@@ -162,7 +162,6 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                                     abstraction.conditions,
                                 ),
                                 "terminator",
-                                ctxt,
                             ),
                             ctxt,
                         );
@@ -348,8 +347,8 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for PcgLocation<'a, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
+    HasValidityCheck<Ctxt> for PcgLocation<'a, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         // TODO
@@ -382,7 +381,6 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
         tcx: TyCtxt<'tcx>,
     ) -> FxHashSet<mir::Place<'tcx>> {
         let place: Place<'tcx> = place.into();
-        // let place = place.with_inherent_region(ctxt);
         let ctxt = CompilerCtxt::new(body, tcx, ());
         self.states[EvalStmtPhase::PostMain]
             .borrow

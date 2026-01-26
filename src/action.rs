@@ -12,11 +12,13 @@ use crate::{
         },
         edge::kind::BorrowPcgEdgeKind,
         unblock_graph::BorrowPcgUnblockAction,
+        validity_conditions::ValidityConditions,
     },
     owned_pcg::{RegainedCapability, RepackOp},
     pcg::capabilities::CapabilityKind,
+    rustc_interface::middle::mir,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place, PlaceLike,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -164,21 +166,18 @@ impl<'tcx> PcgActions<'tcx> {
 /// action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct ActionKindWithDebugCtxt<T, Ctxt = Option<DisplayOutput>> {
+pub struct ActionKindWithDebugInfo<T, DebugInfo = Option<DisplayOutput>> {
     pub(crate) kind: T,
-    pub(crate) debug_context: Ctxt,
+    pub(crate) debug_info: DebugInfo,
 }
 
-impl<T> ActionKindWithDebugCtxt<T> {
+impl<T> ActionKindWithDebugInfo<T> {
     pub fn kind(&self) -> &T {
         &self.kind
     }
 
-    pub(crate) fn new(kind: T, debug_context: Option<DisplayOutput>) -> Self {
-        Self {
-            kind,
-            debug_context,
-        }
+    pub(crate) fn new(kind: T, debug_info: Option<DisplayOutput>) -> Self {
+        Self { kind, debug_info }
     }
 
     pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
@@ -189,26 +188,37 @@ impl<T> ActionKindWithDebugCtxt<T> {
     }
 }
 
-impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugCtxt<T> {
-    type Repr = ActionKindWithDebugCtxt<T::Repr, Option<String>>;
+impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugInfo<T> {
+    type Repr = ActionKindWithDebugInfo<T::Repr, Option<String>>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
-        ActionKindWithDebugCtxt {
+        ActionKindWithDebugInfo {
             kind: self.kind.debug_repr(ctxt),
-            debug_context: self.debug_context.as_ref().map(|ctxt| ctxt.debug_repr(())),
+            debug_info: self.debug_info.as_ref().map(|ctxt| ctxt.debug_repr(())),
         }
+    }
+}
+
+impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDebugInfo<T> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.kind.display_output(ctxt, mode)
     }
 }
 
 /// An action applied to the Owned PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
-pub type OwnedPcgAction<'tcx> = ActionKindWithDebugCtxt<RepackOp<'tcx>>;
+pub type OwnedPcgAction<'tcx, P = Place<'tcx>> =
+    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>>;
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. for an unblock, applying a magic wand).
-pub type BorrowPcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
-    ActionKindWithDebugCtxt<BorrowPcgActionKind<'tcx, EdgeKind>>;
+pub type BorrowPcgAction<
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    P = Place<'tcx>,
+    VC = ValidityConditions,
+> = ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P, VC>>;
 
 mod private {
     use serde_derive::Serialize;
@@ -222,25 +232,31 @@ mod private {
     }
 }
 
-impl<'tcx, EdgeKind> From<BorrowPcgAction<'tcx, EdgeKind>> for PcgAction<'tcx, EdgeKind> {
-    fn from(action: BorrowPcgAction<'tcx, EdgeKind>) -> Self {
-        PcgAction::Borrow(action)
+impl<'tcx, EdgeKind, P, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
+    for PcgAction<'tcx, EdgeKind, P, VC>
+{
+    fn from(action: BorrowPcgAction<'tcx, EdgeKind, P, VC>) -> PcgAction<'tcx, EdgeKind, P, VC> {
+        PcgAction::<'tcx, EdgeKind, P, VC>::Borrow(action)
     }
 }
 
-impl<'tcx> From<OwnedPcgAction<'tcx>> for PcgAction<'tcx> {
-    fn from(action: OwnedPcgAction<'tcx>) -> Self {
-        PcgAction::Owned(action)
+impl<'tcx, EdgeKind, P, VC> From<OwnedPcgAction<'tcx, P>> for PcgAction<'tcx, EdgeKind, P, VC> {
+    fn from(action: OwnedPcgAction<'tcx, P>) -> Self {
+        PcgAction::<'tcx, EdgeKind, P, VC>::Owned(action)
     }
 }
 
 /// An action applied to the PCG during the PCG analysis.
-pub type PcgAction<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>> =
-    private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind>, OwnedPcgAction<'tcx>>;
+pub type PcgAction<
+    'tcx,
+    EdgeKind = BorrowPcgEdgeKind<'tcx>,
+    P = Place<'tcx>,
+    VC = ValidityConditions,
+> = private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind, P, VC>, OwnedPcgAction<'tcx, P>>;
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
-    ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, Option<String>>,
-    ActionKindWithDebugCtxt<RepackOp<'static, String, String, String>, Option<String>>,
+    ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
+    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, Option<String>>,
 >;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
@@ -254,33 +270,34 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
     }
 }
 
-impl<'tcx> PcgAction<'tcx> {
-    pub(crate) fn restore_capability<'a>(
-        place: Place<'tcx>,
+impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+    pub(crate) fn restore_capability<Ctxt>(
+        place: P,
         capability: CapabilityKind,
         debug_context: impl Into<DisplayOutput>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Self
     where
-        'tcx: 'a,
+        P: PlaceLike<'tcx, Ctxt>,
     {
         let debug_context: DisplayOutput = debug_context.into();
         if place.is_owned(ctxt) {
-            PcgAction::Owned(OwnedPcgAction {
+            PcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Owned(OwnedPcgAction {
                 kind: RepackOp::RegainLoanedCapability(RegainedCapability::new(place, capability)),
-                debug_context: Some(debug_context),
+                debug_info: Some(debug_context),
             })
         } else {
             BorrowPcgAction::restore_capability(place, capability, debug_context).into()
         }
     }
+}
 
-    pub(crate) fn debug_line<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &self,
-        ctxt: Ctxt,
-    ) -> Cow<'static, str>
+impl<'tcx, EdgeKind, P: PcgNodeComponent, VC> PcgAction<'tcx, EdgeKind, P, VC> {
+    pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
-        'tcx: 'a,
+        BorrowPcgActionKind<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
+        OwnedPcgAction<'tcx, P>: DisplayWithCtxt<Ctxt>,
+        P: DisplayWithCtxt<Ctxt>,
     {
         match self {
             PcgAction::Borrow(action) => action.debug_line(ctxt),

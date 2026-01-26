@@ -5,9 +5,9 @@ use crate::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
-            outlives::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
         },
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
@@ -26,7 +26,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, ProjectionKind,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
@@ -185,7 +185,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             let action = BorrowPcgAction::add_edge(
                 BorrowPcgEdge::new(deref.into(), self.path_conditions()),
                 "expand_place_one_level: add deref edge",
-                ctxt,
             );
             self.apply_action(action.into())?;
             self.render_debug_graph(None, "expand_place_one_level: after apply action");
@@ -240,7 +239,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         };
         if self
             .borrows_graph()
-            .contains_borrow_pcg_expansion(&expanded_place, ctxt)?
+            .contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())?
         {
             return Ok(false);
         }
@@ -275,7 +274,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 self.path_conditions(),
             ),
             "add_borrow_pcg_expansion",
-            ctxt,
         );
         self.apply_action(action.into())?;
         Ok(true)
@@ -314,7 +312,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                             self.path_conditions(),
                         ),
                         "expand_region_projections_one_level",
-                        ctxt,
                     )
                     .into(),
                 )?;
@@ -393,13 +390,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         origin_rp.into(),
                         future_rp,
                         BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
-                        ctxt,
                     )
                     .into(),
                     self.path_conditions(),
                 ),
                 format!("{context}: placeholder bookkeeping"),
-                ctxt,
             )
             .into(),
         )?;
@@ -413,13 +408,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                             *expansion_rp,
                             future_rp,
                             BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
-                            ctxt,
                         )
                         .into(),
                         self.path_conditions(),
                     ),
                     format!("{context}: placeholder bookkeeping"),
-                    ctxt,
                 )
                 .into(),
             )?;
@@ -435,11 +428,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError> {
         let to_replace = self
             .borrows_graph()
-            .edges_blocking(old_source.into(), ctxt)
+            .edges_blocking(old_source.into(), ctxt.bc_ctxt())
             .filter_map(|edge| {
                 if let BorrowPcgEdgeKind::BorrowFlow(BorrowFlowEdge {
                     kind: kind @ BorrowFlowEdgeKind::Future(_),
-                    short,
+                    target: short,
                     ..
                 }) = edge.kind
                     && *short != new_source
@@ -447,7 +440,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     return Some((
                         edge.to_owned_edge(),
                         BorrowPcgEdge::new(
-                            BorrowFlowEdge::new(new_source.into(), *short, *kind, ctxt).into(),
+                            BorrowFlowEdge::new(new_source.into(), *short, *kind).into(),
                             edge.conditions.clone(),
                         ),
                     ));
@@ -460,7 +453,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 BorrowPcgAction::remove_edge(to_remove, "placeholder bookkeeping").into(),
             )?;
             self.apply_action(
-                BorrowPcgAction::add_edge(to_insert, "placeholder bookkeeping", ctxt).into(),
+                BorrowPcgAction::add_edge(to_insert, "placeholder bookkeeping").into(),
             )?;
         }
         Ok(())

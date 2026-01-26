@@ -7,7 +7,7 @@ use crate::{
     },
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
     rustc_interface::middle::mir,
-    utils::{CompilerCtxt, DebugRepr, HasPlace, Place, maybe_old::MaybeLabelledPlace},
+    utils::{CompilerCtxt, DebugRepr, Place, maybe_old::MaybeLabelledPlace},
 };
 
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};

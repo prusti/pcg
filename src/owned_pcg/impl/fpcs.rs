@@ -9,16 +9,13 @@ use std::fmt::{Debug, Formatter, Result};
 use crate::{
     pcg::{
         CapabilityKind,
-        ctxt::AnalysisCtxt,
-        place_capabilities::{
-            PlaceCapabilities, PlaceCapabilitiesInterface, SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
     },
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::mir::{self, Local, RETURN_PLACE},
     },
-    utils::{HasCompilerCtxt, Place, data_structures::HashSet},
+    utils::{HasCompilerCtxt, HasLocals, Place, PlaceLike, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
 
@@ -36,13 +33,18 @@ impl Debug for OwnedPcg<'_> {
 }
 
 impl<'tcx> OwnedPcg<'tcx> {
-    pub(crate) fn start_block<'a>(
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
+    pub(crate) fn start_block<
+        'a,
+        Ctxt: HasLocals,
+        C: From<CapabilityKind>,
+        P: PlaceLike<'tcx, Ctxt>,
+    >(
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
+        ctxt: Ctxt,
     ) -> Self {
-        let always_live = ctxt.ctxt.always_live_locals();
+        let always_live = ctxt.always_live_locals();
         let return_local = RETURN_PLACE;
-        let last_arg = Local::new(ctxt.body().arg_count);
+        let last_arg = Local::new(ctxt.arg_count());
         let capability_summary = IndexVec::from_fn_n(
             |local: mir::Local| {
                 if local == return_local {
@@ -59,7 +61,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     OwnedPcgLocal::Unallocated
                 }
             },
-            ctxt.ctxt.local_count(),
+            ctxt.local_count(),
         );
         OwnedPcg(capability_summary)
     }

@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::PcgRegion,
+    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -44,7 +44,9 @@ impl HasPcgRegion for BorrowData<'_> {
     }
 }
 
-impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for T {
+impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
+    BorrowCheckerInterface<'tcx> for T
+{
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         !self.is_live(node, location)
     }
@@ -173,10 +175,6 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for
         self.outlives_everywhere(sup, sub)
     }
 
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
-        self.override_region_debug_string(region)
-    }
-
     fn polonius_output(&self) -> Option<&PoloniusOutput> {
         self.polonius_output()
     }
@@ -200,7 +198,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx>> BorrowCheckerInterface<'tcx> for
     }
 }
 
-pub trait BorrowCheckerInterface<'tcx> {
+pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     /* Main Interface Start */
 
     /// Answers the question: Does `node` contain borrow extents that are not
@@ -259,10 +257,6 @@ pub trait BorrowCheckerInterface<'tcx> {
     /// If this is a Rust borrow checker, return its interface.
     /// TODO: Get rid of this at some point
     fn rust_borrow_checker(&self) -> Option<&dyn RustBorrowCheckerInterface<'tcx>>;
-
-    /// For visualization purposes, this function can be implemented to provide
-    /// human-readable names for region variables.
-    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str>;
 
     // DEBUG ONLY
     /// If the borrow checker is based on Polonius, it can define this method to
@@ -351,8 +345,6 @@ pub trait RustBorrowCheckerInterface<'tcx> {
     /// expose its output facts. This is only used for debugging /
     /// visualization.
     fn polonius_output(&self) -> Option<&PoloniusOutput>;
-
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str>;
 
     fn borrows_blocking(
         &self,

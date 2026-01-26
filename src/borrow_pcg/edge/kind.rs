@@ -4,22 +4,24 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{
-            abstraction::AbstractionEdge, borrow::BorrowEdge, deref::DerefEdge, outlives::private,
+            abstraction::AbstractionEdge, borrow::BorrowEdge, borrow_flow::private,
+            deref::DerefEdge,
         },
     },
     coupling::PcgCoupledEdgeKind,
+    utils::Place,
 };
 
-use super::outlives::BorrowFlowEdge;
+use super::borrow_flow::BorrowFlowEdge;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum BorrowPcgEdgeKind<'tcx> {
-    Borrow(BorrowEdge<'tcx>),
-    BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),
-    Deref(DerefEdge<'tcx>),
-    Abstraction(AbstractionEdge<'tcx>),
-    BorrowFlow(BorrowFlowEdge<'tcx>),
-    Coupled(PcgCoupledEdgeKind<'tcx>),
+pub enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
+    Borrow(BorrowEdge<'tcx, P>),
+    BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
+    Deref(DerefEdge<'tcx, P>),
+    Abstraction(AbstractionEdge<'tcx, P>),
+    BorrowFlow(BorrowFlowEdge<'tcx, P>),
+    Coupled(PcgCoupledEdgeKind<'tcx, P>),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

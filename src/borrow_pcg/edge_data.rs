@@ -1,53 +1,71 @@
 use crate::{
     borrow_pcg::{
-        edge::kind::BorrowPcgEdgeType,
-        has_pcs_elem::{LabelNodeContext, PlaceLabeller, SourceOrTarget},
-        region_projection::{LifetimeProjectionLabel, RegionIdx},
+        borrow_pcg_edge::BorrowPcgEdgeRef,
+        edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+        graph::Conditioned,
+        has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
+        region_projection::{
+            LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
+            PcgLifetimeProjectionBase, RegionIdx,
+        },
     },
-    pcg::{LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeType},
+    pcg::{
+        LabelPlaceConditionally, MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeType,
+        PcgNodeWithPlace,
+    },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasPlace, Place, SnapshotLocation,
+        HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, PrefixRelation, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
 use super::borrow_pcg_edge::{BlockedNode, LocalNode};
 
 /// A trait for data that represents a hyperedge in the Borrow PCG.
-pub trait EdgeData<'tcx> {
+pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     /// For an edge A -> B, this returns the set of nodes A. In general, the capabilities
     /// of nodes B are obtained from these nodes.
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf;
 
     /// For an edge A -> B, this returns the set of nodes B. In general, these nodes
     /// obtain their capabilities from the nodes A.
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
-        'tcx: 'mir;
+        'tcx: 'slf;
 
-    fn blocks_node(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn blocks_node(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.blocked_nodes(ctxt).any(|n| n == node)
     }
 
-    fn is_blocked_by(&self, node: LocalNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn is_blocked_by(&self, node: LocalNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.blocked_by_nodes(ctxt).any(|n| n == node)
     }
 
-    fn nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<
+        dyn std::iter::Iterator<
+                Item = PcgNode<
+                    'tcx,
+                    MaybeLabelledPlace<'tcx, P>,
+                    PcgLifetimeProjectionBase<'tcx, P>,
+                >,
+            > + 'slf,
+    >
     where
         'tcx: 'slf,
+        P: 'slf,
     {
         Box::new(
             self.blocked_nodes(ctxt)
@@ -55,7 +73,7 @@ pub trait EdgeData<'tcx> {
         )
     }
 
-    fn references_place(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    fn references_place(&self, place: P, ctxt: Ctxt) -> bool {
         self.nodes(ctxt).any(|n| match n {
             PcgNode::Place(p) => p.as_current_place() == Some(place),
             PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(place),
@@ -63,16 +81,112 @@ pub trait EdgeData<'tcx> {
     }
 }
 
+impl<'tcx, Ctxt: Copy, C, P: PcgNodeComponent> EdgeData<'tcx, Ctxt, P>
+    for Conditioned<BorrowPcgEdgeKind<'tcx, P>, C>
+where
+    BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+{
+    fn blocked_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.value.blocked_nodes(ctxt)
+    }
+
+    fn blocked_by_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.value.blocked_by_nodes(ctxt)
+    }
+
+    fn blocks_node(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
+        self.value.blocks_node(node, ctxt)
+    }
+
+    fn is_blocked_by(&self, node: LocalNode<'tcx, P>, ctxt: Ctxt) -> bool {
+        self.value.is_blocked_by(node, ctxt)
+    }
+
+    fn nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<
+        dyn std::iter::Iterator<
+                Item = PcgNode<
+                    'tcx,
+                    MaybeLabelledPlace<'tcx, P>,
+                    PcgLifetimeProjectionBase<'tcx, P>,
+                >,
+            > + 'slf,
+    >
+    where
+        'tcx: 'slf,
+        P: 'slf,
+    {
+        Box::new(
+            self.blocked_nodes(ctxt)
+                .chain(self.blocked_by_nodes(ctxt).map(|n| n.into())),
+        )
+    }
+
+    fn references_place(&self, place: P, ctxt: Ctxt) -> bool {
+        self.nodes(ctxt).any(|n| match n {
+            PcgNode::Place(p) => p.as_current_place() == Some(place),
+            PcgNode::LifetimeProjection(rp) => rp.base.as_current_place() == Some(place),
+        })
+    }
+}
+
+impl<'graph, 'tcx, Ctxt: Copy> EdgeData<'tcx, Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph>
+where
+    BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt>,
+{
+    fn blocked_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, Place<'tcx>>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.kind().blocked_nodes(ctxt)
+    }
+
+    fn blocked_by_nodes<'slf>(
+        &'slf self,
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, Place<'tcx>>> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        self.kind().blocked_by_nodes(ctxt)
+    }
+
+    fn blocks_node(&self, node: BlockedNode<'tcx, Place<'tcx>>, ctxt: Ctxt) -> bool {
+        self.kind().blocks_node(node, ctxt)
+    }
+
+    fn is_blocked_by(&self, node: LocalNode<'tcx, Place<'tcx>>, ctxt: Ctxt) -> bool {
+        self.kind().is_blocked_by(node, ctxt)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum LabelNodePredicate<'tcx> {
+pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     LifetimeProjectionLabelEquals(Option<LifetimeProjectionLabel>),
     PlaceLabelEquals(Option<SnapshotLocation>),
     ProjectionRegionIdxEquals(RegionIdx),
-    Equals(PcgNode<'tcx>),
+    Equals(PcgNodeWithPlace<'tcx, P>),
     /// The place associated with the node is exactly this place.
-    PlaceEquals(Place<'tcx>),
+    PlaceEquals(P),
     /// The place associated with the node is a postfix of this place.
-    PlaceIsPostfixOf(Place<'tcx>),
+    PlaceIsPostfixOf(P),
     NodeType(PcgNodeType),
     And(Vec<Self>),
     Or(Vec<Self>),
@@ -82,14 +196,10 @@ pub enum LabelNodePredicate<'tcx> {
     InTargetNodes,
 }
 
-impl<'tcx> LabelNodePredicate<'tcx> {
-    pub(crate) fn not(self) -> Self {
-        Self::Not(Box::new(self))
-    }
-
+impl<'tcx, P: Copy> LabelNodePredicate<'tcx, P> {
     /// Creates a predicate that matches all future lifetime projections whose base
     /// is a postfix of the given place (and the base is current, not labelled).
-    pub(crate) fn all_future_postfixes(place: Place<'tcx>) -> Self {
+    pub(crate) fn all_future_postfixes(place: P) -> Self {
         Self::And(vec![
             Self::LifetimeProjectionLabelEquals(Some(LifetimeProjectionLabel::Future)),
             Self::PlaceLabelEquals(None),
@@ -97,6 +207,12 @@ impl<'tcx> LabelNodePredicate<'tcx> {
         ])
     }
 
+    pub(crate) fn not(self) -> Self {
+        Self::Not(Box::new(self))
+    }
+}
+
+impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches all non-future lifetime projections with
     /// the given base place and region index.
     pub(crate) fn all_non_future(
@@ -126,20 +242,19 @@ impl<'tcx> LabelNodePredicate<'tcx> {
             Self::LifetimeProjectionLabelEquals(projection.label()),
         ])
     }
+}
 
+impl<'tcx, P: PcgNodeComponent> LabelNodePredicate<'tcx, P> {
     /// Creates a predicate that matches exactly the given lifetime projection.
     pub(crate) fn equals_lifetime_projection(
-        projection: crate::borrow_pcg::region_projection::LifetimeProjection<
-            'tcx,
-            crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
-        >,
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
     ) -> Self {
         Self::Equals(PcgNode::LifetimeProjection(projection.rebase()))
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for LabelNodePredicate<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugString>
+    DisplayWithCtxt<Ctxt> for LabelNodePredicate<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
@@ -189,10 +304,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> LabelNodePredicate<'tcx> {
+impl<'tcx, P: Copy + PartialEq + PrefixRelation> LabelNodePredicate<'tcx, P> {
     pub(crate) fn applies_to(
         &self,
-        candidate: PcgNode<'tcx>,
+        candidate: PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>,
         label_context: LabelNodeContext,
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
@@ -240,19 +355,21 @@ impl<'tcx> LabelNodePredicate<'tcx> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct NodeReplacement<'tcx> {
-    pub(crate) from: PcgNode<'tcx>,
-    pub(crate) to: PcgNode<'tcx>,
+pub struct NodeReplacement<'tcx, P = Place<'tcx>> {
+    pub(crate) from: PcgNodeWithPlace<'tcx, P>,
+    pub(crate) to: PcgNodeWithPlace<'tcx, P>,
 }
 
-impl<'tcx> NodeReplacement<'tcx> {
-    pub(crate) fn new(from: PcgNode<'tcx>, to: PcgNode<'tcx>) -> Self {
+impl<'tcx, P: Copy + Eq + std::hash::Hash> NodeReplacement<'tcx, P> {
+    pub(crate) fn new(from: PcgNodeWithPlace<'tcx, P>, to: PcgNodeWithPlace<'tcx, P>) -> Self {
         Self { from, to }
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for NodeReplacement<'tcx>
+impl<'tcx, Ctxt: Copy, P: Eq + std::hash::Hash + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for NodeReplacement<'tcx, P>
+where
+    PcgNodeWithPlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Seq(vec![
@@ -263,11 +380,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-pub(crate) fn display_node_replacements<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-    replacements: &HashSet<NodeReplacement<'tcx>>,
+pub(crate) fn display_node_replacements<
+    'a,
+    'tcx: 'a,
+    Ctxt: Copy,
+    P: Eq + std::hash::Hash + DisplayWithCtxt<Ctxt>,
+>(
+    replacements: &HashSet<NodeReplacement<'tcx, P>>,
     ctxt: Ctxt,
     mode: OutputMode,
-) -> DisplayOutput {
+) -> DisplayOutput
+where
+    PcgNodeWithPlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
+{
     if replacements.is_empty() {
         return DisplayOutput::EMPTY;
     }
@@ -282,176 +407,275 @@ pub(crate) fn display_node_replacements<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt
     ])
 }
 
-pub(crate) fn conditionally_label_places<'pcg, 'tcx, Node: LabelPlaceConditionally<'tcx> + 'pcg>(
+pub(crate) fn conditionally_label_places<
+    'pcg,
+    'tcx,
+    Ctxt: Copy,
+    P: PcgPlace<'tcx, Ctxt>,
+    Node: PcgNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P> + 'pcg,
+>(
     nodes: impl IntoIterator<Item = &'pcg mut Node>,
-    predicate: &LabelNodePredicate<'tcx>,
-    labeller: &impl PlaceLabeller<'tcx>,
+    predicate: &LabelNodePredicate<'tcx, P>,
+    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
     label_context: LabelNodeContext,
-    ctxt: CompilerCtxt<'_, 'tcx>,
-) -> HashSet<NodeReplacement<'tcx>> {
+    ctxt: Ctxt,
+) -> HashSet<NodeReplacement<'tcx, P>> {
     let mut result = HashSet::default();
     for node in nodes.into_iter() {
         node.label_place_conditionally(&mut result, predicate, labeller, label_context, ctxt);
     }
     result
 }
-
-pub(crate) trait LabelEdgePlaces<'tcx> {
+pub trait LabelEdgePlaces<'tcx, Ctxt, P> {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>>;
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>>;
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>>;
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>>;
 }
+
+macro_rules! label_edge_places_wrapper {
+    (
+        $ty:ty
+    ) => {
+        impl<'tcx, Ctxt: DebugCtxt + Copy, P: $crate::utils::PcgPlace<'tcx, Ctxt>>
+            LabelEdgePlaces<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelEdgePlaces<'tcx, Ctxt, P>,
+        {
+            fn label_blocked_places(
+                &mut self,
+                predicate: &LabelNodePredicate<'tcx, P>,
+                labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                ctxt: Ctxt,
+            ) -> HashSet<NodeReplacement<'tcx, P>> {
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_blocked_places(predicate, labeller, ctxt)
+            }
+
+            fn label_blocked_by_places(
+                &mut self,
+                predicate: &LabelNodePredicate<'tcx, P>,
+                labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                ctxt: Ctxt,
+            ) -> HashSet<NodeReplacement<'tcx, P>> {
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_blocked_by_places(predicate, labeller, ctxt)
+            }
+        }
+    };
+}
+
+pub(crate) use label_edge_places_wrapper;
 
 use super::has_pcs_elem::LabelLifetimeProjectionResult;
 
 /// Trait for labeling lifetime projections on edges.
 /// Checks the predicate and then applies the label operation if it matches.
 /// Analogous to `LabelEdgePlaces` for places.
-pub(crate) trait LabelEdgeLifetimeProjections<'tcx> {
+pub trait LabelEdgeLifetimeProjections<'tcx, Ctxt, P> {
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult;
 }
 
-macro_rules! edgedata_enum {
+macro_rules! label_edge_lifetime_projections_wrapper {
     (
-        $enum_name:ident < $tcx:lifetime >,
-        $( $variant_name:ident($inner_type:ty) ),+ $(,)?
+        $ty:ty
     ) => {
-        impl<$tcx> $crate::borrow_pcg::edge_data::EdgeData<$tcx> for $enum_name<$tcx> {
-            fn blocked_nodes<'slf, BC: Copy>(
-                &'slf self,
-                ctxt: CompilerCtxt<'_, $tcx, BC>,
-            ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
-            where
-                'tcx: 'slf,
-            {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.blocked_nodes(ctxt),
-                    )+
-                }
-            }
-
-            fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
-                &'slf self,
-                ctxt: CompilerCtxt<'mir, $tcx, BC>,
-            ) -> Box<dyn std::iter::Iterator<Item = $crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx>> + 'slf>
-            where
-                'tcx: 'mir,
-            {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.blocked_by_nodes(ctxt),
-                    )+
-                }
-            }
-
-            fn blocks_node<'slf>(
-                &self,
-                node: BlockedNode<'tcx>,
-                ctxt: CompilerCtxt<'_, $tcx>,
-            ) -> bool {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.blocks_node(node, ctxt),
-                    )+
-                }
-            }
-
-            fn is_blocked_by<'slf>(
-                &self,
-                node: LocalNode<'tcx>,
-                ctxt: CompilerCtxt<'_, $tcx>,
-            ) -> bool {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.is_blocked_by(node, ctxt),
-                    )+
-                }
-            }
-        }
-
-        impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgePlaces<$tcx> for $enum_name<$tcx> {
-            fn label_blocked_places(
-                &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
-                labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-                ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.label_blocked_places(predicate, labeller, ctxt),
-                    )+
-                }
-            }
-
-            fn label_blocked_by_places(
-                &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
-                labeller: &impl $crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx>,
-                ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> $crate::utils::data_structures::HashSet<$crate::borrow_pcg::edge_data::NodeReplacement<'tcx>> {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.label_blocked_by_places(predicate, labeller, ctxt),
-                    )+
-                }
-            }
-        }
-
-        $(
-            impl<$tcx> From<$inner_type> for $enum_name<$tcx> {
-                fn from(inner: $inner_type) -> Self {
-                    $enum_name::$variant_name(inner)
-                }
-            }
-        )+
-
-        impl<$tcx> $crate::borrow_pcg::edge_data::LabelEdgeLifetimeProjections<$tcx> for $enum_name<$tcx> {
+        impl<'tcx, Ctxt: DebugCtxt + Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+        {
             fn label_lifetime_projections(
                 &mut self,
-                predicate: &$crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx>,
-                label: Option<$crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
-                ctxt: CompilerCtxt<'_, 'tcx>,
-            ) -> $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.label_lifetime_projections(predicate, label, ctxt),
-                    )+
-                }
+                predicate: &LabelNodePredicate<'tcx, P>,
+                label: Option<LifetimeProjectionLabel>,
+                ctxt: Ctxt,
+            ) -> LabelLifetimeProjectionResult {
+                use std::ops::DerefMut;
+                self.deref_mut()
+                    .label_lifetime_projections(predicate, label, ctxt)
             }
         }
+    };
+}
 
-        impl<$tcx> HasValidityCheck<'_, $tcx> for $enum_name<$tcx> {
-            fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.check_validity(ctxt),
-                    )+
+pub(crate) use label_edge_lifetime_projections_wrapper;
+
+macro_rules! edgedata_enum {
+    (
+        $enum_path:path,
+        $enum_name:ident<'tcx, P>,
+        $( $variant_name:ident($inner_type:ty) ),+ $(,)?
+    ) => {
+            mod generated_impls {
+                use $enum_path;
+                use $crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, LocalNode};
+                use $crate::borrow_pcg::edge_data::{EdgeData, LabelEdgePlaces, LabelEdgeLifetimeProjections};
+                use $crate::utils::place::PcgPlace;
+                use std::iter::Iterator;
+            impl<'tcx,
+                Ctxt: Copy,
+                P: PcgPlace<'tcx, Ctxt>>
+                EdgeData<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+                    $inner_type: EdgeData<'tcx, Ctxt, P>,
+                )+ {
+                fn blocked_nodes<'slf>(
+                    &'slf self,
+                    ctxt: Ctxt,
+                ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+                where
+                    'tcx: 'slf,
+                {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.blocked_nodes(ctxt),
+                        )+
+                    }
+                }
+
+                fn blocked_by_nodes<'slf>(
+                    &'slf self,
+                    ctxt: Ctxt,
+                ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+                where
+                    'tcx: 'slf,
+                {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.blocked_by_nodes(ctxt),
+                        )+
+                    }
+                }
+
+                fn blocks_node<'slf>(
+                    &self,
+                    node: BlockedNode<'tcx, P>,
+                    ctxt: Ctxt,
+                ) -> bool {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.blocks_node(node, ctxt),
+                        )+
+                    }
+                }
+
+                fn is_blocked_by<'slf>(
+                    &self,
+                    node: LocalNode<'tcx, P>,
+                    ctxt: Ctxt,
+                ) -> bool {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.is_blocked_by(node, ctxt),
+                        )+
+                    }
                 }
             }
-        }
 
-        impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
-            fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
-                    )+
+            use $crate::borrow_pcg::has_pcs_elem::PlaceLabeller;
+            use $crate::borrow_pcg::edge_data::{LabelNodePredicate, NodeReplacement};
+            use $crate::utils::data_structures::HashSet;
+
+            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+                $inner_type: LabelEdgePlaces<'tcx, Ctxt, P>,
+            )+ {
+                fn label_blocked_places(
+                    &mut self,
+                    predicate: &LabelNodePredicate<'tcx, P>,
+                    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                    ctxt: Ctxt
+                ) -> HashSet<NodeReplacement<'tcx, P>> {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.label_blocked_places(predicate, labeller, ctxt),
+                        )+
+                    }
+                }
+
+                fn label_blocked_by_places(
+                    &mut self,
+                    predicate: &LabelNodePredicate<'tcx, P>,
+                    labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                    ctxt: Ctxt
+                ) -> HashSet<NodeReplacement<'tcx, P>> {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) =>
+                                inner.label_blocked_by_places(predicate, labeller, ctxt),
+                        )+
+                    }
+                }
+            }
+
+            $(
+                impl<'tcx, P> From<$inner_type> for $enum_name<'tcx, P> {
+                    fn from(inner: $inner_type) -> Self {
+                        $enum_name::$variant_name(inner)
+                    }
+                }
+            )+
+
+            use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
+            use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
+
+            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+                $inner_type: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+            )+ {
+                fn label_lifetime_projections(
+                    &mut self,
+                    predicate: &LabelNodePredicate<'tcx, P>,
+                    label: Option<LifetimeProjectionLabel>,
+                    ctxt: Ctxt,
+                ) -> LabelLifetimeProjectionResult {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) =>
+                                inner.label_lifetime_projections(predicate, label, ctxt),
+                        )+
+                    }
+                }
+            }
+
+            use $crate::HasValidityCheck;
+
+            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> where $(
+                $inner_type: HasValidityCheck<Ctxt>,
+            )+ {
+                fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.check_validity(ctxt),
+                        )+
+                    }
+                }
+            }
+
+            use $crate::utils::display::DisplayWithCtxt;
+
+            impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> DisplayWithCtxt<Ctxt> for $enum_name<'tcx, P> where $(
+                $inner_type: DisplayWithCtxt<Ctxt>,
+            )+ {
+                fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
+                    match self {
+                        $(
+                            $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
+                        )+
+                    }
                 }
             }
         }

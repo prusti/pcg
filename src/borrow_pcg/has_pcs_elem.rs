@@ -3,7 +3,7 @@ use derive_more::From;
 use super::region_projection::LifetimeProjectionLabel;
 use crate::{
     borrow_pcg::edge::kind::BorrowPcgEdgeType,
-    utils::{CompilerCtxt, FilterMutResult, Place, SnapshotLocation},
+    utils::{FilterMutResult, Place, SnapshotLocation},
 };
 
 impl std::ops::BitOrAssign for LabelLifetimeProjectionResult {
@@ -39,6 +39,25 @@ pub trait LabelLifetimeProjection<'tcx> {
     ) -> LabelLifetimeProjectionResult;
 }
 
+macro_rules! label_lifetime_projection_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, P> LabelLifetimeProjection<'tcx> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelLifetimeProjection<'tcx>,
+        {
+            fn label_lifetime_projection(
+                &mut self,
+                label: Option<LifetimeProjectionLabel>,
+            ) -> LabelLifetimeProjectionResult {
+                use std::ops::DerefMut;
+                self.deref_mut().label_lifetime_projection(label)
+            }
+        }
+    };
+}
+
+pub(crate) use label_lifetime_projection_wrapper;
+
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
 pub(crate) enum SourceOrTarget {
     Source,
@@ -68,23 +87,39 @@ impl LabelNodeContext {
     }
 }
 
-pub(crate) trait LabelPlace<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool;
+pub(crate) trait LabelPlace<'tcx, Ctxt, P = Place<'tcx>> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt, P>, ctxt: Ctxt) -> bool;
 }
 
-pub trait PlaceLabeller<'tcx> {
-    fn place_label(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> SnapshotLocation;
+macro_rules! label_place_wrapper {
+    ($ty:ty) => {
+        impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P> for $ty
+        where
+            <Self as std::ops::Deref>::Target: LabelPlace<'tcx, Ctxt, P>,
+        {
+            fn label_place(
+                &mut self,
+                labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+                ctxt: Ctxt,
+            ) -> bool {
+                use std::ops::DerefMut;
+                self.deref_mut().label_place(labeller, ctxt)
+            }
+        }
+    };
+}
+
+pub(crate) use label_place_wrapper;
+
+pub trait PlaceLabeller<'tcx, Ctxt, P = Place<'tcx>> {
+    fn place_label(&self, place: P, ctxt: Ctxt) -> SnapshotLocation;
 }
 
 #[derive(From)]
 pub(crate) struct SetLabel(pub(crate) SnapshotLocation);
 
-impl<'tcx> PlaceLabeller<'tcx> for SetLabel {
-    fn place_label(&self, _place: Place<'tcx>, _ctxt: CompilerCtxt<'_, 'tcx>) -> SnapshotLocation {
+impl<'tcx, Ctxt, P> PlaceLabeller<'tcx, Ctxt, P> for SetLabel {
+    fn place_label(&self, _place: P, _ctxt: Ctxt) -> SnapshotLocation {
         self.0
     }
 }

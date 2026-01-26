@@ -205,7 +205,16 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Validity
 
 pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
     ValidityConditions(SmallVec::new_const());
+#[allow(dead_code)]
 pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
+
+impl ValidityConditionsLike for ValidityConditions {
+    const EMPTY: &'static Self = &EMPTY_VALIDITY_CONDITIONS;
+}
+
+impl ValidityConditionsLike for NoValidityConditions {
+    const EMPTY: &'static Self = &NoValidityConditions;
+}
 
 impl ValidityConditions {
     pub(crate) fn conditional_string<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
@@ -270,6 +279,39 @@ pub(crate) enum JoinValidityConditionsResult {
     Unchanged,
 }
 
+pub(crate) trait ValidityConditionOps<Ctxt> {
+    fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool;
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+struct NoValidityConditions;
+
+pub(crate) trait ValidityConditionsLike: Clone + 'static {
+    const EMPTY: &'static Self;
+}
+
+impl<Ctxt> ValidityConditionOps<Ctxt> for NoValidityConditions {
+    fn join(&mut self, _other: &Self, _ctxt: Ctxt) -> bool {
+        false
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>> ValidityConditionOps<Ctxt>
+    for ValidityConditions
+{
+    fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool {
+        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
+            self.join_result(other, ctxt.body())
+        {
+            *self = *new_validity_conditions;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 impl ValidityConditions {
     pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -325,17 +367,6 @@ impl ValidityConditions {
             JoinValidityConditionsResult::Changed(Box::new(slf))
         } else {
             JoinValidityConditionsResult::Unchanged
-        }
-    }
-
-    pub(crate) fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> bool {
-        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
-            self.join_result(other, body)
-        {
-            *self = *new_validity_conditions;
-            true
-        } else {
-            false
         }
     }
 

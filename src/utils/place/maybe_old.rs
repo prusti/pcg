@@ -2,7 +2,6 @@ use std::borrow::Cow;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
         has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
             HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
@@ -11,7 +10,7 @@ use crate::{
         visitor::extract_regions,
     },
     error::PcgError,
-    pcg::{LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike},
+    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         PlaceTy,
         index::IndexVec,
@@ -21,48 +20,56 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, Place, PlaceProjectable,
-        SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
+        PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,
         validity::HasValidityCheck,
     },
 };
-use derive_more::{From, TryInto};
+use derive_more::From;
 use serde_json::json;
 
 #[deprecated(note = "Use MaybeLabelledPlace instead")]
 pub type MaybeOldPlace<'tcx> = MaybeLabelledPlace<'tcx>;
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, From, Ord, PartialOrd, TryInto)]
-pub enum MaybeLabelledPlace<'tcx> {
-    Current(Place<'tcx>),
-    Labelled(LabelledPlace<'tcx>),
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, From, Ord, PartialOrd)]
+pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
+    Current(P),
+    Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'tcx, Ctxt: Copy, P: Copy + HasRegions<'tcx, Ctxt>> HasRegions<'tcx, Ctxt>
+    for MaybeLabelledPlace<'tcx, P>
 {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
         self.place().regions(ctxt)
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
+impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        self.place().ty(ctxt).ty
+        self.place().rust_ty(ctxt)
     }
 }
 
-impl<'tcx> MaybeLabelledPlace<'tcx> {
-    pub fn as_current_place(self) -> Option<Place<'tcx>> {
+impl<'tcx, P: Copy> MaybeLabelledPlace<'tcx, P> {
+    pub(crate) fn place(self) -> P {
+        match self {
+            MaybeLabelledPlace::Current(place) => place,
+            MaybeLabelledPlace::Labelled(labelled_place) => labelled_place.place,
+        }
+    }
+    pub fn as_current_place(self) -> Option<P> {
         match self {
             MaybeLabelledPlace::Current(place) => Some(place),
             MaybeLabelledPlace::Labelled(_) => None,
         }
     }
+}
 
+impl<'tcx> MaybeLabelledPlace<'tcx> {
     pub fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
@@ -73,21 +80,14 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> LocalNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_local_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> LocalNode<'tcx> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.to_local_node(ctxt),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_local_node(ctxt),
-        }
+impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for MaybeLabelledPlace<'tcx, P> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self)
     }
 }
-
-impl<'tcx> PcgNodeLike<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn to_pcg_node<C: Copy>(self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> PcgNode<'tcx> {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.to_pcg_node(ctxt),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.to_pcg_node(ctxt),
-        }
+impl<'tcx, Ctxt, P: PcgNodeComponent> PcgNodeLike<'tcx, Ctxt, P> for LabelledPlace<'tcx, P> {
+    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
+        PcgNode::Place(self.into())
     }
 }
 
@@ -104,8 +104,10 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for MaybeLabelledPlace<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         match self {
             MaybeLabelledPlace::Current(place) => place.check_validity(ctxt),
             MaybeLabelledPlace::Labelled(snapshot) => snapshot.check_validity(ctxt),
@@ -169,8 +171,8 @@ impl std::fmt::Display for MaybeLabelledPlace<'_> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
+    PlaceProjectable<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P>
 {
     fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         Ok(match self {
@@ -200,17 +202,17 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     }
 }
 
-impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn place(&self) -> Place<'tcx> {
+impl<'tcx, P: Copy> HasPlace<'tcx, P> for MaybeLabelledPlace<'tcx, P> {
+    fn place(&self) -> P {
         match self {
             MaybeLabelledPlace::Current(place) => *place,
-            MaybeLabelledPlace::Labelled(old_place) => old_place.place,
+            MaybeLabelledPlace::Labelled(labelled_place) => labelled_place.place,
         }
     }
-    fn place_mut(&mut self) -> &mut Place<'tcx> {
+    fn place_mut(&mut self) -> &mut P {
         match self {
             MaybeLabelledPlace::Current(place) => place,
-            MaybeLabelledPlace::Labelled(old_place) => &mut old_place.place,
+            MaybeLabelledPlace::Labelled(labelled_place) => &mut labelled_place.place,
         }
     }
 
@@ -219,8 +221,8 @@ impl<'tcx> HasPlace<'tcx> for MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'tcx, Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for MaybeLabelledPlace<'tcx, P>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {
@@ -235,7 +237,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl MaybeHasLocation for MaybeLabelledPlace<'_> {
+impl<P> MaybeHasLocation for MaybeLabelledPlace<'_, P> {
     fn location(&self) -> Option<SnapshotLocation> {
         match self {
             MaybeLabelledPlace::Current(_) => None,
@@ -252,6 +254,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().projection
     }
 
+    #[allow(dead_code)]
     pub(crate) fn deref_to_rp<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
@@ -263,6 +266,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn base_lifetime_projection<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -273,10 +277,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place()
             .base_lifetime_projection(ctxt)
             .map(|rp| rp.with_base(*self))
-    }
-
-    pub(crate) fn is_owned<C: Copy>(&self, ctxt: CompilerCtxt<'_, 'tcx, C>) -> bool {
-        self.place().is_owned(ctxt)
     }
 
     pub(crate) fn local(&self) -> mir::Local {
@@ -360,12 +360,8 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     }
 }
 
-impl<'tcx> LabelPlace<'tcx> for MaybeLabelledPlace<'tcx> {
-    fn label_place(
-        &mut self,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
+    fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         match self {
             MaybeLabelledPlace::Current(place) => {
                 let label = labeller.place_label(*place, ctxt);

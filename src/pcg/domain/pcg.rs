@@ -11,7 +11,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind,
+        CapabilityKind, CapabilityLike,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -20,8 +20,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -41,8 +41,8 @@ pub struct Pcg<
     pub(crate) capabilities: Capabilities,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for Pcg<'a, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for Pcg<'a, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
         self.as_ref().check_validity(ctxt)
@@ -145,7 +145,7 @@ pub(crate) trait PcgRefLike<'tcx> {
         'tcx: 'a,
     {
         let mut leaf_places = self.owned_pcg().leaf_places(ctxt);
-        leaf_places.retain(|p| !self.borrows_graph().places(ctxt).contains(p));
+        leaf_places.retain(|p| !self.borrows_graph().places(ctxt.bc_ctxt()).contains(p));
         leaf_places.extend(self.borrows_graph().leaf_places(ctxt));
         leaf_places
     }
@@ -180,8 +180,8 @@ impl<'tcx> PcgRefLike<'tcx> for PcgRef<'_, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
-    HasValidityCheck<'a, 'tcx, Ctxt> for PcgRef<'_, 'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+    for PcgRef<'_, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
         self.capabilities
@@ -196,7 +196,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>>
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
-                && !self.borrow.graph.places(ctxt).contains(&place)
+                && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",
@@ -273,7 +273,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         if self
             .borrow
             .graph()
-            .edges_blocking(place.into(), ctxt)
+            .edges_blocking(place.into(), ctxt.bc_ctxt())
             .any(|e| matches!(e.kind, BorrowPcgEdgeKind::BorrowPcgExpansion(_)))
         {
             return false;
@@ -403,8 +403,14 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         result.extend(capabilities);
         result
     }
+}
+
+impl<'a, 'tcx: 'a, C: CapabilityLike>
+    Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, Place<'tcx>>, BorrowPcgEdgeKind<'tcx>>
+{
     pub(crate) fn start_block(analysis_ctxt: AnalysisCtxt<'a, 'tcx>) -> Self {
-        let mut capabilities = PlaceCapabilities::default();
+        let mut capabilities: PlaceCapabilities<'tcx, C, Place<'tcx>> =
+            PlaceCapabilities::default();
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {

@@ -105,7 +105,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 AbstractionBlockEdge::new_checked(
                     self.node_for_input(call, input),
                     self.node_for_output(call, output),
-                    self.ctxt,
+                    self.ctxt.bc_ctxt(),
                 )
             })
             .collect();
@@ -126,7 +126,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "Function call",
-                        self.ctxt,
                     )
                     .into(),
                 )?;
@@ -143,7 +142,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             self.pcg.borrow.validity_conditions.clone(),
                         ),
                         "Function call",
-                        self.ctxt,
                     )
                     .into(),
                 )?;

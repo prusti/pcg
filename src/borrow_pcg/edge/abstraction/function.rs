@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use derive_more::{Deref, DerefMut};
+
 use crate::{
     borrow_pcg::{
         FunctionData,
@@ -17,7 +19,7 @@ use crate::{
         region_projection::{LifetimeProjectionLabel, PcgRegion},
     },
     coupling::CoupledEdgeKind,
-    pcg::PcgNode,
+    pcg::PcgNodeWithPlace,
     rustc_interface::{
         hir::def_id::DefId,
         infer::infer::TyCtxtInferExt,
@@ -28,10 +30,11 @@ use crate::{
         span::{Span, def_id::LocalDefId},
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
-    utils::display::{DisplayOutput, OutputMode},
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, data_structures::HashSet, display::DisplayWithCtxt,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
 };
 
@@ -159,9 +162,9 @@ impl<'tcx> FunctionCallData<'tcx> {
     }
 }
 
-pub(crate) type FunctionCallAbstractionEdge<'tcx> = AbstractionBlockEdge<
+pub(crate) type FunctionCallAbstractionEdge<'tcx, P = Place<'tcx>> = AbstractionBlockEdge<
     'tcx,
-    FunctionCallAbstractionInput<'tcx>,
+    FunctionCallAbstractionInput<'tcx, P>,
     FunctionCallAbstractionOutput<'tcx>,
 >;
 
@@ -173,9 +176,11 @@ impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Deref, DerefMut)]
 pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) metadata: Metadata,
+    #[deref]
+    #[deref_mut]
     pub(crate) edge: Edge,
 }
 
@@ -236,73 +241,81 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     }
 }
 
-pub type FunctionCallAbstraction<'tcx> = AbstractionBlockEdgeWithMetadata<
+pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWithMetadata<
     FunctionCallAbstractionEdgeMetadata<'tcx>,
-    FunctionCallAbstractionEdge<'tcx>,
+    FunctionCallAbstractionEdge<'tcx, P>,
 >;
 
-impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for FunctionCallAbstraction<'tcx> {
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+{
     fn label_lifetime_projections(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
+        predicate: &LabelNodePredicate<'tcx, P>,
         label: Option<LifetimeProjectionLabel>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         self.edge.label_lifetime_projections(predicate, label, ctxt)
     }
 }
 
-impl<'tcx> LabelEdgePlaces<'tcx> for FunctionCallAbstraction<'tcx> {
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+    for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,
+{
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.edge.label_blocked_places(predicate, labeller, ctxt)
     }
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx>,
-        labeller: &impl PlaceLabeller<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> HashSet<NodeReplacement<'tcx>> {
+        predicate: &LabelNodePredicate<'tcx, P>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx, P>> {
         self.edge.label_blocked_by_places(predicate, labeller, ctxt)
     }
 }
 
-impl<'tcx> EdgeData<'tcx> for FunctionCallAbstraction<'tcx> {
-    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+    for FunctionCallAbstraction<'tcx, P>
+where
+    FunctionCallAbstractionEdge<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+{
+    fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, ctxt: Ctxt) -> bool {
         self.edge.blocks_node(node, ctxt)
     }
 
-    fn blocked_nodes<'slf, BC: Copy>(
+    fn blocked_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = PcgNodeWithPlace<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
         self.edge.blocked_nodes(ctxt)
     }
 
-    fn blocked_by_nodes<'slf, 'mir: 'slf, BC: Copy + 'slf>(
+    fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: CompilerCtxt<'mir, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+        ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
-        'tcx: 'mir,
+        'tcx: 'slf,
     {
         self.edge.blocked_by_nodes(ctxt)
     }
 }
 
-impl<'tcx> HasValidityCheck<'_, 'tcx> for FunctionCallAbstraction<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
-        self.edge.check_validity(ctxt)
-    }
-}
+has_validity_check_node_wrapper!(FunctionCallAbstraction<'tcx, P>);
 
 impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     for AbstractionBlockEdgeWithMetadata<Metadata, Edge>

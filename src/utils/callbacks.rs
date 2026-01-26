@@ -5,7 +5,7 @@ use crate::{
         InScopeBorrows, RustBorrowCheckerInterface,
         r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
     },
-    borrow_pcg::region_projection::PcgRegion,
+    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
     pcg::{self},
     rustc_interface::{
         borrowck::{
@@ -40,6 +40,15 @@ pub fn in_cargo() -> bool {
 pub enum RustBorrowCheckerImpl<'mir, 'tcx> {
     Polonius(PoloniusBorrowChecker<'mir, 'tcx>),
     Nll(NllBorrowCheckerImpl<'mir, 'tcx>),
+}
+
+impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for RustBorrowCheckerImpl<'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.override_region_debug_string(region),
+            RustBorrowCheckerImpl::Nll(bc) => bc.override_region_debug_string(region),
+        }
+    }
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> {
@@ -82,13 +91,6 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> 
                 bc.origin_contains_loan_at(region, loan, location)
             }
             RustBorrowCheckerImpl::Nll(bc) => bc.origin_contains_loan_at(region, loan, location),
-        }
-    }
-
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
-        match self {
-            RustBorrowCheckerImpl::Polonius(bc) => bc.override_region_debug_string(region),
-            RustBorrowCheckerImpl::Nll(bc) => bc.override_region_debug_string(region),
         }
     }
 

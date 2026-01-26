@@ -1,7 +1,10 @@
 use crate::{
-    borrow_pcg::region_projection::{
-        HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase,
-        PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
+    borrow_pcg::{
+        region_projection::{
+            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
+        },
+        visitor::extract_regions,
     },
     pcg::PcgNode,
     rustc_interface::{
@@ -9,9 +12,10 @@ use crate::{
         middle::{mir, ty},
     },
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, Place,
+        self, CompilerCtxt, HasCompilerCtxt, LocalTys,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
+        maybe_remote::MaybeRemotePlace,
         validity::HasValidityCheck,
     },
 };
@@ -22,13 +26,23 @@ pub struct RemotePlace {
 }
 
 impl RemotePlace {
-    pub fn base_lifetime_projection<'a, 'tcx: 'a>(
+    pub fn base_lifetime_projection<'tcx>(
         self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl LocalTys<'tcx> + Copy,
     ) -> Option<LifetimeProjection<'tcx, Self>> {
-        let local_place: Place<'tcx> = self.local.into();
-        let region = local_place.ty_region(ctxt)?;
-        Some(LifetimeProjection::new(self, region, None, ctxt).unwrap())
+        let ty = ctxt.local_ty(self.local);
+        match ty.kind() {
+            ty::TyKind::Ref(region, _, _) => {
+                LifetimeProjection::new(self, (*region).into(), None, ctxt)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, P> for RemotePlace {
+    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
+        PlaceOrConst::Place(MaybeRemotePlace::Remote(*self))
     }
 }
 
@@ -45,10 +59,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Remote
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for RemotePlace {
+impl<'tcx, Ctxt: LocalTys<'tcx> + Copy> HasRegions<'tcx, Ctxt> for RemotePlace {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        let place: utils::Place<'tcx> = self.local.into();
-        place.regions(ctxt)
+        extract_regions(ctxt.local_ty(self.local))
     }
 }
 
@@ -64,13 +77,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
     }
 }
 
-impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx> for RemotePlace {
-    fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx> {
-        PlaceOrConst::Place((*self).into())
-    }
-}
-
-impl<'tcx> HasValidityCheck<'_, 'tcx> for RemotePlace {
+impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for RemotePlace {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
