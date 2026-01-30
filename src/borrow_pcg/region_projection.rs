@@ -426,7 +426,7 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> {
     phantom: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx> crate::Sealed for LifetimeProjection<'tcx> { }
+impl<'tcx, Base> crate::Sealed for LifetimeProjection<'tcx, Base> { }
 
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;

@@ -5,7 +5,7 @@ use derive_more::{Deref, From};
 use crate::{
     borrow_pcg::{
         edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
-        region_projection::{HasTy, LifetimeProjection, PcgRegion, RegionIdx},
+        region_projection::{HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
     coupling::{CoupleAbstractionError, CoupledEdgesData},
@@ -27,6 +27,8 @@ use crate::coupling::CoupleInputError;
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
 
+impl crate::Sealed for ArgIdx {}
+
 impl<'tcx> HasTy<'tcx, (FunctionData<'tcx>, ty::TyCtxt<'tcx>)> for ArgIdx {
     fn rust_ty(
         &self,
@@ -46,6 +48,14 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdx {
 pub enum ArgIdxOrResult {
     Argument(ArgIdx),
     Result,
+}
+
+impl crate::Sealed for ArgIdxOrResult {}
+
+impl<'tcx> OverrideRegionDebugString for (FunctionData<'tcx>, ty::TyCtxt<'tcx>) {
+    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
+        None
+    }
 }
 
 impl<'tcx> HasTy<'tcx, (FunctionData<'tcx>, ty::TyCtxt<'tcx>)> for ArgIdxOrResult {
