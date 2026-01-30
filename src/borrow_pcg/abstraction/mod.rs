@@ -9,7 +9,7 @@ use crate::{
         region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
-    coupling::CoupleAbstractionError,
+    coupling::{CoupleAbstractionError, CoupledEdgesData},
     rustc_interface::{
         middle::{
             mir,
@@ -23,7 +23,7 @@ use crate::{
     },
 };
 
-use crate::coupling::{CoupleInputError, CoupledEdgesData};
+use crate::coupling::CoupleInputError;
 
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
@@ -322,18 +322,21 @@ impl std::fmt::Display for ArgIdxOrResult {
         }
     }
 }
-
-impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
-    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            self.edges
-                .iter()
-                .map(|edge| format!("{edge}"))
-                .sorted()
-                .collect::<Vec<_>>()
-                .join("\n, ")
-                .into(),
-        )
+impl<Ctxt: Copy> DisplayWithCtxt<Ctxt> for FunctionShape
+where
+    FunctionShapeInput: DisplayWithCtxt<Ctxt>,
+    FunctionShapeOutput: DisplayWithCtxt<Ctxt>,
+    AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>: DisplayWithCtxt<Ctxt>,
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            "Inputs: ".into(),
+            self.inputs.display_output(ctxt, mode),
+            "\nOutputs: ".into(),
+            self.outputs.display_output(ctxt, mode),
+            "\nEdges: ".into(),
+            self.edges().collect::<Vec<_>>().display_output(ctxt, mode),
+        ])
     }
 }
 
@@ -384,3 +387,48 @@ impl FunctionShape {
 }
 
 pub type FunctionShapeCoupledEdges = CoupledEdgesData<FunctionShapeInput, FunctionShapeOutput>;
+
+#[cfg(test)]
+mod tests {
+    use crate::borrow_pcg::region_projection::HasRegions;
+    use crate::rustc_interface::index::IndexVec;
+
+    use super::*;
+
+    #[test]
+    fn test_max_function_shape() {
+        // fn max<'a>(rx: &'a mut i32, ry: &'a mut i32) -> &'a mut i32
+
+        let tick_a: PcgRegion = PcgRegion::RegionVid(0u32.into());
+        #[derive(Clone, Copy)]
+        struct TestCtxt(PcgRegion);
+        impl HasRegions<'static, TestCtxt> for ArgIdx {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+                IndexVec::from_raw(vec![ctxt.0])
+            }
+        }
+        impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+                IndexVec::from_raw(vec![ctxt.0])
+            }
+        }
+        let rx = FunctionShapeInput::new(0.into(), tick_a, None, TestCtxt(tick_a)).unwrap();
+        let ry = FunctionShapeInput::new(1.into(), tick_a, None, TestCtxt(tick_a)).unwrap();
+        let result =
+            FunctionShapeOutput::new(ArgIdxOrResult::Result, tick_a, None, TestCtxt(tick_a))
+                .unwrap();
+        let shape = FunctionShape {
+            inputs: vec![rx, ry],
+            outputs: vec![result],
+            edges: BTreeSet::from([
+                AbstractionBlockEdge::new(rx, result),
+                AbstractionBlockEdge::new(ry, result),
+            ]),
+        };
+        let coupled_edges = shape.coupled_edges().unwrap();
+        assert_eq!(coupled_edges.len(), 1);
+        let edge = &coupled_edges.0[0];
+        assert_eq!(edge.inputs(), &[rx, ry]);
+        assert_eq!(edge.outputs(), &[result]);
+    }
+}
