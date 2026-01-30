@@ -60,13 +60,7 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
 impl<
     'tcx,
     Ctxt: DebugCtxt + Copy,
-    P: PartialEq
-        + Eq
-        + Copy
-        + PrefixRelation
-        + std::fmt::Debug
-        + HasTy<'tcx, Ctxt>
-        + HasRegions<'tcx, Ctxt>,
+    P: PcgPlace<'tcx, Ctxt>
 > LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
 {
     fn label_lifetime_projections(
@@ -170,7 +164,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Bo
 impl<
     'tcx,
     Ctxt: Copy,
-    P: PartialEq + std::fmt::Debug + Copy + HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
+    P: PcgPlace<'tcx, Ctxt>
 > EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
 {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, _ctxt: Ctxt) -> bool {
@@ -280,7 +274,7 @@ impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
         ctxt: Ctxt,
     ) -> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
     where
-        P: HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
+        P: PcgPlace<'tcx, Ctxt>,
     {
         match self.assigned_ref.place().rust_ty(ctxt).kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(

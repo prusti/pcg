@@ -1,12 +1,11 @@
 use std::collections::BTreeSet;
 
 use derive_more::{Deref, From};
-use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
         edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
-        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
+        region_projection::{HasTy, LifetimeProjection, PcgRegion, RegionIdx},
         visitor::extract_regions,
     },
     coupling::{CoupleAbstractionError, CoupledEdgesData},
@@ -28,10 +27,46 @@ use crate::coupling::CoupleInputError;
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
 
+impl<'tcx> HasTy<'tcx, (FunctionData<'tcx>, ty::TyCtxt<'tcx>)> for ArgIdx {
+    fn rust_ty(
+        &self,
+        (function_data, tcx): (FunctionData<'tcx>, ty::TyCtxt<'tcx>),
+    ) -> ty::Ty<'tcx> {
+        function_data.instantiated_fn_sig(tcx).inputs()[self.0]
+    }
+}
+
+impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdx {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        format!("{self}").into()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub enum ArgIdxOrResult {
     Argument(ArgIdx),
     Result,
+}
+
+impl<'tcx> HasTy<'tcx, (FunctionData<'tcx>, ty::TyCtxt<'tcx>)> for ArgIdxOrResult {
+    fn rust_ty(
+        &self,
+        (function_data, tcx): (FunctionData<'tcx>, ty::TyCtxt<'tcx>),
+    ) -> ty::Ty<'tcx> {
+        match self {
+            ArgIdxOrResult::Argument(arg) => arg.rust_ty((function_data, tcx)),
+            ArgIdxOrResult::Result => function_data.instantiated_fn_sig(tcx).output(),
+        }
+    }
+}
+
+impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdxOrResult {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        match self {
+            ArgIdxOrResult::Argument(arg) => arg.display_output(ctxt, mode),
+            ArgIdxOrResult::Result => "result".into(),
+        }
+    }
 }
 
 pub(crate) struct FunctionCall<'a, 'tcx> {
@@ -390,8 +425,7 @@ pub type FunctionShapeCoupledEdges = CoupledEdgesData<FunctionShapeInput, Functi
 
 #[cfg(test)]
 mod tests {
-    use crate::borrow_pcg::region_projection::HasRegions;
-    use crate::rustc_interface::index::IndexVec;
+    use crate::{borrow_pcg::region_projection::HasRegions, rustc_interface::index::IndexVec};
 
     use super::*;
 

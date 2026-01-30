@@ -163,10 +163,9 @@ mod private {
         borrow_checker::BorrowCheckerInterface,
         borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::DomainDataWithCtxt,
-        rustc_interface::middle::ty,
-        rustc_interface::middle::ty::TyCtxt,
+        rustc_interface::middle::ty::{self, TyCtxt},
         utils::{
-            CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+            CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, LocalTys, PcgSettings
         },
     };
 

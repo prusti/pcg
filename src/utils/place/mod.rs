@@ -14,14 +14,10 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    borrow_pcg::{
+    Sealed, borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{HasRegions, HasTy},
-    },
-    error::{PcgError, PcgUnsupportedError},
-    owned_pcg::RepackGuide,
-    pcg::PcgNodeWithPlace,
-    rustc_interface::{
+    }, error::{PcgError, PcgUnsupportedError}, owned_pcg::RepackGuide, pcg::PcgNodeWithPlace, rustc_interface::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
@@ -30,11 +26,10 @@ use crate::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
         },
-    },
-    utils::{
+    }, utils::{
         HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
-    },
+    }
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
@@ -59,15 +54,11 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
+impl<'tcx> Sealed for Place<'tcx> {}
+
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for Place<'tcx> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(self.rust_ty(ctxt))
     }
 }
 

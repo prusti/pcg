@@ -25,6 +25,8 @@ pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
 
+impl<'tcx> crate::Sealed for RemotePlace { }
+
 impl RemotePlace {
     pub fn base_lifetime_projection<'tcx>(
         self,
@@ -52,16 +54,9 @@ impl<'tcx> From<LifetimeProjection<'tcx, RemotePlace>> for PcgNode<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
+impl<'tcx, Ctxt: LocalTys<'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        let place: utils::Place<'tcx> = self.local.into();
-        place.rust_ty(ctxt)
-    }
-}
-
-impl<'tcx, Ctxt: LocalTys<'tcx> + Copy> HasRegions<'tcx, Ctxt> for RemotePlace {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(ctxt.local_ty(self.local))
+        ctxt.local_ty(self.local)
     }
 }
 

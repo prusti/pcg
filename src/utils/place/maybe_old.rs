@@ -40,13 +40,7 @@ pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'tcx, Ctxt: Copy, P: Copy + HasRegions<'tcx, Ctxt>> HasRegions<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx, P>
-{
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        self.place().regions(ctxt)
-    }
-}
+impl<'tcx, P> crate::Sealed for MaybeLabelledPlace<'tcx, P> { }
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {

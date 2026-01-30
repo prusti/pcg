@@ -7,13 +7,10 @@ use super::{
     borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
-    borrow_pcg::{
+    Sealed, borrow_pcg::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
-    },
-    error::PcgError,
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::{
+    }, error::PcgError, pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
         index::{Idx, IndexVec},
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
@@ -22,15 +19,14 @@ use crate::{
                 TypeVisitor,
             },
         },
-    },
-    utils::{
+    }, utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, PcgNodeComponent,
         Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
-    },
+    }
 };
 
 /// A region occuring in region projections
@@ -206,6 +202,8 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
+impl<'tcx, T> crate::Sealed for PlaceOrConst<'tcx, T> { }
+
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx, Place<'tcx>> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, Place<'tcx>> {
         PlaceOrConst::Place(MaybeRemotePlace::Local(MaybeLabelledPlace::Current(*self)))
@@ -266,12 +264,6 @@ impl<'tcx, Ctxt, T: HasTy<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for PlaceOrConst<'tcx, 
             PlaceOrConst::Place(p) => p.rust_ty(ctxt),
             PlaceOrConst::Const(c) => c.ty(),
         }
-    }
-}
-
-impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> HasRegions<'tcx, Ctxt> for PlaceOrConst<'tcx, T> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(self.rust_ty(ctxt))
     }
 }
 
@@ -433,6 +425,8 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> {
     pub(crate) label: Option<LifetimeProjectionLabel>,
     phantom: PhantomData<&'tcx ()>,
 }
+
+impl<'tcx> crate::Sealed for LifetimeProjection<'tcx> { }
 
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;
@@ -685,6 +679,7 @@ impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
     }
 }
 
+
 pub trait HasRegions<'tcx, Ctxt: Copy> {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion>;
     fn lifetime_projections<'a>(
@@ -699,6 +694,12 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
             .into_iter()
             .map(|region| LifetimeProjection::new(self, region, None, ctxt).unwrap())
             .collect()
+    }
+}
+
+impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt> + Sealed> HasRegions<'tcx, Ctxt> for T {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+        extract_regions(self.rust_ty(ctxt))
     }
 }
 
@@ -719,7 +720,7 @@ pub trait HasTy<'tcx, Ctxt> {
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
-pub trait PcgLifetimeProjectionBaseLike<'tcx, P>:
+pub trait PcgLifetimeProjectionBaseLike<'tcx, P = Place<'tcx>>:
     Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P>;

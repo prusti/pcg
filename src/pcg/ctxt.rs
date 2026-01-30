@@ -63,12 +63,6 @@ mod private {
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
     }
 
-    impl<'a, 'tcx: 'a> LocalTys<'tcx> for AnalysisCtxt<'a, 'tcx> {
-        fn local_ty(&self, local: mir::Local) -> ty::Ty<'tcx> {
-            self.ctxt.local_ty(local)
-        }
-    }
-
     impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
         fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
             self.ctxt
