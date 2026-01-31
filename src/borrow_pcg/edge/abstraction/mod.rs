@@ -46,7 +46,7 @@ use crate::{
     utils::{CompilerCtxt, display::DisplayWithCompilerCtxt, validity::HasValidityCheck},
 };
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, pcg_macros::DisplayWithCtxt)]
 pub enum FunctionCallOrLoop<FunctionCallData, LoopData> {
     FunctionCall(FunctionCallData),
     Loop(LoopData),
