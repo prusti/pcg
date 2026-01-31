@@ -711,8 +711,7 @@ use crate::{
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     borrow_pcg::region_projection::OverrideRegionDebugString,
     utils::{
-        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, LocalTys,
-        PcgSettings,
+        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         mir::BasicBlock,

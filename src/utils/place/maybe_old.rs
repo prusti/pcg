@@ -4,8 +4,7 @@ use crate::{
     borrow_pcg::{
         has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
-            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
-            PlaceOrConst, RegionIdx,
+            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
         },
         visitor::extract_regions,
     },
@@ -13,7 +12,6 @@ use crate::{
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         PlaceTy,
-        index::IndexVec,
         middle::{
             mir::{self, PlaceElem},
             ty,

@@ -1,18 +1,12 @@
 use crate::{
-    borrow_pcg::{
-        region_projection::{
-            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase,
-            PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
-        },
-        visitor::extract_regions,
+    borrow_pcg::region_projection::{
+        HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+        PlaceOrConst,
     },
     pcg::PcgNode,
-    rustc_interface::{
-        index::IndexVec,
-        middle::{mir, ty},
-    },
+    rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, LocalTys,
+        CompilerCtxt, HasCompilerCtxt, LocalTys,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,

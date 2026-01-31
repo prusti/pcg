@@ -165,8 +165,7 @@ mod private {
         pcg::DomainDataWithCtxt,
         rustc_interface::middle::ty::{self, TyCtxt},
         utils::{
-            CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, LocalTys,
-            PcgSettings,
+            CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         },
     };
 

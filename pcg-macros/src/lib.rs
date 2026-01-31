@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{Data, DeriveInput, Fields, Type, parse_macro_input};
+use quote::{ToTokens, quote};
+use syn::{Data, DeriveInput, Fields, GenericParam, Type, parse_macro_input};
 
 /// Derive macro for `DisplayWithCtxt` on enums where each variant has a single field.
 ///
@@ -78,7 +78,24 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
         quote! { #ty: crate::utils::display::DisplayWithCtxt<Ctxt> }
     });
 
-    let existing_impl_params: Vec<_> = generics.params.iter().collect();
+    let existing_impl_params: Vec<_> = generics
+        .params
+        .iter()
+        .map(|param| {
+            match param {
+                GenericParam::Type(ty) => {
+                    let ident = &ty.ident;
+                    let bounds = &ty.bounds;
+                    if bounds.is_empty() {
+                        quote! { #ident }
+                    } else {
+                        quote! { #ident: #bounds }
+                    }
+                }
+                other => other.to_token_stream(),
+            }
+        })
+        .collect();
 
     let expanded = quote! {
         impl<#(#existing_impl_params,)* Ctxt: Copy> crate::utils::display::DisplayWithCtxt<Ctxt>

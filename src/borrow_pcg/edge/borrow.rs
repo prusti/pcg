@@ -10,7 +10,7 @@ use crate::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
         },
-        region_projection::{HasRegions, HasTy, LifetimeProjectionLabel},
+        region_projection::LifetimeProjectionLabel,
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
@@ -22,7 +22,7 @@ use crate::{
         },
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },

@@ -46,7 +46,7 @@ mod private {
             RustBitSet,
             middle::{mir, ty},
         },
-        utils::{CompilerCtxt, DebugCtxt, HasLocals, LocalTys, PcgSettings},
+        utils::{CompilerCtxt, DebugCtxt, HasLocals, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
