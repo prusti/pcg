@@ -1,8 +1,15 @@
 use crate::{
-    HasSettings, Sealed, borrow_checker::BorrowCheckerInterface, borrow_pcg::{
+    HasSettings, Sealed,
+    borrow_checker::BorrowCheckerInterface,
+    borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
-    }, error::{PcgError, PcgUnsupportedError}, owned_pcg::RepackGuide, pcg::ctxt::AnalysisCtxt, pcg_validity_assert, rustc_interface::{
+    },
+    error::{PcgError, PcgUnsupportedError},
+    owned_pcg::RepackGuide,
+    pcg::ctxt::AnalysisCtxt,
+    pcg_validity_assert,
+    rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
         middle::{
             mir::{
@@ -13,7 +20,9 @@ use crate::{
         },
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
-    }, utils::{PlaceLike, place::Place, validity::HasValidityCheck}, validity_checks_enabled
+    },
+    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
+    validity_checks_enabled,
 };
 
 #[derive(Copy, Clone)]
@@ -23,8 +32,7 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) borrow_checker: T,
 }
 
-impl<'a, 'tcx, T> Sealed for CompilerCtxt<'a, 'tcx, T> {
-}
+impl<'a, 'tcx, T> Sealed for CompilerCtxt<'a, 'tcx, T> {}
 
 impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
     for CompilerCtxt<'a, 'tcx, &'bc BC>

@@ -25,7 +25,7 @@ pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
 
-impl<'tcx> crate::Sealed for RemotePlace { }
+impl<'tcx> crate::Sealed for RemotePlace {}
 
 impl RemotePlace {
     pub fn base_lifetime_projection<'tcx>(

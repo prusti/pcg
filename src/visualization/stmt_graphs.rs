@@ -1,16 +1,17 @@
-use crate::pcg::ctxt::AnalysisCtxt;
-use crate::pcg::{DataflowStmtPhase, EvalStmtPhase, PcgArena, PcgEngine, PcgRef};
-use crate::pcg_validity_assert;
-use crate::rustc_interface::index::IndexVec;
-use crate::rustc_interface::middle::mir;
-use crate::utils::eval_stmt_data::EvalStmtData;
-use crate::utils::{CompilerCtxt, StringOf};
-use crate::visualization::write_pcg_dot_graph_to_file;
+use crate::{
+    pcg::{DataflowStmtPhase, EvalStmtPhase, PcgArena, PcgEngine, PcgRef, ctxt::AnalysisCtxt},
+    pcg_validity_assert,
+    rustc_interface::{index::IndexVec, middle::mir},
+    utils::{CompilerCtxt, StringOf, eval_stmt_data::EvalStmtData},
+    visualization::write_pcg_dot_graph_to_file,
+};
 use derive_more::{Deref, From};
 use serde_derive::Serialize;
-use std::cell::RefCell;
-use std::fs::create_dir_all;
-use std::path::{Path, PathBuf};
+use std::{
+    cell::RefCell,
+    fs::create_dir_all,
+    path::{Path, PathBuf},
+};
 
 #[derive(Clone, Serialize, Debug, From, Deref)]
 #[serde(transparent)]

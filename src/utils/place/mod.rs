@@ -14,10 +14,15 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    Sealed, borrow_pcg::{
+    Sealed,
+    borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{HasRegions, HasTy},
-    }, error::{PcgError, PcgUnsupportedError}, owned_pcg::RepackGuide, pcg::PcgNodeWithPlace, rustc_interface::{
+    },
+    error::{PcgError, PcgUnsupportedError},
+    owned_pcg::RepackGuide,
+    pcg::PcgNodeWithPlace,
+    rustc_interface::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
@@ -26,10 +31,11 @@ use crate::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
         },
-    }, utils::{
+    },
+    utils::{
         HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
-    }
+    },
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};

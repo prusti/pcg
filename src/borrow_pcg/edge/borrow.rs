@@ -57,11 +57,8 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<
-    'tcx,
-    Ctxt: DebugCtxt + Copy,
-    P: PcgPlace<'tcx, Ctxt>
-> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>>
+    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
 {
     fn label_lifetime_projections(
         &mut self,
@@ -161,12 +158,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Bo
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: Copy,
-    P: PcgPlace<'tcx, Ctxt>
-> EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
-{
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, _ctxt: Ctxt) -> bool {
         match node {
             PcgNode::Place(p) => self.blocked_place == p,

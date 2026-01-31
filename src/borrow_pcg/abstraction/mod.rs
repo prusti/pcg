@@ -5,7 +5,9 @@ use derive_more::{Deref, From};
 use crate::{
     borrow_pcg::{
         edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
-        region_projection::{HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx},
+        region_projection::{
+            HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx,
+        },
         visitor::extract_regions,
     },
     coupling::{CoupleAbstractionError, CoupledEdgesData},

@@ -1,8 +1,10 @@
 use serde_derive::{Deserialize, Serialize};
 
-use crate::rustc_interface::{hir::def_id::LocalDefId, middle::ty::TyCtxt};
-use crate::utils::data_structures::HashMap;
-use crate::visualization::mir_graph::SourcePos;
+use crate::{
+    rustc_interface::{hir::def_id::LocalDefId, middle::ty::TyCtxt},
+    utils::data_structures::HashMap,
+    visualization::mir_graph::SourcePos,
+};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize, Hash, PartialEq, Eq, Serialize)]

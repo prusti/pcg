@@ -40,7 +40,7 @@ pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'tcx, P> crate::Sealed for MaybeLabelledPlace<'tcx, P> { }
+impl<'tcx, P> crate::Sealed for MaybeLabelledPlace<'tcx, P> {}
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
