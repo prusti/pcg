@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
+use syn::{Data, DeriveInput, Fields, Type, parse_macro_input};
 
 /// Derive macro for `DisplayWithCtxt` on enums where each variant has a single field.
 ///
@@ -35,23 +35,22 @@ use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
 #[proc_macro_derive(DisplayWithCtxt)]
 pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    
+
     let name = &input.ident;
     let generics = &input.generics;
-    
+
     let Data::Enum(data_enum) = &input.data else {
-        return syn::Error::new_spanned(
-            &input,
-            "DisplayWithCtxt can only be derived for enums"
-        ).to_compile_error().into();
+        return syn::Error::new_spanned(&input, "DisplayWithCtxt can only be derived for enums")
+            .to_compile_error()
+            .into();
     };
-    
+
     let mut variant_arms = Vec::new();
     let mut field_types: Vec<&Type> = Vec::new();
-    
+
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
-        
+
         match &variant.fields {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
                 let field = fields.unnamed.first().unwrap();
@@ -63,22 +62,24 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
             _ => {
                 return syn::Error::new_spanned(
                     variant,
-                    "DisplayWithCtxt requires each variant to have exactly one unnamed field"
-                ).to_compile_error().into();
+                    "DisplayWithCtxt requires each variant to have exactly one unnamed field",
+                )
+                .to_compile_error()
+                .into();
             }
         }
     }
-    
+
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    
+
     let existing_where_predicates = where_clause.map(|w| &w.predicates);
-    
+
     let where_bounds = field_types.iter().map(|ty| {
         quote! { #ty: crate::utils::display::DisplayWithCtxt<Ctxt> }
     });
-    
+
     let existing_impl_params: Vec<_> = generics.params.iter().collect();
-    
+
     let expanded = quote! {
         impl<#(#existing_impl_params,)* Ctxt: Copy> crate::utils::display::DisplayWithCtxt<Ctxt>
             for #name #ty_generics
@@ -97,6 +98,6 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
             }
         }
     };
-    
+
     TokenStream::from(expanded)
 }
