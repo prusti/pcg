@@ -12,7 +12,7 @@ use crate::{
 
 use super::outlives::BorrowFlowEdge;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, pcg_macros::DisplayWithCtxt)]
 pub enum BorrowPcgEdgeKind<'tcx> {
     Borrow(BorrowEdge<'tcx>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx>),

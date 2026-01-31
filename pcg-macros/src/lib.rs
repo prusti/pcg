@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Data, Fields, GenericParam, Ident};
+use syn::{parse_macro_input, DeriveInput, Data, Fields, Type};
 
 /// Derive macro for `DisplayWithCtxt` on enums where each variant has a single field.
 ///
@@ -47,13 +47,15 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
     };
     
     let mut variant_arms = Vec::new();
-    let mut type_params_for_bounds: Vec<&Ident> = Vec::new();
+    let mut field_types: Vec<&Type> = Vec::new();
     
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
         
         match &variant.fields {
             Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                let field = fields.unnamed.first().unwrap();
+                field_types.push(&field.ty);
                 variant_arms.push(quote! {
                     #name::#variant_name(inner) => inner.display_output(ctxt, mode)
                 });
@@ -67,18 +69,12 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
         }
     }
     
-    for param in generics.params.iter() {
-        if let GenericParam::Type(type_param) = param {
-            type_params_for_bounds.push(&type_param.ident);
-        }
-    }
-    
-    let (impl_generics_params, ty_generics, where_clause) = generics.split_for_impl();
+    let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     
     let existing_where_predicates = where_clause.map(|w| &w.predicates);
     
-    let where_bounds = type_params_for_bounds.iter().map(|tp| {
-        quote! { #tp: DisplayWithCtxt<Ctxt> }
+    let where_bounds = field_types.iter().map(|ty| {
+        quote! { #ty: crate::utils::display::DisplayWithCtxt<Ctxt> }
     });
     
     let existing_impl_params: Vec<_> = generics.params.iter().collect();

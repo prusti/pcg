@@ -204,7 +204,7 @@ impl<'tcx> LabelEdgeLifetimeProjections<'tcx> for BorrowPcgPlaceExpansion<'tcx> 
 pub(crate) type LifetimeProjectionExpansion<'tcx> =
     BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, TryFrom)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, TryFrom, pcg_macros::DisplayWithCtxt)]
 pub enum BorrowPcgExpansion<'tcx> {
     Place(BorrowPcgPlaceExpansion<'tcx>),
     LifetimeProjection(LifetimeProjectionExpansion<'tcx>),

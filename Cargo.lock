@@ -864,6 +864,7 @@ dependencies = [
  "dot",
  "itertools",
  "lazy_static",
+ "pcg-macros",
  "petgraph",
  "rayon",
  "reqwest",
@@ -878,6 +879,15 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "pcg-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

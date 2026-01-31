@@ -446,15 +446,6 @@ macro_rules! edgedata_enum {
             }
         }
 
-        impl<'a, $tcx: 'a, Ctxt: $crate::HasBorrowCheckerCtxt<'a, $tcx>> $crate::utils::display::DisplayWithCtxt<Ctxt> for $enum_name<$tcx> {
-            fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
-                match self {
-                    $(
-                        $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
-                    )+
-                }
-            }
-        }
     }
 }
 pub(crate) use edgedata_enum;
