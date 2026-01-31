@@ -63,14 +63,12 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
         data: FunctionData<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        let sig = data.instantiated_fn_sig(tcx);
-        tracing::debug!("Liberated Sig: {:#?}", sig);
+        let sig = data.identity_fn_sig(tcx);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
         let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         if sig.has_aliases() {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
-        tracing::debug!("Normalized sig: {:#?}", sig);
         let outlives = match data.caller_def_id {
             Some(caller_def_id) => {
                 OutlivesEnvironment::new(&infcx, caller_def_id, param_env, vec![])
@@ -93,6 +91,11 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 impl<'tcx> FunctionData<'tcx> {
     pub fn instantiated_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, self.substs);
+        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
+
+    pub(crate) fn identity_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+        let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
 }
@@ -124,8 +127,8 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
             (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
             _ => Ok(self.outlives.free_region_map().sub_free_regions(
                 ctxt,
-                sup.rust_region(ctxt),
                 sub.rust_region(ctxt),
+                sup.rust_region(ctxt),
             )),
         }
     }

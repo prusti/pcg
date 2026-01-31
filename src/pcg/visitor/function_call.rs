@@ -241,7 +241,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
             // );
             sig_shape.or_else(|err| {
-                tracing::warn!("Error getting signature shape: {:?}", err);
+                tracing::warn!("Error getting signature shape at {:?}: {:?}", call_span, err);
                 call_shape
             })
         } else {
