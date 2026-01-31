@@ -14,7 +14,7 @@ use crate::{
 
 use super::borrow_flow::BorrowFlowEdge;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, pcg_macros::DisplayWithCtxt)]
 pub enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
     Borrow(BorrowEdge<'tcx, P>),
     BorrowPcgExpansion(BorrowPcgExpansion<'tcx, P>),
