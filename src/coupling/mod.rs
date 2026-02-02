@@ -101,38 +101,43 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     pub(crate) fn new(
         edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
     ) -> Result<Self, CoupleInputError> {
-        let mut groups: Vec<(HashSet<InputNode>, HashSet<OutputNode>)> = edges
-            .into_iter()
-            .map(|e| {
-                (
-                    HashSet::from_iter([e.input()]),
-                    HashSet::from_iter([e.output()]),
-                )
-            })
-            .collect();
+        use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for i in 0..groups.len() {
-                for j in (i + 1..groups.len()).rev() {
-                    let dominated_input = groups[i].0.is_superset(&groups[j].0);
-                    let dominated_output = groups[i].1.is_superset(&groups[j].1);
-                    let dominated = dominated_input && dominated_output;
-                    let shares_input = !groups[i].0.is_disjoint(&groups[j].0);
-                    let shares_output = !groups[i].1.is_disjoint(&groups[j].1);
-                    if dominated || shares_input || shares_output {
-                        let (inputs, outputs) = groups.remove(j);
-                        groups[i].0.extend(inputs);
-                        groups[i].1.extend(outputs);
-                        changed = true;
-                    }
-                }
+        let edges: Vec<_> = edges
+            .into_iter()
+            .map(|e| (e.input(), e.output()))
+            .collect();
+        if edges.is_empty() {
+            return Ok(Self(Vec::new()));
+        }
+
+        let mut uf: QuickUnionUf<UnionBySize> = QuickUnionUf::new(edges.len());
+        let mut input_to_edge: HashMap<InputNode, usize> = HashMap::default();
+        let mut output_to_edge: HashMap<OutputNode, usize> = HashMap::default();
+
+        for (idx, (input, output)) in edges.iter().enumerate() {
+            if let Some(&other_idx) = input_to_edge.get(input) {
+                uf.union(idx, other_idx);
             }
+            input_to_edge.insert(*input, idx);
+
+            if let Some(&other_idx) = output_to_edge.get(output) {
+                uf.union(idx, other_idx);
+            }
+            output_to_edge.insert(*output, idx);
+        }
+
+        let mut groups: HashMap<usize, (HashSet<InputNode>, HashSet<OutputNode>)> =
+            HashMap::default();
+        for (idx, (input, output)) in edges.into_iter().enumerate() {
+            let root = uf.find(idx);
+            let entry = groups.entry(root).or_default();
+            entry.0.insert(input);
+            entry.1.insert(output);
         }
 
         let hyper_edges = groups
-            .into_iter()
+            .into_values()
             .filter(|(inputs, outputs)| !inputs.is_empty() && !outputs.is_empty())
             .map(|(inputs, outputs)| {
                 HyperEdge::new(inputs.into_iter().collect(), outputs.into_iter().collect())
