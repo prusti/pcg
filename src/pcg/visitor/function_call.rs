@@ -21,7 +21,11 @@ use crate::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{
+        PcgSettings,
+        data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
+    },
 };
 
 use super::PcgError;
@@ -98,6 +102,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         let metadata = FunctionCallAbstractionEdgeMetadata {
             location: call.location,
             function_data,
+            caller_substs: call.substs,
         };
         let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
             .edges()
@@ -158,7 +163,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         destination: utils::Place<'tcx>,
         location: Location,
     ) -> Result<(), PcgError> {
-        let function_call_data = get_function_call_data(
+        let function_call_data: Option<FunctionCallData<'tcx>> = get_function_call_data(
             func,
             args.iter()
                 .map(|arg| arg.ty(self.ctxt.body(), self.ctxt.tcx()))
@@ -167,7 +172,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             self.ctxt,
         );
 
-        let call = FunctionCall::new(location, args, destination);
+        let call = FunctionCall::new(
+            location,
+            args,
+            destination,
+            function_call_data.as_ref().map(|f| f.substs),
+        );
 
         let ctxt = self.ctxt;
 
@@ -228,30 +238,37 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         let call_shape = FunctionShape::new(&call, self.ctxt.bc_ctxt());
         let function_data = function_call_data.as_ref().map(|f| f.function_data);
         let shape = if let Some(function_call_data) = function_call_data.as_ref() {
-            let sig_shape = function_call_data.shape(self.ctxt.bc_ctxt());
-            // pcg_validity_assert!(
-            //     sig_shape.is_specialization_of(&call_shape),
-            //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\n does not specialize Call shape {}.\nDiff: {}",
-            //     sig_shape.display_string(self.ctxt.bc_ctxt()),
-            //     function_call_data.def_id(),
-            //     ctxt.tcx().fn_sig(function_call_data.def_id()),
-            //     function_call_data.function_data.fn_sig(self.ctxt.bc_ctxt()),
-            //     // function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
-            //     call_shape.display_string(self.ctxt.bc_ctxt()),
-            //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
-            // );
-            sig_shape.or_else(|err| {
-                tracing::warn!(
-                    "Error getting signature shape at {:?}: {:?}",
-                    call_span,
-                    err
-                );
-                call_shape
-            })
+            match function_call_data.shape(ctxt.bc_ctxt()) {
+                Ok(sig_shape) => {
+                    // pcg_validity_assert!(
+                    //     sig_shape.is_specialization_of(&call_shape),
+                    //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\n does not specialize Call shape {}.\nDiff: {}",
+                    //     sig_shape.display_string(self.ctxt.bc_ctxt()),
+                    //     function_call_data.def_id(),
+                    //     ctxt.tcx().fn_sig(function_call_data.def_id()),
+                    //     function_call_data.function_data.fn_sig(self.ctxt.bc_ctxt()),
+                    //     // function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
+                    //     call_shape.display_string(self.ctxt.bc_ctxt()),
+                    //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
+                    // );
+
+                    tracing::info!("Signature shape: {:?}", sig_shape);
+                    Ok(sig_shape)
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Error getting signature shape at {:?}: {:?}",
+                        call_span,
+                        err
+                    );
+                    call_shape
+                }
+            }
         } else {
             call_shape
-        };
-        self.create_edges_for_shape(shape.unwrap(), &call, function_data)?;
+        }
+        .map_err(|err| PcgError::internal(format!("{err:?}")))?;
+        self.create_edges_for_shape(shape, &call, function_data)?;
 
         Ok(())
     }

@@ -173,6 +173,7 @@ dependencies = [
  "dot",
  "itertools",
  "lazy_static",
+ "pcg-macros",
  "petgraph",
  "rustversion",
  "serde",
@@ -183,6 +184,15 @@ dependencies = [
  "strum_macros",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "pcg-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

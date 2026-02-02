@@ -46,6 +46,8 @@ use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildEx
 pub struct FunctionDataShapeDataSource<'tcx> {
     input_tys: Vec<ty::Ty<'tcx>>,
     output_ty: ty::Ty<'tcx>,
+    def_id: DefId,
+    caller_substs: Option<GenericArgsRef<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
 }
 
@@ -53,6 +55,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _data: FunctionData<'tcx>,
+        _caller_substs: Option<GenericArgsRef<'tcx>>,
         _ctxt: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
@@ -61,42 +64,55 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::since(2025-05-24)]
     pub(crate) fn new(
         data: FunctionData<'tcx>,
+        caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         let sig = data.identity_fn_sig(tcx);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
-        let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
+        let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         if sig.has_aliases() {
             return Err(MakeFunctionShapeError::ContainsAliasType);
         }
-        let outlives = match data.caller_def_id {
-            Some(caller_def_id) => {
-                OutlivesEnvironment::new(&infcx, caller_def_id, param_env, vec![])
-            }
-            None => OutlivesEnvironment::from_normalized_bounds(
-                param_env,
-                vec![],
-                vec![],
-                Default::default(),
-            ),
-        };
+        let outlives = OutlivesEnvironment::from_normalized_bounds(
+            param_env,
+            vec![],
+            vec![],
+            Default::default(),
+        );
         Ok(Self {
+            def_id: data.def_id,
             input_tys: sig.inputs().to_vec(),
             output_ty: sig.output(),
             outlives,
+            caller_substs,
         })
     }
 }
 
 impl<'tcx> FunctionData<'tcx> {
-    pub fn instantiated_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
-        let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, self.substs);
-        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
-    }
-
     pub(crate) fn identity_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
+}
+
+impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+    pub(crate) fn region_for_outlives_check(
+        &self,
+        region: PcgRegion,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> PcgRegion {
+        if let Some(substs) = self.caller_substs
+            && let Some(index) = substs.regions().position(|r| PcgRegion::from(r) == region)
+        {
+            let fn_ty = tcx.type_of(self.def_id).instantiate_identity();
+            let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
+                panic!("Expected a function type");
+            };
+            identity_substs.region_at(index).into()
+        } else {
+            region
+        }
     }
 }
 
@@ -118,8 +134,9 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
         if sup.is_static() || sup == sub {
             return Ok(true);
         }
-        tracing::debug!("Check if:\n{:?}\noutlives\n{:?}", sup, sub);
-        match (sup, sub) {
+        let sup = self.region_for_outlives_check(sup, ctxt);
+        let sub = self.region_for_outlives_check(sub, ctxt);
+        let result = match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
             }
@@ -130,13 +147,21 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
                 sub.rust_region(ctxt),
                 sup.rust_region(ctxt),
             )),
+        }?;
+        if result {
+            tracing::info!("{} outlives {}", sup, sub);
+        } else {
+            tracing::info!("{} does not outlive {}", sup, sub);
         }
+        Ok(result)
     }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionCallData<'tcx> {
     pub(crate) function_data: FunctionData<'tcx>,
+    pub(crate) substs: GenericArgsRef<'tcx>,
+    pub(crate) caller_def_id: LocalDefId,
     pub(crate) operand_tys: Vec<ty::Ty<'tcx>>,
     pub(crate) span: Span,
 }
@@ -150,7 +175,9 @@ impl<'tcx> FunctionCallData<'tcx> {
         span: Span,
     ) -> Self {
         Self {
-            function_data: FunctionData::new(def_id, substs, Some(caller_def_id)),
+            function_data: FunctionData::new(def_id),
+            substs,
+            caller_def_id,
             operand_tys,
             span,
         }
@@ -160,7 +187,8 @@ impl<'tcx> FunctionCallData<'tcx> {
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError> {
-        let data = FunctionDataShapeDataSource::new(self.function_data, ctxt.tcx)?;
+        let data =
+            FunctionDataShapeDataSource::new(self.function_data, Some(self.substs), ctxt.tcx)?;
         FunctionShape::new(&data, ctxt.tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
@@ -198,6 +226,7 @@ impl<'tcx, Metadata, Input: Copy, Output: Copy>
 pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) location: Location,
     pub(crate) function_data: Option<FunctionData<'tcx>>,
+    pub(crate) caller_substs: Option<GenericArgsRef<'tcx>>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
@@ -239,8 +268,11 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
             .function_data
             .as_ref()
             .ok_or(MakeFunctionShapeError::NoFunctionData)?;
-        FunctionShape::new(&function_data.shape_data_source(ctxt.tcx)?, ctxt.tcx)
-            .map_err(MakeFunctionShapeError::CheckOutlivesError)
+        FunctionShape::new(
+            &function_data.shape_data_source(self.caller_substs, ctxt.tcx)?,
+            ctxt.tcx,
+        )
+        .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
@@ -337,7 +369,7 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
         self.metadata.function_data.as_ref().map(|f| f.def_id)
     }
     pub fn substs(&self) -> Option<GenericArgsRef<'tcx>> {
-        self.metadata.function_data.as_ref().map(|f| f.substs)
+        self.metadata.caller_substs
     }
 
     pub fn location(&self) -> Location {
