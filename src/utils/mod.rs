@@ -170,11 +170,7 @@ impl PcgSettings {
             Self::process_bool_var(&mut processed_vars, "PCG_EMIT_ANNOTATIONS", false);
         let check_function = Self::process_string_var(&mut processed_vars, "PCG_CHECK_FUNCTION");
         let skip_function = Self::process_string_var(&mut processed_vars, "PCG_SKIP_FUNCTION");
-        let coupling = Self::process_bool_var(
-            &mut processed_vars,
-            "PCG_COUPLING",
-            cfg!(feature = "coupling"),
-        );
+        let coupling = Self::process_bool_var(&mut processed_vars, "PCG_COUPLING", true);
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);

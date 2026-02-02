@@ -10,7 +10,6 @@ pub use coupled_edge::{
 };
 use derive_more::{Deref, DerefMut, From};
 pub(crate) use hyper_edge::HyperEdge;
-use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
@@ -84,29 +83,12 @@ pub struct CoupleInputError;
 impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     CoupledEdgesData<InputNode, OutputNode>
 {
-    #[cfg(not(feature = "coupling"))]
-    pub(crate) fn new(
-        _edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
-    ) -> Result<Self, CoupleInputError> {
-        unimplemented!(
-            "Enable the `coupling` feature to use this function.  Coupling
-            functionality is locked behind a feature flag because it is only
-            supported on relatively recent Rust versions (for example, the
-            implementation uses [`Vec::extract_if`] which is only available in
-            Rust 1.87.0 and later)."
-        )
-    }
-
-    #[cfg(feature = "coupling")]
     pub(crate) fn new(
         edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
     ) -> Result<Self, CoupleInputError> {
         use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
-        let edges: Vec<_> = edges
-            .into_iter()
-            .map(|e| (e.input(), e.output()))
-            .collect();
+        let edges: Vec<_> = edges.into_iter().map(|e| (e.input(), e.output())).collect();
         if edges.is_empty() {
             return Ok(Self(Vec::new()));
         }

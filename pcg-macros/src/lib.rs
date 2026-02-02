@@ -81,19 +81,17 @@ pub fn derive_display_with_ctxt(input: TokenStream) -> TokenStream {
     let existing_impl_params: Vec<_> = generics
         .params
         .iter()
-        .map(|param| {
-            match param {
-                GenericParam::Type(ty) => {
-                    let ident = &ty.ident;
-                    let bounds = &ty.bounds;
-                    if bounds.is_empty() {
-                        quote! { #ident }
-                    } else {
-                        quote! { #ident: #bounds }
-                    }
+        .map(|param| match param {
+            GenericParam::Type(ty) => {
+                let ident = &ty.ident;
+                let bounds = &ty.bounds;
+                if bounds.is_empty() {
+                    quote! { #ident }
+                } else {
+                    quote! { #ident: #bounds }
                 }
-                other => other.to_token_stream(),
             }
+            other => other.to_token_stream(),
         })
         .collect();
 

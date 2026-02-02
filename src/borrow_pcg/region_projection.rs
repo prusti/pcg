@@ -738,8 +738,8 @@ impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjecti
     }
 }
 
-impl<'lproj: 'tcx, 'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>> DisplayWithCtxt<Ctxt>
-    for LifetimeProjection<'lproj, T>
+impl<'lproj: 'tcx, 'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>>
+    DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
 where
     PcgRegion: DisplayWithCtxt<Ctxt>,
 {

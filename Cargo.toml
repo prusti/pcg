@@ -8,9 +8,8 @@ edition = "2024"
 custom-rust-toolchain = []
 visualization = []
 debug_info = []
-coupling = []
 type-export = ["specta"]
-default = ["visualization", "coupling"]
+default = ["visualization"]
 
 [dependencies]
 pcg-macros = { path = "pcg-macros" }

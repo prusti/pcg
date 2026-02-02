@@ -1,3 +1,5 @@
+// option PCG_POLONIUS: true
+
 use std::cell::Cell;
 
 thread_local! {

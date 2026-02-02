@@ -1,3 +1,5 @@
+// option PCG_POLONIUS: true
+
 use std::marker::PhantomData;
 
 enum State {

@@ -1,3 +1,5 @@
+// option PCG_POLONIUS: true
+
 fn path_sensitive(b: bool) {
     let mut x = 1;
     let mut y; let mut z;

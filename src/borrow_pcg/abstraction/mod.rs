@@ -32,10 +32,7 @@ pub struct ArgIdx(usize);
 impl crate::Sealed for ArgIdx {}
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for ArgIdx {
-    fn rust_ty(
-        &self,
-        (function_data, ctxt): (FunctionData<'tcx>, Ctxt),
-    ) -> ty::Ty<'tcx> {
+    fn rust_ty(&self, (function_data, ctxt): (FunctionData<'tcx>, Ctxt)) -> ty::Ty<'tcx> {
         function_data.identity_fn_sig(ctxt.tcx()).inputs()[self.0]
     }
 }
