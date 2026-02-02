@@ -85,11 +85,9 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     CoupledEdgesData<InputNode, OutputNode>
 {
     #[cfg(not(feature = "coupling"))]
-    fn try_couple_input(
-        input: InputNode,
-        other_inputs: &mut Vec<InputNode>,
-        outputs_map: &mut HashMap<InputNode, HashSet<OutputNode>>,
-    ) -> Result<HyperEdge<InputNode, OutputNode>, CoupleInputError> {
+    pub(crate) fn new(
+        _edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
+    ) -> Result<Self, CoupleInputError> {
         unimplemented!(
             "Enable the `coupling` feature to use this function.  Coupling
             functionality is locked behind a feature flag because it is only
@@ -100,47 +98,47 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
     }
 
     #[cfg(feature = "coupling")]
-    fn try_couple_input(
-        input: InputNode,
-        other_inputs: &mut Vec<InputNode>,
-        outputs_map: &mut HashMap<InputNode, HashSet<OutputNode>>,
-    ) -> Result<HyperEdge<InputNode, OutputNode>, CoupleInputError> {
-        let expected_outputs = outputs_map[&input].clone();
-        if expected_outputs.is_empty() {
-            return Err(CoupleInputError);
-        }
-        let mut coupled_inputs: Vec<InputNode> = other_inputs
-            .extract_if(.., |elem| outputs_map[elem] == expected_outputs)
-            .collect();
-        outputs_map.retain(|input, _| !coupled_inputs.contains(input));
-        for v in outputs_map.values_mut() {
-            v.retain(|output| !expected_outputs.contains(output));
-        }
-        coupled_inputs.push(input);
-        Ok(HyperEdge::new(
-            coupled_inputs,
-            expected_outputs.into_iter().collect(),
-        ))
-    }
-
     pub(crate) fn new(
         edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
     ) -> Result<Self, CoupleInputError> {
-        let mut inputs = HashSet::default();
-        let mut outputs_map: HashMap<InputNode, HashSet<OutputNode>> = HashMap::default();
-        for edge in edges {
-            inputs.insert(edge.input());
-            outputs_map
-                .entry(edge.input())
-                .or_default()
-                .insert(edge.output());
+        let mut groups: Vec<(HashSet<InputNode>, HashSet<OutputNode>)> = edges
+            .into_iter()
+            .map(|e| {
+                (
+                    HashSet::from_iter([e.input()]),
+                    HashSet::from_iter([e.output()]),
+                )
+            })
+            .collect();
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for i in 0..groups.len() {
+                for j in (i + 1..groups.len()).rev() {
+                    let dominated_input = groups[i].0.is_superset(&groups[j].0);
+                    let dominated_output = groups[i].1.is_superset(&groups[j].1);
+                    let dominated = dominated_input && dominated_output;
+                    let shares_input = !groups[i].0.is_disjoint(&groups[j].0);
+                    let shares_output = !groups[i].1.is_disjoint(&groups[j].1);
+                    if dominated || shares_input || shares_output {
+                        let (inputs, outputs) = groups.remove(j);
+                        groups[i].0.extend(inputs);
+                        groups[i].1.extend(outputs);
+                        changed = true;
+                    }
+                }
+            }
         }
-        let mut inputs = inputs.into_iter().collect_vec();
-        let mut hyper_edges = Vec::default();
-        while let Some(input) = inputs.pop() {
-            let edge = Self::try_couple_input(input, &mut inputs, &mut outputs_map)?;
-            hyper_edges.push(edge);
-        }
+
+        let hyper_edges = groups
+            .into_iter()
+            .filter(|(inputs, outputs)| !inputs.is_empty() && !outputs.is_empty())
+            .map(|(inputs, outputs)| {
+                HyperEdge::new(inputs.into_iter().collect(), outputs.into_iter().collect())
+            })
+            .collect();
+
         Ok(Self(hyper_edges))
     }
 }
@@ -324,6 +322,7 @@ trait ObtainEdges<'tcx, Input> {
 }
 
 struct ObtainExtract;
+#[allow(unused)]
 struct ObtainGet;
 
 impl<'a, 'tcx: 'a, T: CouplingDataSource<'tcx> + 'a> ObtainEdges<'tcx, &'a T> for ObtainGet {
@@ -341,49 +340,10 @@ impl<'a, 'tcx: 'a, T: MutableCouplingDataSource<'tcx> + 'a> ObtainEdges<'tcx, &'
 }
 
 impl<'tcx> PcgCoupledEdges<'tcx> {
-    #[allow(unused)]
-    pub(crate) fn extract_coupled_edges(
-        data_source: &mut impl MutableCouplingDataSource<'tcx>,
-    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
-        Self::coupled_edges::<_, ObtainExtract>(data_source)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn get_coupled_edges(
-        data_source: &impl CouplingDataSource<'tcx>,
-    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
-        Self::coupled_edges::<_, ObtainGet>(data_source)
-    }
-
-    /// Returns the set of successful coupling results based on the abstraction
-    /// edges. If you are also interested in the unsuccessful
-    /// couplings, use [`PcgCoupledEdges::from_data_source`].
-    fn coupled_edges<T, ObtainType: ObtainEdges<'tcx, T>>(
-        data_source: T,
-    ) -> Vec<PcgCoupledEdgeKind<'tcx>> {
-        PcgCoupledEdges::obtain_from_data_source::<_, ObtainType>(data_source)
-            .into_iter()
-            .flat_map(|result| {
-                let set = match result.0 {
-                    Ok(result) => result.edges(),
-                    Err(_) => HashSet::default(),
-                };
-                set.into_iter()
-            })
-            .collect()
-    }
-
     pub(crate) fn extract_from_data_source(
         data_source: &mut impl MutableCouplingDataSource<'tcx>,
     ) -> PcgCouplingResults<'tcx> {
         Self::obtain_from_data_source::<_, ObtainExtract>(data_source)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn get_from_data_source(
-        data_source: &impl CouplingDataSource<'tcx>,
-    ) -> PcgCouplingResults<'tcx> {
-        Self::obtain_from_data_source::<_, ObtainGet>(data_source)
     }
 
     fn obtain_from_data_source<T, ObtainType: ObtainEdges<'tcx, T>>(

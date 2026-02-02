@@ -40,9 +40,6 @@ use crate::{
 
 use crate::coupling::HyperEdge;
 
-#[rustversion::since(2025-05-24)]
-use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
-
 pub struct FunctionDataShapeDataSource<'tcx> {
     input_tys: Vec<ty::Ty<'tcx>>,
     output_ty: ty::Ty<'tcx>,

@@ -21,11 +21,7 @@ use crate::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{
-        PcgSettings,
-        data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
-    },
+    utils::{PcgSettings, data_structures::HashSet, display::{DisplayWithCompilerCtxt, DisplayWithCtxt}},
 };
 
 use super::PcgError;
@@ -114,9 +110,17 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )
             })
             .collect();
+        tracing::info!(
+            "Abstraction edges: {}",
+            abstraction_edges.display_string(self.ctxt.bc_ctxt())
+        );
         if self.settings().coupling
             && let Ok(coupled_edges) = CoupledEdgesData::new(abstraction_edges.iter().copied())
         {
+            tracing::info!(
+                "Coupled edges: {}",
+                coupled_edges.display_string(self.ctxt.bc_ctxt())
+            );
             if !coupled_edges.is_empty() {
                 tracing::debug!("Coupled edges: {:?}", coupled_edges);
             }
@@ -252,7 +256,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
                     // );
 
-                    tracing::info!("Signature shape: {:?}", sig_shape);
+                    tracing::info!(
+                        "Signature shape: {}",
+                        sig_shape
+                            .display_string((function_call_data.function_data, ctxt.bc_ctxt()))
+                    );
                     Ok(sig_shape)
                 }
                 Err(err) => {

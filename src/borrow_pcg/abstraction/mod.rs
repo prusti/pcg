@@ -16,7 +16,7 @@ use crate::{
             mir,
             ty::{self, GenericArgsRef},
         },
-        span::def_id::{DefId, LocalDefId},
+        span::def_id::DefId,
     },
     utils::{
         self, CompilerCtxt, HasTyCtxt,

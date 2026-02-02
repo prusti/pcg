@@ -11,6 +11,7 @@ pub(crate) trait MutableCouplingDataSource<'tcx> {
     fn extract_abstraction_edges(&mut self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
 }
 
+#[allow(unused)]
 pub(crate) trait CouplingDataSource<'tcx> {
     fn abstraction_edges(&self) -> HashSet<Conditioned<AbstractionEdge<'tcx>>>;
 }
