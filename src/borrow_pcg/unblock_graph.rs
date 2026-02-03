@@ -4,10 +4,7 @@ use std::marker::PhantomData;
 use derive_more::From;
 
 use crate::{
-    borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        edge::kind::BorrowPcgEdgeKind,
-    },
+    borrow_pcg::borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
     error::PcgInternalError,
     utils::{HasBorrowCheckerCtxt, data_structures::HashSet},
 };
@@ -17,8 +14,6 @@ use crate::{
     borrow_pcg::{edge_data::EdgeData, state::BorrowsState},
     utils::CompilerCtxt,
 };
-
-use crate::coupling::{MaybeCoupledEdgeKind, PcgCoupledEdges};
 
 type UnblockEdge<'tcx> = BorrowPcgEdge<'tcx>;
 
@@ -95,44 +90,6 @@ impl<'tcx> UnblockGraph<'tcx> {
         }
     }
 
-    #[allow(unused)]
-    pub(crate) fn into_coupled(
-        mut self,
-    ) -> UnblockGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> {
-        use crate::coupling::MaybeCoupledEdges;
-
-        let coupled = PcgCoupledEdges::extract_from_data_source(&mut self.edges);
-        let mut edges: HashSet<MaybeCoupledEdgeKind<'tcx, BorrowPcgEdge<'tcx>>> = self
-            .edges
-            .into_iter()
-            .map(MaybeCoupledEdgeKind::NotCoupled)
-            .collect();
-        edges.extend(
-            coupled
-                .into_maybe_coupled_edges()
-                .into_iter()
-                .flat_map(|edge| match edge {
-                    MaybeCoupledEdges::Coupled(coupled) => coupled
-                        .edges()
-                        .into_iter()
-                        .map(MaybeCoupledEdgeKind::Coupled)
-                        .collect::<Vec<_>>(),
-                    MaybeCoupledEdges::NotCoupled(not_coupled) => not_coupled
-                        .into_iter()
-                        .map(|edge| {
-                            MaybeCoupledEdgeKind::NotCoupled(
-                                edge.map(BorrowPcgEdgeKind::Abstraction),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                }),
-        );
-        UnblockGraph {
-            edges,
-            _marker: PhantomData,
-        }
-    }
-
     pub fn for_node(
         node: impl Into<BlockedNode<'tcx>>,
         state: &BorrowsState<'_, 'tcx>,
@@ -161,10 +118,9 @@ impl<'tcx> UnblockGraph<'tcx> {
         self.edges.insert(unblock_edge)
     }
 
-    #[allow(clippy::multiple_bound_locations)]
     pub(crate) fn kill_edge<
         'a,
-        Edge: BorrowPcgEdgeLike<'tcx>,
+        Edge: BorrowPcgEdgeLike<'tcx> + EdgeData<'tcx, Ctxt>,
         Ctxt: Copy + HasBorrowCheckerCtxt<'a, 'tcx>,
     >(
         &mut self,
@@ -173,7 +129,6 @@ impl<'tcx> UnblockGraph<'tcx> {
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
-        Edge: EdgeData<'tcx, Ctxt>,
     {
         if self.add_dependency(edge.clone().to_owned_edge()) {
             for blocking_node in edge.blocked_by_nodes(ctxt) {

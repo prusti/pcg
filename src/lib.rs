@@ -27,7 +27,11 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
+use std::{
+    borrow::{Borrow, Cow},
+    cell::RefCell,
+    marker::PhantomData,
+};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
@@ -441,6 +445,7 @@ impl PcgVisualizationData {
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
 pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
+    let settings = pcg_ctxt.settings.borrow();
     tracing::info!(
         "Running PCG (visualization: {})",
         pcg_ctxt.settings.visualization
@@ -449,6 +454,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
         &pcg_ctxt.arena,
+        settings,
         #[cfg(feature = "visualization")]
         pcg_ctxt.visualization_output_path(),
     );

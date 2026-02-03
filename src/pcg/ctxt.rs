@@ -12,7 +12,7 @@ use crate::{
     rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
-        Place, SETTINGS, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
+        Place, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
     },
 };
 
@@ -256,6 +256,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         body_analysis: &'a BodyAnalysis<'a, 'tcx>,
         symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         arena: PcgArena<'a>,
+        settings: &'a PcgSettings,
         #[cfg(feature = "visualization")] graphs: Option<
             crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>,
         >,
@@ -263,7 +264,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         Self {
             ctxt,
             body_analysis,
-            settings: &SETTINGS,
+            settings,
             block,
             symbolic_capability_ctxt,
             arena,

@@ -33,7 +33,7 @@ use crate::{
         mir_dataflow::{Forward, move_paths::MoveData},
     },
     utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, arena::PcgArenaRef, visitor::FallableVisitor,
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef, visitor::FallableVisitor
     },
 };
 
@@ -122,6 +122,7 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) analyzed_blocks: BitSet<Block>,
     pub(crate) first_error: ErrorState,
     pub(crate) arena: PcgArena<'a>,
+    pub(crate) settings: &'a PcgSettings,
 }
 
 pub(crate) fn edges_to_analyze<'tcx, 'mir>(
@@ -189,6 +190,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             self.body_analysis,
             self.symbolic_capability_ctxt,
             self.arena,
+            self.settings,
             #[cfg(feature = "visualization")]
             self.dot_graphs(block),
         )
@@ -283,6 +285,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
         move_data: &'a MoveData<'tcx>,
         arena: PcgArena<'a>,
+        settings: &'a PcgSettings,
         #[cfg(feature = "visualization")] debug_output_dir: Option<PathBuf>,
     ) -> Self {
         #[cfg(feature = "visualization")]
@@ -304,6 +307,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             arena,
             symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(arena),
             analyzed_blocks,
+            settings
         }
     }
 
