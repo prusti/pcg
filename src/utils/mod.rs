@@ -136,7 +136,7 @@ impl PcgSettings {
         self.visualization_data_dir.join("functions.json")
     }
 
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         // Hack just to ensure that we dont raise an error when seeing a global var
         let mut processed_vars = GlobalPcgSettings::new_returning_vars().1;
 
