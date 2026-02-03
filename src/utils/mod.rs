@@ -115,6 +115,12 @@ pub struct PcgSettings {
     pub coupling: bool,
 }
 
+impl Default for PcgSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PcgSettings {
     #[allow(unused)]
     pub(crate) fn create_visualization_data_directory(path: &Path, erase_contents: bool) {
