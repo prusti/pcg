@@ -210,10 +210,6 @@ impl ValidityConditionsLike for ValidityConditions {
     const EMPTY: &'static Self = &EMPTY_VALIDITY_CONDITIONS;
 }
 
-impl ValidityConditionsLike for NoValidityConditions {
-    const EMPTY: &'static Self = &NoValidityConditions;
-}
-
 impl ValidityConditions {
     pub(crate) fn conditional_string<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
@@ -283,12 +279,6 @@ pub(crate) trait ValidityConditionOps<Ctxt> {
 
 pub(crate) trait ValidityConditionsLike: Clone + 'static {
     const EMPTY: &'static Self;
-}
-
-impl<Ctxt> ValidityConditionOps<Ctxt> for NoValidityConditions {
-    fn join(&mut self, _other: &Self, _ctxt: Ctxt) -> bool {
-        false
-    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>> ValidityConditionOps<Ctxt>
