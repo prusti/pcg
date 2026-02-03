@@ -246,7 +246,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().projection
     }
 
-    #[allow(dead_code)]
     pub(crate) fn deref_to_rp<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
@@ -258,7 +257,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn base_lifetime_projection<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,

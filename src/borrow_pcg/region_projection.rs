@@ -310,14 +310,6 @@ impl<'tcx, T> PlaceOrConst<'tcx, T> {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn map_place<U>(self, f: impl FnOnce(T) -> U) -> PlaceOrConst<'tcx, U> {
-        match self {
-            PlaceOrConst::Place(p) => PlaceOrConst::Place(f(p)),
-            PlaceOrConst::Const(c) => PlaceOrConst::Const(c),
-        }
-    }
-
     pub(crate) fn mut_place<U>(&mut self, f: impl FnOnce(&mut T) -> U) -> Option<U> {
         match self {
             PlaceOrConst::Place(p) => Some(f(p)),

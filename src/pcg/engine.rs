@@ -33,7 +33,8 @@ use crate::{
         mir_dataflow::{Forward, move_paths::MoveData},
     },
     utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef, visitor::FallableVisitor
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef,
+        visitor::FallableVisitor,
     },
 };
 
@@ -307,7 +308,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             arena,
             symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(arena),
             analyzed_blocks,
-            settings
+            settings,
         }
     }
 
