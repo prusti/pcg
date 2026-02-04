@@ -1,3 +1,5 @@
+// option PCG_POLONIUS: true
+
 struct S<'a, T> {
     a: &'a mut T
 }

@@ -1,4 +1,4 @@
 {
     "rust-analyzer.rustc.source": "discover",
-    "rust-analyzer.cargo.features": ["visualization", "coupling"]
+    "rust-analyzer.cargo.features": ["visualization"]
 }

@@ -5,12 +5,13 @@ authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
 edition = "2024"
 
 [dependencies]
-pcg = { path = "..", features = ["visualization", "coupling"] }
+pcg = { path = "..", features = ["visualization"] }
 borrowck-body-storage = { path = "../borrowck-body-storage" }
 chrono = "0.4"
 derive_more = { version = "2.0.1", features = ["full"] }
 itertools = "0.12.0"
 rayon = "1.8"
+regex = "1"
 reqwest = { version = "^0.11", features = ["blocking"] }
 rustversion = "1.0"
 serde = "1.0"

@@ -1,18 +1,12 @@
 use crate::{
-    borrow_pcg::{
-        region_projection::{
-            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase,
-            PcgLifetimeProjectionBaseLike, PcgRegion, PlaceOrConst, RegionIdx,
-        },
-        visitor::extract_regions,
+    borrow_pcg::region_projection::{
+        HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+        PlaceOrConst,
     },
     pcg::PcgNode,
-    rustc_interface::{
-        index::IndexVec,
-        middle::{mir, ty},
-    },
+    rustc_interface::middle::{mir, ty},
     utils::{
-        self, CompilerCtxt, HasCompilerCtxt, LocalTys,
+        CompilerCtxt, HasCompilerCtxt, LocalTys,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_remote::MaybeRemotePlace,
@@ -24,6 +18,8 @@ use crate::{
 pub struct RemotePlace {
     pub(crate) local: mir::Local,
 }
+
+impl crate::Sealed for RemotePlace {}
 
 impl RemotePlace {
     pub fn base_lifetime_projection<'tcx>(
@@ -52,16 +48,9 @@ impl<'tcx> From<LifetimeProjection<'tcx, RemotePlace>> for PcgNode<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
+impl<'tcx, Ctxt: LocalTys<'tcx>> HasTy<'tcx, Ctxt> for RemotePlace {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        let place: utils::Place<'tcx> = self.local.into();
-        place.rust_ty(ctxt)
-    }
-}
-
-impl<'tcx, Ctxt: LocalTys<'tcx> + Copy> HasRegions<'tcx, Ctxt> for RemotePlace {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(ctxt.local_ty(self.local))
+        ctxt.local_ty(self.local)
     }
 }
 

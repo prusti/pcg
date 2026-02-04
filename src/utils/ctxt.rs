@@ -1,5 +1,5 @@
 use crate::{
-    HasSettings,
+    HasSettings, Sealed,
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
@@ -32,6 +32,8 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) borrow_checker: T,
 }
 
+impl<'a, 'tcx, T> Sealed for CompilerCtxt<'a, 'tcx, T> {}
+
 impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
     for CompilerCtxt<'a, 'tcx, &'bc BC>
 {
@@ -46,9 +48,9 @@ impl<'a, 'tcx> OverrideRegionDebugString for CompilerCtxt<'a, 'tcx, ()> {
     }
 }
 
-impl<'a, 'tcx, BC> LocalTys<'tcx> for CompilerCtxt<'a, 'tcx, BC> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> LocalTys<'tcx> for Ctxt {
     fn local_ty(&self, local: Local) -> ty::Ty<'tcx> {
-        self.mir.local_decls()[local].ty
+        self.ctxt().body().local_decls[local].ty
     }
 }
 

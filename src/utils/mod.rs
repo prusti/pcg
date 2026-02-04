@@ -115,6 +115,12 @@ pub struct PcgSettings {
     pub coupling: bool,
 }
 
+impl Default for PcgSettings {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PcgSettings {
     #[allow(unused)]
     pub(crate) fn create_visualization_data_directory(path: &Path, erase_contents: bool) {
@@ -136,7 +142,7 @@ impl PcgSettings {
         self.visualization_data_dir.join("functions.json")
     }
 
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         // Hack just to ensure that we dont raise an error when seeing a global var
         let mut processed_vars = GlobalPcgSettings::new_returning_vars().1;
 
@@ -170,11 +176,7 @@ impl PcgSettings {
             Self::process_bool_var(&mut processed_vars, "PCG_EMIT_ANNOTATIONS", false);
         let check_function = Self::process_string_var(&mut processed_vars, "PCG_CHECK_FUNCTION");
         let skip_function = Self::process_string_var(&mut processed_vars, "PCG_SKIP_FUNCTION");
-        let coupling = Self::process_bool_var(
-            &mut processed_vars,
-            "PCG_COUPLING",
-            cfg!(feature = "coupling"),
-        );
+        let coupling = Self::process_bool_var(&mut processed_vars, "PCG_COUPLING", true);
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);

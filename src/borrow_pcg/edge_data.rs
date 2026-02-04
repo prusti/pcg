@@ -664,20 +664,6 @@ macro_rules! edgedata_enum {
                     }
                 }
             }
-
-            use $crate::utils::display::DisplayWithCtxt;
-
-            impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> DisplayWithCtxt<Ctxt> for $enum_name<'tcx, P> where $(
-                $inner_type: DisplayWithCtxt<Ctxt>,
-            )+ {
-                fn display_output(&self, ctxt: Ctxt, mode: $crate::utils::display::OutputMode) -> $crate::utils::display::DisplayOutput {
-                    match self {
-                        $(
-                            $enum_name::$variant_name(inner) => inner.display_output(ctxt, mode),
-                        )+
-                    }
-                }
-            }
         }
     }
 }

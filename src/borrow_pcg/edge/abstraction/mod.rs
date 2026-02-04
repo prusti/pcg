@@ -5,8 +5,6 @@ pub(crate) mod r#type;
 
 use std::marker::PhantomData;
 
-use crate::borrow_pcg::edge_data::conditionally_label_places;
-use crate::utils::{DebugCtxt, PcgPlace, Place};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
@@ -17,7 +15,7 @@ use crate::{
         },
         edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
-            edgedata_enum,
+            conditionally_label_places, edgedata_enum,
         },
         has_pcs_elem::{
             LabelLifetimeProjection, LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace,
@@ -28,6 +26,7 @@ use crate::{
     coupling::HyperEdge,
     pcg::PcgNodeLike,
     utils::{
+        DebugCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
@@ -45,7 +44,7 @@ use crate::{
     utils::validity::HasValidityCheck,
 };
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, pcg_macros::DisplayWithCtxt)]
 pub enum FunctionCallOrLoop<FunctionCallData, LoopData> {
     FunctionCall(FunctionCallData),
     Loop(LoopData),

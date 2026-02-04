@@ -1,21 +1,22 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, marker::PhantomData};
 
 use derive_more::{Deref, From};
-use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
         edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
-        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
+        region_projection::{
+            HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx,
+        },
         visitor::extract_regions,
     },
-    coupling::CoupleAbstractionError,
+    coupling::{CoupleAbstractionError, CoupledEdgesData},
     rustc_interface::{
         middle::{
             mir,
             ty::{self, GenericArgsRef},
         },
-        span::def_id::{DefId, LocalDefId},
+        span::def_id::DefId,
     },
     utils::{
         self, CompilerCtxt, HasTyCtxt,
@@ -23,10 +24,24 @@ use crate::{
     },
 };
 
-use crate::coupling::{CoupleInputError, CoupledEdgesData};
+use crate::coupling::CoupleInputError;
 
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
+
+impl crate::Sealed for ArgIdx {}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for ArgIdx {
+    fn rust_ty(&self, (function_data, ctxt): (FunctionData<'tcx>, Ctxt)) -> ty::Ty<'tcx> {
+        function_data.identity_fn_sig(ctxt.tcx()).inputs()[self.0]
+    }
+}
+
+impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdx {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        format!("{self}").into()
+    }
+}
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub enum ArgIdxOrResult {
@@ -34,7 +49,40 @@ pub enum ArgIdxOrResult {
     Result,
 }
 
+impl crate::Sealed for ArgIdxOrResult {}
+
+impl<'tcx> OverrideRegionDebugString for (FunctionData<'tcx>, ty::TyCtxt<'tcx>) {
+    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
+        None
+    }
+}
+
+impl<T, U: OverrideRegionDebugString> OverrideRegionDebugString for (T, U) {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.1.override_region_debug_string(region)
+    }
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for ArgIdxOrResult {
+    fn rust_ty(&self, (function_data, ctxt): (FunctionData<'tcx>, Ctxt)) -> ty::Ty<'tcx> {
+        match self {
+            ArgIdxOrResult::Argument(arg) => arg.rust_ty((function_data, ctxt.tcx())),
+            ArgIdxOrResult::Result => function_data.identity_fn_sig(ctxt.tcx()).output(),
+        }
+    }
+}
+
+impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdxOrResult {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        match self {
+            ArgIdxOrResult::Argument(arg) => arg.display_output(ctxt, mode),
+            ArgIdxOrResult::Result => "result".into(),
+        }
+    }
+}
+
 pub(crate) struct FunctionCall<'a, 'tcx> {
+    pub(crate) substs: Option<GenericArgsRef<'tcx>>,
     pub(crate) location: mir::Location,
     pub(crate) inputs: &'a [&'a mir::Operand<'tcx>],
     pub(crate) output: utils::Place<'tcx>,
@@ -45,8 +93,10 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
         location: mir::Location,
         inputs: &'a [&'a mir::Operand<'tcx>],
         output: utils::Place<'tcx>,
+        substs: Option<GenericArgsRef<'tcx>>,
     ) -> Self {
         Self {
+            substs,
             location,
             inputs,
             output,
@@ -229,21 +279,19 @@ impl FunctionShape {
 
     pub fn for_fn<'tcx>(
         def_id: DefId,
-        substs: GenericArgsRef<'tcx>,
-        caller_def_id: Option<LocalDefId>,
+        caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
-        let data = FunctionData::new(def_id, substs, caller_def_id);
-        Self::new(&data.shape_data_source(tcx)?, tcx)
+        let data = FunctionData::new(def_id);
+        Self::new(&data.shape_data_source(caller_substs, tcx)?, tcx)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(Copy, PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionData<'tcx> {
     pub(crate) def_id: DefId,
-    pub(crate) substs: GenericArgsRef<'tcx>,
-    pub(crate) caller_def_id: Option<LocalDefId>,
+    _marker: PhantomData<&'tcx ()>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,28 +303,15 @@ pub enum MakeFunctionShapeError {
 }
 
 impl<'tcx> FunctionData<'tcx> {
-    pub fn new(
-        def_id: DefId,
-        substs: GenericArgsRef<'tcx>,
-        caller_def_id: Option<LocalDefId>,
-    ) -> Self {
+    pub fn new(def_id: DefId) -> Self {
         Self {
             def_id,
-            substs,
-            caller_def_id,
+            _marker: PhantomData,
         }
     }
 
     pub fn param_env(self, tcx: ty::TyCtxt<'tcx>) -> ty::ParamEnv<'tcx> {
-        let def_id = self
-            .caller_def_id
-            .map(|local_def_id| local_def_id.to_def_id())
-            .unwrap_or(self.def_id);
-        tcx.param_env(def_id)
-    }
-
-    pub fn substs(self) -> GenericArgsRef<'tcx> {
-        self.substs
+        tcx.param_env(self.def_id)
     }
 
     pub fn def_id(self) -> DefId {
@@ -285,13 +320,18 @@ impl<'tcx> FunctionData<'tcx> {
 
     pub(crate) fn shape_data_source(
         self,
+        caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError> {
-        FunctionDataShapeDataSource::new(self, tcx)
+        FunctionDataShapeDataSource::new(self, caller_substs, tcx)
     }
 
-    pub fn shape(self, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError> {
-        FunctionShape::new(&self.shape_data_source(tcx)?, tcx)
+    pub fn shape(
+        self,
+        caller_substs: Option<GenericArgsRef<'tcx>>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+        FunctionShape::new(&self.shape_data_source(caller_substs, tcx)?, tcx)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 
@@ -300,7 +340,7 @@ impl<'tcx> FunctionData<'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError> {
         let shape = self
-            .shape(tcx)
+            .shape(None, tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
         shape
             .coupled_edges()
@@ -322,18 +362,21 @@ impl std::fmt::Display for ArgIdxOrResult {
         }
     }
 }
-
-impl<Ctxt> DisplayWithCtxt<Ctxt> for FunctionShape {
-    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            self.edges
-                .iter()
-                .map(|edge| format!("{edge}"))
-                .sorted()
-                .collect::<Vec<_>>()
-                .join("\n, ")
-                .into(),
-        )
+impl<Ctxt: Copy> DisplayWithCtxt<Ctxt> for FunctionShape
+where
+    FunctionShapeInput: DisplayWithCtxt<Ctxt>,
+    FunctionShapeOutput: DisplayWithCtxt<Ctxt>,
+    AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>: DisplayWithCtxt<Ctxt>,
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::Seq(vec![
+            "Inputs: ".into(),
+            self.inputs.display_output(ctxt, mode),
+            "\nOutputs: ".into(),
+            self.outputs.display_output(ctxt, mode),
+            "\nEdges: ".into(),
+            self.edges().collect::<Vec<_>>().display_output(ctxt, mode),
+        ])
     }
 }
 
@@ -384,3 +427,47 @@ impl FunctionShape {
 }
 
 pub type FunctionShapeCoupledEdges = CoupledEdgesData<FunctionShapeInput, FunctionShapeOutput>;
+
+#[cfg(test)]
+mod tests {
+    use crate::{borrow_pcg::region_projection::HasRegions, rustc_interface::index::IndexVec};
+
+    use super::*;
+
+    #[test]
+    fn test_max_function_shape() {
+        // fn max<'a>(rx: &'a mut i32, ry: &'a mut i32) -> &'a mut i32
+
+        let tick_a: PcgRegion = PcgRegion::RegionVid(0u32.into());
+        #[derive(Clone, Copy)]
+        struct TestCtxt(PcgRegion);
+        impl HasRegions<'static, TestCtxt> for ArgIdx {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+                IndexVec::from_raw(vec![ctxt.0])
+            }
+        }
+        impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+                IndexVec::from_raw(vec![ctxt.0])
+            }
+        }
+        let rx = FunctionShapeInput::new(0.into(), tick_a, None, TestCtxt(tick_a)).unwrap();
+        let ry = FunctionShapeInput::new(1.into(), tick_a, None, TestCtxt(tick_a)).unwrap();
+        let result =
+            FunctionShapeOutput::new(ArgIdxOrResult::Result, tick_a, None, TestCtxt(tick_a))
+                .unwrap();
+        let shape = FunctionShape {
+            inputs: vec![rx, ry],
+            outputs: vec![result],
+            edges: BTreeSet::from([
+                AbstractionBlockEdge::new(rx, result),
+                AbstractionBlockEdge::new(ry, result),
+            ]),
+        };
+        let coupled_edges = shape.coupled_edges().unwrap();
+        assert_eq!(coupled_edges.len(), 1);
+        let edge = &coupled_edges.0[0];
+        assert_eq!(edge.inputs(), &[rx, ry]);
+        assert_eq!(edge.outputs(), &[result]);
+    }
+}

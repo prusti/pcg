@@ -6,15 +6,16 @@
 
 use std::marker::PhantomData;
 
-use crate::Weaken;
-use crate::rustc_interface::middle::mir::{self, PlaceElem};
+use crate::{
+    Weaken,
+    rustc_interface::middle::mir::{self, PlaceElem},
+};
 
-use crate::utils::DebugRepr;
 use crate::{
     pcg::CapabilityKind,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{
-        CompilerCtxt, ConstantIndex, HasCompilerCtxt, Place,
+        CompilerCtxt, ConstantIndex, DebugRepr, HasCompilerCtxt, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };

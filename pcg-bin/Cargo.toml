@@ -9,7 +9,7 @@ authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
 edition = "2024"
 
 [dependencies]
-pcg = { path = "..", features = ["visualization", "coupling"] }
+pcg = { path = "..", features = ["visualization"] }
 borrowck-body-storage = { path = "../borrowck-body-storage" }
 shell-escape = "0.1.5"
 tracing = "0.1"

@@ -12,7 +12,7 @@ use crate::{
     rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
-        Place, SETTINGS, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
+        Place, SnapshotLocation, data_structures::HashMap, logging::LogPredicate,
     },
 };
 
@@ -46,7 +46,7 @@ mod private {
             RustBitSet,
             middle::{mir, ty},
         },
-        utils::{CompilerCtxt, DebugCtxt, HasLocals, LocalTys, PcgSettings},
+        utils::{CompilerCtxt, DebugCtxt, HasLocals, PcgSettings},
     };
 
     #[derive(Copy, Clone)]
@@ -61,12 +61,6 @@ mod private {
         #[cfg(feature = "visualization")]
         pub(crate) graphs:
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
-    }
-
-    impl<'a, 'tcx: 'a> LocalTys<'tcx> for AnalysisCtxt<'a, 'tcx> {
-        fn local_ty(&self, local: mir::Local) -> ty::Ty<'tcx> {
-            self.ctxt.local_ty(local)
-        }
     }
 
     impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
@@ -249,10 +243,6 @@ impl<'a, 'tcx> HasBorrowCheckerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
-    #[allow(dead_code)]
-    pub(crate) fn tcx(&self) -> ty::TyCtxt<'tcx> {
-        self.ctxt.tcx()
-    }
     pub(crate) fn body(&self) -> &'a mir::Body<'tcx> {
         self.ctxt.body()
     }
@@ -262,6 +252,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         body_analysis: &'a BodyAnalysis<'a, 'tcx>,
         symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
         arena: PcgArena<'a>,
+        settings: &'a PcgSettings,
         #[cfg(feature = "visualization")] graphs: Option<
             crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>,
         >,
@@ -269,7 +260,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         Self {
             ctxt,
             body_analysis,
-            settings: &SETTINGS,
+            settings,
             block,
             symbolic_capability_ctxt,
             arena,

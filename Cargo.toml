@@ -8,11 +8,11 @@ edition = "2024"
 custom-rust-toolchain = []
 visualization = []
 debug_info = []
-coupling = []
 type-export = ["specta"]
-default = ["visualization", "coupling"]
+default = ["visualization"]
 
 [dependencies]
+pcg-macros = { path = "pcg-macros" }
 bit-set = "0.8.0"
 bumpalo = {version = "3.16.0", features = ["allocator_api"]}
 derive_more = { version = "2.0.1", features = ["full"] }
@@ -30,6 +30,7 @@ strum = "0.26"
 strum_macros = "0.26"
 tracing = "0.1"
 tracing-subscriber = "0.3.20"
+union-find = "0.4"
 
 [dev-dependencies]
 reqwest = { version = "^0.11", features = ["blocking"] }

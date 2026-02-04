@@ -14,6 +14,7 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
+    Sealed,
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{HasRegions, HasTy},
@@ -59,15 +60,11 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
+impl<'tcx> Sealed for Place<'tcx> {}
+
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasRegions<'tcx, Ctxt> for Place<'tcx> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        extract_regions(self.rust_ty(ctxt))
     }
 }
 

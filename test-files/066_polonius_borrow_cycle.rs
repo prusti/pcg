@@ -1,3 +1,5 @@
+// option PCG_POLONIUS: true
+
 fn main() {
     let mut a: &mut i32;
     let mut b: &mut i32;

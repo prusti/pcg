@@ -205,15 +205,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Validity
 
 pub(crate) const EMPTY_VALIDITY_CONDITIONS: ValidityConditions =
     ValidityConditions(SmallVec::new_const());
-#[allow(dead_code)]
-pub(crate) const EMPTY_VALIDITY_CONDITIONS_REF: &ValidityConditions = &EMPTY_VALIDITY_CONDITIONS;
 
 impl ValidityConditionsLike for ValidityConditions {
     const EMPTY: &'static Self = &EMPTY_VALIDITY_CONDITIONS;
-}
-
-impl ValidityConditionsLike for NoValidityConditions {
-    const EMPTY: &'static Self = &NoValidityConditions;
 }
 
 impl ValidityConditions {
@@ -283,18 +277,8 @@ pub(crate) trait ValidityConditionOps<Ctxt> {
     fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool;
 }
 
-#[derive(Clone)]
-#[allow(dead_code)]
-struct NoValidityConditions;
-
 pub(crate) trait ValidityConditionsLike: Clone + 'static {
     const EMPTY: &'static Self;
-}
-
-impl<Ctxt> ValidityConditionOps<Ctxt> for NoValidityConditions {
-    fn join(&mut self, _other: &Self, _ctxt: Ctxt) -> bool {
-        false
-    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>> ValidityConditionOps<Ctxt>

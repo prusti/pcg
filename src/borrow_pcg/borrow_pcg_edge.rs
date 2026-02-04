@@ -133,7 +133,6 @@ pub trait BorrowPcgEdgeLike<
     fn conditions(&self) -> &ValidityConditions;
     fn to_owned_edge(self) -> BorrowPcgEdge<'tcx, Kind>;
 
-    #[allow(dead_code)]
     fn blocked_places<'slf, Ctxt: Copy>(
         &'slf self,
         ctxt: Ctxt,
@@ -341,7 +340,6 @@ impl<'tcx, P: Copy> PcgNodeWithPlace<'tcx, P> {
 }
 
 impl<'tcx, T: Copy, U> PcgNode<'tcx, T, U> {
-    #[allow(dead_code)]
     pub(crate) fn as_place(&self) -> Option<T> {
         match self {
             PcgNode::Place(p) => Some(*p),

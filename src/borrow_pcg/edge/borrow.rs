@@ -10,7 +10,7 @@ use crate::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
         },
-        region_projection::{HasRegions, HasTy, LifetimeProjectionLabel},
+        region_projection::LifetimeProjectionLabel,
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
@@ -22,7 +22,7 @@ use crate::{
         },
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place, PrefixRelation,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
@@ -57,17 +57,8 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<
-    'tcx,
-    Ctxt: DebugCtxt + Copy,
-    P: PartialEq
-        + Eq
-        + Copy
-        + PrefixRelation
-        + std::fmt::Debug
-        + HasTy<'tcx, Ctxt>
-        + HasRegions<'tcx, Ctxt>,
-> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>>
+    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
 {
     fn label_lifetime_projections(
         &mut self,
@@ -167,12 +158,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Bo
     }
 }
 
-impl<
-    'tcx,
-    Ctxt: Copy,
-    P: PartialEq + std::fmt::Debug + Copy + HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
-> EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
-{
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for BorrowEdge<'tcx, P> {
     fn blocks_node<'slf>(&self, node: BlockedNode<'tcx, P>, _ctxt: Ctxt) -> bool {
         match node {
             PcgNode::Place(p) => self.blocked_place == p,
@@ -280,7 +266,7 @@ impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
         ctxt: Ctxt,
     ) -> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
     where
-        P: HasTy<'tcx, Ctxt> + HasRegions<'tcx, Ctxt>,
+        P: PcgPlace<'tcx, Ctxt>,
     {
         match self.assigned_ref.place().rust_ty(ctxt).kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(

@@ -4,8 +4,7 @@ use crate::{
     borrow_pcg::{
         has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
-            HasRegions, HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion,
-            PlaceOrConst, RegionIdx,
+            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
         },
         visitor::extract_regions,
     },
@@ -13,7 +12,6 @@ use crate::{
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         PlaceTy,
-        index::IndexVec,
         middle::{
             mir::{self, PlaceElem},
             ty,
@@ -40,13 +38,7 @@ pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'tcx, Ctxt: Copy, P: Copy + HasRegions<'tcx, Ctxt>> HasRegions<'tcx, Ctxt>
-    for MaybeLabelledPlace<'tcx, P>
-{
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
-        self.place().regions(ctxt)
-    }
-}
+impl<'tcx, P> crate::Sealed for MaybeLabelledPlace<'tcx, P> {}
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
@@ -254,7 +246,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().projection
     }
 
-    #[allow(dead_code)]
     pub(crate) fn deref_to_rp<C: Copy>(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx, C>,
@@ -266,7 +257,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn base_lifetime_projection<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,

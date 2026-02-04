@@ -1,7 +1,10 @@
 use crate::rustc_interface::middle::mir::HasLocalDecls;
 
-use crate::utils::{DebugCtxt, HasCompilerCtxt};
-use crate::{pcg_validity_assert, pcg_validity_expect_ok, rustc_interface::middle::mir};
+use crate::{
+    pcg_validity_assert, pcg_validity_expect_ok,
+    rustc_interface::middle::mir,
+    utils::{DebugCtxt, HasCompilerCtxt},
+};
 
 pub trait HasValidityCheck<Ctxt: DebugCtxt + Copy> {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String>;

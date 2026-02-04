@@ -124,8 +124,18 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     exit.success()
 }
 
-pub fn is_polonius_test_file(file: &Path) -> bool {
-    file.to_str().unwrap().contains("polonius")
+fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
+    let content = std::fs::read_to_string(file)
+        .unwrap_or_else(|e| panic!("Failed to read file {}: {}", file.display(), e));
+
+    let re = regex::Regex::new(r"// option (PCG_[A-Z_]+): (.*)").unwrap();
+    re.captures_iter(&content)
+        .map(|cap| {
+            let key = cap.get(1).unwrap().as_str().to_string();
+            let value = cap.get(2).unwrap().as_str().trim().to_string();
+            (key, value)
+        })
+        .collect()
 }
 
 #[allow(dead_code)]
@@ -138,18 +148,19 @@ pub fn run_pcg_on_file(file: &Path) {
         .join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());
 
-    let status = Command::new(&pcg_exe)
+    let env_vars = parse_env_vars_from_file(file);
+
+    let mut command = Command::new(&pcg_exe);
+    command
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
-        .env(
-            "PCG_POLONIUS",
-            if is_polonius_test_file(file) {
-                "true"
-            } else {
-                "false"
-            },
-        )
-        .env("PCG_ALLOW_BORROWCK_ERRORS", "true")
+        .env("PCG_ALLOW_BORROWCK_ERRORS", "true");
+
+    for (key, value) in env_vars {
+        command.env(key, value);
+    }
+
+    let status = command
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute test {}: {}", file.display(), e));
 
