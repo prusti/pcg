@@ -114,4 +114,11 @@ impl<'tcx> OwnedPcg<'tcx> {
             .filter_map(|(i, c)| if !c.is_unallocated() { Some(i) } else { None })
             .collect()
     }
+
+    pub(crate) fn unallocated_locals(&self) -> Vec<mir::Local> {
+        self.0
+            .iter_enumerated()
+            .filter_map(|(i, c)| if c.is_unallocated() { Some(i) } else { None })
+            .collect()
+    }
 }

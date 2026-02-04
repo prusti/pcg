@@ -54,6 +54,12 @@ impl<'tcx, Ctxt, T: LabelPlace<'tcx, Ctxt>, U: LabelPlace<'tcx, Ctxt>> LabelPlac
     }
 }
 
+impl<'tcx> From<mir::Local> for PcgNode<'tcx> {
+    fn from(local: mir::Local) -> Self {
+        PcgNode::Place(local.into())
+    }
+}
+
 impl<'tcx> PcgNode<'tcx> {
     pub(crate) fn related_maybe_remote_current_place(
         &self,

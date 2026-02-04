@@ -34,10 +34,6 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                 )?;
             }
             PcgAction::Owned(action) => match action.kind {
-                RepackOp::StorageDead(_) => todo!(),
-                RepackOp::IgnoreStorageDead(_) => todo!(),
-                RepackOp::Weaken(..) => todo!(),
-                RepackOp::Expand(_) => todo!(),
                 RepackOp::Collapse(collapse) => {
                     self.data.owned.perform_collapse_action(
                         collapse,
@@ -46,7 +42,6 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                     )?;
                     self.actions.push(action.kind);
                 }
-                RepackOp::DerefShallowInit(..) => todo!(),
                 RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.data.capabilities.regain_loaned_capability(
                         regained_capability.place,
@@ -56,6 +51,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                     )?;
                     self.actions.push(action.kind);
                 }
+                _ => unreachable!(),
             },
         }
         Ok(())

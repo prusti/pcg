@@ -190,8 +190,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
         self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
             .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
+
         if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
             return Err("PCG is not acyclic".to_owned());
+        }
+
+        for local in self.owned.unallocated_locals() {
+            if self.borrow.graph.contains(local, ctxt) {
+                return Err(format!(
+                    "Unallocated local {} is in the borrow graph",
+                    local.display_string(ctxt)
+                ));
+            }
         }
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {

@@ -4,9 +4,10 @@ use crate::{
     pcg::{
         CapabilityKind,
         obtain::ObtainType,
-        place_capabilities::PlaceCapabilitiesInterface,
+        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::{PlaceCondition, Triple},
     },
+    pcg_validity_assert,
     utils::DataflowCtxt,
 };
 
@@ -31,10 +32,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     .obtain(place, ObtainType::Capability(capability))?;
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
-                self.pcg.owned[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(local));
-                self.pcg
-                    .capabilities
-                    .insert(local.into(), CapabilityKind::Write, self.ctxt);
+                if self.pcg.owned[local].is_unallocated() {
+                    tracing::warn!("Local {:?} is unallocated", local);
+                    return Ok(());
+                }
+                self.place_obtainer()
+                    .obtain(local.into(), ObtainType::ForStorageDead)?;
             }
             PlaceCondition::Unalloc(_) | PlaceCondition::Return => {}
             PlaceCondition::RemoveCapability(_) => unreachable!(),
