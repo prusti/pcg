@@ -1,13 +1,9 @@
 use crate::{
     error::{PcgError, PcgUnsupportedError},
-    owned_pcg::{LocalExpansions, OwnedPcgLocal},
     pcg::{
-        CapabilityKind,
         obtain::ObtainType,
-        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::{PlaceCondition, Triple},
     },
-    pcg_validity_assert,
     utils::DataflowCtxt,
 };
 

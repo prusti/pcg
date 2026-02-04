@@ -21,11 +21,7 @@ use crate::{
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{
-        PcgSettings,
-        data_structures::HashSet,
-        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
-    },
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
