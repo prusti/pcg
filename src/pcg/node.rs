@@ -260,6 +260,7 @@ pub(crate) trait LabelPlaceConditionally<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>>:
         if predicate.applies_to(orig, node_context) {
             let changed = self.label_place(labeller, ctxt);
             if changed {
+                tracing::info!("Labeling place {:?} for {:?}", orig, self.to_pcg_node(ctxt));
                 replacements.insert(NodeReplacement::new(orig, self.to_pcg_node(ctxt)));
             }
         }

@@ -401,7 +401,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut self.capabilities,
             owned: &mut self.owned,
         };
-        self.borrow.join(&other.borrow, borrow_args, ctxt)?;
+        self.borrow.join(&other_borrows, borrow_args, ctxt)?;
         Ok(repack_ops)
     }
 

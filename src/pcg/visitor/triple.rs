@@ -33,7 +33,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
                 if self.pcg.owned[local].is_unallocated() {
-                    tracing::warn!("Local {:?} is unallocated", local);
+                    // Could happen if there is a storagedead for an already conditionally dead local
                     return Ok(());
                 }
                 self.place_obtainer()

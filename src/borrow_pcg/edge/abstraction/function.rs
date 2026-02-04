@@ -145,11 +145,6 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
                 sup.rust_region(ctxt),
             )),
         }?;
-        if result {
-            tracing::info!("{} outlives {}", sup, sub);
-        } else {
-            tracing::info!("{} does not outlive {}", sup, sub);
-        }
         Ok(result)
     }
 }
