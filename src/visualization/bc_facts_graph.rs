@@ -142,8 +142,8 @@ fn compute_region_sccs(
         .copied()
         .map(|r| (r, graph.add_node(r)))
         .collect::<BTreeMap<_, _>>();
-    for r1 in regions.iter() {
-        for r2 in regions.iter() {
+    for r1 in regions {
+        for r2 in regions {
             if r1 != r2 && region_infer_ctxt.eval_outlives(*r1, *r2) {
                 graph.add_edge(indices[r1], indices[r2], ());
             }

@@ -515,7 +515,7 @@ impl<'tcx> Place<'tcx> {
             | ProjectionElem::OpaqueCast(..) => (Vec::new(), ProjectionKind::Other),
             _ => todo!(),
         };
-        for p in other_places.iter() {
+        for p in &other_places {
             assert!(
                 p.projection.len() == self.projection.len() + 1,
                 "expanded place {p:?} is not a direct child of {self:?}",

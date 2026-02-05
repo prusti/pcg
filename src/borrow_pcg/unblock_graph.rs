@@ -65,7 +65,7 @@ impl<'tcx, Edge: std::fmt::Debug + Clone + Eq + std::hash::Hash> UnblockGraph<'t
                 edge.blocked_by_nodes(ctxt)
                     .all(|node| edges.iter().all(|e| !e.blocks_node(node.into(), ctxt)))
             };
-            for edge in edges.iter() {
+            for edge in &edges {
                 if should_kill_edge(edge) {
                     actions.push(BorrowPcgUnblockAction::new(edge.clone()));
                     to_keep.remove(edge);

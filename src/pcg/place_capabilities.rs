@@ -224,7 +224,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
 
         changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
 
-        for p in expansion.expansion.iter() {
+        for p in &expansion.expansion {
             changed |= self.insert(p.place(), expanded_capability, ctxt);
         }
         Ok(changed)
@@ -403,7 +403,7 @@ where
     {
         let mut changed = false;
         self.map.retain(|place, _| other.map.contains_key(place));
-        for (place, other_capability) in other.map.iter() {
+        for (place, other_capability) in &other.map {
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {

@@ -140,7 +140,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         for blocker in candidate_blockers.iter_places() {
-            for root in root_places.iter() {
+            for root in root_places {
                 let relevant_root = root.relevant_place_for_blocking();
                 if blocker == relevant_root
                     || ctxt
@@ -182,7 +182,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 })
                 .collect::<Vec<_>>();
             if !blockers.is_empty() {
-                for blocker in blockers.iter() {
+                for blocker in &blockers {
                     add_block_edges(&mut expander, blocked_place.into(), *blocker, ctxt);
                 }
                 if blocked_place_usage.usage == PlaceUsageType::Mutate {
@@ -264,12 +264,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "leaf nodes: {}",
             frozen_graph.leaf_nodes(ctxt).display_string(ctxt)
         );
-        for rp in to_label.iter() {
+        for rp in &to_label {
             tracing::debug!("labeling {:?}", rp);
             graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
         }
         tracing::debug!("Completed loop abstraction");
-        for (place, capability) in capability_updates.iter() {
+        for (place, capability) in &capability_updates {
             logging::log!(
                 &LogPredicate::DebugBlock,
                 analysis_ctxt,

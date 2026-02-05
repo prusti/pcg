@@ -835,7 +835,7 @@ impl Debug for Place<'_> {
 
         write!(fmt, "{:?}", self.local)?;
 
-        for &elem in self.projection.iter() {
+        for &elem in self.projection {
             match elem {
                 ProjectionElem::OpaqueCast(ty) => {
                     write!(fmt, "@{ty})")?;

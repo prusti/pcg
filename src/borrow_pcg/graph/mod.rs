@@ -79,7 +79,7 @@ where
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
-        for node in nodes.iter() {
+        for node in &nodes {
             if let Some(PcgNode::LifetimeProjection(rp)) = node.try_to_local_node(ctxt)
                 && rp.is_future()
                 && rp.base.as_current_place().is_some()

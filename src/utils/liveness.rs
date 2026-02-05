@@ -81,7 +81,7 @@ impl<'tcx> GenKill<Place<'tcx>> for PlaceLivenessDomain<'tcx> {
 impl JoinSemiLattice for PlaceLivenessDomain<'_> {
     fn join(&mut self, other: &Self) -> bool {
         let mut changed = false;
-        for place in other.places.iter() {
+        for place in &other.places {
             if !self.places.contains(place) {
                 self.places.insert(*place);
                 changed = true;

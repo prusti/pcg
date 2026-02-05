@@ -226,12 +226,12 @@ impl<
         let target_context =
             LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Coupled);
         let mut result = LabelLifetimeProjectionResult::Unchanged;
-        for input in self.inputs.iter_mut() {
+        for input in &mut self.inputs {
             if predicate.applies_to(input.to_pcg_node(ctxt), source_context) {
                 result |= input.label_lifetime_projection(label);
             }
         }
-        for output in self.outputs.iter_mut() {
+        for output in &mut self.outputs {
             if predicate.applies_to(output.to_pcg_node(ctxt), target_context) {
                 result |= output.label_lifetime_projection(label);
             }

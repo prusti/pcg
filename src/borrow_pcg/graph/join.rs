@@ -335,7 +335,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             ctxt.ctxt,
         );
 
-        for rp in to_label.iter() {
+        for rp in &to_label {
             self.filter_mut_edges(|edge| {
                 edge.value
                     .label_lifetime_projections(
