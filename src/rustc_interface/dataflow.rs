@@ -217,7 +217,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 }
 
 pub(crate) fn with_cursor_state<'tcx, A: mir_dataflow::Analysis<'tcx>, R>(
-    cursor: RefMut<'_, ResultsCursor<'_, 'tcx, A>>,
+    cursor: &RefMut<'_, ResultsCursor<'_, 'tcx, A>>,
     f: impl FnOnce(&A::Domain) -> R,
 ) -> R {
     f(cursor.get())

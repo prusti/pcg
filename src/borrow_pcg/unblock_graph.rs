@@ -124,7 +124,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         Ctxt: Copy + HasBorrowCheckerCtxt<'a, 'tcx>,
     >(
         &mut self,
-        edge: Edge,
+        edge: &Edge,
         borrows: &BorrowsState<'a, 'tcx>,
         ctxt: Ctxt,
     ) where
@@ -148,7 +148,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         BorrowPcgEdgeRef<'tcx, 'slf>: EdgeData<'tcx, Ctxt>,
     {
         for edge in borrows.edges_blocking(node, ctxt.bc_ctxt()) {
-            self.kill_edge(edge, borrows, ctxt);
+            self.kill_edge(&edge, borrows, ctxt);
         }
     }
 }

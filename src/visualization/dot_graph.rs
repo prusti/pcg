@@ -13,7 +13,7 @@ use serde_derive::Serialize;
 use crate::{
     borrow_pcg::validity_conditions::ValidityConditionsDebugRepr,
     utils::{DebugRepr, HasCompilerCtxt, html::Html},
-    visualization::Graph,
+    visualization::{Graph, GraphNode},
 };
 
 type NodeId = String;
@@ -28,10 +28,10 @@ pub struct DotGraphWithEdgeCtxt<Ctxt> {
 
 impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
     pub(crate) fn from_graph<'a, 'tcx: 'a>(
-        graph: Graph<'a>,
+        graph: &Graph<'a>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {
-        let nodes = graph.nodes.iter().map(|g| g.to_dot_node()).collect();
+        let nodes = graph.nodes.iter().map(GraphNode::to_dot_node).collect();
         let mut edges = Vec::new();
         let mut edge_ctxt = HashMap::new();
         for (i, edge) in graph.edges.iter().enumerate() {
@@ -116,11 +116,7 @@ impl Display for RankAnnotation {
             f,
             "{{ rank = {}; {}; }}",
             self.rank_type,
-            self.nodes
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>()
-                .join("; ")
+            self.nodes.iter().cloned().collect::<Vec<_>>().join("; ")
         )
     }
 }
@@ -196,7 +192,7 @@ impl From<&'static str> for DotStringAttr {
 
 impl Display for DotStringAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "\"{}\"", self.0.replace("\"", "\\\""))
+        write!(f, "\"{}\"", self.0.replace('"', "\\\""))
     }
 }
 #[cfg(test)]
@@ -225,7 +221,7 @@ fn format_attr<T: DotAttr>(name: &'static str, value: &T) -> String {
     format!("{name}={value}")
 }
 
-fn format_optional<T: DotAttr>(name: &'static str, value: &Option<T>) -> String {
+fn format_optional<T: DotAttr>(name: &'static str, value: Option<&T>) -> String {
     match value {
         Some(value) => format!("{name}={value}"),
         None => String::new(),
@@ -239,9 +235,9 @@ impl Display for DotNode {
             format_attr("fontcolor", &self.font_color),
             format_attr("color", &self.color),
             format_attr("shape", &self.shape),
-            format_optional("style", &self.style),
-            format_optional("penwidth", &self.penwidth),
-            format_optional("tooltip", &self.tooltip),
+            format_optional("style", self.style.as_ref()),
+            format_optional("penwidth", self.penwidth.as_ref()),
+            format_optional("tooltip", self.tooltip.as_ref()),
         ]
         .into_iter()
         .filter(|s| !s.is_empty())

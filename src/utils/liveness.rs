@@ -156,7 +156,7 @@ impl<'mir, 'tcx> PlaceLiveness<'mir, 'tcx> {
         // Because this is a backwards analysis, seeking *after* the primary effect considers
         // the state *before* the statment at the location
         cursor.seek_after_primary_effect(location);
-        with_cursor_state(cursor, |state| state.is_live(place))
+        with_cursor_state(&cursor, |state| state.is_live(place))
     }
 }
 

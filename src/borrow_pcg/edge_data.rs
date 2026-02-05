@@ -272,7 +272,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugStr
                 "(".into(),
                 DisplayOutput::join(
                     predicates.iter().map(|p| p.display_output(ctxt, mode)),
-                    " && ".into(),
+                    &" && ".into(),
                 ),
                 ")".into(),
             ]),
@@ -280,7 +280,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugStr
                 "(".into(),
                 DisplayOutput::join(
                     predicates.iter().map(|p| p.display_output(ctxt, mode)),
-                    " || ".into(),
+                    &" || ".into(),
                 ),
                 ")".into(),
             ]),
@@ -402,7 +402,7 @@ where
         .collect();
     DisplayOutput::Seq(vec![
         "Labelled nodes: [".into(),
-        DisplayOutput::join(items, ", ".into()),
+        DisplayOutput::join(items, &", ".into()),
         "]".into(),
     ])
 }

@@ -90,7 +90,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     fn create_edges_for_shape(
         &mut self,
-        shape: FunctionShape,
+        shape: &FunctionShape,
         call: &FunctionCall<'_, 'tcx>,
         function_data: Option<FunctionData<'tcx>>,
     ) -> Result<(), PcgError> {
@@ -262,7 +262,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             call_shape
         }
         .map_err(|err| PcgError::internal(format!("{err:?}")))?;
-        self.create_edges_for_shape(shape, &call, function_data)?;
+        self.create_edges_for_shape(&shape, &call, function_data)?;
 
         Ok(())
     }

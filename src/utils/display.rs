@@ -108,7 +108,7 @@ impl DisplayOutput {
 
     pub(crate) fn join(
         words: impl IntoIterator<Item = DisplayOutput>,
-        separator: DisplayOutput,
+        separator: &DisplayOutput,
     ) -> Self {
         let mut out = vec![];
         let mut words = words.into_iter().peekable();

@@ -398,11 +398,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
             BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
                 vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
-                DisplayOutput::SPACE,
+                &DisplayOutput::SPACE,
             ),
             BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
                 vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
-                DisplayOutput::SPACE,
+                &DisplayOutput::SPACE,
             ),
         }
     }

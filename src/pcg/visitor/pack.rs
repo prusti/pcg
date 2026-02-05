@@ -51,7 +51,7 @@ impl<'tcx> EdgesToRemove<'tcx> {
         }
     }
 
-    fn push(&mut self, edge: BorrowPcgEdge<'tcx>, reason: Reason) {
+    fn push(&mut self, edge: &BorrowPcgEdge<'tcx>, reason: Reason) {
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref) => {
                 if let Some(deref_edges) = self.deref_edges.get_mut(&deref.deref_place) {
@@ -298,7 +298,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 edge.value.display_string(self.ctxt.bc_ctxt())
             );
             if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
-                edges_to_remove.push(edge, reason);
+                edges_to_remove.push(&edge, reason);
             }
         }
         Ok(edges_to_remove)

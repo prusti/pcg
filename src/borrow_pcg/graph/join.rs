@@ -210,7 +210,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     ) -> Result<(), PcgError> {
         let loop_head = args.self_block;
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "used places: {}",
             used_places.display_string(ctxt.ctxt)
@@ -234,7 +234,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
 
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "live loop places: {}",
             live_loop_places.display_string(ctxt.ctxt)
@@ -252,7 +252,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         });
 
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "loop_blocked_places: {}",
             loop_blocked_places.display_string(ctxt.ctxt)
@@ -262,7 +262,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             live_loop_places.usages_where(|p| !p.place.regions(ctxt.ctxt).is_empty());
 
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "loop_blocker_places: {}",
             loop_blocker_places.display_string(ctxt.ctxt)
@@ -274,7 +274,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             &loop_blocked_places,
             &expand_places,
             validity_conditions,
-            args.reborrow(),
+            &mut args.reborrow(),
             ctxt,
         );
         let capabilities = args.capabilities;
@@ -293,7 +293,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .collect::<HashSet<_>>();
 
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "live roots: {}",
             live_roots.display_string(ctxt.ctxt)
@@ -308,7 +308,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .collect::<HashSet<_>>();
 
         logging::log!(
-            LogPredicate::DebugBlock,
+            &LogPredicate::DebugBlock,
             ctxt,
             "root places: {}",
             root_places.display_string(ctxt.ctxt)
@@ -320,7 +320,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             capability_updates,
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
-            root_places,
+            &root_places,
             &loop_blocker_places,
             loop_head,
             validity_conditions,
@@ -359,7 +359,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
         let to_cut =
-            self.identify_subgraph_to_cut(loop_head, abstraction_graph_pcg_nodes, ctxt.ctxt);
+            self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt.ctxt);
         to_cut.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),

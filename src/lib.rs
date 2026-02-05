@@ -13,7 +13,12 @@ may already be stabilized */
 #![deny(clippy::match_same_arms)]
 #![deny(clippy::trivially_copy_pass_by_ref)]
 #![deny(clippy::semicolon_if_nothing_returned)]
+#![deny(clippy::needless_pass_by_value)]
 // #![deny(clippy::pedantic)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::match_wildcard_for_single_variants)]
+#![allow(clippy::missing_errors_doc)]
 #![allow(stable_features)]
 #![feature(trait_alias)]
 #![feature(associated_type_defaults)]
@@ -148,7 +153,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
                 "to".into(),
                 to_str,
             ],
-            DisplayOutput::SPACE,
+            &DisplayOutput::SPACE,
         )
     }
 }
@@ -185,7 +190,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 "to".into(),
                 self.capability.display_output(ctxt, mode),
             ],
-            DisplayOutput::SPACE,
+            &DisplayOutput::SPACE,
         )
     }
 }
@@ -291,10 +296,12 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
         &self.settings
     }
 
+    #[must_use]
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self::with_settings(tcx, PcgSettings::new())
     }
 
+    #[must_use]
     pub fn with_settings(tcx: TyCtxt<'tcx>, settings: PcgSettings) -> Self {
         Self {
             tcx,

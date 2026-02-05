@@ -323,6 +323,7 @@ where
 }
 
 impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
+    #[must_use]
     pub fn new(
         pcg: PcgRef<'a, 'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
@@ -366,6 +367,7 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
         node
     }
 
+    #[must_use]
     pub fn construct_graph(mut self) -> Graph<'a> {
         let capability_getter = &PCGCapabilityGetter::<'a, 'a, 'tcx, _> {
             capabilities: self.capabilities,
