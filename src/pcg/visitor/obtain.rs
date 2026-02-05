@@ -516,12 +516,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
                 RepackOp::Weaken(weaken) => {
                     pcg_validity_assert!(
-                        self.pcg
-                            .capabilities
-                            .get(weaken.place, analysis_ctxt)
-                            .unwrap()
-                            .expect_concrete()
-                            == weaken.from
+                        self.pcg.place_capability_equals(weaken.place, weaken.from)
                     );
                     self.pcg
                         .capabilities
@@ -707,11 +702,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if let ObtainType::ForStorageDead = obtain_type
             && self
                 .pcg
-                .capabilities
-                .get(place, self.ctxt)
-                .unwrap()
-                .expect_concrete()
-                .is_exclusive()
+                .place_capability_equals(place, CapabilityKind::Exclusive)
         {
             self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
                 RepackOp::Weaken(Weaken::new(

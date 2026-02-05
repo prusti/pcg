@@ -145,7 +145,7 @@ fn format_raw_ptr<'tcx>(
         RawPtrKind::Const => "const",
         RawPtrKind::FakeForPtrMetadata => "fake",
     };
-    format!("*{} {}", kind, format_place(place, ctxt))
+    format!("&raw {} {}", kind, format_place(place, ctxt))
 }
 
 #[rustversion::before(2025-03-02)]

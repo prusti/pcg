@@ -312,7 +312,7 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
         let related_place = related_maybe_labelled_place.map(|p| p.place());
-        let result = match self {
+        match self {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {
                 related_place.is_some_and(|p| place.is_prefix_of(p))
@@ -350,11 +350,7 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
                 PcgNode::LifetimeProjection(rp) => rp.region_idx == *region_idx,
             },
             LabelNodePredicate::Equals(node) => candidate == *node,
-        };
-        if result {
-            tracing::info!("LabelNodePredicate {:?} applies to {:?}", self, candidate);
         }
-        result
     }
 }
 

@@ -11,7 +11,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike,
+        CapabilityKind, CapabilityLike, SymbolicCapability,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -130,6 +130,18 @@ pub(crate) trait PcgRefLike<'tcx> {
 
     fn borrows_graph(&self) -> &BorrowsGraph<'tcx> {
         self.as_ref().borrow.graph
+    }
+
+    fn place_capability_equals(
+        &self,
+        place: Place<'tcx>,
+        capability: impl Into<SymbolicCapability>,
+    ) -> bool {
+        self.as_ref()
+            .capabilities
+            .get(place, ())
+            .map(|c| c == capability.into())
+            .unwrap_or(false)
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
