@@ -10,12 +10,13 @@ impl PcgSettings {
         let file_path = self.functions_json_path();
         let json_data =
             serde_json::to_string(metadata).expect("Failed to serialize item names to JSON");
-        match file_path.canonicalize() {
-            Ok(path) => tracing::info!("Writing functions JSON to {:?}", path),
-            Err(e) => tracing::error!(
-                "Failed to canonicalize functions json file path {:?}. The write will likely fail. Error: {:?}",
-                file_path,
-                e
+        match file_path
+            .canonicalize()
+            .or_else(|_| std::path::absolute(&file_path))
+        {
+            Ok(path) => tracing::info!("Writing functions JSON to {path:?}"),
+            Err(e) => tracing::warn!(
+                "Failed to get absolute path for functions json file {file_path:?}. The write will likely fail. Error: {e:?}",
             ),
         }
         let mut file = std::fs::File::create(file_path).expect("Failed to create JSON file");
