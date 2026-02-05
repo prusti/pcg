@@ -37,7 +37,7 @@ pub struct BorrowFlowEdge<'tcx, P = Place<'tcx>> {
     pub(crate) kind: BorrowFlowEdgeKind<'tcx>,
 }
 
-impl<'tcx, P> BorrowFlowEdge<'tcx, P> {
+impl<P> BorrowFlowEdge<'_, P> {
     pub(crate) fn future_edge_kind(self) -> Option<private::FutureEdgeKind> {
         if let BorrowFlowEdgeKind::Future(future_edge_kind) = self.kind {
             Some(future_edge_kind)
@@ -239,7 +239,7 @@ impl<'tcx, P: Copy> BorrowFlowEdge<'tcx, P> {
     }
 }
 
-impl<'tcx, Ty: serde::Serialize> serde::Serialize for CastData<'tcx, Ty> {
+impl<Ty: serde::Serialize> serde::Serialize for CastData<'_, Ty> {
     fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -255,7 +255,7 @@ pub struct CastData<'tcx, Ty = ty::Ty<'tcx>> {
     _phantom: PhantomData<&'tcx Ty>,
 }
 
-impl<'tcx, Ty> CastData<'tcx, Ty> {
+impl<Ty> CastData<'_, Ty> {
     pub(crate) fn new(kind: mir::CastKind, ty: Ty) -> Self {
         Self {
             kind,
@@ -383,7 +383,7 @@ impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
     }
 }
 
-impl<'tcx, Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'tcx, Ty> {
+impl<Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'_, Ty> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BorrowFlowEdgeKind::Aggregate {

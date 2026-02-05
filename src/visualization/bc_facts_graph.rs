@@ -84,7 +84,7 @@ pub struct RegionPrettyPrinter<'bc, 'tcx> {
     region_infer_ctxt: &'bc RegionInferenceContext<'tcx>,
 }
 
-impl<'bc, 'tcx> OverrideRegionDebugString for RegionPrettyPrinter<'bc, 'tcx> {
+impl OverrideRegionDebugString for RegionPrettyPrinter<'_, '_> {
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
         self.region_to_string.get(&region).map(|s| s.as_str())
     }

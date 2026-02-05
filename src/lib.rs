@@ -7,6 +7,10 @@
 /* Depending on the client's rust version, some of the features below
 may already be stabilized */
 
+#![deny(clippy::all)]
+#![deny(clippy::manual_let_else)]
+#![deny(clippy::elidable_lifetime_names)]
+// #![deny(clippy::pedantic)]
 #![allow(stable_features)]
 #![feature(trait_alias)]
 #![feature(associated_type_defaults)]
@@ -97,7 +101,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
     }
 }
 
-impl<'tcx, Place, ToCap> Weaken<'tcx, Place, ToCap> {
+impl<Place, ToCap> Weaken<'_, Place, ToCap> {
     pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
         Self {
             place,
@@ -183,7 +187,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx, P: Copy> RestoreCapability<'tcx, P> {
+impl<P: Copy> RestoreCapability<'_, P> {
     pub(crate) fn new(place: P, capability: CapabilityKind) -> Self {
         Self {
             place,
@@ -201,7 +205,7 @@ impl<'tcx, P: Copy> RestoreCapability<'tcx, P> {
     }
 }
 
-impl<'tcx> RestoreCapability<'tcx> {}
+impl RestoreCapability<'_> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
@@ -355,7 +359,7 @@ impl<'a, 'mir: 'a, 'tcx: 'mir>
     }
 }
 
-impl<'mir, 'tcx> DebugCtxt for &PcgCtxt<'mir, 'tcx> {
+impl DebugCtxt for &PcgCtxt<'_, '_> {
     fn func_name(&self) -> String {
         self.compiler_ctxt.func_name()
     }
@@ -370,13 +374,13 @@ impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
     }
 }
 
-impl<'mir, 'tcx> HasTyCtxt<'tcx> for &PcgCtxt<'mir, 'tcx> {
+impl<'tcx> HasTyCtxt<'tcx> for &PcgCtxt<'_, 'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.compiler_ctxt.tcx
     }
 }
 
-impl<'a, 'mir, 'tcx> HasSettings<'a> for &'a PcgCtxt<'mir, 'tcx> {
+impl<'a> HasSettings<'a> for &'a PcgCtxt<'_, '_> {
     fn settings(&self) -> &'a PcgSettings {
         &self.settings
     }
@@ -533,16 +537,10 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
 
     if validity_checks_enabled() {
         for (block, _data) in body.basic_blocks.iter_enumerated() {
-            let pcs_block_option = if let Ok(opt) = analysis_results.get_all_for_bb(block) {
-                opt
-            } else {
+            let Ok(Some(pcg_block)) = analysis_results.get_all_for_bb(block) else {
                 continue;
             };
-            if pcs_block_option.is_none() {
-                continue;
-            }
-            let pcs_block = pcs_block_option.unwrap();
-            for (statement_index, statement) in pcs_block.statements.iter().enumerate() {
+            for (statement_index, statement) in pcg_block.statements.iter().enumerate() {
                 statement.assert_validity_at_location(
                     mir::Location {
                         block,

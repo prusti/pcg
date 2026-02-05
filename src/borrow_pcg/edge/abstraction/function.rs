@@ -207,8 +207,8 @@ pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) edge: Edge,
 }
 
-impl<'tcx, Metadata, Input: Copy, Output: Copy>
-    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'tcx, Input, Output>>
+impl<Metadata, Input: Copy, Output: Copy>
+    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'_, Input, Output>>
 {
     pub(crate) fn into_singleton_coupled_edge(self) -> CoupledEdgeKind<Metadata, Input, Output> {
         CoupledEdgeKind::new(self.metadata, self.edge.to_singleton_hyper_edge())

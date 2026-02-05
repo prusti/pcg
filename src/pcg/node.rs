@@ -54,7 +54,7 @@ impl<'tcx, Ctxt, T: LabelPlace<'tcx, Ctxt>, U: LabelPlace<'tcx, Ctxt>> LabelPlac
     }
 }
 
-impl<'tcx> From<mir::Local> for PcgNode<'tcx> {
+impl From<mir::Local> for PcgNode<'_> {
     fn from(local: mir::Local) -> Self {
         PcgNode::Place(local.into())
     }
@@ -192,7 +192,7 @@ where
     }
 }
 
-impl<'tcx, T, U, Ctxt> ToJsonWithCtxt<Ctxt> for PcgNode<'tcx, T, U> {
+impl<T, U, Ctxt> ToJsonWithCtxt<Ctxt> for PcgNode<'_, T, U> {
     fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
@@ -202,7 +202,7 @@ pub trait MaybeHasLocation {
     fn location(&self) -> Option<SnapshotLocation>;
 }
 
-impl<'tcx, T: MaybeHasLocation, U: MaybeHasLocation> MaybeHasLocation for PcgNode<'tcx, T, U> {
+impl<T: MaybeHasLocation, U: MaybeHasLocation> MaybeHasLocation for PcgNode<'_, T, U> {
     fn location(&self) -> Option<SnapshotLocation> {
         match self {
             PcgNode::Place(place) => place.location(),

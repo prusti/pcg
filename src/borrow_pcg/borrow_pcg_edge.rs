@@ -47,8 +47,8 @@ pub struct BorrowPcgEdgeRef<
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
-    DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for BorrowPcgEdgeRef<'tcx, '_, EdgeKind>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let kind = self.kind.display_output(ctxt, mode);
@@ -56,7 +56,7 @@ impl<'a, 'tcx: 'a, 'graph, Ctxt: HasCompilerCtxt<'a, 'tcx>, EdgeKind: DisplayWit
     }
 }
 
-impl<'tcx, 'graph, EdgeKind, VC> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC> {
+impl<'graph, EdgeKind, VC> BorrowPcgEdgeRef<'_, 'graph, EdgeKind, VC> {
     pub(crate) fn new(kind: &'graph EdgeKind, conditions: &'graph VC) -> Self {
         Self {
             kind,
@@ -66,15 +66,15 @@ impl<'tcx, 'graph, EdgeKind, VC> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC> {
     }
 }
 
-impl<'tcx, 'graph, EdgeKind, VC> BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC> {
+impl<EdgeKind, VC> BorrowPcgEdgeRef<'_, '_, EdgeKind, VC> {
     pub fn kind(&self) -> &EdgeKind {
         self.kind
     }
 }
 
-impl<'tcx, 'graph, EdgeKind> Copy for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {}
+impl<EdgeKind> Copy for BorrowPcgEdgeRef<'_, '_, EdgeKind> {}
 
-impl<'tcx, 'graph, EdgeKind> Clone for BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind> {
+impl<EdgeKind> Clone for BorrowPcgEdgeRef<'_, '_, EdgeKind> {
     fn clone(&self) -> Self {
         *self
     }
@@ -287,7 +287,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for MaybeRemotePlace<'tcx> {
+impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for MaybeRemotePlace<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
@@ -302,7 +302,7 @@ impl<T: std::fmt::Display> std::fmt::Display for PcgNode<'_, T> {
     }
 }
 
-impl<'tcx, P: PcgNodeComponent> LocalNode<'tcx, P> {
+impl<P: PcgNodeComponent> LocalNode<'_, P> {
     pub fn as_current_place(self) -> Option<P> {
         match self {
             LocalNode::Place(MaybeLabelledPlace::Current(place)) => Some(place),
@@ -339,7 +339,7 @@ impl<'tcx, P: Copy> PcgNodeWithPlace<'tcx, P> {
     }
 }
 
-impl<'tcx, T: Copy, U> PcgNode<'tcx, T, U> {
+impl<T: Copy, U> PcgNode<'_, T, U> {
     pub(crate) fn as_place(&self) -> Option<T> {
         match self {
             PcgNode::Place(p) => Some(*p),

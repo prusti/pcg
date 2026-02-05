@@ -218,9 +218,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     }
                 }
             }
-            let parent = match current.parent_place() {
-                Some(parent) => parent,
-                None => break,
+            let Some(parent) = current.parent_place() else {
+                break;
             };
             prev = Some(current);
             current = parent;

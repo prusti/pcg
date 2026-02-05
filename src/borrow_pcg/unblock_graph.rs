@@ -32,7 +32,7 @@ pub struct BorrowPcgUnblockAction<'tcx, Edge = BorrowPcgEdge<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
+impl<Edge> BorrowPcgUnblockAction<'_, Edge> {
     pub fn new(edge: Edge) -> Self {
         Self {
             edge,

@@ -201,7 +201,7 @@ pub type LoopCoupledEdgeKind<'tcx, P = Place<'tcx>> = CoupledEdgeKind<
     LoopAbstractionOutput<'tcx, P>,
 >;
 
-impl<'tcx, Ctxt: Copy + DebugCtxt> HasValidityCheck<Ctxt> for PcgCoupledEdgeKind<'tcx> {
+impl<Ctxt: Copy + DebugCtxt> HasValidityCheck<Ctxt> for PcgCoupledEdgeKind<'_> {
     fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         todo!()
     }

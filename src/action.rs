@@ -58,7 +58,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for App
 
 pub(crate) type AppliedActions<'tcx> = PcgActions<'tcx, AppliedAction<'tcx>>;
 
-impl<'tcx> Default for AppliedActions<'tcx> {
+impl Default for AppliedActions<'_> {
     fn default() -> Self {
         Self {
             actions: vec![],

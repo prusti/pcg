@@ -252,7 +252,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Lab
     }
 }
 
-impl<'tcx, P: PcgNodeComponent> LabelledPlace<'tcx, P> {
+impl<P: PcgNodeComponent> LabelledPlace<'_, P> {
     pub fn new<T: Into<SnapshotLocation>>(place: P, at: T) -> Self {
         LabelledPlace {
             place,

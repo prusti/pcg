@@ -124,9 +124,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
         Self(FunctionCallOrLoop::Loop(edges))
     }
     pub(crate) fn edges(&self) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
-        fn for_function_call<'tcx>(
-            data: FunctionCoupledEdges<'tcx>,
-        ) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
+        fn for_function_call(data: FunctionCoupledEdges<'_>) -> HashSet<PcgCoupledEdgeKind<'_>> {
             data.edges
                 .0
                 .into_iter()
@@ -138,7 +136,7 @@ impl<'tcx> PcgCoupledEdges<'tcx> {
                 })
                 .collect()
         }
-        fn for_loop<'tcx>(data: LoopCoupledEdges<'tcx>) -> HashSet<PcgCoupledEdgeKind<'tcx>> {
+        fn for_loop(data: LoopCoupledEdges<'_>) -> HashSet<PcgCoupledEdgeKind<'_>> {
             data.edges
                 .0
                 .into_iter()

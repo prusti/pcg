@@ -416,9 +416,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         created_location: Location,
     ) -> Result<(), PcgError> {
-        let borrow = match self.pcg.borrow.graph().borrow_created_at(created_location) {
-            Some(borrow) => borrow,
-            None => return Ok(()),
+        let Some(borrow) = self.pcg.borrow.graph().borrow_created_at(created_location) else {
+            return Ok(());
         };
         tracing::debug!(
             "activate twophase borrow: {}",

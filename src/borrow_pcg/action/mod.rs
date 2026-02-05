@@ -225,7 +225,7 @@ pub struct LabelPlaceAction<'tcx, P = Place<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, P> LabelPlaceAction<'tcx, P> {
+impl<P> LabelPlaceAction<'_, P> {
     pub(crate) fn new(place: P, location: SnapshotLocation, reason: LabelPlaceReason) -> Self {
         Self {
             place,

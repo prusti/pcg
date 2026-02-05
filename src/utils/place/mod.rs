@@ -60,7 +60,7 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
-impl<'tcx> Sealed for Place<'tcx> {}
+impl Sealed for Place<'_> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
@@ -111,7 +111,7 @@ pub trait PrefixRelation {
     fn is_strict_prefix_of(self, other: Self) -> bool;
 }
 
-impl<'tcx> PrefixRelation for Place<'tcx> {
+impl PrefixRelation for Place<'_> {
     fn is_prefix_of(self, other: Self) -> bool {
         self.is_prefix_of(other)
     }

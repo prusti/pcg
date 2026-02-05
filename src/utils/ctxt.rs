@@ -32,17 +32,17 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
     pub(crate) borrow_checker: T,
 }
 
-impl<'a, 'tcx, T> Sealed for CompilerCtxt<'a, 'tcx, T> {}
+impl<T> Sealed for CompilerCtxt<'_, '_, T> {}
 
-impl<'a, 'tcx, 'bc, BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
-    for CompilerCtxt<'a, 'tcx, &'bc BC>
+impl<BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
+    for CompilerCtxt<'_, '_, &BC>
 {
     fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
         self.borrow_checker.override_region_debug_string(region)
     }
 }
 
-impl<'a, 'tcx> OverrideRegionDebugString for CompilerCtxt<'a, 'tcx, ()> {
+impl OverrideRegionDebugString for CompilerCtxt<'_, '_, ()> {
     fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
         None
     }
@@ -67,7 +67,7 @@ where
     }
 }
 
-impl<'a, 'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'a, 'tcx, T> {
+impl<'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'_, 'tcx, T> {
     fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }

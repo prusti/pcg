@@ -38,7 +38,7 @@ pub enum MaybeLabelledPlace<'tcx, P = Place<'tcx>> {
     Labelled(LabelledPlace<'tcx, P>),
 }
 
-impl<'tcx, P> crate::Sealed for MaybeLabelledPlace<'tcx, P> {}
+impl<P> crate::Sealed for MaybeLabelledPlace<'_, P> {}
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPlace<'tcx, P> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
@@ -46,7 +46,7 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeLabelledPla
     }
 }
 
-impl<'tcx, P: Copy> MaybeLabelledPlace<'tcx, P> {
+impl<P: Copy> MaybeLabelledPlace<'_, P> {
     pub(crate) fn place(self) -> P {
         match self {
             MaybeLabelledPlace::Current(place) => place,
@@ -213,9 +213,7 @@ impl<'tcx, P: Copy> HasPlace<'tcx, P> for MaybeLabelledPlace<'tcx, P> {
     }
 }
 
-impl<'tcx, Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
-    for MaybeLabelledPlace<'tcx, P>
-{
+impl<Ctxt, P: Copy + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for MaybeLabelledPlace<'_, P> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let location_part = if let Some(location) = self.location() {
             DisplayOutput::Seq(vec![

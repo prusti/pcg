@@ -207,7 +207,7 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
-impl<'tcx, T> crate::Sealed for PlaceOrConst<'tcx, T> {}
+impl<T> crate::Sealed for PlaceOrConst<'_, T> {}
 
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx, Place<'tcx>> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, Place<'tcx>> {
@@ -245,7 +245,7 @@ impl<'tcx, P: PcgNodeComponent> PcgLifetimeProjectionBaseLike<'tcx, P>
     }
 }
 
-impl<'tcx> From<RemotePlace> for PlaceOrConst<'tcx, RemotePlace> {
+impl From<RemotePlace> for PlaceOrConst<'_, RemotePlace> {
     fn from(place: RemotePlace) -> Self {
         PlaceOrConst::Place(place)
     }
@@ -302,7 +302,7 @@ impl<'tcx> From<Place<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>> {
     }
 }
 
-impl<'tcx, T> PlaceOrConst<'tcx, T> {
+impl<T> PlaceOrConst<'_, T> {
     pub(crate) fn expect_place(self) -> T {
         match self {
             PlaceOrConst::Place(p) => p,
@@ -423,7 +423,7 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> {
     phantom: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, Base> crate::Sealed for LifetimeProjection<'tcx, Base> {}
+impl<Base> crate::Sealed for LifetimeProjection<'_, Base> {}
 
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;
@@ -898,7 +898,7 @@ impl<
     }
 }
 
-impl<'tcx, T> LifetimeProjection<'tcx, T> {
+impl<T> LifetimeProjection<'_, T> {
     pub(crate) fn from_index(base: T, region_idx: RegionIdx) -> Self {
         Self {
             base,

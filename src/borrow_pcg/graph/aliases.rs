@@ -76,14 +76,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 if !alias.exact_alias {
                     continue;
                 }
-                let local_node = if let Some(local_node) = alias.node.try_to_local_node(ctxt) {
-                    local_node
-                } else {
+                let Some(local_node) = alias.node.try_to_local_node(ctxt) else {
                     continue;
                 };
-                let local_node = if let Ok(n) = local_node.project_deeper(proj, ctxt) {
-                    n
-                } else {
+                let Ok(local_node) = local_node.project_deeper(proj, ctxt) else {
                     continue;
                 };
                 results.extend(self.direct_aliases(

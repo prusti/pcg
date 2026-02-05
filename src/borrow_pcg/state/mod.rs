@@ -103,8 +103,8 @@ pub struct BorrowsState<
     pub(crate) validity_conditions: &'a VC,
 }
 
-impl<'a, 'tcx, EdgeKind: PartialEq + Eq + std::hash::Hash, VC: ValidityConditionsLike> Default
-    for BorrowsState<'a, 'tcx, EdgeKind, VC>
+impl<EdgeKind: PartialEq + Eq + std::hash::Hash, VC: ValidityConditionsLike> Default
+    for BorrowsState<'_, '_, EdgeKind, VC>
 {
     fn default() -> Self {
         Self {
@@ -159,13 +159,13 @@ impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
     }
 }
 
-impl<'pcg, 'tcx, EdgeKind, VC> Clone for BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
+impl<EdgeKind, VC> Clone for BorrowStateRef<'_, '_, EdgeKind, VC> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'pcg, 'tcx, EdgeKind, VC> Copy for BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {}
+impl<EdgeKind, VC> Copy for BorrowStateRef<'_, '_, EdgeKind, VC> {}
 
 pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions>
 {
@@ -354,8 +354,8 @@ impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> 
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsStateLike<'tcx, EdgeKind, VC>
-    for BorrowsState<'a, 'tcx, EdgeKind, VC>
+impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsStateLike<'tcx, EdgeKind, VC>
+    for BorrowsState<'_, 'tcx, EdgeKind, VC>
 {
     fn as_mut_ref(&mut self) -> BorrowStateMutRef<'_, 'tcx, EdgeKind, VC> {
         BorrowStateMutRef::new(&mut self.graph, self.validity_conditions)
@@ -394,7 +394,7 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
     }
 }
 
-impl<'a, 'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'a, 'tcx, EdgeKind, VC> {}
+impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
     fn introduce_initial_borrows<C: CapabilityLike>(

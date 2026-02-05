@@ -49,9 +49,7 @@ pub struct FrozenGraphRef<
     roots_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
 }
 
-impl<'graph, 'tcx, P: PcgNodeComponent, VC>
-    FrozenGraphRef<'graph, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC>
-{
+impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC> {
     pub(crate) fn is_leaf<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,
         node: LocalNode<'tcx, P>,
