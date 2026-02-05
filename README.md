@@ -39,6 +39,10 @@ The `pcg-bin` folder contains a binary can be used to run the PCG analysis on
 all functions within a Rust source file and (optionally) produce visualizations
 of the analysis outputs that can be viewed via a web interface.
 
+First, ensure that you are in the `pcg-bin` folder:
+
+`cd pcg-bin`
+
 To run the binary on all functions in a Rust source file:
 
 `cargo run [FILENAME].rs`
@@ -48,7 +52,7 @@ variable to `true` when running the `pcg-bin`, e.g.:
 
 `PCG_VISUALIZATION=true cargo run [FILENAME.rs]`
 
-To view the output, you need to run the visualization server, by running:
+To view the output, you need to run the visualization server, by running the following commands (from the base directory of the repository).
 
 `cd visualization && ./serve`
 
