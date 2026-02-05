@@ -10,6 +10,7 @@ may already be stabilized */
 #![deny(clippy::all)]
 #![deny(clippy::manual_let_else)]
 #![deny(clippy::elidable_lifetime_names)]
+#![deny(clippy::match_same_arms)]
 // #![deny(clippy::pedantic)]
 #![allow(stable_features)]
 #![feature(trait_alias)]
