@@ -44,7 +44,6 @@ fn get_function_call_data<'a, 'tcx: 'a>(
             ctxt.ctxt().def_id(),
             call_span,
         )),
-        ty::TyKind::FnPtr(..) => None,
         _ => None,
     }
 }

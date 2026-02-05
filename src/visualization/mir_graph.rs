@@ -87,9 +87,9 @@ struct MirEdge {
 
 fn format_bin_op(op: &BinOp) -> &'static str {
     match op {
-        BinOp::Add => "+",
-        BinOp::Sub => "-",
-        BinOp::Mul => "*",
+        BinOp::Add | BinOp::AddWithOverflow => "+",
+        BinOp::Sub | BinOp::SubWithOverflow => "-",
+        BinOp::Mul | BinOp::MulWithOverflow => "*",
         BinOp::Div => "/",
         BinOp::Rem => "%",
         BinOp::AddUnchecked => todo!(),
@@ -98,10 +98,8 @@ fn format_bin_op(op: &BinOp) -> &'static str {
         BinOp::BitXor => "^",
         BinOp::BitAnd => "&",
         BinOp::BitOr => "|",
-        BinOp::Shl => "<<",
-        BinOp::ShlUnchecked => "<<",
-        BinOp::Shr => ">>",
-        BinOp::ShrUnchecked => ">>",
+        BinOp::Shl | BinOp::ShlUnchecked => "<<",
+        BinOp::Shr | BinOp::ShrUnchecked => ">>",
         BinOp::Eq => "==",
         BinOp::Lt => "<",
         BinOp::Le => "<=",
@@ -110,9 +108,6 @@ fn format_bin_op(op: &BinOp) -> &'static str {
         BinOp::Gt => ">",
         BinOp::Offset => todo!(),
         BinOp::Cmp => todo!(),
-        BinOp::AddWithOverflow => "+",
-        BinOp::SubWithOverflow => "-",
-        BinOp::MulWithOverflow => "*",
     }
 }
 
@@ -411,10 +406,9 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     label: Cow::Borrowed("otherwise"),
                 });
             }
-            TerminatorKind::UnwindResume => {}
+            TerminatorKind::UnwindResume | TerminatorKind::Return | TerminatorKind::Unreachable => {
+            }
             TerminatorKind::UnwindTerminate(_) => todo!(),
-            TerminatorKind::Return => {}
-            TerminatorKind::Unreachable => {}
             TerminatorKind::Drop { target, .. } => {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
@@ -485,14 +479,8 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             TerminatorKind::FalseEdge {
                 real_target,
                 imaginary_target: _,
-            } => {
-                edges.push(MirEdge {
-                    source: format!("{bb:?}"),
-                    target: format!("{real_target:?}"),
-                    label: Cow::Borrowed("real"),
-                });
             }
-            TerminatorKind::FalseUnwind {
+            | TerminatorKind::FalseUnwind {
                 real_target,
                 unwind: _,
             } => {

@@ -160,9 +160,8 @@ impl ObtainType {
         'tcx: 'a,
     {
         match self {
-            ObtainType::ForStorageDead => true,
+            ObtainType::ForStorageDead | ObtainType::TwoPhaseExpand => true,
             ObtainType::Capability(cap) => !cap.is_read(),
-            ObtainType::TwoPhaseExpand => true,
             ObtainType::LoopInvariant { .. } => rp.base.is_mutable(ctxt),
         }
     }

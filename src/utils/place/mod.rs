@@ -439,8 +439,7 @@ impl<'tcx> Place<'tcx> {
                 return true;
             }
             let field_tys: Vec<Ty<'tcx>> = match ty.kind() {
-                TyKind::Array(ty, _) => vec![*ty],
-                TyKind::Slice(ty) => vec![*ty],
+                TyKind::Array(ty, _) | TyKind::Slice(ty) | TyKind::Ref(_, ty, _) => vec![*ty],
                 TyKind::Adt(def, substs) => {
                     if ty.is_box() {
                         vec![substs.first().unwrap().expect_ty()]
@@ -457,12 +456,11 @@ impl<'tcx> Place<'tcx> {
                 TyKind::Coroutine(_, _) | TyKind::CoroutineClosure(_, _) | TyKind::FnDef(_, _) => {
                     vec![]
                 }
-                TyKind::Ref(_, ty, _) => vec![*ty],
-                TyKind::Alias(_, _) => vec![],
-                TyKind::Dynamic(_, _, _) => vec![],
-                TyKind::Param(_) => vec![],
-                TyKind::Bound(_, _) => vec![],
-                TyKind::CoroutineWitness(_, _) => vec![],
+                TyKind::Alias(_, _)
+                | TyKind::Dynamic(_, _, _)
+                | TyKind::Param(_)
+                | TyKind::Bound(_, _)
+                | TyKind::CoroutineWitness(_, _) => vec![],
                 TyKind::Bool => todo!(),
                 TyKind::Int(_) => todo!(),
                 TyKind::Uint(_) => todo!(),

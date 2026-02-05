@@ -316,10 +316,7 @@ impl<'tcx> Place<'tcx> {
                 }
 
                 ProjectionElem::Index(idx) => (ElemPosition::Suffix, format!("[{idx:?}]").into()),
-                ProjectionElem::ConstantIndex { .. } => {
-                    (ElemPosition::Suffix, format!("[{elem:?}]").into())
-                }
-                ProjectionElem::Subslice { .. } => {
+                ProjectionElem::ConstantIndex { .. } | ProjectionElem::Subslice { .. } => {
                     (ElemPosition::Suffix, format!("[{elem:?}]").into())
                 }
                 kind => unimplemented!("{kind:?}"),

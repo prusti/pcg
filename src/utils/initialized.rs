@@ -44,8 +44,8 @@ impl<'a, 'tcx> DefinitelyInitialized<'a, 'tcx> {
         place: Place<'tcx>,
     ) -> bool {
         let idx = match self.move_data.rev_lookup.find(place.into()) {
-            LookupResult::Exact(move_path_index) => move_path_index,
-            LookupResult::Parent(Some(move_path_index)) => move_path_index,
+            LookupResult::Exact(move_path_index)
+            | LookupResult::Parent(Some(move_path_index)) => move_path_index,
             LookupResult::Parent(None) => return false,
         };
         let mut cursor = self.cursor.borrow_mut();

@@ -474,22 +474,17 @@ impl PartialOrd for CapabilityKind {
             return Some(Ordering::Equal);
         }
         match (*self, *other) {
-            // Exclusive is greater than everything below it
-            (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive) => {
-                Some(Ordering::Greater)
-            }
-            (CapabilityKind::ShallowExclusive, CapabilityKind::Exclusive) => Some(Ordering::Less),
+            // Greater relationships
+            (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive)
+            | (CapabilityKind::ShallowExclusive, CapabilityKind::Write)
+            | (CapabilityKind::Exclusive, CapabilityKind::Write)
+            | (CapabilityKind::Exclusive, CapabilityKind::Read) => Some(Ordering::Greater),
 
-            // ShallowExclusive > Write
-            (CapabilityKind::ShallowExclusive, CapabilityKind::Write) => Some(Ordering::Greater),
-            (CapabilityKind::Write, CapabilityKind::ShallowExclusive) => Some(Ordering::Less),
-
-            // Transitive relationships through ShallowExclusive
-            (CapabilityKind::Exclusive, CapabilityKind::Write) => Some(Ordering::Greater),
-            (CapabilityKind::Write, CapabilityKind::Exclusive) => Some(Ordering::Less),
-
-            (CapabilityKind::Exclusive, CapabilityKind::Read) => Some(Ordering::Greater),
-            (CapabilityKind::Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
+            // Less relationships (inverses of the above)
+            (CapabilityKind::ShallowExclusive, CapabilityKind::Exclusive)
+            | (CapabilityKind::Write, CapabilityKind::ShallowExclusive)
+            | (CapabilityKind::Write, CapabilityKind::Exclusive)
+            | (CapabilityKind::Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
 
             // All other pairs are incomparable
             _ => None,
@@ -534,8 +529,7 @@ impl CapabilityKind {
     pub fn minimum(self, other: Self) -> Option<Self> {
         match self.partial_cmp(&other) {
             Some(Ordering::Greater) => Some(other),
-            Some(Ordering::Less) => Some(self),
-            Some(Ordering::Equal) => Some(self),
+            Some(Ordering::Less) | Some(Ordering::Equal) => Some(self),
             None => None,
         }
     }

@@ -216,19 +216,19 @@ pub(crate) enum GraphEdge<'a> {
 impl<'a> GraphEdge<'a> {
     pub(crate) fn validity_conditions(&self) -> Option<&'a ValidityConditions> {
         match self {
-            GraphEdge::Projection { .. } => None,
-            GraphEdge::Alias { .. } => None,
             GraphEdge::Borrow {
                 validity_conditions,
                 ..
-            } => Some(validity_conditions),
-            GraphEdge::DerefExpansion {
+            }
+            | GraphEdge::DerefExpansion {
                 validity_conditions,
                 ..
             } => Some(validity_conditions),
-            GraphEdge::Abstract { .. } => None,
-            GraphEdge::BorrowFlow { .. } => None,
-            GraphEdge::Coupled { .. } => None,
+            GraphEdge::Projection { .. }
+            | GraphEdge::Alias { .. }
+            | GraphEdge::Abstract { .. }
+            | GraphEdge::BorrowFlow { .. }
+            | GraphEdge::Coupled { .. } => None,
         }
     }
     pub(super) fn to_dot_edge<'tcx: 'a>(

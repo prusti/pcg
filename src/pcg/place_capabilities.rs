@@ -338,8 +338,7 @@ impl BlockType {
         match self {
             BlockType::DerefSharedRef => Some(CapabilityKind::Exclusive),
             BlockType::DerefMutRefForExclusive => Some(CapabilityKind::Write),
-            BlockType::DerefMutRefUnderSharedRef => Some(CapabilityKind::Read),
-            BlockType::Read => Some(CapabilityKind::Read),
+            BlockType::DerefMutRefUnderSharedRef | BlockType::Read => Some(CapabilityKind::Read),
             BlockType::Other => None,
         }
     }
@@ -350,11 +349,11 @@ impl BlockType {
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> CapabilityKind {
         match self {
-            BlockType::DerefMutRefUnderSharedRef => CapabilityKind::Read,
+            BlockType::DerefMutRefUnderSharedRef
+            | BlockType::Read
+            | BlockType::DerefSharedRef => CapabilityKind::Read,
             BlockType::DerefMutRefForExclusive => CapabilityKind::Exclusive,
-            BlockType::Read => CapabilityKind::Read,
             BlockType::Other => blocked_capability,
-            BlockType::DerefSharedRef => CapabilityKind::Read,
         }
     }
 }

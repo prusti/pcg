@@ -184,10 +184,10 @@ pub enum PlaceUsageType {
 impl Ord for PlaceUsageType {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
-            (PlaceUsageType::Read, PlaceUsageType::Read) => std::cmp::Ordering::Equal,
+            (PlaceUsageType::Read, PlaceUsageType::Read)
+            | (PlaceUsageType::Mutate, PlaceUsageType::Mutate) => std::cmp::Ordering::Equal,
             (PlaceUsageType::Read, PlaceUsageType::Mutate) => std::cmp::Ordering::Less,
             (PlaceUsageType::Mutate, PlaceUsageType::Read) => std::cmp::Ordering::Greater,
-            (PlaceUsageType::Mutate, PlaceUsageType::Mutate) => std::cmp::Ordering::Equal,
         }
     }
 }
@@ -322,14 +322,14 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
         _location: mir::Location,
     ) -> Result<(), crate::error::PcgError> {
         match context {
-            PlaceContext::MutatingUse(MutatingUseContext::Projection) => {}
+            PlaceContext::MutatingUse(MutatingUseContext::Projection) | PlaceContext::NonUse(_) => {
+            }
             PlaceContext::MutatingUse(_) => {
                 let _ = self.used_places.update(place, PlaceUsageType::Mutate);
             }
             PlaceContext::NonMutatingUse(_) => {
                 let _ = self.used_places.update(place, PlaceUsageType::Read);
             }
-            PlaceContext::NonUse(_) => {}
         }
         Ok(())
     }
