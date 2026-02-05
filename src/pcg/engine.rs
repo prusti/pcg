@@ -140,8 +140,9 @@ pub(crate) fn edges_to_analyze<'tcx, 'mir>(
                 TerminatorEdges::None
             }
         }
-        mir::TerminatorKind::Assert { target, .. }
-        | mir::TerminatorKind::Drop { target, .. } => TerminatorEdges::Single(*target),
+        mir::TerminatorKind::Assert { target, .. } | mir::TerminatorKind::Drop { target, .. } => {
+            TerminatorEdges::Single(*target)
+        }
         _ => terminator.edges(),
     }
 }

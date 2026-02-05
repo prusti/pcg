@@ -349,9 +349,9 @@ impl BlockType {
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> CapabilityKind {
         match self {
-            BlockType::DerefMutRefUnderSharedRef
-            | BlockType::Read
-            | BlockType::DerefSharedRef => CapabilityKind::Read,
+            BlockType::DerefMutRefUnderSharedRef | BlockType::Read | BlockType::DerefSharedRef => {
+                CapabilityKind::Read
+            }
             BlockType::DerefMutRefForExclusive => CapabilityKind::Exclusive,
             BlockType::Other => blocked_capability,
         }
