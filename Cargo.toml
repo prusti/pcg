@@ -13,6 +13,7 @@ default = ["visualization"]
 
 [dependencies]
 pcg-macros = { path = "pcg-macros" }
+bytes = "1.11.1" # Earlier versions have security issues
 bit-set = "0.8.0"
 bumpalo = {version = "3.16.0", features = ["allocator_api"]}
 derive_more = { version = "2.0.1", features = ["full"] }
