@@ -304,7 +304,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugStr
     }
 }
 
-impl<'tcx, P: Copy + PartialEq + PrefixRelation> LabelNodePredicate<'tcx, P> {
+impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
     pub(crate) fn applies_to(
         &self,
         candidate: PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>,

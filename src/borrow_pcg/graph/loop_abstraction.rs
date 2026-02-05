@@ -16,7 +16,6 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
-    owned_pcg::RepackOp,
     pcg::{
         CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
@@ -504,24 +503,12 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                         self.ctxt,
                     );
                 }
-                BorrowPcgActionKind::Weaken(_) => todo!(),
-                BorrowPcgActionKind::Restore(_) => todo!(),
-                BorrowPcgActionKind::LabelPlace(_) => todo!(),
                 BorrowPcgActionKind::RemoveEdge(borrow_pcg_edge) => {
                     self.graph.remove(borrow_pcg_edge.kind());
                 }
+                _ => unreachable!(),
             },
-            PcgAction::Owned(action) => match action.kind {
-                RepackOp::StorageDead(_) => todo!(),
-                RepackOp::IgnoreStorageDead(_) => todo!(),
-                RepackOp::Weaken(..) => todo!(),
-                RepackOp::Expand(_repack_expand) => {
-                    unreachable!()
-                }
-                RepackOp::Collapse(_) => todo!(),
-                RepackOp::DerefShallowInit(_, _) => todo!(),
-                RepackOp::RegainLoanedCapability(_) => todo!(),
-            },
+            _ => unreachable!(),
         };
         Ok(())
     }

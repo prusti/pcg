@@ -5,7 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    borrow_pcg::{
+        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
+        state::BorrowsStateLike,
+    },
     error::PcgError,
     owned_pcg::{
         ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
@@ -14,7 +17,7 @@ use crate::{
     pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -27,6 +30,7 @@ use crate::{
 };
 
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
+    #[tracing::instrument(skip(self, other, ctxt), fields(self.block = ?self.block, other.block = ?other.block), level = "warn")]
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
@@ -51,6 +55,13 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 self_allocated.join(other_allocated, ctxt)
             }
             (OwnedPcgLocal::Allocated(expansions), OwnedPcgLocal::Unallocated) => {
+                self.borrows.label_place_and_update_related_capabilities(
+                    expansions.local.into(),
+                    LabelPlaceReason::StorageDead,
+                    &SetLabel(SnapshotLocation::before_block(self.block)),
+                    self.capabilities,
+                    ctxt,
+                );
                 let mut repacks = vec![];
                 for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
                     if k.expect_concrete() > CapabilityKind::Write {
@@ -72,12 +83,15 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 *self.owned = OwnedPcgLocal::Unallocated;
                 Ok(repacks)
             }
-            // A bit of an unusual case, should happen only when we
-            // "allocated" a local to allow it to immediately be
-            // StorageDead-ed. In this case we should ignore the SD.
-            // assert_eq!(cps[&cps.get_local().into()], CapabilityKind::Write);
             (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Allocated(expansions)) => {
-                Ok(vec![RepackOp::IgnoreStorageDead(expansions.local)])
+                other.borrows.label_place_and_update_related_capabilities(
+                    expansions.local.into(),
+                    LabelPlaceReason::StorageDead,
+                    &SetLabel(SnapshotLocation::before_block(self.block)),
+                    other.capabilities,
+                    ctxt,
+                );
+                Ok(vec![])
             }
         }
     }

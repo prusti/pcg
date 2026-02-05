@@ -11,12 +11,18 @@ use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::EarlyDiagCtxt;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
 use pcg::utils::{GLOBAL_SETTINGS, SETTINGS};
+use tracing_subscriber::EnvFilter;
 
 use crate::callbacks::PcgAsRustcCallbacks;
 
 fn init_tracing() {
+    let default = "warn,pcg[debug_ctxt]=info";
+
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(default));
+
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter(filter)
         .with_writer(std::io::stderr)
         .init();
 }

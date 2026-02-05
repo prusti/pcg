@@ -11,7 +11,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike,
+        CapabilityKind, CapabilityLike, SymbolicCapability,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -132,6 +132,18 @@ pub(crate) trait PcgRefLike<'tcx> {
         self.as_ref().borrow.graph
     }
 
+    fn place_capability_equals(
+        &self,
+        place: Place<'tcx>,
+        capability: impl Into<SymbolicCapability>,
+    ) -> bool {
+        self.as_ref()
+            .capabilities
+            .get(place, ())
+            .map(|c| c == capability.into())
+            .unwrap_or(false)
+    }
+
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.borrows_graph().frozen_graph().is_acyclic(ctxt)
     }
@@ -190,8 +202,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
         self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
             .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
+
         if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
             return Err("PCG is not acyclic".to_owned());
+        }
+
+        for local in self.owned.unallocated_locals() {
+            if self.borrow.graph.contains(local, ctxt) {
+                return Err(format!(
+                    "Unallocated local {} is in the borrow graph",
+                    local.display_string(ctxt)
+                ));
+            }
         }
 
         for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {
@@ -391,7 +413,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut self.capabilities,
             owned: &mut self.owned,
         };
-        self.borrow.join(&other.borrow, borrow_args, ctxt)?;
+        self.borrow.join(&other_borrows, borrow_args, ctxt)?;
         Ok(repack_ops)
     }
 

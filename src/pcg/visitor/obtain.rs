@@ -1,5 +1,6 @@
 use crate::{
-    action::{AppliedAction, BorrowPcgAction, PcgAction},
+    Weaken,
+    action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
@@ -25,6 +26,7 @@ use crate::{
             SymbolicPlaceCapabilities,
         },
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
@@ -512,6 +514,15 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     )?;
                     ApplyActionResult::changed_no_display()
                 }
+                RepackOp::Weaken(weaken) => {
+                    pcg_validity_assert!(
+                        self.pcg.place_capability_equals(weaken.place, weaken.from)
+                    );
+                    self.pcg
+                        .capabilities
+                        .insert(weaken.place, weaken.to, analysis_ctxt);
+                    ApplyActionResult::changed_no_display()
+                }
                 _ => unreachable!(),
             },
         };
@@ -687,6 +698,21 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
 
         self.expand_to(place, obtain_type, self.ctxt)?;
+
+        if let ObtainType::ForStorageDead = obtain_type
+            && self
+                .pcg
+                .place_capability_equals(place, CapabilityKind::Exclusive)
+        {
+            self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
+                RepackOp::Weaken(Weaken::new(
+                    place,
+                    CapabilityKind::Exclusive,
+                    CapabilityKind::Write,
+                )),
+                None,
+            )))?;
+        }
 
         self.render_debug_graph(None, "after step 5");
 

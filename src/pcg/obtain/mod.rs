@@ -85,6 +85,7 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObtainType {
+    ForStorageDead,
     Capability(CapabilityKind),
     TwoPhaseExpand,
     LoopInvariant {
@@ -131,6 +132,7 @@ impl ObtainType {
         'tcx: 'a,
     {
         match self {
+            ObtainType::ForStorageDead => CapabilityKind::Write,
             ObtainType::Capability(cap) => cap,
             ObtainType::TwoPhaseExpand => CapabilityKind::Read,
             ObtainType::LoopInvariant {
@@ -158,6 +160,7 @@ impl ObtainType {
         'tcx: 'a,
     {
         match self {
+            ObtainType::ForStorageDead => true,
             ObtainType::Capability(cap) => !cap.is_read(),
             ObtainType::TwoPhaseExpand => true,
             ObtainType::LoopInvariant { .. } => rp.base.is_mutable(ctxt),
