@@ -159,7 +159,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         let location = self.location();
         match object {
             AnalysisObject::Statement(statement) => {
-                self.visit_statement_fallable(statement, location)?
+                self.visit_statement_fallable(statement, location)?;
             }
             AnalysisObject::Terminator(terminator) => {
                 self.visit_terminator_fallable(terminator, location)?;

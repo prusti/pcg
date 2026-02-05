@@ -85,7 +85,7 @@ struct MirEdge {
     label: Cow<'static, str>,
 }
 
-fn format_bin_op(op: &BinOp) -> &'static str {
+fn format_bin_op(op: BinOp) -> &'static str {
     match op {
         BinOp::Add | BinOp::AddWithOverflow => "+",
         BinOp::Sub | BinOp::SubWithOverflow => "-",
@@ -111,8 +111,8 @@ fn format_bin_op(op: &BinOp) -> &'static str {
     }
 }
 
-fn format_local<'tcx>(local: &Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
-    let place: Place<'tcx> = (*local).into();
+fn format_local<'tcx>(local: Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    let place: Place<'tcx> = local.into();
     place.display_string(ctxt)
 }
 
@@ -131,7 +131,7 @@ fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -
 
 #[rustversion::since(2025-03-02)]
 fn format_raw_ptr<'tcx>(
-    kind: &RawPtrKind,
+    kind: RawPtrKind,
     place: &mir::Place<'tcx>,
     ctxt: CompilerCtxt<'_, 'tcx>,
 ) -> String {
@@ -169,7 +169,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             };
             format!("&{} {}", kind, format_place(place, ctxt))
         }
-        Rvalue::RawPtr(kind, place) => format_raw_ptr(kind, place, ctxt),
+        Rvalue::RawPtr(kind, place) => format_raw_ptr(*kind, place, ctxt),
         Rvalue::ThreadLocalRef(_) => todo!(),
         Rvalue::Len(x) => format!("len({})", format_place(x, ctxt)),
         Rvalue::Cast(_, operand, ty) => format!("{} as {}", format_operand(operand, ctxt), ty),
@@ -177,7 +177,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             format!(
                 "{} {} {}",
                 format_operand(lhs, ctxt),
-                format_bin_op(op),
+                format_bin_op(*op),
                 format_operand(rhs, ctxt)
             )
         }
@@ -262,10 +262,10 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
         ),
         mir::StatementKind::Deinit(_) => todo!(),
         mir::StatementKind::StorageLive(local) => {
-            format!("StorageLive({})", format_local(local, ctxt))
+            format!("StorageLive({})", format_local(*local, ctxt))
         }
         mir::StatementKind::StorageDead(local) => {
-            format!("StorageDead({})", format_local(local, ctxt))
+            format!("StorageDead({})", format_local(*local, ctxt))
         }
         mir::StatementKind::Retag(_, _) => todo!(),
         mir::StatementKind::PlaceMention(place) => {

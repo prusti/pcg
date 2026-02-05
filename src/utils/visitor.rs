@@ -118,7 +118,7 @@ pub(crate) trait FallableVisitor<'tcx> {
             }
             mir::StatementKind::Intrinsic(box intrinsic) => match intrinsic {
                 mir::NonDivergingIntrinsic::Assume(op) => {
-                    self.visit_operand_fallable(op, location)?
+                    self.visit_operand_fallable(op, location)?;
                 }
                 mir::NonDivergingIntrinsic::CopyNonOverlapping(copy_info) => {
                     self.visit_operand_fallable(&copy_info.src, location)?;

@@ -262,7 +262,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
         match state {
             PcgDomain::Analysis(DataflowState::Transfer(state)) => {
-                self.visit_all_phases(state, object, &tw, location)?
+                self.visit_all_phases(state, object, &tw, location)?;
             }
             PcgDomain::Results(state) => self.visit_all_phases(state, object, &tw, location)?,
             _ => todo!(),

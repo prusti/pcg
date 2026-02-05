@@ -204,7 +204,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
         location: Location,
     ) {
         self.0
-            .apply_before_terminator_effect(state, terminator, location)
+            .apply_before_terminator_effect(state, terminator, location);
     }
 
     fn apply_call_return_effect(

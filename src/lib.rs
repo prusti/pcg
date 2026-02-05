@@ -11,6 +11,8 @@ may already be stabilized */
 #![deny(clippy::manual_let_else)]
 #![deny(clippy::elidable_lifetime_names)]
 #![deny(clippy::match_same_arms)]
+#![deny(clippy::trivially_copy_pass_by_ref)]
+#![deny(clippy::semicolon_if_nothing_returned)]
 // #![deny(clippy::pedantic)]
 #![allow(stable_features)]
 #![feature(trait_alias)]

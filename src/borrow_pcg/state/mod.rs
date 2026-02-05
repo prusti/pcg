@@ -273,7 +273,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             BorrowPcgActionKind::Restore(restore) => {
                 let restore_place = restore.place();
                 if let Some(cap) = capabilities.get(restore_place, ctxt) {
-                    pcg_validity_assert!(cap.expect_concrete() < restore.capability())
+                    pcg_validity_assert!(cap.expect_concrete() < restore.capability());
                 }
                 if !capabilities.insert(restore_place, restore.capability(), ctxt) {
                     // panic!("Capability should have been updated")
