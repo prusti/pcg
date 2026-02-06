@@ -89,7 +89,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             let action =
                 RepackExpand::new(base_place, other_expansion.guide(), CapabilityKind::Read);
             self.owned
-                .perform_expand_action(action, self.capabilities, ctxt)?;
+                .perform_expand_action(action, self.capabilities, ctxt);
             Ok(JoinDifferentExpansionsResult::ExpandedForRead(action))
         } else if other
             .owned
@@ -171,7 +171,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             );
             let expand_action = RepackExpand::new(place, guide, expand_cap.expect_concrete());
             self.owned
-                .perform_expand_action(expand_action, self.capabilities, ctxt)?;
+                .perform_expand_action(expand_action, self.capabilities, ctxt);
             let mut actions = vec![RepackOp::Expand(expand_action)];
             actions.extend(self.join_all_places_in_expansion(other, expansion, ctxt)?);
             Ok(actions)
@@ -241,19 +241,16 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // The other expansion is a downcast to a variant that is
                 // presumably borrowed or partially-moved (see 206_issue_77.rs).
                 // It won't survive the join, so collapse it.
-                other.owned.collapse(
-                    place,
-                    Some(CapabilityKind::Write),
-                    other.capabilities,
-                    ctxt,
-                )?;
+                other
+                    .owned
+                    .collapse(place, Some(CapabilityKind::Write), other.capabilities, ctxt);
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion)
             } else {
                 // We might as well just expand our place
                 let expand_action =
                     RepackExpand::new(place, other_expansion.guide(), self_cap.expect_concrete());
                 self.owned
-                    .perform_expand_action(expand_action, self.capabilities, ctxt)?;
+                    .perform_expand_action(expand_action, self.capabilities, ctxt);
                 Ok(JoinExpandedPlaceResult::CreatedExpansion(vec![
                     RepackOp::Expand(expand_action),
                 ]))

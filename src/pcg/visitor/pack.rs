@@ -130,7 +130,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         self.restore_capability_to_leaf_places(for_place, self.ctxt)?;
         loop {
             iteration += 1;
-            let edges_to_remove = self.identify_leaf_edges_to_remove(for_place)?;
+            let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
                 break Ok(());
             }
@@ -176,7 +176,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     fn identify_leaf_edges_to_remove<'slf>(
         &'slf mut self,
         ancestor_place: Option<Place<'tcx>>,
-    ) -> Result<EdgesToRemove<'tcx>, PcgError> {
+    ) -> EdgesToRemove<'tcx> {
         enum ShouldKillNode {
             Yes { reason: Cow<'static, str> },
             No,
@@ -299,6 +299,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 edges_to_remove.push(&edge, reason);
             }
         }
-        Ok(edges_to_remove)
+        edges_to_remove
     }
 }

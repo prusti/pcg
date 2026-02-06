@@ -24,8 +24,6 @@ use crate::{
     },
 };
 
-use crate::coupling::CoupleInputError;
-
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
 
@@ -350,9 +348,7 @@ impl<'tcx> FunctionData<'tcx> {
         let shape = self
             .shape(None, tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
-        shape
-            .coupled_edges()
-            .map_err(CoupleAbstractionError::CoupleInput)
+        Ok(shape.coupled_edges())
     }
 }
 
@@ -427,9 +423,7 @@ impl FunctionShape {
         })
     }
 
-    pub fn coupled_edges(
-        &self,
-    ) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
+    pub fn coupled_edges(&self) -> FunctionShapeCoupledEdges {
         CoupledEdgesData::new(self.edges.iter().copied())
     }
 }
@@ -472,7 +466,7 @@ mod tests {
                 AbstractionBlockEdge::new(ry, result),
             ]),
         };
-        let coupled_edges = shape.coupled_edges().unwrap();
+        let coupled_edges = shape.coupled_edges();
         assert_eq!(coupled_edges.len(), 1);
         let edge = &coupled_edges.0[0];
         assert_eq!(edge.inputs(), &[rx, ry]);

@@ -8,7 +8,6 @@ use crate::{
         edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
-    error::PcgError,
     pcg::{CapabilityKind, CapabilityLike, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
@@ -174,7 +173,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         ctxt: Ctxt,
-    ) -> Result<bool, PcgError> {
+    ) -> bool {
         if capability.is_read() || ref_place.is_shared_ref(ctxt.bc_ctxt()) {
             self.insert(
                 ref_place,
@@ -198,7 +197,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
                 ctxt,
             );
         }
-        Ok(true)
+        true
     }
 
     pub(crate) fn update_for_expansion<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
@@ -206,10 +205,10 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         ctxt: Ctxt,
-    ) -> Result<bool, PcgError> {
+    ) -> bool {
         // We dont change if only expanding region projections
         let BorrowPcgExpansion::Place(expansion) = expansion else {
-            return Ok(false);
+            return false;
         };
         let mut changed = false;
         let base = expansion.base;
@@ -219,7 +218,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
             let expanded = block_type.expansion_capability(base.place(), concrete_cap, ctxt);
             SymbolicCapability::Concrete(expanded)
         } else {
-            return Ok(true);
+            return true;
         };
 
         changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
@@ -227,7 +226,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         for p in &expansion.expansion {
             changed |= self.insert(p.place(), expanded_capability, ctxt);
         }
-        Ok(changed)
+        changed
     }
 
     pub(crate) fn update_capabilities_for_block_of_place<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
@@ -368,8 +367,7 @@ where
         capability: C,
         mut borrows: BorrowStateMutRef<'_, 'tcx>,
         ctxt: Ctxt,
-    ) -> Result<(), PcgError>
-    where
+    ) where
         'tcx: 'a,
         C: 'static,
     {
@@ -381,7 +379,6 @@ where
                 ctxt.bc_ctxt(),
             );
         }
-        Ok(())
     }
 
     pub(crate) fn remove_all_for_local(

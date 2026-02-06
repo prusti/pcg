@@ -477,7 +477,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         regained_capability.capability.into(),
                         self.pcg.borrow.as_mut_ref(),
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
@@ -485,7 +485,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         expand,
                         self.pcg.capabilities,
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
@@ -511,7 +511,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         collapse,
                         self.pcg.capabilities,
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {
@@ -760,9 +760,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         block_type: BlockType,
         _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        self.pcg
+        Ok(self.pcg
             .capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt)
+            .update_for_expansion(expansion, block_type, self.ctxt))
     }
 
     fn location(&self) -> mir::Location {
@@ -775,9 +775,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        self.pcg
+        Ok(self.pcg
             .capabilities
-            .update_for_deref(ref_place, capability, self.ctxt)
+            .update_for_deref(ref_place, capability, self.ctxt))
     }
 
     fn capability_for_expand(

@@ -21,7 +21,6 @@ use crate::{
 use itertools::Itertools;
 
 use crate::{
-    error::PcgInternalError,
     owned_pcg::RepackOp,
     pcg::CapabilityKind,
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
@@ -259,12 +258,12 @@ impl<'tcx> LocalExpansions<'tcx> {
         _for_cap: Option<CapabilityKind>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgInternalError>
+    ) -> Vec<RepackOp<'tcx>>
     where
         'tcx: 'a,
     {
         if !self.contains_expansion_from(to) {
-            return Ok(vec![]);
+            return vec![];
         }
         let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
         let ops: Vec<RepackOp<'tcx>> = places_to_collapse
@@ -274,13 +273,12 @@ impl<'tcx> LocalExpansions<'tcx> {
                 actions
                     .into_iter()
                     .map(|action| {
-                        self.perform_collapse_action(action, capabilities, ctxt)
-                            .unwrap();
+                        self.perform_collapse_action(action, capabilities, ctxt);
                         RepackOp::Collapse(action)
                     })
                     .collect::<Vec<_>>()
             })
             .collect();
-        Ok(ops)
+        ops
     }
 }
