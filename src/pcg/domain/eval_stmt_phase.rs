@@ -42,7 +42,7 @@ impl EvalStmtPhase {
         ]
     }
 
-    pub(crate) fn next(&self) -> Option<EvalStmtPhase> {
+    pub(crate) fn next(self) -> Option<EvalStmtPhase> {
         match self {
             EvalStmtPhase::PreOperands => Some(EvalStmtPhase::PostOperands),
             EvalStmtPhase::PostOperands => Some(EvalStmtPhase::PreMain),

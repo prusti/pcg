@@ -32,7 +32,7 @@ pub struct BorrowPcgUnblockAction<'tcx, Edge = BorrowPcgEdge<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, Edge> BorrowPcgUnblockAction<'tcx, Edge> {
+impl<Edge> BorrowPcgUnblockAction<'_, Edge> {
     pub fn new(edge: Edge) -> Self {
         Self {
             edge,
@@ -65,7 +65,7 @@ impl<'tcx, Edge: std::fmt::Debug + Clone + Eq + std::hash::Hash> UnblockGraph<'t
                 edge.blocked_by_nodes(ctxt)
                     .all(|node| edges.iter().all(|e| !e.blocks_node(node.into(), ctxt)))
             };
-            for edge in edges.iter() {
+            for edge in &edges {
                 if should_kill_edge(edge) {
                     actions.push(BorrowPcgUnblockAction::new(edge.clone()));
                     to_keep.remove(edge);
@@ -124,7 +124,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         Ctxt: Copy + HasBorrowCheckerCtxt<'a, 'tcx>,
     >(
         &mut self,
-        edge: Edge,
+        edge: &Edge,
         borrows: &BorrowsState<'a, 'tcx>,
         ctxt: Ctxt,
     ) where
@@ -148,7 +148,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         BorrowPcgEdgeRef<'tcx, 'slf>: EdgeData<'tcx, Ctxt>,
     {
         for edge in borrows.edges_blocking(node, ctxt.bc_ctxt()) {
-            self.kill_edge(edge, borrows, ctxt);
+            self.kill_edge(&edge, borrows, ctxt);
         }
     }
 }

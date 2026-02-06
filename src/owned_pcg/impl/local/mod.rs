@@ -81,7 +81,7 @@ pub(crate) struct ExpandedPlace<'tcx, P = Place<'tcx>> {
     pub(crate) expansion: PlaceExpansion<'tcx>,
 }
 
-impl<'tcx> ExpandedPlace<'tcx> {
+impl ExpandedPlace<'_> {
     pub(crate) fn is_enum_expansion(&self) -> bool {
         self.expansion.is_enum_expansion()
     }
@@ -122,7 +122,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         capabilities: &PlaceCapabilities<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> std::result::Result<(), String> {
-        for expansion in self.expansions.iter() {
+        for expansion in &self.expansions {
             if let Some(CapabilityKind::Write) = capabilities.get(expansion.place, ctxt) {
                 return Err(format!(
                     "Base {} of expansion {:?} has write capability",

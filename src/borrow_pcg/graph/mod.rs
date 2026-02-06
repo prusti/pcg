@@ -54,7 +54,7 @@ pub struct BorrowsGraph<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityC
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, EdgeKind, VC> Default for BorrowsGraph<'tcx, EdgeKind, VC> {
+impl<EdgeKind, VC> Default for BorrowsGraph<'_, EdgeKind, VC> {
     fn default() -> Self {
         Self {
             edges: HashMap::default(),
@@ -79,7 +79,7 @@ where
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         let nodes = self.nodes(ctxt);
-        for node in nodes.iter() {
+        for node in &nodes {
             if let Some(PcgNode::LifetimeProjection(rp)) = node.try_to_local_node(ctxt)
                 && rp.is_future()
                 && rp.base.as_current_place().is_some()
@@ -117,10 +117,10 @@ where
     }
 }
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, VC: Eq> Eq for BorrowsGraph<'tcx, Kind, VC> {}
+impl<Kind: Eq + std::hash::Hash + PartialEq, VC: Eq> Eq for BorrowsGraph<'_, Kind, VC> {}
 
-impl<'tcx, Kind: Eq + std::hash::Hash + PartialEq, VC: PartialEq> PartialEq
-    for BorrowsGraph<'tcx, Kind, VC>
+impl<Kind: Eq + std::hash::Hash + PartialEq, VC: PartialEq> PartialEq
+    for BorrowsGraph<'_, Kind, VC>
 {
     fn eq(&self, other: &Self) -> bool {
         self.edges == other.edges

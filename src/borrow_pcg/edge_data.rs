@@ -144,7 +144,7 @@ where
     }
 }
 
-impl<'graph, 'tcx, Ctxt: Copy> EdgeData<'tcx, Ctxt> for BorrowPcgEdgeRef<'tcx, 'graph>
+impl<'tcx, Ctxt: Copy> EdgeData<'tcx, Ctxt> for BorrowPcgEdgeRef<'tcx, '_>
 where
     BorrowPcgEdgeKind<'tcx>: EdgeData<'tcx, Ctxt>,
 {
@@ -196,7 +196,7 @@ pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     InTargetNodes,
 }
 
-impl<'tcx, P: Copy> LabelNodePredicate<'tcx, P> {
+impl<P: Copy> LabelNodePredicate<'_, P> {
     /// Creates a predicate that matches all future lifetime projections whose base
     /// is a postfix of the given place (and the base is current, not labelled).
     pub(crate) fn all_future_postfixes(place: P) -> Self {
@@ -272,7 +272,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugStr
                 "(".into(),
                 DisplayOutput::join(
                     predicates.iter().map(|p| p.display_output(ctxt, mode)),
-                    " && ".into(),
+                    &" && ".into(),
                 ),
                 ")".into(),
             ]),
@@ -280,7 +280,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugStr
                 "(".into(),
                 DisplayOutput::join(
                     predicates.iter().map(|p| p.display_output(ctxt, mode)),
-                    " || ".into(),
+                    &" || ".into(),
                 ),
                 ")".into(),
             ]),
@@ -402,7 +402,7 @@ where
         .collect();
     DisplayOutput::Seq(vec![
         "Labelled nodes: [".into(),
-        DisplayOutput::join(items, ", ".into()),
+        DisplayOutput::join(items, &", ".into()),
         "]".into(),
     ])
 }

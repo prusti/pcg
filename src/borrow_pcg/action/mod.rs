@@ -225,7 +225,7 @@ pub struct LabelPlaceAction<'tcx, P = Place<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, P> LabelPlaceAction<'tcx, P> {
+impl<P> LabelPlaceAction<'_, P> {
     pub(crate) fn new(place: P, location: SnapshotLocation, reason: LabelPlaceReason) -> Self {
         Self {
             place,
@@ -398,11 +398,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
             BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
                 vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
-                DisplayOutput::SPACE,
+                &DisplayOutput::SPACE,
             ),
             BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
                 vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
-                DisplayOutput::SPACE,
+                &DisplayOutput::SPACE,
             ),
         }
     }

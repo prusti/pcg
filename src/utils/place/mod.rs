@@ -60,7 +60,7 @@ pub struct Place<'tcx>(
     PlaceRef<'tcx>,
 );
 
-impl<'tcx> Sealed for Place<'tcx> {}
+impl Sealed for Place<'_> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
@@ -111,7 +111,7 @@ pub trait PrefixRelation {
     fn is_strict_prefix_of(self, other: Self) -> bool;
 }
 
-impl<'tcx> PrefixRelation for Place<'tcx> {
+impl PrefixRelation for Place<'_> {
     fn is_prefix_of(self, other: Self) -> bool {
         self.is_prefix_of(other)
     }
@@ -439,8 +439,7 @@ impl<'tcx> Place<'tcx> {
                 return true;
             }
             let field_tys: Vec<Ty<'tcx>> = match ty.kind() {
-                TyKind::Array(ty, _) => vec![*ty],
-                TyKind::Slice(ty) => vec![*ty],
+                TyKind::Array(ty, _) | TyKind::Slice(ty) | TyKind::Ref(_, ty, _) => vec![*ty],
                 TyKind::Adt(def, substs) => {
                     if ty.is_box() {
                         vec![substs.first().unwrap().expect_ty()]
@@ -457,12 +456,11 @@ impl<'tcx> Place<'tcx> {
                 TyKind::Coroutine(_, _) | TyKind::CoroutineClosure(_, _) | TyKind::FnDef(_, _) => {
                     vec![]
                 }
-                TyKind::Ref(_, ty, _) => vec![*ty],
-                TyKind::Alias(_, _) => vec![],
-                TyKind::Dynamic(_, _, _) => vec![],
-                TyKind::Param(_) => vec![],
-                TyKind::Bound(_, _) => vec![],
-                TyKind::CoroutineWitness(_, _) => vec![],
+                TyKind::Alias(_, _)
+                | TyKind::Dynamic(_, _, _)
+                | TyKind::Param(_)
+                | TyKind::Bound(_, _)
+                | TyKind::CoroutineWitness(_, _) => vec![],
                 TyKind::Bool => todo!(),
                 TyKind::Int(_) => todo!(),
                 TyKind::Uint(_) => todo!(),
@@ -837,7 +835,7 @@ impl Debug for Place<'_> {
 
         write!(fmt, "{:?}", self.local)?;
 
-        for &elem in self.projection.iter() {
+        for &elem in self.projection {
             match elem {
                 ProjectionElem::OpaqueCast(ty) => {
                     write!(fmt, "@{ty})")?;

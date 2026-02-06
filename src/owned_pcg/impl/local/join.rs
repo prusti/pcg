@@ -48,8 +48,8 @@ enum JoinExpandedPlaceResult<'tcx> {
 impl<'tcx> JoinExpandedPlaceResult<'tcx> {
     fn actions(self) -> Vec<RepackOp<'tcx>> {
         match self {
-            JoinExpandedPlaceResult::JoinedWithSameExpansion(actions) => actions,
-            JoinExpandedPlaceResult::CreatedExpansion(actions) => actions,
+            JoinExpandedPlaceResult::JoinedWithSameExpansion(actions)
+            | JoinExpandedPlaceResult::CreatedExpansion(actions) => actions,
             JoinExpandedPlaceResult::JoinedWithOtherExpansions(result) => result.actions(),
             JoinExpandedPlaceResult::CollapsedOtherExpansion => vec![],
         }

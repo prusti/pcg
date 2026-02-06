@@ -90,8 +90,11 @@ pub(crate) trait FallableVisitor<'tcx> {
                     location,
                 )?;
             }
-            mir::StatementKind::StorageLive(_) => {}
-            mir::StatementKind::StorageDead(_) => {}
+            mir::StatementKind::StorageLive(_)
+            | mir::StatementKind::StorageDead(_)
+            | mir::StatementKind::Coverage(_)
+            | mir::StatementKind::ConstEvalCounter
+            | mir::StatementKind::Nop => {}
             mir::StatementKind::Retag(_, place) => {
                 self.visit_place_fallable(
                     (**place).into(),
@@ -113,12 +116,9 @@ pub(crate) trait FallableVisitor<'tcx> {
                     location,
                 )?;
             }
-            mir::StatementKind::Coverage(_) => {
-                // No places to visit
-            }
             mir::StatementKind::Intrinsic(box intrinsic) => match intrinsic {
                 mir::NonDivergingIntrinsic::Assume(op) => {
-                    self.visit_operand_fallable(op, location)?
+                    self.visit_operand_fallable(op, location)?;
                 }
                 mir::NonDivergingIntrinsic::CopyNonOverlapping(copy_info) => {
                     self.visit_operand_fallable(&copy_info.src, location)?;
@@ -126,12 +126,6 @@ pub(crate) trait FallableVisitor<'tcx> {
                     self.visit_operand_fallable(&copy_info.count, location)?;
                 }
             },
-            mir::StatementKind::ConstEvalCounter => {
-                // No places to visit
-            }
-            mir::StatementKind::Nop => {
-                // No places to visit
-            }
             _ => todo!(),
         }
         Ok(())
@@ -167,13 +161,14 @@ pub(crate) trait FallableVisitor<'tcx> {
         location: mir::Location,
     ) -> Result<(), PcgError> {
         match rvalue {
-            mir::Rvalue::Use(operand) => {
+            mir::Rvalue::Use(operand)
+            | mir::Rvalue::Cast(_, operand, _)
+            | mir::Rvalue::ShallowInitBox(operand, _) => {
                 self.visit_operand_fallable(operand, location)?;
             }
             mir::Rvalue::Repeat(value, _ct) => {
                 self.visit_operand_fallable(value, location)?;
             }
-            mir::Rvalue::ThreadLocalRef(_) => {}
             mir::Rvalue::Ref(_, bk, path) => {
                 let ctx = match bk {
                     mir::BorrowKind::Shared => visit::PlaceContext::NonMutatingUse(
@@ -188,22 +183,14 @@ pub(crate) trait FallableVisitor<'tcx> {
                 };
                 self.visit_place_fallable((*path).into(), ctx, location)?;
             }
-            mir::Rvalue::CopyForDeref(place) => {
+            mir::Rvalue::CopyForDeref(place)
+            | mir::Rvalue::Len(place)
+            | mir::Rvalue::Discriminant(place) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
                     location,
                 )?;
-            }
-            mir::Rvalue::Len(path) => {
-                self.visit_place_fallable(
-                    (*path).into(),
-                    visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
-                    location,
-                )?;
-            }
-            mir::Rvalue::Cast(_, operand, _) => {
-                self.visit_operand_fallable(operand, location)?;
             }
             mir::Rvalue::BinaryOp(_, box (lhs, rhs)) => {
                 self.visit_operand_fallable(lhs, location)?;
@@ -212,31 +199,20 @@ pub(crate) trait FallableVisitor<'tcx> {
             mir::Rvalue::UnaryOp(_, op) => {
                 self.visit_operand_fallable(op, location)?;
             }
-            mir::Rvalue::Discriminant(place) => {
-                self.visit_place_fallable(
-                    (*place).into(),
-                    visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
-                    location,
-                )?;
-            }
-            mir::Rvalue::NullaryOp(_, _) => {}
             mir::Rvalue::Aggregate(kind, operands) => {
                 match &**kind {
-                    mir::AggregateKind::Array(_) => {}
-                    mir::AggregateKind::Tuple => {}
-                    mir::AggregateKind::Adt(_, _, _, _, _) => {}
-                    mir::AggregateKind::Closure(_, _) => {}
-                    mir::AggregateKind::Coroutine(_, _) => {}
-                    mir::AggregateKind::CoroutineClosure(_, _) => {}
-                    mir::AggregateKind::RawPtr(_, _) => {}
+                    mir::AggregateKind::Array(_)
+                    | mir::AggregateKind::Tuple
+                    | mir::AggregateKind::Adt(_, _, _, _, _)
+                    | mir::AggregateKind::Closure(_, _)
+                    | mir::AggregateKind::Coroutine(_, _)
+                    | mir::AggregateKind::CoroutineClosure(_, _)
+                    | mir::AggregateKind::RawPtr(_, _) => {}
                 }
 
                 for operand in operands {
                     self.visit_operand_fallable(operand, location)?;
                 }
-            }
-            mir::Rvalue::ShallowInitBox(operand, _) => {
-                self.visit_operand_fallable(operand, location)?;
             }
             mir::Rvalue::RawPtr(mutability, place) => {
                 #[rustversion::since(2025-03-02)]
@@ -244,10 +220,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                     mir::RawPtrKind::Mut => {
                         visit::PlaceContext::MutatingUse(visit::MutatingUseContext::RawBorrow)
                     }
-                    mir::RawPtrKind::Const => {
-                        visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::RawBorrow)
-                    }
-                    mir::RawPtrKind::FakeForPtrMetadata => {
+                    mir::RawPtrKind::Const | mir::RawPtrKind::FakeForPtrMetadata => {
                         visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::RawBorrow)
                     }
                 };

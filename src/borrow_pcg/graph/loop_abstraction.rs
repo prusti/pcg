@@ -111,7 +111,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn get_loop_abstraction_graph<'mir>(
         &self,
         loop_blocked_places: &PlaceUsages<'tcx>,
-        root_places: HashSet<MaybeRemoteCurrentPlace<'tcx>>,
+        root_places: &HashSet<MaybeRemoteCurrentPlace<'tcx>>,
         candidate_blockers: &PlaceUsages<'tcx>,
         loop_head: mir::BasicBlock,
         validity_conditions: &ValidityConditions,
@@ -140,7 +140,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         for blocker in candidate_blockers.iter_places() {
-            for root in root_places.iter() {
+            for root in root_places {
                 let relevant_root = root.relevant_place_for_blocking();
                 if blocker == relevant_root
                     || ctxt
@@ -182,7 +182,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 })
                 .collect::<Vec<_>>();
             if !blockers.is_empty() {
-                for blocker in blockers.iter() {
+                for blocker in &blockers {
                     add_block_edges(&mut expander, blocked_place.into(), *blocker, ctxt);
                 }
                 if blocked_place_usage.usage == PlaceUsageType::Mutate {
@@ -264,14 +264,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "leaf nodes: {}",
             frozen_graph.leaf_nodes(ctxt).display_string(ctxt)
         );
-        for rp in to_label.iter() {
+        for rp in &to_label {
             tracing::debug!("labeling {:?}", rp);
             graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
         }
         tracing::debug!("Completed loop abstraction");
-        for (place, capability) in capability_updates.iter() {
+        for (place, capability) in &capability_updates {
             logging::log!(
-                LogPredicate::DebugBlock,
+                &LogPredicate::DebugBlock,
                 analysis_ctxt,
                 "capability update for {}: {:?}",
                 place.display_string(ctxt),
@@ -345,7 +345,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         loop_blocked_places: &PlaceUsages<'tcx>,
         to_expand: &PlaceUsages<'tcx>,
         validity_conditions: &ValidityConditions,
-        args: JoinBorrowsArgs<'_, 'a, 'tcx>,
+        args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let borrow = BorrowStateMutRef::new(self, validity_conditions);
@@ -392,7 +392,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn identify_subgraph_to_cut<'mir: 'graph, 'graph>(
         &'graph self,
         block: mir::BasicBlock,
-        abstraction_graph_nodes: HashSet<PcgNode<'tcx>>,
+        abstraction_graph_nodes: &HashSet<PcgNode<'tcx>>,
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> BorrowsGraph<'tcx> {
         type Path<'tcx, 'graph> = Vec<BorrowPcgEdgeRef<'tcx, 'graph>>;

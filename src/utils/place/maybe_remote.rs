@@ -25,7 +25,7 @@ pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     Remote(RemotePlace),
 }
 
-impl<'tcx, P> From<RemotePlace> for MaybeRemotePlace<'tcx, P> {
+impl<P> From<RemotePlace> for MaybeRemotePlace<'_, P> {
     fn from(place: RemotePlace) -> Self {
         MaybeRemotePlace::Remote(place)
     }

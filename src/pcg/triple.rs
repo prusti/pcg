@@ -201,9 +201,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 pre: PlaceCondition::read(place),
                 post: None,
             },
-            // Looking into `rustc` it seems that `PlaceMention` is effectively ignored.
-            PlaceMention(_) => return Ok(()),
-            SetDiscriminant { box place, .. } => Triple {
+            SetDiscriminant { box place, .. } | Retag(_, box place) => Triple {
                 pre: PlaceCondition::exclusive(place, self.ctxt),
                 post: None,
             },
@@ -218,10 +216,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             StorageDead(local) => Triple {
                 pre: PlaceCondition::AllocateOrDeallocate(local),
                 post: Some(PlaceCondition::Unalloc(local)),
-            },
-            Retag(_, box place) => Triple {
-                pre: PlaceCondition::exclusive(place, self.ctxt),
-                post: None,
             },
             _ => return Ok(()),
         };

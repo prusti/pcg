@@ -35,7 +35,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
     fn draw_materialized_edge(&mut self, edge: MaterializedEdge<'tcx, 'a>) {
         match edge {
             MaterializedEdge::Real(edge) => {
-                self.draw_borrow_pcg_edge(edge, &self.capability_getter())
+                self.draw_borrow_pcg_edge(edge, &self.capability_getter());
             }
             MaterializedEdge::Synthetic(edge) => self.draw_synthetic_edge(edge),
         }

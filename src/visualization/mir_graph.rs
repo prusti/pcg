@@ -85,11 +85,11 @@ struct MirEdge {
     label: Cow<'static, str>,
 }
 
-fn format_bin_op(op: &BinOp) -> &'static str {
+fn format_bin_op(op: BinOp) -> &'static str {
     match op {
-        BinOp::Add => "+",
-        BinOp::Sub => "-",
-        BinOp::Mul => "*",
+        BinOp::Add | BinOp::AddWithOverflow => "+",
+        BinOp::Sub | BinOp::SubWithOverflow => "-",
+        BinOp::Mul | BinOp::MulWithOverflow => "*",
         BinOp::Div => "/",
         BinOp::Rem => "%",
         BinOp::AddUnchecked => todo!(),
@@ -98,10 +98,8 @@ fn format_bin_op(op: &BinOp) -> &'static str {
         BinOp::BitXor => "^",
         BinOp::BitAnd => "&",
         BinOp::BitOr => "|",
-        BinOp::Shl => "<<",
-        BinOp::ShlUnchecked => "<<",
-        BinOp::Shr => ">>",
-        BinOp::ShrUnchecked => ">>",
+        BinOp::Shl | BinOp::ShlUnchecked => "<<",
+        BinOp::Shr | BinOp::ShrUnchecked => ">>",
         BinOp::Eq => "==",
         BinOp::Lt => "<",
         BinOp::Le => "<=",
@@ -110,14 +108,11 @@ fn format_bin_op(op: &BinOp) -> &'static str {
         BinOp::Gt => ">",
         BinOp::Offset => todo!(),
         BinOp::Cmp => todo!(),
-        BinOp::AddWithOverflow => "+",
-        BinOp::SubWithOverflow => "-",
-        BinOp::MulWithOverflow => "*",
     }
 }
 
-fn format_local<'tcx>(local: &Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
-    let place: Place<'tcx> = (*local).into();
+fn format_local<'tcx>(local: Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    let place: Place<'tcx> = local.into();
     place.display_string(ctxt)
 }
 
@@ -136,7 +131,7 @@ fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -
 
 #[rustversion::since(2025-03-02)]
 fn format_raw_ptr<'tcx>(
-    kind: &RawPtrKind,
+    kind: RawPtrKind,
     place: &mir::Place<'tcx>,
     ctxt: CompilerCtxt<'_, 'tcx>,
 ) -> String {
@@ -174,7 +169,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             };
             format!("&{} {}", kind, format_place(place, ctxt))
         }
-        Rvalue::RawPtr(kind, place) => format_raw_ptr(kind, place, ctxt),
+        Rvalue::RawPtr(kind, place) => format_raw_ptr(*kind, place, ctxt),
         Rvalue::ThreadLocalRef(_) => todo!(),
         Rvalue::Len(x) => format!("len({})", format_place(x, ctxt)),
         Rvalue::Cast(_, operand, ty) => format!("{} as {}", format_operand(operand, ctxt), ty),
@@ -182,7 +177,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             format!(
                 "{} {} {}",
                 format_operand(lhs, ctxt),
-                format_bin_op(op),
+                format_bin_op(*op),
                 format_operand(rhs, ctxt)
             )
         }
@@ -267,10 +262,10 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
         ),
         mir::StatementKind::Deinit(_) => todo!(),
         mir::StatementKind::StorageLive(local) => {
-            format!("StorageLive({})", format_local(local, ctxt))
+            format!("StorageLive({})", format_local(*local, ctxt))
         }
         mir::StatementKind::StorageDead(local) => {
-            format!("StorageDead({})", format_local(local, ctxt))
+            format!("StorageDead({})", format_local(*local, ctxt))
         }
         mir::StatementKind::Retag(_, _) => todo!(),
         mir::StatementKind::PlaceMention(place) => {
@@ -411,10 +406,9 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     label: Cow::Borrowed("otherwise"),
                 });
             }
-            TerminatorKind::UnwindResume => {}
+            TerminatorKind::UnwindResume | TerminatorKind::Return | TerminatorKind::Unreachable => {
+            }
             TerminatorKind::UnwindTerminate(_) => todo!(),
-            TerminatorKind::Return => {}
-            TerminatorKind::Unreachable => {}
             TerminatorKind::Drop { target, .. } => {
                 edges.push(MirEdge {
                     source: format!("{bb:?}"),
@@ -485,14 +479,8 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             TerminatorKind::FalseEdge {
                 real_target,
                 imaginary_target: _,
-            } => {
-                edges.push(MirEdge {
-                    source: format!("{bb:?}"),
-                    target: format!("{real_target:?}"),
-                    label: Cow::Borrowed("real"),
-                });
             }
-            TerminatorKind::FalseUnwind {
+            | TerminatorKind::FalseUnwind {
                 real_target,
                 unwind: _,
             } => {

@@ -107,7 +107,7 @@ impl ObtainType {
     /// Otherwise, the capability for the expansion is the same as the
     /// capability for the [`ObtainType`].
     pub(crate) fn capability_for_expand<'a, 'tcx>(
-        &self,
+        self,
         place: Place<'tcx>,
         current_cap: CapabilityKind,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -152,7 +152,7 @@ impl ObtainType {
     }
 
     pub(crate) fn should_label_rp<'a, 'tcx>(
-        &self,
+        self,
         rp: LifetimeProjection<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> bool
@@ -160,9 +160,8 @@ impl ObtainType {
         'tcx: 'a,
     {
         match self {
-            ObtainType::ForStorageDead => true,
+            ObtainType::ForStorageDead | ObtainType::TwoPhaseExpand => true,
             ObtainType::Capability(cap) => !cap.is_read(),
-            ObtainType::TwoPhaseExpand => true,
             ObtainType::LoopInvariant { .. } => rp.base.is_mutable(ctxt),
         }
     }

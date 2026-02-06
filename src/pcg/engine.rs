@@ -140,8 +140,9 @@ pub(crate) fn edges_to_analyze<'tcx, 'mir>(
                 TerminatorEdges::None
             }
         }
-        mir::TerminatorKind::Assert { target, .. } => TerminatorEdges::Single(*target),
-        mir::TerminatorKind::Drop { target, .. } => TerminatorEdges::Single(*target),
+        mir::TerminatorKind::Assert { target, .. } | mir::TerminatorKind::Drop { target, .. } => {
+            TerminatorEdges::Single(*target)
+        }
         _ => terminator.edges(),
     }
 }
@@ -261,7 +262,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
         match state {
             PcgDomain::Analysis(DataflowState::Transfer(state)) => {
-                self.visit_all_phases(state, object, &tw, location)?
+                self.visit_all_phases(state, object, &tw, location)?;
             }
             PcgDomain::Results(state) => self.visit_all_phases(state, object, &tw, location)?,
             _ => todo!(),

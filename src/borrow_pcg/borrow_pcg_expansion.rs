@@ -250,7 +250,7 @@ impl<'tcx, P: PcgNodeComponent> BorrowPcgExpansion<'tcx, P> {
 impl<'tcx> BorrowPcgExpansion<'tcx> {
     pub(crate) fn new_lifetime_projection_expansion<'a>(
         base: LifetimeProjection<'tcx, Place<'tcx>>,
-        expansion: PlaceExpansion<'tcx>,
+        expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, PcgError>
     where
@@ -266,7 +266,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     }
     pub(crate) fn new_place_expansion<'a>(
         base: Place<'tcx>,
-        expansion: PlaceExpansion<'tcx>,
+        expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, PcgError>
     where
@@ -513,7 +513,7 @@ impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
 
     pub(crate) fn new<Ctxt: DebugCtxt + Copy, P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>>(
         base: Node,
-        expansion: PlaceExpansion<'tcx>,
+        expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<Self, PcgError>
     where
@@ -524,7 +524,7 @@ impl<'tcx, Node: PcgNodeComponent> BorrowPcgExpansionData<Node> {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
         }
         pcg_validity_assert!(
-            !(base.is_place() && base.place().is_ref(ctxt) && expansion == PlaceExpansion::Deref),
+            !(base.is_place() && base.place().is_ref(ctxt) && expansion == &PlaceExpansion::Deref),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
             base.place().display_string(ctxt)

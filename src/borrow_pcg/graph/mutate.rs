@@ -22,7 +22,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 impl<'tcx, EdgeKind> BorrowsGraph<'tcx, EdgeKind> {
     fn mut_edge_conditions(&mut self, mut f: impl FnMut(&mut ValidityConditions) -> bool) -> bool {
         let mut changed = false;
-        for (_, conditions) in self.edges.iter_mut() {
+        for conditions in self.edges.values_mut() {
             if f(conditions) {
                 changed = true;
             }

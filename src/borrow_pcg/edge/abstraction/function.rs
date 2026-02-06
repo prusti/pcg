@@ -87,7 +87,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
 }
 
 impl<'tcx> FunctionData<'tcx> {
-    pub(crate) fn identity_fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+    pub(crate) fn identity_fn_sig(self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
@@ -207,8 +207,8 @@ pub struct AbstractionBlockEdgeWithMetadata<Metadata, Edge> {
     pub(crate) edge: Edge,
 }
 
-impl<'tcx, Metadata, Input: Copy, Output: Copy>
-    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'tcx, Input, Output>>
+impl<Metadata, Input: Copy, Output: Copy>
+    AbstractionBlockEdgeWithMetadata<Metadata, AbstractionBlockEdge<'_, Input, Output>>
 {
     pub(crate) fn into_singleton_coupled_edge(self) -> CoupledEdgeKind<Metadata, Input, Output> {
         CoupledEdgeKind::new(self.metadata, self.edge.to_singleton_hyper_edge())

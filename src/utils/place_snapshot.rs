@@ -105,15 +105,9 @@ impl SnapshotLocation {
     pub fn location(self) -> Location {
         match self {
             SnapshotLocation::Before(analysis_location) => analysis_location.location(),
-            SnapshotLocation::After(block) => Location {
-                block,
-                statement_index: 0,
-            },
-            SnapshotLocation::Loop(block) => Location {
-                block,
-                statement_index: 0,
-            },
-            SnapshotLocation::BeforeJoin(block) => Location {
+            SnapshotLocation::After(block)
+            | SnapshotLocation::Loop(block)
+            | SnapshotLocation::BeforeJoin(block) => Location {
                 block,
                 statement_index: 0,
             },
@@ -252,7 +246,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Lab
     }
 }
 
-impl<'tcx, P: PcgNodeComponent> LabelledPlace<'tcx, P> {
+impl<P: PcgNodeComponent> LabelledPlace<'_, P> {
     pub fn new<T: Into<SnapshotLocation>>(place: P, at: T) -> Self {
         LabelledPlace {
             place,

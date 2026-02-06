@@ -91,8 +91,8 @@ impl<'tcx> AbstractionEdge<'tcx> {
     }
 }
 
-impl<'tcx, Input: std::fmt::Display, Output: std::fmt::Display> std::fmt::Display
-    for AbstractionBlockEdge<'tcx, Input, Output>
+impl<Input: std::fmt::Display, Output: std::fmt::Display> std::fmt::Display
+    for AbstractionBlockEdge<'_, Input, Output>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} -> {}", self.input, self.output)
@@ -107,7 +107,7 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
     pub(crate) output: Output,
 }
 
-impl<'tcx, Input: Copy, Output: Copy> AbstractionBlockEdge<'tcx, Input, Output> {
+impl<Input: Copy, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
     pub(crate) fn new(input: Input, output: Output) -> Self {
         Self {
             _phantom: PhantomData,
@@ -271,8 +271,8 @@ impl<
     }
 }
 
-impl<'tcx, Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>>
-    DisplayWithCtxt<Ctxt> for AbstractionBlockEdge<'tcx, Input, Output>
+impl<Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for AbstractionBlockEdge<'_, Input, Output>
 {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
@@ -287,11 +287,10 @@ impl<'tcx, Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctx
 }
 
 impl<
-    'tcx,
     Ctxt: DebugCtxt + Copy,
     Input: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
     Output: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
-> HasValidityCheck<Ctxt> for AbstractionBlockEdge<'tcx, Input, Output>
+> HasValidityCheck<Ctxt> for AbstractionBlockEdge<'_, Input, Output>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.input.check_validity(ctxt)?;
@@ -306,7 +305,7 @@ impl<
     }
 }
 
-impl<'tcx, Input, Output> AbstractionBlockEdge<'tcx, Input, Output> {
+impl<Input, Output> AbstractionBlockEdge<'_, Input, Output> {
     pub(crate) fn new_checked<Ctxt: DebugCtxt + Copy>(
         input: Input,
         output: Output,

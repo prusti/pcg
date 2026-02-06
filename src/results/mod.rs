@@ -256,9 +256,9 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         f: impl Fn(&PcgLocation<'_, 'tcx>) -> FxHashSet<T>,
     ) -> FxHashSet<T> {
         let mut result = FxHashSet::default();
-        for block in self.0.iter() {
+        for block in &self.0 {
             if let Some(pcg_block) = &block {
-                for stmt in pcg_block.statements.iter() {
+                for stmt in &pcg_block.statements {
                     result.extend(f(stmt));
                 }
             }
@@ -311,14 +311,14 @@ impl<'tcx> PcgBasicBlock<'_, 'tcx> {
 
     pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
-        for stmt in self.statements.iter() {
+        for stmt in &self.statements {
             for phase in EvalStmtPhase::phases() {
                 for line in stmt.debug_lines(phase, ctxt) {
                     result.push(format!("{:?} {}: {}", stmt.location, phase, line));
                 }
             }
         }
-        for term_succ in self.terminator.succs.iter() {
+        for term_succ in &self.terminator.succs {
             for line in term_succ.debug_lines(ctxt) {
                 result.push(format!(
                     "{:?} -> {:?}: {}",

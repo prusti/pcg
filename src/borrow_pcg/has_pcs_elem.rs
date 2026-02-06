@@ -118,7 +118,7 @@ pub trait PlaceLabeller<'tcx, Ctxt, P = Place<'tcx>> {
 #[derive(From)]
 pub(crate) struct SetLabel(pub(crate) SnapshotLocation);
 
-impl<'tcx, Ctxt, P> PlaceLabeller<'tcx, Ctxt, P> for SetLabel {
+impl<Ctxt, P> PlaceLabeller<'_, Ctxt, P> for SetLabel {
     fn place_label(&self, _place: P, _ctxt: Ctxt) -> SnapshotLocation {
         self.0
     }

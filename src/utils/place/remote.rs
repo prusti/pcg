@@ -66,7 +66,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for RemotePlace {
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for RemotePlace {
+impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for RemotePlace {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }

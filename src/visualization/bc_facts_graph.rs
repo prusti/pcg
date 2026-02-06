@@ -84,7 +84,7 @@ pub struct RegionPrettyPrinter<'bc, 'tcx> {
     region_infer_ctxt: &'bc RegionInferenceContext<'tcx>,
 }
 
-impl<'bc, 'tcx> OverrideRegionDebugString for RegionPrettyPrinter<'bc, 'tcx> {
+impl OverrideRegionDebugString for RegionPrettyPrinter<'_, '_> {
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
         self.region_to_string.get(&region).map(|s| s.as_str())
     }
@@ -107,8 +107,8 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
     #[allow(dead_code)]
     pub(crate) fn lookup(&self, region: RegionVid) -> Option<&String> {
         if self.sccs.borrow().is_none() {
-            let regions = self.region_to_string.keys().cloned().collect();
-            *self.sccs.borrow_mut() = Some(compute_region_sccs(regions, self.region_infer_ctxt));
+            let regions = self.region_to_string.keys().cloned().collect::<Vec<_>>();
+            *self.sccs.borrow_mut() = Some(compute_region_sccs(&regions, self.region_infer_ctxt));
         }
         for scc in self.sccs.borrow().as_ref().unwrap().node_weights() {
             if scc.contains(&region) {
@@ -133,7 +133,7 @@ fn get_all_regions<'tcx>(body: &Body<'tcx>, _tcx: ty::TyCtxt<'tcx>) -> Vec<Regio
 }
 
 fn compute_region_sccs(
-    regions: Vec<RegionVid>,
+    regions: &[RegionVid],
     region_infer_ctxt: &RegionInferenceContext<'_>,
 ) -> petgraph::Graph<Vec<RegionVid>, ()> {
     let mut graph = petgraph::Graph::new();
@@ -142,8 +142,8 @@ fn compute_region_sccs(
         .copied()
         .map(|r| (r, graph.add_node(r)))
         .collect::<BTreeMap<_, _>>();
-    for r1 in regions.iter() {
-        for r2 in regions.iter() {
+    for r1 in regions {
+        for r2 in regions {
             if r1 != r2 && region_infer_ctxt.eval_outlives(*r1, *r2) {
                 graph.add_edge(indices[r1], indices[r2], ());
             }
@@ -159,11 +159,13 @@ fn compute_region_sccs(
     });
     scc_graph
 }
+
+#[must_use]
 pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
     ctxt: CompilerCtxt<'a, 'tcx, &'bc RustBorrowCheckerImpl<'a, 'tcx>>,
 ) -> String {
     let regions = get_all_regions(ctxt.body(), ctxt.tcx());
-    let scc_graph = compute_region_sccs(regions, ctxt.borrow_checker.region_infer_ctxt());
+    let scc_graph = compute_region_sccs(&regions, ctxt.borrow_checker.region_infer_ctxt());
     let scc_graph = scc_graph.map(
         |_, regions| {
             format!(
@@ -175,11 +177,12 @@ pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
                     .join(", ")
             )
         },
-        |_, _| "",
+        |_, ()| "",
     );
     petgraph::dot::Dot::new(&scc_graph).to_string()
 }
 
+#[must_use]
 pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
     location: Location,
     start: bool,
@@ -203,8 +206,8 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
                 let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt);
                 graph.edges.push(DotEdge {
                     id: None,
-                    from: sup_node.to_string(),
-                    to: sub_node.to_string(),
+                    from: sup_node.clone(),
+                    to: sub_node.clone(),
                     options: EdgeOptions::directed(EdgeDirection::Forward),
                 });
             }

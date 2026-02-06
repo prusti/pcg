@@ -55,6 +55,7 @@ use self::{
     graph_constructor::PcgGraphConstructor,
 };
 
+#[must_use]
 pub fn place_id(place: &Place<'_>) -> String {
     format!("{place:?}")
 }
@@ -216,19 +217,19 @@ pub(crate) enum GraphEdge<'a> {
 impl<'a> GraphEdge<'a> {
     pub(crate) fn validity_conditions(&self) -> Option<&'a ValidityConditions> {
         match self {
-            GraphEdge::Projection { .. } => None,
-            GraphEdge::Alias { .. } => None,
             GraphEdge::Borrow {
                 validity_conditions,
                 ..
-            } => Some(validity_conditions),
-            GraphEdge::DerefExpansion {
+            }
+            | GraphEdge::DerefExpansion {
                 validity_conditions,
                 ..
             } => Some(validity_conditions),
-            GraphEdge::Abstract { .. } => None,
-            GraphEdge::BorrowFlow { .. } => None,
-            GraphEdge::Coupled { .. } => None,
+            GraphEdge::Projection { .. }
+            | GraphEdge::Alias { .. }
+            | GraphEdge::Abstract { .. }
+            | GraphEdge::BorrowFlow { .. }
+            | GraphEdge::Coupled { .. } => None,
         }
     }
     pub(super) fn to_dot_edge<'tcx: 'a>(
@@ -397,7 +398,7 @@ pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
     let graph = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf, None);
-    drawer.draw(graph, ctxt)?;
+    drawer.draw(&graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
 
@@ -410,7 +411,7 @@ pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
     let graph = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf, None);
-    drawer.draw(graph, ctxt)?;
+    drawer.draw(&graph, ctxt)?;
     Ok(String::from_utf8(buf).unwrap())
 }
 
@@ -425,5 +426,5 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     let dot_file = File::create(file_path).unwrap();
     let ctxt_file = File::create(file_path.with_extension("json")).unwrap();
     let drawer = GraphDrawer::new(dot_file, Some(ctxt_file));
-    drawer.draw(graph, ctxt)
+    drawer.draw(&graph, ctxt)
 }

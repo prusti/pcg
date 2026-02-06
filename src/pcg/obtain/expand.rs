@@ -254,7 +254,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             block_type
         );
         let expansion: BorrowPcgExpansion<'tcx> =
-            BorrowPcgExpansion::new_place_expansion(base, expanded_place.expansion, ctxt)?;
+            BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -294,7 +294,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
                 let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
                     base_rp,
-                    place_expansion,
+                    &place_expansion,
                     ctxt,
                 )?;
                 let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);

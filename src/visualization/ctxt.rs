@@ -9,7 +9,7 @@ use crate::{
     },
 };
 
-impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
+impl<T> CompilerCtxt<'_, '_, T> {
     pub(crate) fn function_metadata_slug(&self) -> FunctionSlug {
         FunctionSlug::new(self.def_id(), self.tcx)
     }
@@ -20,7 +20,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
     }
 }
 
-impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
+impl PcgCtxt<'_, '_> {
     pub fn update_debug_visualization_metadata(&self) {
         if let Some(metadata) = self.visualization_function_metadata() {
             self.settings.write_new_debug_visualization_metadata(
@@ -51,7 +51,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
     }
 }
 
-impl<'tcx> PcgCtxtCreator<'tcx> {
+impl PcgCtxtCreator<'_> {
     pub fn write_debug_visualization_metadata(self) {
         let metadata = self.debug_function_metadata.take();
         if !metadata.is_empty() {

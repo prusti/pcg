@@ -81,7 +81,7 @@ impl<'tcx> GenKill<Place<'tcx>> for PlaceLivenessDomain<'tcx> {
 impl JoinSemiLattice for PlaceLivenessDomain<'_> {
     fn join(&mut self, other: &Self) -> bool {
         let mut changed = false;
-        for place in other.places.iter() {
+        for place in &other.places {
             if !self.places.contains(place) {
                 self.places.insert(*place);
                 changed = true;
@@ -156,7 +156,7 @@ impl<'mir, 'tcx> PlaceLiveness<'mir, 'tcx> {
         // Because this is a backwards analysis, seeking *after* the primary effect considers
         // the state *before* the statment at the location
         cursor.seek_after_primary_effect(location);
-        with_cursor_state(cursor, |state| state.is_live(place))
+        with_cursor_state(&cursor, |state| state.is_live(place))
     }
 }
 
@@ -182,7 +182,24 @@ impl DefUse {
     fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
-            PlaceContext::NonUse(_) => None,
+            // We don't count drops as use in our analysis because drop
+            // implementations can sometimes require that the lifetimes of
+            // references within a place to still be active and sometimes not.
+            //
+            // In the case where the lifetime are allowed to expire, if we treat
+            // the drop as a use, the PCG would over-approximate the extent of
+            // the lifetime, leading to incorrect graphs. This
+            // over-approximation can prevent the construction of the PCG (when
+            // the compiler wants to e.g. access a place that the PCG still
+            // thinks is borrowed)
+            //
+            // Instead, by not treating the drop as a use, we under-approximate
+            // the extents. However because this only occurs in drops, the PCG construction
+            // itself will not fail (we don't currently require lifetimes to be live for drops)
+            // However, this is still probably incorrect technically.
+            // TODO: We should also identify whether the drop requires lifetimes to be live and count
+            // usages accordingly.
+            PlaceContext::NonUse(_) | PlaceContext::MutatingUse(MutatingUseContext::Drop) => None,
 
             PlaceContext::MutatingUse(
                 MutatingUseContext::Call
@@ -207,25 +224,6 @@ impl DefUse {
             PlaceContext::MutatingUse(MutatingUseContext::SetDiscriminant) => {
                 place.is_indirect().then_some(DefUse::Use)
             }
-
-            // We don't count drops as use in our analysis because drop
-            // implementations can sometimes require that the lifetimes of
-            // references within a place to still be active and sometimes not.
-            //
-            // In the case where the lifetime are allowed to expire, if we treat
-            // the drop as a use, the PCG would over-approximate the extent of
-            // the lifetime, leading to incorrect graphs. This
-            // over-approximation can prevent the construction of the PCG (when
-            // the compiler wants to e.g. access a place that the PCG still
-            // thinks is borrowed)
-            //
-            // Instead, by not treating the drop as a use, we under-approximate
-            // the extents. However because this only occurs in drops, the PCG construction
-            // itself will not fail (we don't currently require lifetimes to be live for drops)
-            // However, this is still probably incorrect technically.
-            // TODO: We should also identify whether the drop requires lifetimes to be live and count
-            // usages accordingly.
-            PlaceContext::MutatingUse(MutatingUseContext::Drop) => None,
 
             // All other contexts are uses...
             PlaceContext::MutatingUse(

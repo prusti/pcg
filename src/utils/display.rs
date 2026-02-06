@@ -108,7 +108,7 @@ impl DisplayOutput {
 
     pub(crate) fn join(
         words: impl IntoIterator<Item = DisplayOutput>,
-        separator: DisplayOutput,
+        separator: &DisplayOutput,
     ) -> Self {
         let mut out = vec![];
         let mut words = words.into_iter().peekable();
@@ -316,10 +316,7 @@ impl<'tcx> Place<'tcx> {
                 }
 
                 ProjectionElem::Index(idx) => (ElemPosition::Suffix, format!("[{idx:?}]").into()),
-                ProjectionElem::ConstantIndex { .. } => {
-                    (ElemPosition::Suffix, format!("[{elem:?}]").into())
-                }
-                ProjectionElem::Subslice { .. } => {
+                ProjectionElem::ConstantIndex { .. } | ProjectionElem::Subslice { .. } => {
                     (ElemPosition::Suffix, format!("[{elem:?}]").into())
                 }
                 kind => unimplemented!("{kind:?}"),

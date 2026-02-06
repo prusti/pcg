@@ -22,8 +22,7 @@ impl Html {
 
     pub(crate) fn text(&self) -> Cow<'static, str> {
         match self {
-            Html::Text(text) => text.clone(),
-            Html::Subscript(text) => text.clone(),
+            Html::Text(text) | Html::Subscript(text) => text.clone(),
             Html::Seq(seq) => seq
                 .iter()
                 .map(|h| h.text())

@@ -204,7 +204,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
         location: Location,
     ) {
         self.0
-            .apply_before_terminator_effect(state, terminator, location)
+            .apply_before_terminator_effect(state, terminator, location);
     }
 
     fn apply_call_return_effect(
@@ -217,7 +217,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 }
 
 pub(crate) fn with_cursor_state<'tcx, A: mir_dataflow::Analysis<'tcx>, R>(
-    cursor: RefMut<'_, ResultsCursor<'_, 'tcx, A>>,
+    cursor: &RefMut<'_, ResultsCursor<'_, 'tcx, A>>,
     f: impl FnOnce(&A::Domain) -> R,
 ) -> R {
     f(cursor.get())

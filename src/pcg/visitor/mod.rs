@@ -134,24 +134,24 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             EvalStmtPhase::PreOperands => {
                 self.perform_borrow_initial_pre_operand_actions()?;
                 self.place_obtainer().collapse_owned_places()?;
-                for triple in self.tw.operand_triples.iter() {
+                for triple in &self.tw.operand_triples {
                     tracing::debug!("Require triple {:?}", triple);
                     self.require_triple(*triple)?;
                 }
             }
             EvalStmtPhase::PostOperands => {
-                for triple in self.tw.operand_triples.iter() {
+                for triple in &self.tw.operand_triples {
                     self.ensure_triple(*triple)?;
                 }
             }
             EvalStmtPhase::PreMain => {
-                for triple in self.tw.main_triples.iter() {
+                for triple in &self.tw.main_triples {
                     tracing::debug!("Require triple {:?}", triple);
                     self.require_triple(*triple)?;
                 }
             }
             EvalStmtPhase::PostMain => {
-                for triple in self.tw.main_triples.iter() {
+                for triple in &self.tw.main_triples {
                     self.ensure_triple(*triple)?;
                 }
             }
@@ -159,7 +159,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         let location = self.location();
         match object {
             AnalysisObject::Statement(statement) => {
-                self.visit_statement_fallable(statement, location)?
+                self.visit_statement_fallable(statement, location)?;
             }
             AnalysisObject::Terminator(terminator) => {
                 self.visit_terminator_fallable(terminator, location)?;
@@ -416,9 +416,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         created_location: Location,
     ) -> Result<(), PcgError> {
-        let borrow = match self.pcg.borrow.graph().borrow_created_at(created_location) {
-            Some(borrow) => borrow,
-            None => return Ok(()),
+        let Some(borrow) = self.pcg.borrow.graph().borrow_created_at(created_location) else {
+            return Ok(());
         };
         tracing::debug!(
             "activate twophase borrow: {}",
