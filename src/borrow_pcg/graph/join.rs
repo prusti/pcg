@@ -301,7 +301,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let root_places = live_roots
             .iter()
-            .flat_map(|node| node.related_maybe_remote_current_place())
+            .filter_map(|node| node.related_maybe_remote_current_place())
             .filter(|p| {
                 !(p.is_local() && live_loop_places.contains(p.relevant_place_for_blocking()))
             })

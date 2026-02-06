@@ -142,7 +142,7 @@ pub trait BorrowPcgEdgeLike<
         Self: EdgeData<'tcx, Ctxt, P>,
     {
         self.blocked_nodes(ctxt)
-            .flat_map(|node| node.as_place())
+            .filter_map(|node| node.as_place())
             .unique()
     }
 }

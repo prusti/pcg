@@ -387,7 +387,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
             .graph()
             .aliases(place.into(), ctxt)
             .into_iter()
-            .flat_map(|p| match p {
+            .filter_map(|p| match p {
                 PcgNode::Place(p) => p.as_current_place(),
                 PcgNode::LifetimeProjection(p) => match p.base() {
                     PlaceOrConst::Place(p) => {

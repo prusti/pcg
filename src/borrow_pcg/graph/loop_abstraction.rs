@@ -217,7 +217,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .graph
             .roots(ctxt)
             .into_iter()
-            .flat_map(|graph_root| {
+            .filter_map(|graph_root| {
                 if let Some(PcgNode::LifetimeProjection(rp)) = graph_root.try_to_local_node(ctxt)
                     && let MaybeLabelledPlace::Current(place) = rp.base
                     && !loop_blocked_places.contains(place)

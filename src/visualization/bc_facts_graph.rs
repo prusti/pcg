@@ -127,7 +127,7 @@ fn get_all_regions<'tcx>(body: &Body<'tcx>, _tcx: ty::TyCtxt<'tcx>) -> Vec<Regio
     body.local_decls
         .iter()
         .flat_map(|l| extract_regions(l.ty))
-        .flat_map(|r| r.vid())
+        .filter_map(|r| r.vid())
         .unique()
         .collect()
 }
