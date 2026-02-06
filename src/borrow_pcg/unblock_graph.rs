@@ -110,6 +110,7 @@ impl<'tcx> UnblockGraph<'tcx> {
         ug
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.edges.is_empty()
     }

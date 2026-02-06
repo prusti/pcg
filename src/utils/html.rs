@@ -25,7 +25,7 @@ impl Html {
             Html::Text(text) | Html::Subscript(text) => text.clone(),
             Html::Seq(seq) => seq
                 .iter()
-                .map(|h| h.text())
+                .map(Html::text)
                 .collect::<Vec<_>>()
                 .join("")
                 .into(),
@@ -55,9 +55,8 @@ impl std::fmt::Display for Html {
                 f,
                 "{}",
                 seq.iter()
-                    .map(|h| h.to_string())
-                    .collect::<Vec<_>>()
-                    .join("")
+                    .map(std::string::ToString::to_string)
+                    .collect::<String>()
             ),
             Html::Font(face, html) => {
                 write!(f, "<FONT FACE=\"{face}\">{html}</FONT>")

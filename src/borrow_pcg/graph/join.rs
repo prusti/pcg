@@ -150,7 +150,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         for edge in self
             .edges()
-            .map(|edge| edge.to_owned_edge())
+            .map(super::super::borrow_pcg_edge::BorrowPcgEdgeLike::to_owned_edge)
             .collect::<Vec<_>>()
         {
             if let BorrowPcgEdgeKind::Abstraction(_) = edge.kind() {
@@ -301,7 +301,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let root_places = live_roots
             .iter()
-            .filter_map(|node| node.related_maybe_remote_current_place())
+            .filter_map(PcgNode::related_maybe_remote_current_place)
             .filter(|p| {
                 !(p.is_local() && live_loop_places.contains(p.relevant_place_for_blocking()))
             })

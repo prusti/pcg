@@ -431,7 +431,7 @@ pub(super) fn each_borrow_involving_path<'tcx, F, I, S>(
             PlaceConflictBias::Overlap,
         ) {
             let ctrl = op(s, i, borrowed);
-            if matches!(ctrl, ControlFlow::Break(_)) {
+            if matches!(ctrl, ControlFlow::Break(())) {
                 return;
             }
         }

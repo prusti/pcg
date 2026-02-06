@@ -104,13 +104,24 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, Action: DebugRepr<Ctxt>
 
 impl<'tcx> From<BorrowPcgActions<'tcx>> for PcgActions<'tcx> {
     fn from(actions: BorrowPcgActions<'tcx>) -> Self {
-        PcgActions::new(actions.0.into_iter().map(|a| a.into()).collect::<Vec<_>>())
+        PcgActions::new(
+            actions
+                .0
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
 impl<'tcx> From<Vec<OwnedPcgAction<'tcx>>> for PcgActions<'tcx> {
     fn from(actions: Vec<OwnedPcgAction<'tcx>>) -> Self {
-        PcgActions::new(actions.into_iter().map(|a| a.into()).collect::<Vec<_>>())
+        PcgActions::new(
+            actions
+                .into_iter()
+                .map(std::convert::Into::into)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -120,6 +131,7 @@ impl<'tcx> PcgActions<'tcx> {
     }
 
     /// The subset of actions applied to the Borrow PCG.
+    #[must_use]
     pub fn borrow_pcg_actions(&self) -> BorrowPcgActions<'tcx> {
         BorrowPcgActions(
             self.actions
@@ -137,6 +149,7 @@ impl<'tcx> PcgActions<'tcx> {
     }
 
     /// The subset of actions applied to the Owned PCG.
+    #[must_use]
     pub fn owned_pcg_actions(&self) -> Vec<&OwnedPcgAction<'tcx>> {
         self.actions
             .iter()
@@ -148,6 +161,7 @@ impl<'tcx> PcgActions<'tcx> {
     }
 
     /// The subset of actions that unblock nodes in the Borrow PCG.
+    #[must_use]
     pub fn borrow_pcg_unblock_actions(&self) -> Vec<BorrowPcgUnblockAction<'tcx>> {
         self.actions
             .iter()

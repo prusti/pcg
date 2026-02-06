@@ -175,10 +175,12 @@ pub(crate) enum AnalysisObject<'mir, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
+    #[must_use]
     pub fn loop_analysis(&self) -> &LoopAnalysis {
         &self.body_analysis.loop_analysis
     }
 
+    #[must_use]
     pub fn loop_place_usages(&self, block: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
         self.body_analysis
             .loop_place_usage_analysis

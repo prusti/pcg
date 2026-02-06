@@ -174,7 +174,9 @@ pub(crate) enum LabelForLifetimeProjection {
     NoLabel,
 }
 
-use LabelForLifetimeProjection::*;
+use LabelForLifetimeProjection::{
+    ExistingLabelOfTwoPhaseReservation, NewLabelAtCurrentLocation, NoLabel,
+};
 impl LabelForLifetimeProjection {
     fn label(self) -> Option<SnapshotLocation> {
         match self {
@@ -271,7 +273,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
                                 .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
-                                .map(|erp| erp.into())
+                                .map(std::convert::Into::into)
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>();

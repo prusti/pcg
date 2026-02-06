@@ -141,7 +141,7 @@ pub(crate) enum CapabilityConstraint<'a> {
     True,
 }
 
-use CapabilityConstraint::*;
+use CapabilityConstraint::{All, False, True};
 #[allow(dead_code)]
 impl<'a> CapabilityConstraint<'a> {
     pub(crate) fn implies(self, other: Self, arena: PcgArena<'a>) -> Self {
@@ -406,7 +406,7 @@ mod private {
         fn minimum<C>(self, other: Self, _ctxt: C) -> Option<Self> {
             self.expect_concrete()
                 .minimum(other.expect_concrete())
-                .map(|c| c.into())
+                .map(std::convert::Into::into)
         }
     }
 }
@@ -475,16 +475,18 @@ impl PartialOrd for CapabilityKind {
         }
         match (*self, *other) {
             // Greater relationships
-            (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive)
-            | (CapabilityKind::ShallowExclusive, CapabilityKind::Write)
-            | (CapabilityKind::Exclusive, CapabilityKind::Write)
-            | (CapabilityKind::Exclusive, CapabilityKind::Read) => Some(Ordering::Greater),
+            (
+                CapabilityKind::Exclusive,
+                CapabilityKind::ShallowExclusive | CapabilityKind::Write | CapabilityKind::Read,
+            )
+            | (CapabilityKind::ShallowExclusive, CapabilityKind::Write) => Some(Ordering::Greater),
 
             // Less relationships (inverses of the above)
-            (CapabilityKind::ShallowExclusive, CapabilityKind::Exclusive)
-            | (CapabilityKind::Write, CapabilityKind::ShallowExclusive)
-            | (CapabilityKind::Write, CapabilityKind::Exclusive)
-            | (CapabilityKind::Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
+            (
+                CapabilityKind::ShallowExclusive | CapabilityKind::Write | CapabilityKind::Read,
+                CapabilityKind::Exclusive,
+            )
+            | (CapabilityKind::Write, CapabilityKind::ShallowExclusive) => Some(Ordering::Less),
 
             // All other pairs are incomparable
             _ => None,
@@ -513,23 +515,28 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for CapabilityKind {
 }
 
 impl CapabilityKind {
+    #[must_use]
     pub fn is_exclusive(self) -> bool {
         matches!(self, CapabilityKind::Exclusive)
     }
+    #[must_use]
     pub fn is_read(self) -> bool {
         matches!(self, CapabilityKind::Read)
     }
+    #[must_use]
     pub fn is_write(self) -> bool {
         matches!(self, CapabilityKind::Write)
     }
+    #[must_use]
     pub fn is_shallow_exclusive(self) -> bool {
         matches!(self, CapabilityKind::ShallowExclusive)
     }
 
+    #[must_use]
     pub fn minimum(self, other: Self) -> Option<Self> {
         match self.partial_cmp(&other) {
             Some(Ordering::Greater) => Some(other),
-            Some(Ordering::Less) | Some(Ordering::Equal) => Some(self),
+            Some(Ordering::Less | Ordering::Equal) => Some(self),
             None => None,
         }
     }

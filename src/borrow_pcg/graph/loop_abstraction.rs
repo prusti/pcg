@@ -509,7 +509,7 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                 _ => unreachable!(),
             },
             _ => unreachable!(),
-        };
+        }
         Ok(())
     }
 }

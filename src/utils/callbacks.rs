@@ -25,12 +25,14 @@ fn cargo_crate_name() -> Option<String> {
 
 /// Is the current compilation running under cargo? Returns true when compiling
 /// a crate, but false when compiling a build script.
+#[must_use]
 pub fn in_cargo_crate() -> bool {
     cargo_crate_name().is_some()
 }
 
 /// Is the current compilation running under cargo? Either compiling a crate or
 /// a build script.
+#[must_use]
 pub fn in_cargo() -> bool {
     std::env::var("CARGO").ok().is_some()
 }

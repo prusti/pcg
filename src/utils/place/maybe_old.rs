@@ -236,10 +236,12 @@ impl<P> MaybeHasLocation for MaybeLabelledPlace<'_, P> {
     }
 }
 impl<'tcx> MaybeLabelledPlace<'tcx> {
+    #[must_use]
     pub fn is_old(&self) -> bool {
         matches!(self, MaybeLabelledPlace::Labelled(_))
     }
 
+    #[must_use]
     pub fn projection(&self) -> &'tcx [PlaceElem<'tcx>] {
         self.place().projection
     }
@@ -275,6 +277,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().ty_region(ctxt)
     }
 
+    #[must_use]
     pub fn last_projection(&self) -> Option<(MaybeLabelledPlace<'tcx>, PlaceElem<'tcx>)> {
         match self {
             MaybeLabelledPlace::Current(place) => {
@@ -336,6 +339,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         MaybeLabelledPlace::new(self.place().project_deref(ctxt), self.location())
     }
 
+    #[must_use]
     pub fn is_current(&self) -> bool {
         matches!(self, MaybeLabelledPlace::Current { .. })
     }

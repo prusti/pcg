@@ -207,7 +207,7 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 for (decision, rule) in rules.into_iter_enumerated() {
                     let decision = CapabilityConstraint::Decision { choice, decision };
                     self.require(decision.implies(rule.pre, self.arena));
-                    for (place, cap) in rule.post.into_iter() {
+                    for (place, cap) in rule.post {
                         let var = new_place_vars[&place];
                         self.require(CapabilityConstraint::eq(var, cap));
                     }
@@ -261,8 +261,8 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             ctxt,
             body_analysis,
             settings,
-            block,
             symbolic_capability_ctxt,
+            block,
             arena,
             #[cfg(feature = "visualization")]
             graphs,

@@ -80,11 +80,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         let self_cap = self
             .capabilities
             .get(base_place, ctxt)
-            .map(|c| c.expect_concrete());
+            .map(crate::pcg::capabilities::SymbolicCapability::expect_concrete);
         let other_cap = other
             .capabilities
             .get(base_place, ctxt)
-            .map(|c| c.expect_concrete());
+            .map(crate::pcg::capabilities::SymbolicCapability::expect_concrete);
         if self_cap == Some(CapabilityKind::Read) && other_cap == Some(CapabilityKind::Read) {
             let action =
                 RepackExpand::new(base_place, other_expansion.guide(), CapabilityKind::Read);
@@ -202,7 +202,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         Ok(actions)
     }
 
-    /// See https://prusti.github.io/pcg-docs/join.html#local-expansions-join--joine
+    /// See <https://prusti.github.io/pcg-docs/join.html#local-expansions-join--joine>
     fn join_other_expanded_place(
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
@@ -307,9 +307,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             let iteration_actions = self.visit_each_other_expansion_iteration(&mut other, ctxt)?;
             if iteration_actions.is_empty() {
                 break;
-            } else {
-                actions.extend(iteration_actions);
             }
+            actions.extend(iteration_actions);
         }
         Ok(actions)
     }

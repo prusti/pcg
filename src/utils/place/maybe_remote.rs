@@ -47,6 +47,7 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
 }
 
 impl<'tcx> MaybeRemotePlace<'tcx> {
+    #[must_use]
     pub fn is_remote(self) -> bool {
         matches!(self, MaybeRemotePlace::Remote(_))
     }
@@ -153,6 +154,7 @@ impl<'tcx, P: Copy> MaybeRemotePlace<'tcx, P> {
 }
 
 impl<'tcx> MaybeRemotePlace<'tcx> {
+    #[must_use]
     pub fn place_assigned_to_local(local: mir::Local) -> Self {
         MaybeRemotePlace::Remote(RemotePlace { local })
     }
@@ -171,6 +173,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(ctxt),
@@ -198,10 +201,12 @@ impl<'tcx> From<mir::Place<'tcx>> for MaybeRemotePlace<'tcx> {
 }
 
 impl RemotePlace {
+    #[must_use]
     pub fn new(local: mir::Local) -> Self {
         Self { local }
     }
 
+    #[must_use]
     pub fn assigned_local(self) -> mir::Local {
         self.local
     }

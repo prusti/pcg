@@ -379,7 +379,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                     .pcg
                     .capabilities
                     .get(place, self.ctxt)
-                    .map(|c| c.expect_concrete())
+                    .map(super::capabilities::SymbolicCapability::expect_concrete)
                     == Some(CapabilityKind::Read)
             {
                 self.pcg

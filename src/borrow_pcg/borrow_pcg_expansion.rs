@@ -144,17 +144,17 @@ impl<'tcx> PlaceExpansion<'tcx> {
                     other => {
                         let repack_guide: RepackGuide = other
                             .try_into()
-                            .unwrap_or_else(|_| todo!("unsupported place elem: {:?}", other));
+                            .unwrap_or_else(|()| todo!("unsupported place elem: {:?}", other));
                         return PlaceExpansion::Guided(repack_guide);
                     }
                 }
             }
         }
 
-        if !fields.is_empty() {
-            PlaceExpansion::Fields(fields)
-        } else {
+        if fields.is_empty() {
             unreachable!()
+        } else {
+            PlaceExpansion::Fields(fields)
         }
     }
 
@@ -464,6 +464,7 @@ impl<
 }
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
+    #[must_use]
     pub fn guide(&self) -> Option<RepackGuide> {
         match self {
             BorrowPcgExpansion::Place(place_expansion) => place_expansion.guide,

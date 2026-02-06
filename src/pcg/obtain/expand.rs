@@ -78,7 +78,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> LabelForLifetimeProjection {
-        use LabelForLifetimeProjection::*;
+        use LabelForLifetimeProjection::{
+            ExistingLabelOfTwoPhaseReservation, NewLabelAtCurrentLocation, NoLabel,
+        };
         if obtain_type.should_label_rp(rp.rebase(), ctxt) {
             NewLabelAtCurrentLocation(self.prev_snapshot_location())
         } else {

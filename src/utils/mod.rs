@@ -69,6 +69,7 @@ impl Default for GlobalPcgSettings {
 }
 
 impl GlobalPcgSettings {
+    #[must_use]
     pub fn new() -> Self {
         Self::new_returning_vars().0
     }
@@ -142,6 +143,7 @@ impl PcgSettings {
         self.visualization_data_dir.join("functions.json")
     }
 
+    #[must_use]
     pub fn new() -> Self {
         // Hack just to ensure that we dont raise an error when seeing a global var
         let mut processed_vars = GlobalPcgSettings::new_returning_vars().1;
@@ -250,9 +252,10 @@ impl PcgSettings {
         processed.insert("PCG_DEBUG_BLOCK".to_owned());
         match std::env::var("PCG_DEBUG_BLOCK") {
             Ok(val) => {
-                if !val.starts_with("bb") {
-                    panic!("PCG_DEBUG_BLOCK must start with 'bb'");
-                }
+                assert!(
+                    val.starts_with("bb"),
+                    "PCG_DEBUG_BLOCK must start with 'bb'"
+                );
                 let block_id: usize = val[2..].parse().unwrap_or_else(|_| {
                     panic!(
                         "PCG_DEBUG_BLOCK must be in format 'bbN' where N is a number, got: '{val}'"
@@ -270,7 +273,7 @@ impl PcgSettings {
             Ok(val) => {
                 let vec: Vec<DebugImgcat> = val
                     .split(',')
-                    .map(|s| s.trim())
+                    .map(str::trim)
                     .flat_map(|s| {
                         if s.to_lowercase() == "true" || s.to_lowercase() == "all" {
                             DebugImgcat::all()
@@ -302,13 +305,12 @@ impl PcgSettings {
             })
             .collect();
 
-        if !unknown_vars.is_empty() {
-            panic!(
-                "Unknown PCG_ environment variable(s) found: {}. Known variables are: {}",
-                unknown_vars.join(", "),
-                processed.iter().cloned().collect::<Vec<_>>().join(", ")
-            );
-        }
+        assert!(
+            unknown_vars.is_empty(),
+            "Unknown PCG_ environment variable(s) found: {}. Known variables are: {}",
+            unknown_vars.join(", "),
+            processed.iter().cloned().collect::<Vec<_>>().join(", ")
+        )
     }
 }
 

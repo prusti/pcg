@@ -69,6 +69,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         self.end_stmt = Some(end_stmt);
     }
 
+    #[must_use]
     pub fn loop_place_usages(&self, loop_head: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
         self.analysis()
             .body_analysis
@@ -80,6 +81,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         self.ctxt().body()
     }
 
+    #[must_use]
     pub fn ctxt(&self) -> CompilerCtxt<'a, 'tcx> {
         self.cursor.analysis().0.ctxt
     }
@@ -199,10 +201,12 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         Ok(PcgBasicBlocks(result))
     }
 
+    #[must_use]
     pub fn analysis(&self) -> &PcgEngine<'a, 'tcx> {
         &self.cursor.analysis().0
     }
 
+    #[must_use]
     pub fn first_error(&self) -> Option<PcgError> {
         self.analysis().first_error.error().cloned()
     }
@@ -243,6 +247,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 pub struct PcgBasicBlocks<'a, 'tcx>(IndexVec<BasicBlock, Option<PcgBasicBlock<'a, 'tcx>>>);
 
 impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
+    #[must_use]
     pub fn get_statement(&self, location: Location) -> Option<&PcgLocation<'_, 'tcx>> {
         if let Some(pcg_block) = &self.0[location.block] {
             pcg_block.statements.get(location.statement_index)
@@ -309,6 +314,7 @@ impl<'tcx> PcgBasicBlock<'_, 'tcx> {
         result
     }
 
+    #[must_use]
     pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
         let mut result = Vec::new();
         for stmt in &self.statements {
@@ -357,10 +363,12 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasSettings<'a> + HasBorrowCheckerCtxt<'a, 
 }
 
 impl<'tcx> PcgLocation<'_, 'tcx> {
+    #[must_use]
     pub fn actions<'slf>(&'slf self, phase: EvalStmtPhase) -> PcgActions<'tcx> {
         self.actions[phase].map_actions(|action| action.action.clone())
     }
 
+    #[must_use]
     pub fn ancestor_edges<'slf, 'mir: 'slf, 'bc: 'slf>(
         &'slf self,
         place: Place<'tcx>,

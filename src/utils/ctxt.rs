@@ -80,6 +80,7 @@ impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
 }
 
 impl<'a, 'tcx, T: BorrowCheckerInterface<'tcx> + ?Sized> CompilerCtxt<'a, 'tcx, &'a T> {
+    #[must_use]
     pub fn as_dyn(self) -> CompilerCtxt<'a, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
         CompilerCtxt {
             mir: self.mir,
@@ -117,7 +118,10 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub fn source_lines(&self) -> Result<Vec<String>, SpanSnippetError> {
         let source = self.source()?;
-        Ok(source.lines().map(|l| l.to_owned()).collect::<Vec<_>>())
+        Ok(source
+            .lines()
+            .map(std::borrow::ToOwned::to_owned)
+            .collect::<Vec<_>>())
     }
 
     pub fn borrow_checker(self) -> T
@@ -162,21 +166,25 @@ impl CompilerCtxt<'_, '_> {
         self.mir.basic_blocks.dominators().dominates(to, from)
     }
 
+    #[must_use]
     pub fn num_args(self) -> usize {
         self.mir.arg_count
     }
 
+    #[must_use]
     pub fn local_count(self) -> usize {
         self.mir.local_decls().len()
     }
 
+    #[must_use]
     pub fn always_live_locals(self) -> RustBitSet<Local> {
         mir_dataflow::impls::always_storage_live_locals(self.mir)
     }
 
+    #[must_use]
     pub fn always_live_locals_non_args(self) -> RustBitSet<Local> {
         let mut all = self.always_live_locals();
-        for arg in 0..self.mir.arg_count + 1 {
+        for arg in 0..=self.mir.arg_count {
             // Includes `RETURN_PLACE`
             all.remove(arg.into());
         }
@@ -261,6 +269,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
             .ok()
     }
 
+    #[must_use]
     pub fn expansion(&self) -> Vec<Place<'tcx>> {
         let mut expansion = self.other_places.clone();
         self.kind
@@ -341,7 +350,7 @@ pub(crate) trait HasLocals: Copy {
     fn args_iter(self) -> Box<dyn Iterator<Item = Local> + 'static> {
         // For a function with `N` arguments, the local _0 is the return place,
         // and the arguments are _1, ..., _N.
-        Box::new((1..self.arg_count() + 1).map(Local::from_usize))
+        Box::new((1..=self.arg_count()).map(Local::from_usize))
     }
 }
 
@@ -553,8 +562,7 @@ impl<'tcx> Place<'tcx> {
             TyKind::Adt(def, substs) => {
                 let variant = typ
                     .variant_index
-                    .map(|i| def.variant(i))
-                    .unwrap_or_else(|| def.non_enum_variant());
+                    .map_or_else(|| def.non_enum_variant(), |i| def.variant(i));
                 if let Some(without_field) = without_field {
                     assert!(without_field < variant.fields.len());
                 }
@@ -643,7 +651,7 @@ impl<'tcx> Place<'tcx> {
             |typ| {
                 typ.ty
                     .ref_mutability()
-                    .map(|m| m.is_not())
+                    .map(Mutability::is_not)
                     .unwrap_or_default()
             },
             ctxt,

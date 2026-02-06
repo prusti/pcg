@@ -192,6 +192,7 @@ pub(crate) type FunctionCallAbstractionEdge<'tcx, P = Place<'tcx>> = Abstraction
 >;
 
 impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
+    #[must_use]
     pub fn to_hyper_edge(
         &self,
     ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {

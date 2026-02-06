@@ -95,7 +95,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                         .pcg
                         .capabilities
                         .get(place, self.ctxt)
-                        .map(|c| c.expect_concrete())
+                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
                         == Some(CapabilityKind::Read)
                     && !place.projects_shared_ref(self.ctxt)
                 {

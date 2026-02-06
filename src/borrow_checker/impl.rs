@@ -126,8 +126,8 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
             true,
         );
         Self {
-            borrow_checker_data,
             output_facts,
+            borrow_checker_data,
         }
     }
 
@@ -292,8 +292,8 @@ impl<'mir, 'tcx: 'mir> NllBorrowCheckerImpl<'mir, 'tcx> {
         let borrow_checker_data = RustBorrowCheckerData::new(tcx, body);
         let place_liveness = PlaceLiveness::new(CompilerCtxt::new(body.body(), tcx, ()));
         Self {
-            borrow_checker_data,
             place_liveness,
+            borrow_checker_data,
         }
     }
 }

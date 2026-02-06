@@ -24,12 +24,15 @@ pub struct PathCondition {
 }
 
 impl PathCondition {
+    #[must_use]
     pub fn new(from: BasicBlock, to: BasicBlock) -> Self {
         Self { from, to }
     }
+    #[must_use]
     pub fn from(&self) -> BasicBlock {
         self.from
     }
+    #[must_use]
     pub fn to(&self) -> BasicBlock {
         self.to
     }
@@ -40,6 +43,7 @@ impl PathCondition {
 pub struct Path(Vec<BasicBlock>);
 
 impl Path {
+    #[must_use]
     pub fn new(block: BasicBlock) -> Self {
         Self(vec![block])
     }
@@ -48,10 +52,12 @@ impl Path {
         self.0.push(block);
     }
 
+    #[must_use]
     pub fn start(&self) -> BasicBlock {
         self.0[0]
     }
 
+    #[must_use]
     pub fn end(&self) -> BasicBlock {
         self.0[self.0.len() - 1]
     }
@@ -109,6 +115,7 @@ impl BranchChoices {
         self.chosen.insert(idx);
     }
 
+    #[must_use]
     pub fn from(&self) -> BasicBlock {
         self.from
     }
@@ -371,8 +378,7 @@ impl ValidityConditions {
             .all_branch_choices()
             .enumerate()
             .find(|(_, bc)| bc.from > pc.from)
-            .map(|(i, _)| i)
-            .unwrap_or(self.all_branch_choices().count());
+            .map_or(self.all_branch_choices().count(), |(i, _)| i);
         let mut bc = BranchChoices::new(pc.from, successors.len());
         bc.insert(successors.iter().position(|s| *s == pc.to).unwrap());
         self.0.insert(bc_index, bc);

@@ -324,6 +324,7 @@ impl<'tcx> Place<'tcx> {
 }
 
 impl<'tcx> Place<'tcx> {
+    #[must_use]
     pub fn new(local: Local, projection: &'tcx [PlaceElem<'tcx>]) -> Self {
         Self(PlaceRef { local, projection })
     }
@@ -393,6 +394,7 @@ impl<'tcx> Place<'tcx> {
             .map(|region| LifetimeProjection::new(self, region, None, ctxt.ctxt()).unwrap())
     }
 
+    #[must_use]
     pub fn projection(&self) -> &'tcx [PlaceElem<'tcx>] {
         self.0.projection
     }
@@ -493,6 +495,7 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn prefix_place(&self) -> Option<Place<'tcx>> {
         let (prefix, _) = self.last_projection()?;
         Some(Place::new(prefix.local, prefix.projection))
@@ -529,6 +532,7 @@ impl<'tcx> Place<'tcx> {
         place
     }
 
+    #[must_use]
     pub fn region_projection(
         &self,
         idx: RegionIdx,
@@ -561,6 +565,7 @@ impl<'tcx> Place<'tcx> {
             .collect()
     }
 
+    #[must_use]
     pub fn projection_index(
         &self,
         region: PcgRegion,
@@ -647,7 +652,7 @@ impl<'tcx> Place<'tcx> {
         }
         let diff = self.compare_projections(right).find(|(eq, _, _)| !eq);
         if let Some((_, left, right)) = diff {
-            use ProjectionElem::*;
+            use ProjectionElem::{ConstantIndex, Downcast, Field, Index, OpaqueCast, Subslice};
             fn is_index(elem: PlaceElem<'_>) -> bool {
                 matches!(elem, Index(_) | ConstantIndex { .. } | Subslice { .. })
             }
@@ -683,8 +688,7 @@ impl<'tcx> Place<'tcx> {
     /// +   `is_prefix(x.f.g, x.f) == false`
     pub(crate) fn is_prefix_of(self, place: Self) -> bool {
         Self::partial_cmp(self, place)
-            .map(|o| o == PlaceOrdering::Equal || o == PlaceOrdering::Prefix)
-            .unwrap_or(false)
+            .is_some_and(|o| o == PlaceOrdering::Equal || o == PlaceOrdering::Prefix)
     }
 
     pub(crate) fn is_strict_prefix_of(self, place: Self) -> bool {
@@ -696,21 +700,22 @@ impl<'tcx> Place<'tcx> {
     /// +   `is_prefix(x.f, x.f) == false`
     /// +   `is_prefix(x.f, x.f.g) == true`
     /// +   `is_prefix(x.f, x.f.g.h) == false`
+    #[must_use]
     pub fn is_prefix_exact(self, place: Self) -> bool {
         self.0.projection.len() + 1 == place.0.projection.len()
-            && Self::partial_cmp(self, place)
-                .map(|o| o == PlaceOrdering::Prefix)
-                .unwrap_or(false)
+            && Self::partial_cmp(self, place).is_some_and(|o| o == PlaceOrdering::Prefix)
     }
 
     /// Returns `true` if either of the places can reach the other
     /// with a series of expand/collapse operations. Note that
     /// both operations are allowed and so e.g.
-    /// related_to(`_1[_4]`, `_1[_3]`) == true
+    /// `related_to`(`_1[_4]`, `_1[_3]`) == true
+    #[must_use]
     pub fn related_to(self, right: Self) -> bool {
         self.partial_cmp(right).is_some()
     }
 
+    #[must_use]
     pub fn common_prefix(self, other: Self) -> Self {
         assert_eq!(self.local, other.local);
 
@@ -722,6 +727,7 @@ impl<'tcx> Place<'tcx> {
         Self::new(self.local, &self.projection[..common_prefix])
     }
 
+    #[must_use]
     pub fn joinable_to(self, to: Self) -> Self {
         assert!(self.is_prefix_of(to));
         let diff = to.projection.len() - self.projection.len();
@@ -733,12 +739,14 @@ impl<'tcx> Place<'tcx> {
         Self::new(self.local, &to.projection[..to_proj])
     }
 
+    #[must_use]
     pub fn last_projection(self) -> Option<(Self, PlaceElem<'tcx>)> {
         self.0
             .last_projection()
             .map(|(place, proj)| (place.into(), proj))
     }
 
+    #[must_use]
     pub fn last_projection_ty(self) -> Option<Ty<'tcx>> {
         self.last_projection().and_then(|(_, proj)| match proj {
             ProjectionElem::Field(_, ty) | ProjectionElem::OpaqueCast(ty) => Some(ty),
@@ -746,12 +754,14 @@ impl<'tcx> Place<'tcx> {
         })
     }
 
+    #[must_use]
     pub fn is_deref_of(self, other: Self) -> bool {
         self.projection.last() == Some(&ProjectionElem::Deref)
             && other.is_prefix_of(self)
             && other.projection.len() == self.projection.len() - 1
     }
 
+    #[must_use]
     pub fn is_downcast_of(self, other: Self) -> Option<VariantIdx> {
         if let Some(ProjectionElem::Downcast(_, index)) = self.projection.last() {
             if other.is_prefix_of(self) && other.projection.len() == self.projection.len() - 1 {
@@ -783,10 +793,12 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn is_deref(self) -> bool {
         self.projection.last() == Some(&ProjectionElem::Deref)
     }
 
+    #[must_use]
     pub fn target_place(self) -> Option<Self> {
         if let Some(ProjectionElem::Deref) = self.projection.last() {
             Some(Place::new(
@@ -798,6 +810,7 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn nearest_owned_place(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Self {
         if self.is_owned(ctxt) {
             return self;
@@ -906,7 +919,7 @@ impl Debug for Place<'_> {
 }
 
 fn elem_eq<'tcx>(to_cmp: (PlaceElem<'tcx>, PlaceElem<'tcx>)) -> bool {
-    use ProjectionElem::*;
+    use ProjectionElem::{Downcast, Field};
     match to_cmp {
         (Field(left, _), Field(right, _)) => left == right,
         (Downcast(_, left), Downcast(_, right)) => left == right,
@@ -973,15 +986,19 @@ pub enum PlaceOrdering {
 }
 
 impl PlaceOrdering {
+    #[must_use]
     pub fn is_eq(self) -> bool {
         matches!(self, PlaceOrdering::Equal)
     }
+    #[must_use]
     pub fn is_prefix(self) -> bool {
         matches!(self, PlaceOrdering::Prefix)
     }
+    #[must_use]
     pub fn is_suffix(self) -> bool {
         matches!(self, PlaceOrdering::Suffix)
     }
+    #[must_use]
     pub fn is_both(self) -> bool {
         matches!(self, PlaceOrdering::Both)
     }

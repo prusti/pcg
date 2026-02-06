@@ -449,9 +449,9 @@ impl<'tcx, C: Copy + PartialEq> PlaceCapabilities<'tcx, C> {
 }
 
 impl<'tcx> PlaceCapabilities<'tcx, SymbolicCapability> {
+    #[must_use]
     pub fn is_exclusive(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.get(place, ctxt)
-            .map(|c| c.expect_concrete() == CapabilityKind::Exclusive)
-            .unwrap_or(false)
+            .is_some_and(|c| c.expect_concrete() == CapabilityKind::Exclusive)
     }
 }

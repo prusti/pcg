@@ -49,10 +49,12 @@ impl DisplayWithCtxt<()> for AnalysisLocation {
 }
 
 impl AnalysisLocation {
+    #[must_use]
     pub fn location(&self) -> Location {
         self.location
     }
 
+    #[must_use]
     pub fn first(block: BasicBlock) -> Self {
         AnalysisLocation {
             location: Location {
@@ -63,6 +65,7 @@ impl AnalysisLocation {
         }
     }
 
+    #[must_use]
     pub fn new(location: Location, eval_stmt_phase: EvalStmtPhase) -> Self {
         AnalysisLocation {
             location,
@@ -102,6 +105,7 @@ pub enum SnapshotLocation {
 }
 
 impl SnapshotLocation {
+    #[must_use]
     pub fn location(self) -> Location {
         match self {
             SnapshotLocation::Before(analysis_location) => analysis_location.location(),
@@ -114,6 +118,7 @@ impl SnapshotLocation {
             SnapshotLocation::BeforeRefReassignment(location) => location,
         }
     }
+    #[must_use]
     pub fn before_block(block: BasicBlock) -> Self {
         SnapshotLocation::Before(AnalysisLocation {
             location: Location {
@@ -124,6 +129,7 @@ impl SnapshotLocation {
         })
     }
 
+    #[must_use]
     pub const fn first() -> Self {
         SnapshotLocation::Before(AnalysisLocation {
             location: Location::START,
