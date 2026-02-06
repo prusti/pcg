@@ -310,7 +310,7 @@ impl PcgSettings {
             "Unknown PCG_ environment variable(s) found: {}. Known variables are: {}",
             unknown_vars.join(", "),
             processed.iter().cloned().collect::<Vec<_>>().join(", ")
-        )
+        );
     }
 }
 

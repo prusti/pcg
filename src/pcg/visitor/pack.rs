@@ -156,7 +156,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             assert!(
                 iteration <= debug_iteration_limit,
                 "Packing old and dead borrow leaves took more than {debug_iteration_limit} iterations"
-            )
+            );
         }
     }
 
@@ -290,10 +290,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             }
         };
         let leaf_edges = fg.leaf_edges(self.ctxt);
-        for edge in leaf_edges
-            .into_iter()
-            .map(crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdgeLike::to_owned_edge)
-        {
+        for edge in leaf_edges.into_iter().map(BorrowPcgEdgeLike::to_owned_edge) {
             tracing::debug!(
                 "Checking leaf edge: {}",
                 edge.value.display_string(self.ctxt.bc_ctxt())

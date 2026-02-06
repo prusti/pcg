@@ -104,7 +104,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         .borrow
                         .graph()
                         .edges_blocked_by(rp.into(), self.ctxt.bc_ctxt())
-                        .map(crate::borrow_pcg::borrow_pcg_edge::BorrowPcgEdgeLike::to_owned_edge)
+                        .map(BorrowPcgEdgeLike::to_owned_edge)
                         .collect::<Vec<_>>();
                     for edge in blocked_edges {
                         let should_remove =
