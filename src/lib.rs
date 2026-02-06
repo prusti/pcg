@@ -16,6 +16,7 @@ may already be stabilized */
 #![deny(clippy::needless_pass_by_value)]
 #![deny(clippy::explicit_iter_loop)]
 #![deny(clippy::flat_map_option)]
+#![deny(clippy::cloned_instead_of_copied)]
 // #![deny(clippy::pedantic)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::too_many_lines)]

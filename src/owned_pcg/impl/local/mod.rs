@@ -247,7 +247,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             .difference(&self.leaf_places(ctxt))
             .sorted_by_key(|place| place.projection().len())
             .rev()
-            .cloned()
+            .copied()
             .collect::<Vec<_>>();
         places.push(place);
         places
