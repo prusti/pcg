@@ -864,7 +864,6 @@ dependencies = [
  "derive_more",
  "dot",
  "itertools",
- "lazy_static",
  "pcg-macros",
  "petgraph",
  "rayon",

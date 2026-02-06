@@ -35,10 +35,10 @@ pub(crate) mod data_structures;
 pub(crate) mod domain_data;
 use crate::rustc_interface::middle::mir::BasicBlock;
 
-use lazy_static::lazy_static;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
+    sync::LazyLock,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
@@ -314,22 +314,25 @@ impl PcgSettings {
     }
 }
 
-lazy_static! {
-    pub static ref SETTINGS: PcgSettings = PcgSettings::new();
-    pub static ref GLOBAL_SETTINGS: GlobalPcgSettings = GlobalPcgSettings::new_returning_vars().0;
-    pub static ref VALIDITY_CHECKS: bool = SETTINGS.validity_checks;
-    pub static ref DEBUG_BLOCK: Option<BasicBlock> = SETTINGS.debug_block;
-    pub static ref DEBUG_IMGCAT: &'static [DebugImgcat] = &SETTINGS.debug_imgcat;
-    pub static ref VALIDITY_CHECKS_WARN_ONLY: bool = SETTINGS.validity_checks_warn_only;
-    pub static ref PANIC_ON_ERROR: bool = SETTINGS.panic_on_error;
-    pub static ref POLONIUS: bool = SETTINGS.polonius;
-    pub static ref DUMP_MIR_DATAFLOW: bool = SETTINGS.dump_mir_dataflow;
-    pub static ref VISUALIZATION: bool = SETTINGS.visualization;
-    pub static ref CHECK_ANNOTATIONS: bool = SETTINGS.check_annotations;
-    pub static ref EMIT_ANNOTATIONS: bool = SETTINGS.emit_annotations;
-    pub static ref CHECK_FUNCTION: Option<String> = SETTINGS.check_function.clone();
-    pub static ref SKIP_FUNCTION: Option<String> = SETTINGS.skip_function.clone();
-}
+pub static SETTINGS: LazyLock<PcgSettings> = LazyLock::new(PcgSettings::new);
+pub static GLOBAL_SETTINGS: LazyLock<GlobalPcgSettings> =
+    LazyLock::new(|| GlobalPcgSettings::new_returning_vars().0);
+pub static VALIDITY_CHECKS: LazyLock<bool> = LazyLock::new(|| SETTINGS.validity_checks);
+pub static DEBUG_BLOCK: LazyLock<Option<BasicBlock>> = LazyLock::new(|| SETTINGS.debug_block);
+pub static DEBUG_IMGCAT: LazyLock<&'static [DebugImgcat]> =
+    LazyLock::new(|| &SETTINGS.debug_imgcat);
+pub static VALIDITY_CHECKS_WARN_ONLY: LazyLock<bool> =
+    LazyLock::new(|| SETTINGS.validity_checks_warn_only);
+pub static PANIC_ON_ERROR: LazyLock<bool> = LazyLock::new(|| SETTINGS.panic_on_error);
+pub static POLONIUS: LazyLock<bool> = LazyLock::new(|| SETTINGS.polonius);
+pub static DUMP_MIR_DATAFLOW: LazyLock<bool> = LazyLock::new(|| SETTINGS.dump_mir_dataflow);
+pub static VISUALIZATION: LazyLock<bool> = LazyLock::new(|| SETTINGS.visualization);
+pub static CHECK_ANNOTATIONS: LazyLock<bool> = LazyLock::new(|| SETTINGS.check_annotations);
+pub static EMIT_ANNOTATIONS: LazyLock<bool> = LazyLock::new(|| SETTINGS.emit_annotations);
+pub static CHECK_FUNCTION: LazyLock<Option<String>> =
+    LazyLock::new(|| SETTINGS.check_function.clone());
+pub static SKIP_FUNCTION: LazyLock<Option<String>> =
+    LazyLock::new(|| SETTINGS.skip_function.clone());
 
 fn env_feature_enabled(feature: &str) -> Option<bool> {
     match std::env::var(feature) {
