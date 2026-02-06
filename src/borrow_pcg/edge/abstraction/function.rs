@@ -74,7 +74,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
             param_env,
             vec![],
             vec![],
-            Default::default(),
+            HashSet::default(),
         );
         Ok(Self {
             def_id: data.def_id,

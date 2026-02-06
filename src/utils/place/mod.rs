@@ -509,6 +509,7 @@ impl<'tcx> Place<'tcx> {
     /// This function converts the Place into a canonical form by re-projecting the place
     /// from its local, and using types derived from the root place as the types associated
     /// with Field region projections.
+    #[must_use]
     pub fn with_inherent_region<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,
@@ -608,6 +609,7 @@ impl<'tcx> Place<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty.ref_mutability()
     }
 
+    #[must_use]
     pub fn project_deref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,

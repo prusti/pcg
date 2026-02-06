@@ -72,6 +72,7 @@ impl<'tcx> BodyAndBorrows<'tcx> for BodyWithBorrowckFacts<'tcx> {
 type MonomorphizeEnv<'tcx> = ty::TypingEnv<'tcx>;
 
 impl<'tcx> BodyWithBorrowckFacts<'tcx> {
+    #[must_use]
     pub fn monomorphize(
         self,
         tcx: ty::TyCtxt<'tcx>,

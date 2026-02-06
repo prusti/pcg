@@ -651,8 +651,7 @@ impl<'tcx> Place<'tcx> {
             |typ| {
                 typ.ty
                     .ref_mutability()
-                    .map(Mutability::is_not)
-                    .unwrap_or_default()
+                    .is_some_and(Mutability::is_not)
             },
             ctxt,
         )
