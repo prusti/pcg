@@ -15,6 +15,7 @@ tracing-subscriber = "0.3.20"
 hyper = { version = "1.0", features = ["full"] }
 zip = "2.2"
 walkdir = "2.5"
+time = "0.3.47" # Earlier versions have security issues
 
 [dev-dependencies]
 reqwest = { version = "0.12", features = ["multipart", "blocking"] }
