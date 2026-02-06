@@ -25,7 +25,7 @@ use crate::utils::{
 use super::{PcgError, PcgUnsupportedError};
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
-    /// The label that should be used when referencing (after PostOperands), the
+    /// The label that should be used when referencing (after `PostOperands`), the
     /// value at the place before the move.
     pub(crate) fn pre_operand_move_label(&self) -> SnapshotLocation {
         SnapshotLocation::Before(AnalysisLocation::new(
@@ -35,7 +35,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     }
 
     /// The maybe-labelled place to use to reference the value of an operand after
-    /// the PostOperands phase. If the operand was copied, the place is returned
+    /// the `PostOperands` phase. If the operand was copied, the place is returned
     /// as-is. If the operand was moved, the place is returned with the label of
     /// the value before the move.
     pub(crate) fn maybe_labelled_operand(
@@ -199,7 +199,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 source_proj.with_label(
                     obtainer
                         .label_for_shared_expansion_of_rp(source_proj, obtainer.ctxt)
-                        .map(|l| l.into()),
+                        .map(std::convert::Into::into),
                     self.ctxt,
                 )
             };

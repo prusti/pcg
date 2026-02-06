@@ -17,10 +17,12 @@ pub struct BorrowPcgActions<'tcx>(pub(crate) Vec<BorrowPcgAction<'tcx>>);
 
 impl<'tcx> BorrowPcgActions<'tcx> {
     /// Actions applied to the PCG, in the order they occurred.
+    #[must_use]
     pub fn actions(&self) -> &[BorrowPcgAction<'tcx>] {
         &self.0
     }
 
+    #[must_use]
     pub fn weakens(&self) -> FxHashSet<Weaken<'tcx>> {
         self.0
             .iter()
@@ -31,6 +33,7 @@ impl<'tcx> BorrowPcgActions<'tcx> {
             .collect()
     }
 
+    #[must_use]
     pub fn unblock_actions(&self) -> Vec<BorrowPcgUnblockAction<'tcx>> {
         self.0
             .iter()

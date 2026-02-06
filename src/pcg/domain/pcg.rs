@@ -140,8 +140,7 @@ pub(crate) trait PcgRefLike<'tcx> {
         self.as_ref()
             .capabilities
             .get(place, ())
-            .map(|c| c == capability.into())
-            .unwrap_or(false)
+            .is_some_and(|c| c == capability.into())
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
@@ -255,7 +254,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                         && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) = self
                             .capabilities
                             .get(blocked_place, ctxt)
-                            .map(|c| c.expect_concrete())
+                            .map(super::super::capabilities::SymbolicCapability::expect_concrete)
                         && self.capabilities.get(deref_place, ctxt).is_none()
                     {
                         return Err(format!(
@@ -304,6 +303,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         return !place.is_owned(ctxt) || self.owned.leaf_places(ctxt).contains(&place);
     }
 
+    #[must_use]
     pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
         self.capabilities
             .iter()
@@ -317,14 +317,17 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             .collect()
     }
 
+    #[must_use]
     pub fn capabilities(&self) -> &SymbolicPlaceCapabilities<'tcx> {
         &self.capabilities
     }
 
+    #[must_use]
     pub fn owned_pcg(&self) -> &OwnedPcg<'tcx> {
         &self.owned
     }
 
+    #[must_use]
     pub fn borrow_pcg(&self) -> &BorrowsState<'a, 'tcx> {
         &self.borrow
     }

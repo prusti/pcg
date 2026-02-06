@@ -107,7 +107,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .pcg
             .capabilities
             .get(place, self.ctxt)
-            .map(|c| c.expect_concrete());
+            .map(super::super::capabilities::SymbolicCapability::expect_concrete);
 
         // TODO: If the place projects a shared ref, do we even need to restore a capability?
         let restore_cap = if place.place().projects_shared_ref(self.ctxt) {
@@ -185,7 +185,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// that the expansion occurred at a point where `p` had a different value
     /// than the current one. We don't want to perform this optimization because
     /// the it is referring to this different value.
-    /// For test case see rustls-pki-types@1.11.0 server_name::parser::Parser::<'a>::read_char
+    /// For test case see rustls-pki-types@1.11.0 `server_name::parser::Parser::`<'`a>::read_char`
     ///
     /// TODO: In the above test case, should the parent place also be labelled?
     fn unlabel_blocked_region_projections_if_applicable(
@@ -270,7 +270,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 self.pcg
                     .capabilities
                     .get(place, self.ctxt)
-                    .map(|c| c.expect_concrete()),
+                    .map(super::super::capabilities::SymbolicCapability::expect_concrete),
                 Some(CapabilityKind::Write) | None
             )
         } else {
@@ -477,7 +477,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         regained_capability.capability.into(),
                         self.pcg.borrow.as_mut_ref(),
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
@@ -485,7 +485,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         expand,
                         self.pcg.capabilities,
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
@@ -511,7 +511,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         collapse,
                         self.pcg.capabilities,
                         analysis_ctxt,
-                    )?;
+                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {
@@ -632,12 +632,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             // If we want to get e.g. write permission but we currently have
             // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
-            let collapse_cap =
-                if current_cap.map(|c| c.expect_concrete()) == Some(CapabilityKind::Read) {
-                    CapabilityKind::Read
-                } else {
-                    obtain_cap
-                };
+            let collapse_cap = if current_cap
+                .map(super::super::capabilities::SymbolicCapability::expect_concrete)
+                == Some(CapabilityKind::Read)
+            {
+                CapabilityKind::Read
+            } else {
+                obtain_cap
+            };
             tracing::debug!(
                 "Collapsing owned places to {}",
                 place.display_string(self.ctxt.bc_ctxt())
@@ -758,9 +760,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         block_type: BlockType,
         _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        self.pcg
+        Ok(self
+            .pcg
             .capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt)
+            .update_for_expansion(expansion, block_type, self.ctxt))
     }
 
     fn location(&self) -> mir::Location {
@@ -773,9 +776,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        self.pcg
+        Ok(self
+            .pcg
             .capabilities
-            .update_for_deref(ref_place, capability, self.ctxt)
+            .update_for_deref(ref_place, capability, self.ctxt))
     }
 
     fn capability_for_expand(

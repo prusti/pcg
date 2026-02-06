@@ -39,7 +39,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         collapse,
                         self.data.capabilities,
                         self.ctxt,
-                    )?;
+                    );
                     self.actions.push(action.kind);
                 }
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -48,7 +48,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         regained_capability.capability.into(),
                         self.data.borrows.as_mut_ref(),
                         self.ctxt,
-                    )?;
+                    );
                     self.actions.push(action.kind);
                 }
                 _ => unreachable!(),

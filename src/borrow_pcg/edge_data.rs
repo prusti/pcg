@@ -69,7 +69,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(|n| n.into())),
+                .chain(self.blocked_by_nodes(ctxt).map(std::convert::Into::into)),
         )
     }
 
@@ -132,7 +132,7 @@ where
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(|n| n.into())),
+                .chain(self.blocked_by_nodes(ctxt).map(std::convert::Into::into)),
         )
     }
 
@@ -311,7 +311,8 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
         label_context: LabelNodeContext,
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
-        let related_place = related_maybe_labelled_place.map(|p| p.place());
+        let related_place = related_maybe_labelled_place
+            .map(super::super::utils::place::maybe_old::MaybeLabelledPlace::place);
         match self {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {
@@ -421,7 +422,7 @@ pub(crate) fn conditionally_label_places<
     ctxt: Ctxt,
 ) -> HashSet<NodeReplacement<'tcx, P>> {
     let mut result = HashSet::default();
-    for node in nodes.into_iter() {
+    for node in nodes {
         node.label_place_conditionally(&mut result, predicate, labeller, label_context, ctxt);
     }
     result

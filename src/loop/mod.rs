@@ -88,32 +88,39 @@ impl LoopAnalysis {
         }
         analysis
     }
+    #[must_use]
     pub fn in_loop(&self, bb: BasicBlock, l: LoopId) -> bool {
         self.bb_data[bb].contains(l)
     }
 
     /// Returns an iterator over the loops that `bb` is in.
+    #[must_use]
     pub fn loops(&self, bb: BasicBlock) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
         self.bb_data[bb].iter()
     }
 
     /// Returns the number of loops that `bb` is in.
+    #[must_use]
     pub fn loop_depth(&self, bb: BasicBlock) -> usize {
         self.loops(bb).count()
     }
+    #[must_use]
     pub fn loop_nest_depth(&self, l: LoopId) -> usize {
         self.loop_depth(self[l]) - 1
     }
     /// Returns the loop which contains `bb` as well as all other loops of `bb`.
+    #[must_use]
     pub fn outermost_loop(&self, bb: BasicBlock) -> Option<LoopId> {
         self.loops(bb).min_by_key(|l| self.loop_nest_depth(*l))
     }
     /// Returns the loop which contains `bb` but no other loops of `bb`.
+    #[must_use]
     pub fn innermost_loop(&self, bb: BasicBlock) -> Option<LoopId> {
         self.loops(bb).max_by_key(|l| self.loop_nest_depth(*l))
     }
 
     /// If `bb` is a loop head, return the loop for which it is the head.
+    #[must_use]
     pub fn loop_head_of(&self, bb: BasicBlock) -> Option<LoopId> {
         self.loops(bb).find(|l| self[*l] == bb)
     }

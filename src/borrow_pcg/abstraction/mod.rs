@@ -24,8 +24,6 @@ use crate::{
     },
 };
 
-use crate::coupling::CoupleInputError;
-
 #[derive(Deref, From, Copy, Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ArgIdx(usize);
 
@@ -135,14 +133,14 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
     fn inputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeInput> {
         self.input_arg_projections(ctxt)
             .into_iter()
-            .map(|p| p.into())
+            .map(std::convert::Into::into)
             .collect()
     }
 
     fn outputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeOutput> {
         self.result_projections(ctxt)
             .into_iter()
-            .map(|p| p.into())
+            .map(std::convert::Into::into)
             .collect()
     }
 }
@@ -220,10 +218,12 @@ impl<'tcx> From<ProjectionData<'tcx, ArgIdx>> for LifetimeProjection<'static, Ar
 pub type FunctionShapeInput = LifetimeProjection<'static, ArgIdx>;
 
 impl FunctionShapeInput {
+    #[must_use]
     pub fn to_function_shape_node(self) -> FunctionShapeNode {
         self.with_base(ArgIdxOrResult::Argument(self.base))
     }
 
+    #[must_use]
     pub fn mir_local(self) -> mir::Local {
         self.to_function_shape_node().mir_local()
     }
@@ -241,6 +241,7 @@ impl From<FunctionShapeInput> for FunctionShapeNode {
 }
 
 impl FunctionShapeNode {
+    #[must_use]
     pub fn mir_local(self) -> mir::Local {
         match self.base {
             ArgIdxOrResult::Argument(arg) => (*arg + 1).into(),
@@ -248,6 +249,7 @@ impl FunctionShapeNode {
         }
     }
 
+    #[must_use]
     pub fn ty(self, sig: ty::FnSig<'_>) -> ty::Ty<'_> {
         match self.base {
             ArgIdxOrResult::Argument(arg) => sig.inputs()[*arg],
@@ -273,6 +275,7 @@ impl FunctionShape {
         self.edges.iter().copied()
     }
 
+    #[must_use]
     pub fn take_inputs_and_outputs(self) -> (Vec<FunctionShapeInput>, Vec<FunctionShapeOutput>) {
         (self.inputs, self.outputs)
     }
@@ -303,6 +306,7 @@ pub enum MakeFunctionShapeError {
 }
 
 impl<'tcx> FunctionData<'tcx> {
+    #[must_use]
     pub fn new(def_id: DefId) -> Self {
         Self {
             def_id,
@@ -310,10 +314,12 @@ impl<'tcx> FunctionData<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn param_env(self, tcx: ty::TyCtxt<'tcx>) -> ty::ParamEnv<'tcx> {
         tcx.param_env(self.def_id)
     }
 
+    #[must_use]
     pub fn def_id(self) -> DefId {
         self.def_id
     }
@@ -342,9 +348,7 @@ impl<'tcx> FunctionData<'tcx> {
         let shape = self
             .shape(None, tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
-        shape
-            .coupled_edges()
-            .map_err(CoupleAbstractionError::CoupleInput)
+        Ok(shape.coupled_edges())
     }
 }
 
@@ -419,9 +423,8 @@ impl FunctionShape {
         })
     }
 
-    pub fn coupled_edges(
-        &self,
-    ) -> std::result::Result<FunctionShapeCoupledEdges, CoupleInputError> {
+    #[must_use]
+    pub fn coupled_edges(&self) -> FunctionShapeCoupledEdges {
         CoupledEdgesData::new(self.edges.iter().copied())
     }
 }
@@ -464,7 +467,7 @@ mod tests {
                 AbstractionBlockEdge::new(ry, result),
             ]),
         };
-        let coupled_edges = shape.coupled_edges().unwrap();
+        let coupled_edges = shape.coupled_edges();
         assert_eq!(coupled_edges.len(), 1);
         let edge = &coupled_edges.0[0];
         assert_eq!(edge.inputs(), &[rx, ry]);

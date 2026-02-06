@@ -221,7 +221,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
     for PcgVisitor<'_, 'a, 'tcx, Ctxt>
 {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, _location))]
     fn visit_statement_fallable(
         &mut self,
         statement: &Statement<'tcx>,
@@ -379,7 +379,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                     .pcg
                     .capabilities
                     .get(place, self.ctxt)
-                    .map(|c| c.expect_concrete())
+                    .map(super::capabilities::SymbolicCapability::expect_concrete)
                     == Some(CapabilityKind::Read)
             {
                 self.pcg
@@ -441,11 +441,10 @@ impl<'tcx> OwnedPcg<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) -> Result<(), PcgError>
-    where
+    ) where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].get_allocated_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt)
+        expansions.perform_expand_action(expand, capabilities, ctxt);
     }
 }

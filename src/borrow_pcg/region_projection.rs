@@ -95,10 +95,12 @@ impl std::fmt::Display for PcgRegion {
 }
 
 impl PcgRegion {
+    #[must_use]
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
     }
 
+    #[must_use]
     pub fn vid(&self) -> Option<RegionVid> {
         match self {
             PcgRegion::RegionVid(vid) => Some(*vid),
@@ -988,6 +990,7 @@ impl<'tcx, T> LifetimeProjection<'tcx, T> {
 impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     /// If the region projection is of the form `x↓'a` and `x` has type `&'a T` or `&'a mut T`,
     /// this returns `*x`.
+    #[must_use]
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
         if self.base.ty_region(ctxt) == Some(self.region(ctxt)) {
             Some(self.base.project_deref(ctxt))
@@ -1003,10 +1006,12 @@ pub(crate) type LocalLifetimeProjection<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, LocalLifetimeProjectionBase<'tcx, P>>;
 
 impl<'tcx> LocalLifetimeProjection<'tcx> {
+    #[must_use]
     pub fn to_lifetime_projection(&self) -> LifetimeProjection<'tcx> {
         self.with_base(self.base.into())
     }
 
+    #[must_use]
     pub fn local(&self) -> Local {
         self.base.local()
     }
@@ -1027,6 +1032,7 @@ impl<'tcx> LifetimeProjection<'tcx> {
 
     /// If the region projection is of the form `x↓'a` and `x` has type `&'a T` or `&'a mut T`,
     /// this returns `*x`. Otherwise, it returns `None`.
+    #[must_use]
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
         self.as_local_region_projection()
             .and_then(|rp| rp.deref(ctxt))

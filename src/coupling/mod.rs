@@ -85,12 +85,12 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
 {
     pub(crate) fn new(
         edges: impl IntoIterator<Item = AbstractionBlockEdge<'_, InputNode, OutputNode>>,
-    ) -> Result<Self, CoupleInputError> {
+    ) -> Self {
         use union_find::{QuickUnionUf, UnionBySize, UnionFind};
 
         let edges: Vec<_> = edges.into_iter().map(|e| (e.input(), e.output())).collect();
         if edges.is_empty() {
-            return Ok(Self(Vec::new()));
+            return Self(Vec::new());
         }
 
         let mut uf: QuickUnionUf<UnionBySize> = QuickUnionUf::new(edges.len());
@@ -126,7 +126,7 @@ impl<InputNode: Eq + Hash + Copy, OutputNode: Eq + Hash + Copy>
             })
             .collect();
 
-        Ok(Self(hyper_edges))
+        Self(hyper_edges)
     }
 }
 
@@ -292,16 +292,11 @@ pub(crate) fn couple_edges<
     edges: &HashSet<AbstractionBlockEdge<'tcx, InputNode, OutputNode>>,
     f: impl FnOnce(CoupledEdges<Metadata, InputNode, OutputNode>) -> PcgCoupledEdges<'tcx>,
 ) -> CoupleEdgesResult<'tcx, Metadata> {
-    CoupleEdgesResult(match CoupledEdgesData::new(edges.iter().copied()) {
-        Ok(coupled_edges) => Ok(f(CoupledEdges {
-            metadata,
-            edges: coupled_edges,
-        })),
-        Err(_) => Err(CouplingError {
-            error_type: CouplingErrorType::CannotConstructShape,
-            source_data: metadata,
-        }),
-    })
+    let coupled_edges = CoupledEdgesData::new(edges.iter().copied());
+    CoupleEdgesResult(Ok(f(CoupledEdges {
+        metadata,
+        edges: coupled_edges,
+    })))
 }
 
 trait ObtainEdges<'tcx, Input> {

@@ -130,7 +130,10 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         location: mir::Location,
     ) -> Result<(), PcgError> {
         self.super_rvalue_fallable(rvalue, location)?;
-        use Rvalue::*;
+        use Rvalue::{
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
+            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+        };
         let triple = match rvalue {
             Use(_)
             | Repeat(_, _)
@@ -189,7 +192,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         location: Location,
     ) -> Result<(), PcgError> {
         self.super_statement_fallable(statement, location)?;
-        use StatementKind::*;
+        use StatementKind::{
+            Assign, Deinit, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
+        };
         let t = match statement.kind {
             Assign(box (place, ref rvalue)) => Triple {
                 pre: PlaceCondition::write(place),
@@ -229,7 +234,10 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         location: mir::Location,
     ) -> Result<(), PcgError> {
         self.super_terminator_fallable(terminator, location)?;
-        use TerminatorKind::*;
+        use TerminatorKind::{
+            Assert, Call, CoroutineDrop, Drop, FalseEdge, FalseUnwind, Goto, InlineAsm, Return,
+            SwitchInt, Unreachable, UnwindResume, UnwindTerminate, Yield,
+        };
         let t = match &terminator.kind {
             Goto { .. }
             | SwitchInt { .. }
@@ -285,7 +293,10 @@ trait ProducesCapability {
 impl ProducesCapability for Rvalue<'_> {
     #[allow(unreachable_patterns)]
     fn capability(&self) -> Option<CapabilityKind> {
-        use Rvalue::*;
+        use Rvalue::{
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
+            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+        };
         match self {
             Ref(_, BorrowKind::Fake(_), _) => None,
             Use(_)

@@ -202,18 +202,22 @@ impl<'tcx> BorrowEdge<'tcx> {
         self.borrow_index
     }
 
+    #[must_use]
     pub fn region(&self) -> ty::Region<'tcx> {
         self.region
     }
 
+    #[must_use]
     pub fn kind(&self) -> mir::BorrowKind {
         self.kind
     }
 
+    #[must_use]
     pub fn assigned_ref(&self) -> MaybeLabelledPlace<'tcx> {
         self.assigned_ref
     }
 
+    #[must_use]
     pub fn blocked_place(&self) -> MaybeLabelledPlace<'tcx> {
         self.blocked_place
     }
@@ -247,12 +251,14 @@ impl<'tcx> BorrowEdge<'tcx> {
         self.reserve_location
     }
 
+    #[must_use]
     pub fn is_mut(&self) -> bool {
         self.kind.mutability() == Mutability::Mut
     }
 
     /// The deref of the assigned place of the borrow. For example, if the borrow is
     /// `let x = &mut y;`, then the deref place is `*x`.
+    #[must_use]
     pub fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
         self.assigned_ref.project_deref(ctxt)
     }

@@ -11,6 +11,7 @@ use crate::{
 };
 
 impl<'tcx> AbstractionEdge<'tcx> {
+    #[must_use]
     pub fn location(&self) -> Location {
         match self {
             AbstractionEdge::FunctionCall(c) => c.location(),

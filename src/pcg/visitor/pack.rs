@@ -83,14 +83,14 @@ impl<'tcx> EdgesToRemove<'tcx> {
 
     fn removal_actions(self) -> Vec<RemovalAction<'tcx>> {
         let mut actions = Vec::new();
-        for (place, deref_edges) in self.deref_edges.into_iter() {
+        for (place, deref_edges) in self.deref_edges {
             actions.push(RemovalAction::RemoveDerefEdgesTo(
                 place,
                 deref_edges.value,
                 deref_edges.reason,
             ));
         }
-        for edge in self.other_edges.into_iter() {
+        for edge in self.other_edges {
             actions.push(RemovalAction::RemoveOtherEdge(edge.value, edge.reason));
         }
         actions
@@ -130,7 +130,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         self.restore_capability_to_leaf_places(for_place, self.ctxt)?;
         loop {
             iteration += 1;
-            let edges_to_remove = self.identify_leaf_edges_to_remove(for_place)?;
+            let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
                 break Ok(());
             }
@@ -153,11 +153,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     iteration
                 );
             }
-            if iteration > debug_iteration_limit {
-                panic!(
-                    "Packing old and dead borrow leaves took more than {debug_iteration_limit} iterations"
-                );
-            }
+            assert!(
+                iteration <= debug_iteration_limit,
+                "Packing old and dead borrow leaves took more than {debug_iteration_limit} iterations"
+            );
         }
     }
 
@@ -177,7 +176,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     fn identify_leaf_edges_to_remove<'slf>(
         &'slf mut self,
         ancestor_place: Option<Place<'tcx>>,
-    ) -> Result<EdgesToRemove<'tcx>, PcgError> {
+    ) -> EdgesToRemove<'tcx> {
         enum ShouldKillNode {
             Yes { reason: Cow<'static, str> },
             No,
@@ -242,8 +241,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut edges_to_remove = EdgesToRemove::new();
         let fg = self.pcg.borrow.graph.frozen_graph();
         let location = self.location();
-        let should_pack_edge = |edge: &BorrowPcgEdgeKind<'tcx>| match edge {
-            BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) => {
+        let should_pack_edge = |edge: &BorrowPcgEdgeKind<'tcx>| {
+            if let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) = edge {
                 if !ancestor_predicate_allows_killing(expansion.base()) {
                     return ShouldPackEdge::No;
                 }
@@ -264,8 +263,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 } else {
                     ShouldPackEdge::No
                 }
-            }
-            _ => {
+            } else {
                 let mut why_killed_reasons = Vec::new();
                 for node in edge.blocked_by_nodes(self.ctxt.bc_ctxt()) {
                     if let ShouldKillNode::Yes { reason } = should_kill_node(node, &fg) {
@@ -292,7 +290,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             }
         };
         let leaf_edges = fg.leaf_edges(self.ctxt);
-        for edge in leaf_edges.into_iter().map(|e| e.to_owned_edge()) {
+        for edge in leaf_edges.into_iter().map(BorrowPcgEdgeLike::to_owned_edge) {
             tracing::debug!(
                 "Checking leaf edge: {}",
                 edge.value.display_string(self.ctxt.bc_ctxt())
@@ -301,6 +299,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 edges_to_remove.push(&edge, reason);
             }
         }
-        Ok(edges_to_remove)
+        edges_to_remove
     }
 }

@@ -121,14 +121,17 @@ impl<'tcx> RepackExpand<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn capability(&self) -> CapabilityKind {
         self.capability
     }
 
+    #[must_use]
     pub fn from(&self) -> Place<'tcx> {
         self.from
     }
 
+    #[must_use]
     pub fn guide(&self) -> Option<RepackGuide> {
         self.guide
     }
@@ -182,10 +185,12 @@ impl<'tcx> RepackCollapse<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn guide(self) -> Option<RepackGuide> {
         self.guide
     }
 
+    #[must_use]
     pub fn box_deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<Place<'tcx>> {
         if self.to.ty(ctxt).ty.is_box() {
             self.to.project_deeper(PlaceElem::Deref, ctxt).ok()
@@ -194,10 +199,12 @@ impl<'tcx> RepackCollapse<'tcx> {
         }
     }
 
+    #[must_use]
     pub fn to(&self) -> Place<'tcx> {
         self.to
     }
 
+    #[must_use]
     pub fn capability(&self) -> CapabilityKind {
         self.capability
     }
@@ -212,7 +219,7 @@ impl<'tcx> RepackCollapse<'tcx> {
 #[serde(tag = "type", content = "data")]
 pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
 {
-    /// Rust will sometimes join two BasicBlocks where a local is live in one and dead in the other.
+    /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
     /// edge from where it was live.
     ///
@@ -226,7 +233,7 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// handling blocks, but can also appear in regular code for example in the MIR of
     /// [this function](https://github.com/dtolnay/syn/blob/3da56a712abf7933b91954dbfb5708b452f88504/src/attr.rs#L623-L628).
     StorageDead(Local),
-    /// This Op only appears within a BasicBlock and is attached to a
+    /// This Op only appears within a `BasicBlock` and is attached to a
     /// [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
     /// statement. We emit it for any such statement where the local may already be dead. We
     /// guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
@@ -350,6 +357,7 @@ impl<'tcx> RepackOp<'tcx> {
         })
     }
 
+    #[must_use]
     pub fn affected_place(&self) -> Place<'tcx> {
         match *self {
             RepackOp::StorageDead(local) | RepackOp::IgnoreStorageDead(local) => local.into(),

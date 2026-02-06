@@ -78,7 +78,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     None,
                     self.capabilities,
                     ctxt,
-                )?);
+                ));
                 repacks.push(RepackOp::StorageDead(expansions.local));
                 *self.owned = OwnedPcgLocal::Unallocated;
                 Ok(repacks)
@@ -126,8 +126,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) -> Result<(), PcgError>
-    where
+    ) where
         'tcx: 'a,
     {
         let target_places = expand.target_places(ctxt);
@@ -157,7 +156,6 @@ impl<'tcx> LocalExpansions<'tcx> {
         } else {
             capabilities.remove(expand.from, ctxt);
         }
-        Ok(())
     }
 
     pub(crate) fn all_descendants_of<'a>(
@@ -223,8 +221,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         collapse: RepackCollapse<'tcx>,
         place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C>,
         ctxt: Ctxt,
-    ) -> Result<(), PcgError>
-    where
+    ) where
         'tcx: 'a,
     {
         let expansion_places = self.all_children_of(collapse.to, ctxt);
@@ -252,6 +249,5 @@ impl<'tcx> LocalExpansions<'tcx> {
                 });
         self.remove_all_expansions_from(collapse.to, ctxt);
         place_capabilities.insert(collapse.to, retained_cap, ctxt);
-        Ok(())
     }
 }

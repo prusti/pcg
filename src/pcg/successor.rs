@@ -16,12 +16,15 @@ pub struct PcgSuccessor<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
+    #[must_use]
     pub fn actions(&self) -> &PcgActions<'tcx> {
         &self.actions
     }
+    #[must_use]
     pub fn block(&self) -> BasicBlock {
         self.block
     }
+    #[must_use]
     pub fn entry_graph(&self) -> &BorrowsGraph<'tcx> {
         self.entry_state.graph()
     }

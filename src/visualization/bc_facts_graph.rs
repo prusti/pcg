@@ -47,6 +47,7 @@ fn get_id<Ctxt, T: Clone + Eq + DisplayWithCtxt<Ctxt>>(
     }
 }
 
+#[must_use]
 pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
     ctxt: CompilerCtxt<'a, 'tcx, &'bc PoloniusBorrowChecker<'a, 'tcx>>,
 ) -> DotGraph {
@@ -63,8 +64,8 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
                 let sub_node = get_id(sub, &mut nodes, &mut graph.nodes, ctxt);
                 let edge = DotEdge {
                     id: None,
-                    from: sup_node.to_string(),
-                    to: sub_node.to_string(),
+                    from: sup_node.clone(),
+                    to: sub_node.clone(),
                     options: EdgeOptions::directed(EdgeDirection::Forward),
                 };
                 if !graph.edges.contains(&edge) {
@@ -86,7 +87,9 @@ pub struct RegionPrettyPrinter<'bc, 'tcx> {
 
 impl OverrideRegionDebugString for RegionPrettyPrinter<'_, '_> {
     fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
-        self.region_to_string.get(&region).map(|s| s.as_str())
+        self.region_to_string
+            .get(&region)
+            .map(std::string::String::as_str)
     }
 }
 
@@ -107,7 +110,7 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
     #[allow(dead_code)]
     pub(crate) fn lookup(&self, region: RegionVid) -> Option<&String> {
         if self.sccs.borrow().is_none() {
-            let regions = self.region_to_string.keys().cloned().collect::<Vec<_>>();
+            let regions = self.region_to_string.keys().copied().collect::<Vec<_>>();
             *self.sccs.borrow_mut() = Some(compute_region_sccs(&regions, self.region_infer_ctxt));
         }
         for scc in self.sccs.borrow().as_ref().unwrap().node_weights() {
@@ -127,7 +130,7 @@ fn get_all_regions<'tcx>(body: &Body<'tcx>, _tcx: ty::TyCtxt<'tcx>) -> Vec<Regio
     body.local_decls
         .iter()
         .flat_map(|l| extract_regions(l.ty))
-        .flat_map(|r| r.vid())
+        .filter_map(|r| r.vid())
         .unique()
         .collect()
 }

@@ -190,7 +190,11 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
             .flat_map(|edge| {
                 edge.kind
                     .blocked_nodes(ctxt)
-                    .chain(edge.kind.blocked_by_nodes(ctxt).map(|node| node.into()))
+                    .chain(
+                        edge.kind
+                            .blocked_by_nodes(ctxt)
+                            .map(std::convert::Into::into),
+                    )
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -251,6 +255,7 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    #[must_use]
     pub fn coupled_edges(&self) -> HashSet<Conditioned<PcgCoupledEdgeKind<'tcx>>> {
         self.edges
             .iter()
@@ -262,6 +267,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             })
             .collect()
     }
+    #[must_use]
     pub fn into_coupled(
         mut self,
     ) -> BorrowsGraph<'tcx, MaybeCoupledEdgeKind<'tcx, BorrowPcgEdgeKind<'tcx>>> {
@@ -376,6 +382,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
     }
 
+    #[must_use]
     pub fn frozen_graph(&self) -> FrozenGraphRef<'_, 'tcx> {
         FrozenGraphRef::new(self)
     }
@@ -397,7 +404,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// of blocking calculations. The argument should be used if this function
     /// is to be called multiple times on the same graph.
     pub(crate) fn is_leaf_edge<'a: 'graph, 'graph, Edge, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &'graph self,
         edge: &Edge,
         ctxt: Ctxt,
         blocking_map: &FrozenGraphRef<'graph, 'tcx>,
@@ -423,7 +429,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'tcx: 'a,
     {
         self.edges()
-            .filter(move |edge| self.is_leaf_edge(edge, ctxt.bc_ctxt(), frozen_graph))
+            .filter(move |edge| Self::is_leaf_edge(edge, ctxt.bc_ctxt(), frozen_graph))
             .collect()
     }
 
@@ -591,8 +597,7 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
             edge.kind.blocks_node(node, ctxt)
                 || node
                     .as_local_node()
-                    .map(|blocking| edge.kind.blocked_by_nodes(ctxt).contains(&blocking))
-                    .unwrap_or(false)
+                    .is_some_and(|blocking| edge.kind.blocked_by_nodes(ctxt).contains(&blocking))
         })
     }
 }

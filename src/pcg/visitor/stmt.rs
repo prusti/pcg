@@ -65,7 +65,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         .pcg
                         .capabilities
                         .get(target, self.ctxt)
-                        .map(|c| c.expect_concrete())
+                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
                         == Some(CapabilityKind::Read)
                     {
                         self.record_and_apply_action(
@@ -104,7 +104,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         .borrow
                         .graph()
                         .edges_blocked_by(rp.into(), self.ctxt.bc_ctxt())
-                        .map(|edge| edge.to_owned_edge())
+                        .map(BorrowPcgEdgeLike::to_owned_edge)
                         .collect::<Vec<_>>();
                     for edge in blocked_edges {
                         let should_remove =

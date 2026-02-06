@@ -177,6 +177,7 @@ pub struct CoupledEdgesData<InputNode, OutputNode>(
 );
 
 impl<InputNode: Eq + Hash, OutputNode: Eq + Hash> CoupledEdgesData<InputNode, OutputNode> {
+    #[must_use]
     pub fn into_hash_set(self) -> HashSet<HyperEdge<InputNode, OutputNode>> {
         self.0.into_iter().collect()
     }
@@ -259,6 +260,7 @@ impl<'tcx, P: PcgNodeComponent> PcgCoupledEdgeKind<'tcx, P> {
         }
     }
 
+    #[must_use]
     pub fn outputs(&self) -> Vec<AbstractionOutputTarget<'tcx, P>> {
         match &self.0 {
             FunctionCallOrLoop::FunctionCall(function) => function

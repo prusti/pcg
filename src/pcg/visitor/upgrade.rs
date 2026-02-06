@@ -95,7 +95,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                         .pcg
                         .capabilities
                         .get(place, self.ctxt)
-                        .map(|c| c.expect_concrete())
+                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
                         == Some(CapabilityKind::Read)
                     && !place.projects_shared_ref(self.ctxt)
                 {
@@ -138,7 +138,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                         .with_label(Some(self.prev_snapshot_location().into()), self.ctxt);
                     let expansion_nodes = edges_blocking_current_rp
                         .iter()
-                        .flat_map(|e| {
+                        .filter_map(|e| {
                             if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = e.kind()
                                 && let PcgNode::LifetimeProjection(rp) = e.base()
                                 && rp == current_rp.into()

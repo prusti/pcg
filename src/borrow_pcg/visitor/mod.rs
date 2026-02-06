@@ -55,5 +55,5 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<RegionIdx, PcgRegion> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
-    IndexVec::from_iter(visitor.lifetimes.iter().map(|r| (*r).into()))
+    visitor.lifetimes.iter().map(|r| (*r).into()).collect()
 }

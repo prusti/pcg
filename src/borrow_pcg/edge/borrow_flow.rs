@@ -273,6 +273,7 @@ pub enum OperandType {
 }
 
 impl OperandType {
+    #[must_use]
     pub fn is_place(self) -> bool {
         matches!(self, OperandType::Move | OperandType::Copy)
     }

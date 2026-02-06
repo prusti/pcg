@@ -19,9 +19,12 @@ impl From<PcgUnsupportedError> for PcgError {
 
 impl PcgError {
     pub(crate) fn new(kind: PcgErrorKind, context: Vec<String>) -> Self {
-        if *PANIC_ON_ERROR {
-            panic!("PCG Error: {:?} ({})", kind, context.join(", "));
-        }
+        assert!(
+            !*PANIC_ON_ERROR,
+            "PCG Error: {:?} ({})",
+            kind,
+            context.join(", ")
+        );
         Self { kind, context }
     }
 }

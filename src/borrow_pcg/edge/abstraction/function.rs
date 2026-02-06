@@ -74,7 +74,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
             param_env,
             vec![],
             vec![],
-            Default::default(),
+            HashSet::default(),
         );
         Ok(Self {
             def_id: data.def_id,
@@ -192,6 +192,7 @@ pub(crate) type FunctionCallAbstractionEdge<'tcx, P = Place<'tcx>> = Abstraction
 >;
 
 impl<'tcx> FunctionCallAbstractionEdge<'tcx> {
+    #[must_use]
     pub fn to_hyper_edge(
         &self,
     ) -> HyperEdge<FunctionCallAbstractionInput<'tcx>, FunctionCallAbstractionOutput<'tcx>> {

@@ -67,6 +67,7 @@ impl<'graph, EdgeKind, VC> BorrowPcgEdgeRef<'_, 'graph, EdgeKind, VC> {
 }
 
 impl<EdgeKind, VC> BorrowPcgEdgeRef<'_, '_, EdgeKind, VC> {
+    #[must_use]
     pub fn kind(&self) -> &EdgeKind {
         self.kind
     }
@@ -142,7 +143,7 @@ pub trait BorrowPcgEdgeLike<
         Self: EdgeData<'tcx, Ctxt, P>,
     {
         self.blocked_nodes(ctxt)
-            .flat_map(|node| node.as_place())
+            .filter_map(|node| node.as_place())
             .unique()
     }
 }
@@ -371,6 +372,7 @@ impl<'tcx, P: Copy> From<LocalNode<'tcx, P>> for PcgNodeWithPlace<'tcx, P> {
 
 impl<'tcx> BorrowPcgEdge<'tcx> {
     /// The conditions under which the edge is valid
+    #[must_use]
     pub fn conditions(&self) -> &ValidityConditions {
         &self.conditions
     }
@@ -381,6 +383,7 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
         self.conditions.valid_for_path(path, body)
     }
 
+    #[must_use]
     pub fn kind(&self) -> &BorrowPcgEdgeKind<'tcx> {
         &self.value
     }

@@ -109,9 +109,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )
             })
             .collect();
-        if self.settings().coupling
-            && let Ok(coupled_edges) = CoupledEdgesData::new(abstraction_edges.iter().copied())
-        {
+        if self.settings().coupling {
+            let coupled_edges = CoupledEdgesData::new(abstraction_edges.iter().copied());
             if !coupled_edges.is_empty() {
                 tracing::debug!("Coupled edges: {:?}", coupled_edges);
             }

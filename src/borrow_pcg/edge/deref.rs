@@ -38,9 +38,11 @@ pub struct DerefEdge<'tcx, P = Place<'tcx>> {
 }
 
 impl<'tcx> DerefEdge<'tcx> {
+    #[must_use]
     pub fn blocked_place(self) -> MaybeLabelledPlace<'tcx> {
         self.blocked_place
     }
+    #[must_use]
     pub fn deref_place(self) -> MaybeLabelledPlace<'tcx> {
         self.deref_place
     }
@@ -56,7 +58,10 @@ impl<'tcx> DerefEdge<'tcx> {
         let blocked_lifetime_projection = place
             .base_lifetime_projection(ctxt)
             .unwrap()
-            .with_label(blocked_lifetime_projection_label.map(|l| l.into()), ctxt)
+            .with_label(
+                blocked_lifetime_projection_label.map(std::convert::Into::into),
+                ctxt,
+            )
             .into();
         let blocked_place_label: Option<SnapshotLocation> = None;
         DerefEdge {

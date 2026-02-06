@@ -458,6 +458,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
 }
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
+    #[must_use]
     pub fn graph(&self) -> &BorrowsGraph<'tcx> {
         &self.graph
     }
@@ -493,6 +494,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         self.graph.edges_blocking(node, ctxt).collect()
     }
 
+    #[must_use]
     pub fn nodes_blocking<'slf, 'mir: 'slf>(
         &'slf self,
         node: BlockedNode<'tcx>,
@@ -541,32 +543,32 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             ctxt.ctxt()
         ));
 
-        match kind {
-            BorrowKind::Mut {
-                kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
-            } => {
-                let _ = capabilities.remove(blocked_place, ctxt);
-            }
-            _ => {
-                let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-                match blocked_place_capability.map(|c| c.expect_concrete()) {
-                    Some(CapabilityKind::Exclusive) => {
-                        assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
-                    }
-                    Some(CapabilityKind::Read) => {
-                        // Do nothing, this just adds another shared borrow
-                    }
-                    other => {
-                        // Shouldn't be None or Write, due to capability updates
-                        // based on the TripleWalker analysis
-                        pcg_validity_assert!(
-                            false,
-                            "{:?}: Unexpected capability for borrow blocked place {:?}: {:?}",
-                            location,
-                            blocked_place,
-                            other
-                        );
-                    }
+        if let BorrowKind::Mut {
+            kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
+        } = kind
+        {
+            let _ = capabilities.remove(blocked_place, ctxt);
+        } else {
+            let blocked_place_capability = capabilities.get(blocked_place, ctxt);
+            match blocked_place_capability
+                .map(super::super::pcg::capabilities::SymbolicCapability::expect_concrete)
+            {
+                Some(CapabilityKind::Exclusive) => {
+                    assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
+                }
+                Some(CapabilityKind::Read) => {
+                    // Do nothing, this just adds another shared borrow
+                }
+                other => {
+                    // Shouldn't be None or Write, due to capability updates
+                    // based on the TripleWalker analysis
+                    pcg_validity_assert!(
+                        false,
+                        "{:?}: Unexpected capability for borrow blocked place {:?}: {:?}",
+                        location,
+                        blocked_place,
+                        other
+                    );
                 }
             }
         }

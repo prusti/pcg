@@ -20,12 +20,14 @@ impl EvalStmtPhase {
         EvalStmtPhase::PreOperands
     }
 
+    #[must_use]
     pub const fn last() -> Self {
         EvalStmtPhase::PostMain
     }
 }
 
 impl EvalStmtPhase {
+    #[must_use]
     pub fn is_operands_stage(&self) -> bool {
         matches!(
             self,
@@ -33,6 +35,7 @@ impl EvalStmtPhase {
         )
     }
 
+    #[must_use]
     pub fn phases() -> [EvalStmtPhase; 4] {
         [
             EvalStmtPhase::PreOperands,

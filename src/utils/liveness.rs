@@ -101,7 +101,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
 
     fn bottom_value(&self, _body: &mir::Body<'tcx>) -> Self::Domain {
         PlaceLivenessDomain {
-            places: Default::default(),
+            places: HashSet::default(),
         }
     }
 

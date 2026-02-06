@@ -79,6 +79,7 @@ impl<'tcx> AbstractionEdge<'tcx> {
     /// This is presumably NOT what you want, as there is no coupling logic
     /// involved.  Instead, consider [`BorrowsGraph::coupling_results`].
     /// However, Prusti is currently using this function for loops.
+    #[must_use]
     pub fn into_singleton_coupled_edge(self) -> PcgCoupledEdgeKind<'tcx> {
         match self {
             AbstractionEdge::FunctionCall(function_call) => {

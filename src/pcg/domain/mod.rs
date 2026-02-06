@@ -106,8 +106,8 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         Self {
             definitely_initialized,
             place_liveness,
-            loop_analysis,
             loop_place_usage_analysis,
+            loop_analysis,
         }
     }
 
@@ -403,7 +403,7 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
 
 impl<'a, 'tcx, T> DomainDataWithCtxt<'a, 'tcx, T> {
     pub(crate) fn new(data: PcgDomainData<'a, 'tcx>, ctxt: T) -> Self {
-        Self { data, ctxt }
+        Self { ctxt, data }
     }
 }
 
@@ -526,9 +526,7 @@ impl ErrorState {
     }
 
     pub(crate) fn record_error(&mut self, error: PcgError) {
-        if *PANIC_ON_ERROR {
-            panic!("PCG Error: {error:?}");
-        }
+        assert!(!*PANIC_ON_ERROR, "PCG Error: {error:?}");
         tracing::error!("PCG Error: {:?}", error);
         self.error = Some(error);
     }

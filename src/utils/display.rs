@@ -45,6 +45,7 @@ impl Debug for PlaceDisplay<'_> {
 }
 
 impl PlaceDisplay<'_> {
+    #[must_use]
     pub fn is_user(&self) -> bool {
         matches!(self, PlaceDisplay::User(..))
     }
@@ -87,9 +88,12 @@ impl DisplayOutput {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
             DisplayOutput::Text(text) => Html::Text(text),
-            DisplayOutput::Seq(display_outputs) => {
-                Html::Seq(display_outputs.into_iter().map(|d| d.into_html()).collect())
-            }
+            DisplayOutput::Seq(display_outputs) => Html::Seq(
+                display_outputs
+                    .into_iter()
+                    .map(DisplayOutput::into_html)
+                    .collect(),
+            ),
         }
     }
 
@@ -99,7 +103,7 @@ impl DisplayOutput {
             DisplayOutput::Text(text) | DisplayOutput::Both(_, text) => text,
             DisplayOutput::Seq(display_outputs) => display_outputs
                 .into_iter()
-                .map(|d| d.into_text())
+                .map(DisplayOutput::into_text)
                 .collect::<Vec<_>>()
                 .join("")
                 .into(),
@@ -237,11 +241,11 @@ impl<'tcx> Place<'tcx> {
                 // of that span is the entire macro.
                 if outer_span.contains(span) {
                     return Some(span);
-                } else {
-                    let sp = span.source_callsite();
-                    if outer_span.contains(sp) {
-                        return Some(sp);
-                    }
+                }
+
+                let sp = span.source_callsite();
+                if outer_span.contains(sp) {
+                    return Some(sp);
                 }
 
                 None
@@ -311,7 +315,7 @@ impl<'tcx> Place<'tcx> {
                     (ElemPosition::Suffix, format!(".{field_name}").into())
                 }
                 ProjectionElem::Downcast(sym, _) => {
-                    let variant = sym.map(|s| s.to_string()).unwrap_or_else(|| "??".into());
+                    let variant = sym.map_or_else(|| "??".into(), |s| s.to_string());
                     (ElemPosition::Suffix, format!("@{variant}",).into())
                 }
 
