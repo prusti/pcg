@@ -171,15 +171,17 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 let base_cap = capabilities.get(*base_place, self).unwrap();
                 let expand_read = CapabilityRule::new(
                     base_cap.gte(CapabilityKind::Read),
-                    HashMap::from_iter(expansion_places.iter().map(|p| (*p, CapabilityKind::Read))),
+                    expansion_places
+                        .iter()
+                        .map(|p| (*p, CapabilityKind::Read))
+                        .collect(),
                 );
                 let expand_exclusive = CapabilityRule::new(
                     CapabilityConstraint::eq(base_cap, CapabilityKind::Exclusive),
-                    HashMap::from_iter(
-                        expansion_places
-                            .iter()
-                            .map(|p| (*p, CapabilityKind::Exclusive)),
-                    ),
+                    expansion_places
+                        .iter()
+                        .map(|p| (*p, CapabilityKind::Exclusive))
+                        .collect(),
                 );
                 CapabilityRules::one_of(vec![expand_read, expand_exclusive])
             }

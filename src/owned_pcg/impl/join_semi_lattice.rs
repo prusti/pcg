@@ -126,8 +126,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    )
-    where
+    ) where
         'tcx: 'a,
     {
         let target_places = expand.target_places(ctxt);

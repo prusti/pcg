@@ -241,11 +241,11 @@ impl<'tcx> Place<'tcx> {
                 // of that span is the entire macro.
                 if outer_span.contains(span) {
                     return Some(span);
-                } else {
-                    let sp = span.source_callsite();
-                    if outer_span.contains(sp) {
-                        return Some(sp);
-                    }
+                }
+
+                let sp = span.source_callsite();
+                if outer_span.contains(sp) {
+                    return Some(sp);
                 }
 
                 None

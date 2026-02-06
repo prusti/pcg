@@ -760,7 +760,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         block_type: BlockType,
         _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        Ok(self.pcg
+        Ok(self
+            .pcg
             .capabilities
             .update_for_expansion(expansion, block_type, self.ctxt))
     }
@@ -775,7 +776,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError> {
-        Ok(self.pcg
+        Ok(self
+            .pcg
             .capabilities
             .update_for_deref(ref_place, capability, self.ctxt))
     }

@@ -404,7 +404,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// of blocking calculations. The argument should be used if this function
     /// is to be called multiple times on the same graph.
     pub(crate) fn is_leaf_edge<'a: 'graph, 'graph, Edge, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &'graph self,
         edge: &Edge,
         ctxt: Ctxt,
         blocking_map: &FrozenGraphRef<'graph, 'tcx>,
@@ -430,7 +429,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'tcx: 'a,
     {
         self.edges()
-            .filter(move |edge| self.is_leaf_edge(edge, ctxt.bc_ctxt(), frozen_graph))
+            .filter(move |edge| Self::is_leaf_edge(edge, ctxt.bc_ctxt(), frozen_graph))
             .collect()
     }
 

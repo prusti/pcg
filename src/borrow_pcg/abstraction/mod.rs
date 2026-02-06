@@ -423,6 +423,7 @@ impl FunctionShape {
         })
     }
 
+    #[must_use]
     pub fn coupled_edges(&self) -> FunctionShapeCoupledEdges {
         CoupledEdgesData::new(self.edges.iter().copied())
     }

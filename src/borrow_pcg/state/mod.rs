@@ -544,8 +544,9 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         ));
 
         if let BorrowKind::Mut {
-                kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
-            } = kind {
+            kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
+        } = kind
+        {
             let _ = capabilities.remove(blocked_place, ctxt);
         } else {
             let blocked_place_capability = capabilities.get(blocked_place, ctxt);

@@ -648,11 +648,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.projects_ty(
-            |typ| {
-                typ.ty
-                    .ref_mutability()
-                    .is_some_and(Mutability::is_not)
-            },
+            |typ| typ.ty.ref_mutability().is_some_and(Mutability::is_not),
             ctxt,
         )
         .is_some()
