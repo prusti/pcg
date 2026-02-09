@@ -318,6 +318,11 @@ impl<'tcx> FunctionData<'tcx> {
     }
 
     #[must_use]
+    pub fn identity_substs(self, tcx: ty::TyCtxt<'tcx>) -> GenericArgsRef<'tcx> {
+        ty::GenericArgs::identity_for_item(tcx, self.def_id)
+    }
+
+    #[must_use]
     pub fn param_env(self, tcx: ty::TyCtxt<'tcx>) -> ty::ParamEnv<'tcx> {
         tcx.param_env(self.def_id)
     }

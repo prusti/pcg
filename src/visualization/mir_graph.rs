@@ -121,12 +121,13 @@ fn format_place<'tcx>(place: &mir::Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) ->
     place.display_string(ctxt)
 }
 
+#[allow(unreachable_patterns)]
 fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     match operand {
         Operand::Copy(p) => format_place(p, ctxt),
         Operand::Move(p) => format!("move {}", format_place(p, ctxt)),
         Operand::Constant(c) => format!("{c}"),
-        Operand::RuntimeChecks(_) => "runtime_checks".to_owned(),
+        other => todo!("{other:?}"),
     }
 }
 

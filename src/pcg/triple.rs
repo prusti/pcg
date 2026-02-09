@@ -324,7 +324,7 @@ impl ProducesCapability for Rvalue<'_> {
                 #[rustversion::before(2026-01-01)]
                 {
                     assert!(matches!(self, Rvalue::Len(_) | Rvalue::NullaryOp(_, _)));
-                    return Some(CapabilityKind::Exclusive);
+                    Some(CapabilityKind::Exclusive)
                 }
                 #[rustversion::since(2026-01-01)]
                 {
