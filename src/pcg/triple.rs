@@ -146,7 +146,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             | UnaryOp(_, _)
             | Aggregate(_, _)
             | ShallowInitBox(_, _) => return Ok(()),
-
             &Ref(_, kind, place) => match kind {
                 BorrowKind::Shared => Triple::new(
                     PlaceCondition::read(place),
@@ -182,7 +181,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             &Discriminant(place) | &CopyForDeref(place) => {
                 Triple::new(PlaceCondition::read(place), None)
             }
-            _ => todo!(),
+            Rvalue::WrapUnsafeBinder(_operand, _ty) => {
+                return Ok(());
+            }
         };
         self.operand_triples.push(triple);
         Ok(())
