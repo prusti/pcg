@@ -11,6 +11,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
+        borrowck::{LocationTable, BorrowSet},
         middle::{
             mir::{
                 BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace, PlaceElem,
@@ -156,6 +157,16 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub(crate) fn def_id(&self) -> LocalDefId {
         self.mir.source.def_id().expect_local()
+    }
+}
+
+impl<'a, 'tcx> CompilerCtxt<'a, 'tcx> {
+    pub(crate) fn location_table(&self) -> Option<&LocationTable> {
+        self.borrow_checker.rust_borrow_checker().map(|bc| bc.location_table())
+    }
+
+    pub(crate) fn borrow_set(&self) -> Option<&BorrowSet<'tcx>> {
+        self.borrow_checker.rust_borrow_checker().map(|bc| bc.borrow_set())
     }
 }
 

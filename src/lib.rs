@@ -499,8 +499,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             };
 
             let statements = pcg_block
-                .statements
-                .iter()
+                .statements()
                 .map(|stmt| {
                     let actions: EvalStmtData<Vec<AppliedActionDebugRepr>> =
                         stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt);
@@ -515,9 +514,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 .collect();
 
             let successors = pcg_block
-                .terminator
-                .succs
-                .iter()
+                .successors()
                 .map(|succ| {
                     (
                         succ.block().into(),

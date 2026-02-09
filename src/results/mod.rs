@@ -289,7 +289,15 @@ pub struct PcgBasicBlock<'a, 'tcx> {
     pub(crate) block: BasicBlock,
 }
 
-impl<'tcx> PcgBasicBlock<'_, 'tcx> {
+impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
+    pub(crate) fn statements(&self) -> impl Iterator<Item = &PcgLocation<'a, 'tcx>> {
+        self.statements.iter()
+    }
+
+    pub(crate) fn successors(&self) -> impl Iterator<Item = &PcgSuccessor<'a, 'tcx>> {
+        self.terminator.succs.iter()
+    }
+
     pub fn loop_invariant_place_capabilities(
         &self,
         place_usages: &PlaceUsages<'tcx>,

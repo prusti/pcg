@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::{
     borrow_pcg::{
         action::ApplyActionResult,
-        borrow_pcg_edge::BlockingNode,
+        borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
         region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
@@ -147,7 +147,7 @@ pub(crate) struct BorrowStateRef<
     pub(crate) validity_conditions: &'pcg VC,
 }
 
-impl<'pcg, 'tcx, EdgeKind, VC> BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
+impl<'pcg, 'tcx, EdgeKind: std::hash::Hash + Eq, VC> BorrowStateRef<'pcg, 'tcx, EdgeKind, VC> {
     pub(crate) fn new(
         graph: &'pcg BorrowsGraph<'tcx, EdgeKind, VC>,
         validity_conditions: &'pcg VC,
@@ -176,6 +176,17 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         self.as_mut_ref().graph
     }
     fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, VC>;
+
+    fn leaf_nodes<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<LocalNode<'tcx>>
+    where
+        EdgeKind: Eq + std::hash::Hash + EdgeData<'tcx, Ctxt, Place<'tcx>>,
+        'tcx: 'a,
+    {
+        self.graph().frozen_graph().leaf_nodes(ctxt)
+    }
 
     fn label_place_and_update_related_capabilities<
         'a,

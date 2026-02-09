@@ -13,7 +13,7 @@ use crate::{
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::data_structures::fx::{FxHashMap, FxHashSet},
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place,
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -49,26 +49,30 @@ pub struct FrozenGraphRef<
     roots_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
 }
 
-impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC> {
-    pub(crate) fn is_leaf<'slf, Ctxt: Copy + DebugCtxt>(
-        &'slf self,
-        node: LocalNode<'tcx, P>,
-        ctxt: Ctxt,
-    ) -> bool
-    where
-        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
-    {
-        self.graph
-            .edges()
-            .all(|edge| !edge.kind.blocks_node(node.into(), ctxt))
-    }
+impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC> {}
 
+impl<'graph, 'tcx, EdgeKind, VC> FrozenGraphRef<'graph, 'tcx, Place<'tcx>, EdgeKind, VC> {
+    pub(crate) fn new(graph: &'graph BorrowsGraph<'tcx, EdgeKind, VC>) -> Self {
+        Self {
+            graph,
+            nodes_cache: RefCell::new(None),
+            edges_blocking_cache: RefCell::new(FxHashMap::default()),
+            leaf_edges_cache: RefCell::new(None),
+            roots_cache: RefCell::new(None),
+        }
+    }
+}
+
+impl<'graph, 'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
+    FrozenGraphRef<'graph, 'tcx, P, EdgeKind, VC>
+{
     pub fn leaf_nodes<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,
         ctxt: Ctxt,
     ) -> Vec<LocalNode<'tcx, P>>
     where
-        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+        EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
+        P: PcgPlace<'tcx, Ctxt>,
     {
         self.nodes(ctxt)
             .iter()
@@ -77,12 +81,26 @@ impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKin
             .collect()
     }
 
+    pub(crate) fn is_leaf<'slf, Ctxt: Copy + DebugCtxt>(
+        &'slf self,
+        node: LocalNode<'tcx, P>,
+        ctxt: Ctxt,
+    ) -> bool
+    where
+        EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
+    {
+        self.graph
+            .edges()
+            .all(|edge| !edge.kind.blocks_node(node.into(), ctxt))
+    }
+
     pub fn nodes<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,
         ctxt: Ctxt,
     ) -> Ref<'slf, FxHashSet<PcgNodeWithPlace<'tcx, P>>>
     where
-        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+        EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
+        P: PcgPlace<'tcx, Ctxt>,
     {
         {
             let nodes = self.nodes_cache.borrow();
@@ -97,16 +115,6 @@ impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKin
 }
 
 impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
-    pub(crate) fn new(graph: &'graph BorrowsGraph<'tcx>) -> Self {
-        Self {
-            graph,
-            nodes_cache: RefCell::new(None),
-            edges_blocking_cache: RefCell::new(FxHashMap::default()),
-            leaf_edges_cache: RefCell::new(None),
-            roots_cache: RefCell::new(None),
-        }
-    }
-
     pub(crate) fn is_acyclic<'mir: 'graph, 'bc: 'graph>(
         &mut self,
         ctxt: CompilerCtxt<'mir, 'tcx>,

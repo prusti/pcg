@@ -10,10 +10,11 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         region_projection::LifetimeProjection,
+        state::BorrowsStateLike,
     },
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgNode,
+        CapabilityKind, PcgNode, PcgRefLike,
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
@@ -81,22 +82,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut current = place;
         while self.pcg.capabilities.get(current, self.ctxt) == Some(CapabilityKind::Read.into()) {
             self.weaken_place_from_read_upwards(current, debug_ctxt)?;
-            let leaf_nodes = self
-                .pcg
-                .borrow
-                .graph
-                .frozen_graph()
-                .leaf_nodes(self.ctxt.bc_ctxt());
+            let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
             for place in self.pcg.borrow.graph.places(self.ctxt.bc_ctxt()) {
                 if prev != Some(place)
                     && current.is_prefix_exact(place)
                     && leaf_nodes.contains(&place.into())
                     && self
                         .pcg
-                        .capabilities
-                        .get(place, self.ctxt)
-                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
-                        == Some(CapabilityKind::Read)
+                        .place_capability_equals(place, CapabilityKind::Read)
                     && !place.projects_shared_ref(self.ctxt)
                 {
                     self.record_and_apply_action(
