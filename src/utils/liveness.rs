@@ -179,6 +179,7 @@ impl DefUse {
         }
     }
 
+    #[allow(clippy::match_same_arms)]
     fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
@@ -205,8 +206,7 @@ impl DefUse {
                 MutatingUseContext::Call
                 | MutatingUseContext::Yield
                 | MutatingUseContext::AsmOutput
-                | MutatingUseContext::Store
-                ,
+                | MutatingUseContext::Store,
             ) => {
                 if place.is_indirect() {
                     // Treat derefs as a use of the base local. `*p = 4` is not a def of `p` but a

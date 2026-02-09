@@ -520,7 +520,7 @@ pub(crate) struct ErrorState<'tcx> {
     error: Option<PcgError<'tcx>>,
 }
 
-impl <'tcx> ErrorState<'tcx> {
+impl<'tcx> ErrorState<'tcx> {
     pub(crate) fn error(&self) -> Option<&PcgError<'tcx>> {
         self.error.as_ref()
     }

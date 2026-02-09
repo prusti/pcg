@@ -240,7 +240,11 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         object: AnalysisObject<'obj, 'tcx>,
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        if !self.reachable_blocks.borrow().contains(location.block.index()) {
+        if !self
+            .reachable_blocks
+            .borrow()
+            .contains(location.block.index())
+        {
             return Ok(());
         }
         pcg_validity_assert!(!state.is_bottom(), "unexpected state: {:?}", state);
@@ -282,7 +286,9 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
         if let PcgDomain::Analysis(state) = state {
             let state = state.expect_transfer();
-            self.analyzed_blocks.borrow_mut().insert(location.block.index());
+            self.analyzed_blocks
+                .borrow_mut()
+                .insert(location.block.index());
 
             #[cfg(feature = "visualization")]
             {

@@ -108,6 +108,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         location: mir::Location,
     ) -> Result<(), PcgError<'tcx>> {
         self.super_operand_fallable(operand, location)?;
+        #[allow(clippy::match_same_arms)]
         let triple = match *operand {
             Operand::Copy(place) => Triple {
                 pre: PlaceCondition::read(place),
@@ -133,8 +134,8 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     ) -> Result<(), PcgError<'tcx>> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref,
-            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
+            ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         let triple = match rvalue {
             Use(_)
@@ -193,9 +194,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         self.super_statement_fallable(statement, location)?;
-        use StatementKind::{
-            Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
-        };
+        use StatementKind::{Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive};
         let t = match statement.kind {
             Assign(box (place, ref rvalue)) => Triple {
                 pre: PlaceCondition::write(place),
@@ -291,8 +290,8 @@ impl ProducesCapability for Rvalue<'_> {
     #[allow(unreachable_patterns)]
     fn capability(&self) -> Option<CapabilityKind> {
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref,
-            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
+            ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         match self {
             Ref(_, BorrowKind::Fake(_), _) => None,

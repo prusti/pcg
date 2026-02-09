@@ -18,10 +18,7 @@ use crate::{
         index::{Idx, IndexVec},
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
-            ty::{
-                self, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable,
-                TypeVisitor,
-            },
+            ty::{self, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable, TypeVisitor},
         },
     },
     utils::{

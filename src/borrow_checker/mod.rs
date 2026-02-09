@@ -243,7 +243,12 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     /* Main Interface End */
 
     /// Returns true iff `reg1` outlives `reg2` and `reg2` outlives `reg1`.
-    fn same_region(&self, reg1: PcgRegion<'tcx>, reg2: PcgRegion<'tcx>, location: Location) -> bool {
+    fn same_region(
+        &self,
+        reg1: PcgRegion<'tcx>,
+        reg2: PcgRegion<'tcx>,
+        location: Location,
+    ) -> bool {
         self.outlives(reg1, reg2, location) && self.outlives(reg2, reg1, location)
     }
 

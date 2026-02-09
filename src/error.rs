@@ -27,7 +27,7 @@ where
                 self.context
             )
             .into(),
-            _ => format!("{:?}", self).into(),
+            _ => format!("{self:?}").into(),
         }
     }
 }
@@ -56,7 +56,7 @@ pub enum PcgErrorKind<'tcx> {
     Internal(PcgInternalError),
 }
 
-impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'tcx> {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'_> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match mode {
             OutputMode::Test => match self {
@@ -67,7 +67,7 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'tcx> {
                     format!("Internal({})", pcg_internal_error.test_string(ctxt)).into()
                 }
             },
-            _ => format!("{:?}", self).into(),
+            _ => format!("{self:?}").into(),
         }
     }
 }
@@ -100,7 +100,7 @@ impl PcgInternalError {
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgInternalError {
     fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        format!("{:?}", self).into()
+        format!("{self:?}").into()
     }
 }
 
@@ -129,7 +129,7 @@ pub enum PcgUnsupportedError<'tcx> {
     Coupling(CoupleInputError),
 }
 
-impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgUnsupportedError<'tcx> {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgUnsupportedError<'_> {
     fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match mode {
             OutputMode::Test => match self {
@@ -139,9 +139,9 @@ impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgUnsupportedError<'tcx> {
                 PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(_) => {
                     "CallWithUnsafePtrWithNestedLifetime".into()
                 }
-                _ => format!("{:?}", self).into(),
+                _ => format!("{self:?}").into(),
             },
-            _ => format!("{:?}", self).into(),
+            _ => format!("{self:?}").into(),
         }
     }
 }

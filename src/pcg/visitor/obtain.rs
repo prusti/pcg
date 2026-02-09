@@ -402,7 +402,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError<'tcx>> {
+    pub(crate) fn upgrade_read_to_exclusive(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError<'tcx>> {
         tracing::debug!(
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())

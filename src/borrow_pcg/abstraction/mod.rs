@@ -104,7 +104,10 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckOutlivesError<'tcx> {
-    CannotCompareRegions { sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx> },
+    CannotCompareRegions {
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+    },
 }
 
 pub(crate) trait FunctionShapeDataSource<'tcx> {
