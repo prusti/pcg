@@ -181,8 +181,20 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             &Discriminant(place) | &CopyForDeref(place) => {
                 Triple::new(PlaceCondition::read(place), None)
             }
-            Rvalue::WrapUnsafeBinder(_operand, _ty) => {
-                return Ok(());
+            other => {
+                #[rustversion::since(2026-01-01)]
+                {
+                    assert!(matches!(other, Rvalue::WrapUnsafeBinder(_, _)));
+                    return Ok(());
+                }
+                #[rustversion::before(2026-01-01)]
+                {
+                    match other {
+                        &Rvalue::Len(place) => Triple::new(PlaceCondition::read(place), None),
+                        Rvalue::NullaryOp(_, _) => return Ok(()),
+                        _ => todo!("{other:?}"),
+                    }
+                }
             }
         };
         self.operand_triples.push(triple);
@@ -308,7 +320,18 @@ impl ProducesCapability for Rvalue<'_> {
             | Aggregate(_, _)
             | CopyForDeref(_) => Some(CapabilityKind::Exclusive),
             ShallowInitBox(_, _) => Some(CapabilityKind::ShallowExclusive),
-            _ => todo!(),
+            _ => {
+                #[rustversion::before(2026-01-01)]
+                {
+                    assert!(matches!(self, Rvalue::Len(_) | Rvalue::NullaryOp(_, _)));
+                    return Some(CapabilityKind::Exclusive);
+                }
+                #[rustversion::since(2026-01-01)]
+                {
+                    assert!(matches!(self, Rvalue::WrapUnsafeBinder(_, _)));
+                    Some(CapabilityKind::Exclusive)
+                }
+            }
         }
     }
 }
