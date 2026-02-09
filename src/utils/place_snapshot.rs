@@ -72,6 +72,7 @@ impl AnalysisLocation {
             eval_stmt_phase,
         }
     }
+    #[must_use]
     pub fn next_snapshot_location(self, body: &mir::Body<'_>) -> SnapshotLocation {
         if let Some(phase) = self.eval_stmt_phase.next() {
             SnapshotLocation::Before(AnalysisLocation {

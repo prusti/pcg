@@ -63,8 +63,8 @@ impl<'graph, 'tcx, EdgeKind, VC> FrozenGraphRef<'graph, 'tcx, Place<'tcx>, EdgeK
     }
 }
 
-impl<'graph, 'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
-    FrozenGraphRef<'graph, 'tcx, P, EdgeKind, VC>
+impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
+    FrozenGraphRef<'_, 'tcx, P, EdgeKind, VC>
 {
     pub fn leaf_nodes<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,

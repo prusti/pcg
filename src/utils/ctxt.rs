@@ -1,6 +1,6 @@
 use crate::{
     HasSettings, Sealed,
-    borrow_checker::BorrowCheckerInterface,
+    borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
@@ -108,16 +108,16 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.tcx
     }
 
-    pub fn source_of_span(&self, sp: Span) -> Result<String, SpanSnippetError> {
+    pub fn source_of_span(&self, sp: Span) -> Result<String, Box<SpanSnippetError>> {
         let source_map = self.tcx.sess.source_map();
-        source_map.span_to_snippet(sp)
+        source_map.span_to_snippet(sp).map_err(Box::new)
     }
 
-    pub fn source(&self) -> Result<String, SpanSnippetError> {
+    pub fn source(&self) -> Result<String, Box<SpanSnippetError>> {
         self.source_of_span(self.mir.span)
     }
 
-    pub fn source_lines(&self) -> Result<Vec<String>, SpanSnippetError> {
+    pub fn source_lines(&self) -> Result<Vec<String>, Box<SpanSnippetError>> {
         let source = self.source()?;
         Ok(source
             .lines()
@@ -160,13 +160,13 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
     }
 }
 
-impl<'a, 'tcx> CompilerCtxt<'a, 'tcx> {
+impl<'tcx> CompilerCtxt<'_, 'tcx> {
     pub(crate) fn location_table(&self) -> Option<&LocationTable> {
-        self.borrow_checker.rust_borrow_checker().map(|bc| bc.location_table())
+        self.borrow_checker.rust_borrow_checker().map(RustBorrowCheckerInterface::location_table)
     }
 
     pub(crate) fn borrow_set(&self) -> Option<&BorrowSet<'tcx>> {
-        self.borrow_checker.rust_borrow_checker().map(|bc| bc.borrow_set())
+        self.borrow_checker.rust_borrow_checker().map(RustBorrowCheckerInterface::borrow_set)
     }
 }
 

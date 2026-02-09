@@ -379,6 +379,7 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
 
     /// Whether the edge is valid for a given path (depending on its associated
     /// validity conditions)
+    #[must_use]
     pub fn valid_for_path(&self, path: &[BasicBlock], body: &mir::Body<'_>) -> bool {
         self.conditions.valid_for_path(path, body)
     }

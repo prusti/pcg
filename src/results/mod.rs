@@ -272,6 +272,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         result
     }
 
+    #[must_use]
     pub fn all_place_aliases<'mir>(
         &self,
         place: mir::Place<'tcx>,

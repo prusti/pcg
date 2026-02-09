@@ -45,6 +45,7 @@ pub struct LoopAnalysis {
 }
 
 impl LoopAnalysis {
+    #[must_use]
     pub fn find_loops(body: &Body) -> Self {
         let mut analysis = LoopAnalysis {
             bb_data: IndexVec::from_elem_n(LoopSet::new(), body.basic_blocks.len()),
