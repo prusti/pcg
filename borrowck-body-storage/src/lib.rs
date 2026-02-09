@@ -44,7 +44,7 @@ pub unsafe fn take_stored_body(tcx: TyCtxt<'_>, def_id: LocalDefId) -> BodyWithB
 }
 
 pub fn set_mir_borrowck(_session: &Session, providers: &mut Providers) {
-    providers.mir_borrowck = mir_borrowck;
+    providers.queries.mir_borrowck = mir_borrowck;
 }
 
 #[rustversion::before(2025-07-01)]
@@ -65,8 +65,8 @@ fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> MirBorrowck<'_> {
 
 fn original_mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> MirBorrowck<'_> {
     let mut providers = Providers::default();
-    borrowck::provide(&mut providers);
-    let original_mir_borrowck = providers.mir_borrowck;
+    borrowck::provide(&mut providers.queries);
+    let original_mir_borrowck = providers.queries.mir_borrowck;
     original_mir_borrowck(tcx, def_id)
 }
 

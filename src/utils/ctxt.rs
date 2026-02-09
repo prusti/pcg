@@ -279,7 +279,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     fn dest_places_for_region<'a>(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<Place<'tcx>>
     where
@@ -298,7 +298,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     pub(crate) fn place_expansion_for_region<'a>(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Option<PlaceExpansion<'tcx>>
     where
@@ -376,7 +376,7 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
 pub trait HasTyCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
 
-    fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
+    fn region_is_invariant_in_type(&self, region: PcgRegion<'tcx>, ty: ty::Ty<'tcx>) -> bool {
         let mut visitor = TyVarianceVisitor {
             tcx: self.tcx(),
             target: region,

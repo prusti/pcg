@@ -126,6 +126,7 @@ fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -
         Operand::Copy(p) => format_place(p, ctxt),
         Operand::Move(p) => format!("move {}", format_place(p, ctxt)),
         Operand::Constant(c) => format!("{c}"),
+        Operand::RuntimeChecks(_) => "runtime_checks".to_owned(),
     }
 }
 
@@ -171,7 +172,6 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
         }
         Rvalue::RawPtr(kind, place) => format_raw_ptr(*kind, place, ctxt),
         Rvalue::ThreadLocalRef(_) => todo!(),
-        Rvalue::Len(x) => format!("len({})", format_place(x, ctxt)),
         Rvalue::Cast(_, operand, ty) => format!("{} as {}", format_operand(operand, ctxt), ty),
         Rvalue::BinaryOp(op, box (lhs, rhs)) => {
             format!(
@@ -181,7 +181,6 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
                 format_operand(rhs, ctxt)
             )
         }
-        Rvalue::NullaryOp(op, _) => format!("{op:?}"),
         Rvalue::UnaryOp(op, val) => {
             format!("{:?} {}", op, format_operand(val, ctxt))
         }
@@ -260,7 +259,6 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
             format_place(place, ctxt),
             variant_index
         ),
-        mir::StatementKind::Deinit(_) => todo!(),
         mir::StatementKind::StorageLive(local) => {
             format!("StorageLive({})", format_local(*local, ctxt))
         }

@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{path::PathBuf, rc::Rc};
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use bit_set::BitSet;
 use derive_more::From;
@@ -79,7 +79,7 @@ impl<'tcx> BodyWithBorrowckFacts<'tcx> {
         substs: GenericArgsRef<'tcx>,
         param_env: MonomorphizeEnv<'tcx>,
     ) -> Self {
-        let body = tcx.erase_regions(self.body.clone());
+        let body = tcx.erase_and_anonymize_regions(self.body.clone());
         let monomorphized_body = tcx.instantiate_and_normalize_erasing_regions(
             substs,
             param_env,
@@ -120,9 +120,9 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     #[cfg(feature = "visualization")]
     pub(crate) debug_graphs: Option<crate::visualization::stmt_graphs::PcgEngineDebugData<'a>>,
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
-    pub(crate) reachable_blocks: BitSet<Block>,
-    pub(crate) analyzed_blocks: BitSet<Block>,
-    pub(crate) first_error: ErrorState,
+    pub(crate) reachable_blocks: RefCell<BitSet<Block>>,
+    pub(crate) analyzed_blocks: RefCell<BitSet<Block>>,
+    pub(crate) first_error: RefCell<ErrorState>,
     pub(crate) arena: PcgArena<'a>,
     pub(crate) settings: &'a PcgSettings,
 }
@@ -225,12 +225,12 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
     #[tracing::instrument(skip(self, state, object))]
     fn analyze<'obj>(
-        &mut self,
+        &self,
         state: &mut PcgDomain<'a, 'tcx>,
         object: AnalysisObject<'obj, 'tcx>,
         location: Location,
     ) -> Result<(), PcgError> {
-        if !self.reachable_blocks.contains(location.block.index()) {
+        if !self.reachable_blocks.borrow().contains(location.block.index()) {
             return Ok(());
         }
         pcg_validity_assert!(!state.is_bottom(), "unexpected state: {:?}", state);
@@ -239,7 +239,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
             if let AnalysisObject::Terminator(t) = object {
                 for block in successor_blocks(t) {
-                    self.reachable_blocks.insert(block.index());
+                    self.reachable_blocks.borrow_mut().insert(block.index());
                 }
             }
         }
@@ -272,7 +272,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
         if let PcgDomain::Analysis(state) = state {
             let state = state.expect_transfer();
-            self.analyzed_blocks.insert(location.block.index());
+            self.analyzed_blocks.borrow_mut().insert(location.block.index());
 
             #[cfg(feature = "visualization")]
             {
@@ -302,22 +302,22 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         let mut analyzed_blocks = BitSet::default();
         analyzed_blocks.reserve_len(ctxt.body().basic_blocks.len());
         Self {
-            first_error: ErrorState::default(),
-            reachable_blocks,
+            first_error: RefCell::new(ErrorState::default()),
+            reachable_blocks: RefCell::new(reachable_blocks),
             ctxt,
             #[cfg(feature = "visualization")]
             debug_graphs: debug_data,
             body_analysis: arena.alloc(BodyAnalysis::new(ctxt, move_data)),
             arena,
             symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(arena),
-            analyzed_blocks,
+            analyzed_blocks: RefCell::new(analyzed_blocks),
             settings,
         }
     }
 
-    fn record_error_if_first(&mut self, error: &PcgError) {
-        if self.first_error.error().is_none() {
-            self.first_error.record_error(error.clone());
+    fn record_error_if_first(&self, error: &PcgError) {
+        if self.first_error.borrow().error().is_none() {
+            self.first_error.borrow_mut().record_error(error.clone());
         }
     }
 }
@@ -343,7 +343,7 @@ impl<'a, 'tcx: 'a> Analysis<'tcx> for PcgEngine<'a, 'tcx> {
 
     #[tracing::instrument(skip(self, state, statement))]
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &Statement<'tcx>,
         location: Location,
@@ -359,15 +359,15 @@ impl<'a, 'tcx: 'a> Analysis<'tcx> for PcgEngine<'a, 'tcx> {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir Terminator<'tcx>,
         location: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
         let edges = edges_to_analyze(terminator);
         if let Some(error) = state.error() {
-            if self.first_error.error().is_none() {
-                self.first_error.record_error(error.clone());
+            if self.first_error.borrow().error().is_none() {
+                self.first_error.borrow_mut().record_error(error.clone());
             }
             return edges;
         }

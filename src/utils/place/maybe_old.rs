@@ -273,8 +273,9 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().local
     }
 
-    pub(crate) fn ty_region(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion> {
-        self.place().ty_region(ctxt)
+    pub(crate) fn ty_region(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<PcgRegion<'tcx>> {
+        let place = self.place();
+        place.ty_region(ctxt)
     }
 
     #[must_use]

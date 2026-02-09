@@ -18,8 +18,7 @@ pub struct AnalysisAndResults<'tcx, A>
 where
     A: mir_dataflow::Analysis<'tcx>,
 {
-    analysis: A,
-    pub(crate) results: mir_dataflow::Results<A::Domain>,
+    pub(crate) results: mir_dataflow::Results<'tcx, A>,
 }
 
 impl<'tcx, A> AnalysisAndResults<'tcx, A>
@@ -28,7 +27,7 @@ where
 {
     #[rustversion::since(2025-05-24)]
     pub fn get_analysis(&self) -> &A {
-        &self.analysis
+        &self.results.analysis
     }
 
     #[rustversion::before(2025-05-24)]
@@ -41,17 +40,17 @@ where
         self,
         body: &'mir Body<'tcx>,
     ) -> mir_dataflow::ResultsCursor<'mir, 'tcx, A> {
-        mir_dataflow::ResultsCursor::new_owning(body, self.analysis, self.results)
+        mir_dataflow::ResultsCursor::new_owning(body, self.results)
     }
 
     #[rustversion::since(2025-05-24)]
     pub fn entry_set_for_block(&self, block: BasicBlock) -> &A::Domain {
-        &self.results[block]
+        &self.results.entry_states[block]
     }
 
     #[rustversion::since(2025-05-24)]
     pub fn entry_state_for_block_mut(&mut self, block: BasicBlock) -> &mut A::Domain {
-        &mut self.results[block]
+        &mut self.results.entry_states[block]
     }
 
     #[rustversion::before(2025-05-24)]
@@ -91,7 +90,7 @@ pub trait Analysis<'tcx> {
 
     #[tracing::instrument(skip(self, _state, _statement))]
     fn apply_before_statement_effect(
-        &mut self,
+        &self,
         _state: &mut Self::Domain,
         _statement: &Statement<'tcx>,
         location: Location,
@@ -99,14 +98,14 @@ pub trait Analysis<'tcx> {
     }
 
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &Statement<'tcx>,
         location: Location,
     );
 
     fn apply_before_terminator_effect(
-        &mut self,
+        &self,
         _state: &mut Self::Domain,
         _terminator: &Terminator<'tcx>,
         _location: Location,
@@ -114,7 +113,7 @@ pub trait Analysis<'tcx> {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir Terminator<'tcx>,
         location: Location,
@@ -145,10 +144,7 @@ where
     <T as mir_dataflow::Analysis<'tcx>>::Domain: mir_dataflow::fmt::DebugWithContext<T>,
 {
     let results = MirAnalysis::iterate_to_fixpoint(analysis, tcx, body, None);
-    AnalysisAndResults {
-        analysis: results.analysis,
-        results: results.results,
-    }
+    AnalysisAndResults { results }
 }
 
 #[derive(Deref, Debug, Eq, PartialEq)]
@@ -170,7 +166,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     }
 
     fn apply_early_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: Location,
@@ -180,7 +176,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     }
 
     fn apply_primary_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: Location,
@@ -189,7 +185,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     }
 
     fn apply_primary_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir mir::Terminator<'tcx>,
         location: Location,
@@ -198,7 +194,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     }
 
     fn apply_early_terminator_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &mir::Terminator<'tcx>,
         location: Location,
@@ -208,7 +204,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     }
 
     fn apply_call_return_effect(
-        &mut self,
+        &self,
         _state: &mut Self::Domain,
         _block: BasicBlock,
         _return_places: CallReturnPlaces<'_, 'tcx>,

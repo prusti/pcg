@@ -47,8 +47,8 @@ pub(crate) trait FallableVisitor<'tcx> {
                     location,
                 )?;
             }
-            mir::Operand::Constant(_constant) => {
-                // No places to visit in constants
+            mir::Operand::Constant(_) | mir::Operand::RuntimeChecks(_) => {
+                // No places to visit in constants or runtime checks
             }
         }
         Ok(())
@@ -80,13 +80,6 @@ pub(crate) trait FallableVisitor<'tcx> {
                 self.visit_place_fallable(
                     (**place).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::SetDiscriminant),
-                    location,
-                )?;
-            }
-            mir::StatementKind::Deinit(place) => {
-                self.visit_place_fallable(
-                    (**place).into(),
-                    visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Deinit),
                     location,
                 )?;
             }
@@ -184,7 +177,6 @@ pub(crate) trait FallableVisitor<'tcx> {
                 self.visit_place_fallable((*path).into(), ctx, location)?;
             }
             mir::Rvalue::CopyForDeref(place)
-            | mir::Rvalue::Len(place)
             | mir::Rvalue::Discriminant(place) => {
                 self.visit_place_fallable(
                     (*place).into(),

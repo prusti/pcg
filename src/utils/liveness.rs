@@ -108,7 +108,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     fn initialize_start_block(&self, _body: &mir::Body<'tcx>, _state: &mut Self::Domain) {}
 
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
@@ -117,7 +117,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir mir::Terminator<'tcx>,
         location: mir::Location,
@@ -206,7 +206,7 @@ impl DefUse {
                 | MutatingUseContext::Yield
                 | MutatingUseContext::AsmOutput
                 | MutatingUseContext::Store
-                | MutatingUseContext::Deinit,
+                ,
             ) => {
                 if place.is_indirect() {
                     // Treat derefs as a use of the base local. `*p = 4` is not a def of `p` but a

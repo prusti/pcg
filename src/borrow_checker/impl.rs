@@ -192,8 +192,8 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let regions: Vec<_> = match node {
             PcgNode::Place(place) => place.regions(self.ctxt()).into_iter().collect(),
-            PcgNode::LifetimeProjection(region_projection) => {
-                vec![region_projection.region(self.ctxt())]
+            PcgNode::LifetimeProjection(lifetime_projection) => {
+                vec![lifetime_projection.region(self.ctxt())]
             }
         };
         let live_loans = self.output_facts.loans_in_scope_at(
@@ -252,7 +252,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         location: Location,
     ) -> bool {
@@ -349,7 +349,7 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         _location: Location,
     ) -> bool {

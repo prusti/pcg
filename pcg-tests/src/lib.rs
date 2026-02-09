@@ -5,7 +5,7 @@ extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_middle;
 
-use std::{fs, io, path::Path, sync::Arc};
+use std::{fs, io, path::{Path, PathBuf}, sync::Arc};
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
 use pcg::{
@@ -38,6 +38,10 @@ impl FileLoader for StringLoader {
 
     fn read_binary_file(&self, path: &Path) -> io::Result<Arc<[u8]>> {
         Ok(fs::read(path)?.into())
+    }
+
+    fn current_directory(&self) -> io::Result<PathBuf> {
+        std::env::current_dir()
     }
 }
 

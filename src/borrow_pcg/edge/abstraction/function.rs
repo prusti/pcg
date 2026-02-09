@@ -54,7 +54,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
         _data: FunctionData<'tcx>,
         _caller_substs: Option<GenericArgsRef<'tcx>>,
         _ctxt: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError> {
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
     }
 
@@ -63,7 +63,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
         data: FunctionData<'tcx>,
         caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError> {
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let sig = data.identity_fn_sig(tcx);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
         let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
@@ -96,9 +96,9 @@ impl<'tcx> FunctionData<'tcx> {
 impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     pub(crate) fn region_for_outlives_check(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> PcgRegion {
+    ) -> PcgRegion<'tcx> {
         if let Some(substs) = self.caller_substs
             && let Some(index) = substs.regions().position(|r| PcgRegion::from(r) == region)
         {
@@ -124,10 +124,10 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
 
     fn outlives(
         &self,
-        sup: PcgRegion,
-        sub: PcgRegion,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
         ctxt: ty::TyCtxt<'tcx>,
-    ) -> Result<bool, CheckOutlivesError> {
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
         if sup.is_static() || sup == sub {
             return Ok(true);
         }
@@ -178,7 +178,7 @@ impl<'tcx> FunctionCallData<'tcx> {
     pub(crate) fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+    ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
         let data =
             FunctionDataShapeDataSource::new(self.function_data, Some(self.substs), ctxt.tcx)?;
         FunctionShape::new(&data, ctxt.tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)
@@ -256,7 +256,7 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+    ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
         let function_data = self
             .function_data
             .as_ref()

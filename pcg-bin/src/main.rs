@@ -6,7 +6,7 @@ mod callbacks;
 
 use borrowck_body_storage::set_mir_borrowck;
 
-use pcg::rustc_interface::driver::{self, args};
+use pcg::rustc_interface::driver::{self, args, HandledOptions};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::EarlyDiagCtxt;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
@@ -52,8 +52,9 @@ fn main() {
     }
     let mut default_early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
     let args = args::arg_expand_all(&default_early_dcx, &rustc_args);
-    let Some(matches) = driver::handle_options(&default_early_dcx, &args) else {
-        return;
+    let matches = match driver::handle_options(&default_early_dcx, &args) {
+        HandledOptions::None => return,
+        HandledOptions::Normal(m) | HandledOptions::HelpOnly(m) => m,
     };
     let sopts = config::build_session_options(&mut default_early_dcx, &matches);
     assert!(matches.free.len() == 1, "Expected exactly one input file");
@@ -77,7 +78,6 @@ fn main() {
         make_codegen_backend: None,
         registry: driver::diagnostics_registry(),
         using_internal_features: &driver::USING_INTERNAL_FEATURES,
-        expanded_args: args,
     };
     interface::run_compiler(config, |compiler| {
         let sess = &compiler.sess;

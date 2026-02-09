@@ -117,7 +117,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 pre: PlaceCondition::exclusive(place, self.ctxt),
                 post: Some(PlaceCondition::write(place)),
             },
-            Operand::Constant(..) => return Ok(()),
+            Operand::Constant(..) | Operand::RuntimeChecks(..) => return Ok(()),
         };
         self.operand_triples.push(triple);
         Ok(())
@@ -131,7 +131,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     ) -> Result<(), PcgError> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref,
             Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         let triple = match rvalue {
@@ -140,7 +140,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             | ThreadLocalRef(_)
             | Cast(_, _, _)
             | BinaryOp(_, _)
-            | NullaryOp(_, _)
             | UnaryOp(_, _)
             | Aggregate(_, _)
             | ShallowInitBox(_, _) => return Ok(()),
@@ -177,7 +176,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 };
                 Triple::new(pre, None)
             }
-            &Len(place) | &Discriminant(place) | &CopyForDeref(place) => {
+            &Discriminant(place) | &CopyForDeref(place) => {
                 Triple::new(PlaceCondition::read(place), None)
             }
             _ => todo!(),
@@ -193,7 +192,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     ) -> Result<(), PcgError> {
         self.super_statement_fallable(statement, location)?;
         use StatementKind::{
-            Assign, Deinit, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
+            Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
         };
         let t = match statement.kind {
             Assign(box (place, ref rvalue)) => Triple {
@@ -209,10 +208,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             SetDiscriminant { box place, .. } | Retag(_, box place) => Triple {
                 pre: PlaceCondition::exclusive(place, self.ctxt),
                 post: None,
-            },
-            Deinit(box place) => Triple {
-                pre: PlaceCondition::exclusive(place, self.ctxt),
-                post: Some(PlaceCondition::write(place)),
             },
             StorageLive(local) => Triple {
                 pre: PlaceCondition::Unalloc(local),
@@ -294,7 +289,7 @@ impl ProducesCapability for Rvalue<'_> {
     #[allow(unreachable_patterns)]
     fn capability(&self) -> Option<CapabilityKind> {
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref,
             Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         match self {
@@ -304,10 +299,8 @@ impl ProducesCapability for Rvalue<'_> {
             | Ref(_, _, _)
             | RawPtr(_, _)
             | ThreadLocalRef(_)
-            | Len(_)
             | Cast(_, _, _)
             | BinaryOp(_, _)
-            | NullaryOp(_, _)
             | UnaryOp(_, _)
             | Discriminant(_)
             | Aggregate(_, _)

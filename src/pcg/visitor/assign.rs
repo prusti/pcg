@@ -49,6 +49,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 Some(self.pre_operand_move_label()),
             )),
             Operand::Constant(const_) => PlaceOrConst::Const(const_.const_),
+            Operand::RuntimeChecks(_) => todo!(),
         }
     }
 
@@ -166,6 +167,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 PlaceOrConst::Const(const_.const_).lifetime_projections(self.ctxt),
                 OperandType::Const,
             ),
+            Operand::RuntimeChecks(_) => return Ok(()),
         };
         for source_proj in source_projections {
             self.connect_outliving_projections(source_proj, target_place, |_| {

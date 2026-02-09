@@ -103,8 +103,8 @@ impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CheckOutlivesError {
-    CannotCompareRegions { sup: PcgRegion, sub: PcgRegion },
+pub enum CheckOutlivesError<'tcx> {
+    CannotCompareRegions { sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx> },
 }
 
 pub(crate) trait FunctionShapeDataSource<'tcx> {
@@ -113,10 +113,10 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
     fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
     fn outlives(
         &self,
-        sup: PcgRegion,
-        sub: PcgRegion,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
         ctxt: Self::Ctxt,
-    ) -> Result<bool, CheckOutlivesError>;
+    ) -> Result<bool, CheckOutlivesError<'tcx>>;
 
     fn input_arg_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
         self.input_tys(ctxt)
@@ -160,10 +160,10 @@ impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
 
     fn outlives(
         &self,
-        sup: PcgRegion,
-        sub: PcgRegion,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, CheckOutlivesError> {
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
         Ok(ctxt.borrow_checker.outlives(sup, sub, self.location))
     }
 }
@@ -173,7 +173,7 @@ pub(crate) struct ProjectionData<'tcx, T> {
     base: T,
     ty: ty::Ty<'tcx>,
     region_idx: RegionIdx,
-    region: PcgRegion,
+    region: PcgRegion<'tcx>,
 }
 
 impl<'tcx, T: Copy> ProjectionData<'tcx, T> {
@@ -284,7 +284,7 @@ impl FunctionShape {
         def_id: DefId,
         caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError> {
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let data = FunctionData::new(def_id);
         Self::new(&data.shape_data_source(caller_substs, tcx)?, tcx)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
@@ -298,11 +298,11 @@ pub struct FunctionData<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MakeFunctionShapeError {
+pub enum MakeFunctionShapeError<'tcx> {
     ContainsAliasType,
     UnsupportedRustVersion,
     NoFunctionData,
-    CheckOutlivesError(CheckOutlivesError),
+    CheckOutlivesError(CheckOutlivesError<'tcx>),
 }
 
 impl<'tcx> FunctionData<'tcx> {
@@ -328,7 +328,7 @@ impl<'tcx> FunctionData<'tcx> {
         self,
         caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError> {
+    ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError<'tcx>> {
         FunctionDataShapeDataSource::new(self, caller_substs, tcx)
     }
 
@@ -336,7 +336,7 @@ impl<'tcx> FunctionData<'tcx> {
         self,
         caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionShape, MakeFunctionShapeError> {
+    ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
         FunctionShape::new(&self.shape_data_source(caller_substs, tcx)?, tcx)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
@@ -344,7 +344,7 @@ impl<'tcx> FunctionData<'tcx> {
     pub fn coupled_edges(
         self,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError> {
+    ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError<'tcx>> {
         let shape = self
             .shape(None, tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
@@ -393,7 +393,7 @@ impl FunctionShape {
     pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
         shape_data: &ShapeData,
         ctxt: ShapeData::Ctxt,
-    ) -> Result<Self, CheckOutlivesError> {
+    ) -> Result<Self, CheckOutlivesError<'tcx>> {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,
         > = BTreeSet::default();
@@ -443,14 +443,14 @@ mod tests {
 
         let tick_a: PcgRegion = PcgRegion::RegionVid(0u32.into());
         #[derive(Clone, Copy)]
-        struct TestCtxt(PcgRegion);
+        struct TestCtxt(PcgRegion<'static>);
         impl HasRegions<'static, TestCtxt> for ArgIdx {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }
         impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion> {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }

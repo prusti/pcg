@@ -19,7 +19,7 @@ use crate::{
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
             ty::{
-                self, DebruijnIndex, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable,
+                self, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable,
                 TypeVisitor,
             },
         },
@@ -36,12 +36,12 @@ use crate::{
 
 /// A region occuring in region projections
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
-pub enum PcgRegion {
+pub enum PcgRegion<'tcx> {
     RegionVid(RegionVid),
     ReErased,
     ReStatic,
-    RePlaceholder(ty::PlaceholderRegion),
-    ReBound(DebruijnIndex, ty::BoundRegion),
+    RePlaceholder(ty::PlaceholderRegion<'tcx>),
+    ReBound(ty::BoundVarIndexKind, ty::BoundRegion),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
     ReEarlyParam(ty::EarlyParamRegion),
@@ -83,7 +83,7 @@ impl OverrideRegionDebugString for () {
     }
 }
 
-impl std::fmt::Display for PcgRegion {
+impl std::fmt::Display for PcgRegion<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -94,7 +94,7 @@ impl std::fmt::Display for PcgRegion {
     }
 }
 
-impl PcgRegion {
+impl PcgRegion<'_> {
     #[must_use]
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
@@ -132,9 +132,12 @@ impl PcgRegion {
             PcgRegion::ReErased => todo!(),
             PcgRegion::ReStatic => ctxt.lifetimes.re_static,
             PcgRegion::RePlaceholder(_) => todo!(),
-            PcgRegion::ReBound(debruijn_index, bound_region) => {
-                ty::Region::new_bound(ctxt, debruijn_index, bound_region)
-            }
+            PcgRegion::ReBound(bound_var_index_kind, bound_region) => match bound_var_index_kind {
+                ty::BoundVarIndexKind::Bound(debruijn_index) => {
+                    ty::Region::new_bound(ctxt, debruijn_index, bound_region)
+                }
+                ty::BoundVarIndexKind::Canonical => todo!(),
+            },
             PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
             PcgRegion::PcgInternalError(_) => todo!(),
             PcgRegion::ReEarlyParam(early_param_region) => {
@@ -144,7 +147,7 @@ impl PcgRegion {
     }
 }
 
-impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion {
+impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion<'_> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             PcgRegion::RegionVid(vid) => vid.display_output(ctxt, mode),
@@ -167,14 +170,14 @@ impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion {
     }
 }
 
-impl<'tcx> From<ty::Region<'tcx>> for PcgRegion {
+impl<'tcx> From<ty::Region<'tcx>> for PcgRegion<'tcx> {
     fn from(region: ty::Region<'tcx>) -> Self {
         match region.kind() {
             ty::RegionKind::ReVar(vid) => PcgRegion::RegionVid(vid),
             ty::RegionKind::ReErased => PcgRegion::ReErased,
             ty::RegionKind::ReEarlyParam(p) => PcgRegion::ReEarlyParam(p),
-            ty::RegionKind::ReBound(debruijn_index, inner) => {
-                PcgRegion::ReBound(debruijn_index, inner)
+            ty::RegionKind::ReBound(bound_var_index_kind, inner) => {
+                PcgRegion::ReBound(bound_var_index_kind, inner)
             }
             ty::RegionKind::ReLateParam(late_param) => PcgRegion::ReLateParam(late_param),
             ty::RegionKind::ReStatic => PcgRegion::ReStatic,
@@ -523,7 +526,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>>
 
 pub(crate) struct TyVarianceVisitor<'tcx> {
     pub(crate) tcx: ty::TyCtxt<'tcx>,
-    pub(crate) target: PcgRegion,
+    pub(crate) target: PcgRegion<'tcx>,
     pub(crate) found: bool,
 }
 
@@ -559,7 +562,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'tcx> {
 
 pub(crate) fn region_is_invariant_in_type<'tcx>(
     tcx: ty::TyCtxt<'tcx>,
-    region: PcgRegion,
+    region: PcgRegion<'tcx>,
     ty: ty::Ty<'tcx>,
 ) -> bool {
     let mut visitor = TyVarianceVisitor {
@@ -679,7 +682,7 @@ impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
 }
 
 pub trait HasRegions<'tcx, Ctxt: Copy> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion>;
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>>;
     fn lifetime_projections<'a>(
         self,
         ctxt: Ctxt,
@@ -696,7 +699,7 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
 }
 
 impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt> + Sealed> HasRegions<'tcx, Ctxt> for T {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>> {
         extract_regions(self.rust_ty(ctxt))
     }
 }
@@ -735,7 +738,7 @@ impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjecti
 impl<'lproj: 'tcx, 'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>>
     DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
 where
-    PcgRegion: DisplayWithCtxt<Ctxt>,
+    PcgRegion<'tcx>: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
@@ -914,7 +917,7 @@ impl<T> LifetimeProjection<'_, T> {
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     pub fn new<'a, Ctxt: Copy>(
         base: T,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: Ctxt,
     ) -> Option<Self>
@@ -939,7 +942,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion
+    pub fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion<'tcx>
     where
         'tcx: 'a,
         T: HasRegions<'tcx, Ctxt>,

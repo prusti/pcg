@@ -135,6 +135,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     .analysis()
                     .0
                     .reachable_blocks
+                    .borrow()
                     .contains(succ.index())
             })
             .collect::<Vec<_>>();
@@ -208,7 +209,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
     #[must_use]
     pub fn first_error(&self) -> Option<PcgError> {
-        self.analysis().first_error.error().cloned()
+        self.analysis().first_error.borrow().error().cloned()
     }
 
     /// Recommended interface.
@@ -219,7 +220,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &'slf mut self,
         block: BasicBlock,
     ) -> Result<Option<PcgBasicBlock<'a, 'tcx>>, PcgError> {
-        if !self.analysis().reachable_blocks.contains(block.index()) {
+        if !self.analysis().reachable_blocks.borrow().contains(block.index()) {
             return Ok(None);
         }
         self.analysis_for_bb(block);

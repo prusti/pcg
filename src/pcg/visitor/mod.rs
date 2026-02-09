@@ -173,7 +173,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         Ok(self.actions)
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion) -> bool {
+    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
         self.ctxt.bc().outlives(sup, sub, self.location())
     }
 

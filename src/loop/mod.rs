@@ -362,7 +362,7 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
     fn initialize_start_block(&self, _body: &Body<'tcx>, _state: &mut Self::Domain) {}
 
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
@@ -376,7 +376,7 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir mir::Terminator<'tcx>,
         location: mir::Location,

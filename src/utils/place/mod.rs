@@ -459,7 +459,7 @@ impl<'tcx> Place<'tcx> {
                     vec![]
                 }
                 TyKind::Alias(_, _)
-                | TyKind::Dynamic(_, _, _)
+                | TyKind::Dynamic(_, _)
                 | TyKind::Param(_)
                 | TyKind::Bound(_, _)
                 | TyKind::CoroutineWitness(_, _) => vec![],
@@ -485,7 +485,7 @@ impl<'tcx> Place<'tcx> {
         ty_has_lifetimes_under_unsafe_ptr(self.rust_ty(ctxt), &mut HashSet::default(), ctxt)
     }
 
-    pub(crate) fn ty_region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<PcgRegion>
+    pub(crate) fn ty_region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -545,7 +545,7 @@ impl<'tcx> Place<'tcx> {
     pub fn regions<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, PcgRegion>
+    ) -> IndexVec<RegionIdx, PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -569,7 +569,7 @@ impl<'tcx> Place<'tcx> {
     #[must_use]
     pub fn projection_index(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Option<RegionIdx> {
         extract_regions(self.rust_ty(ctxt))
