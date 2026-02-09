@@ -203,7 +203,7 @@ impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
         &self,
         elem: mir::PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, crate::error::PcgError> {
+    ) -> std::result::Result<Self, crate::error::PcgError<'tcx>> {
         Ok(LabelledPlace::new(
             self.place.project_deeper(elem, ctxt)?,
             self.at,

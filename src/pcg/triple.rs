@@ -106,7 +106,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_operand_fallable(operand, location)?;
         let triple = match *operand {
             Operand::Copy(place) => Triple {
@@ -117,7 +117,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 pre: PlaceCondition::exclusive(place, self.ctxt),
                 post: Some(PlaceCondition::write(place)),
             },
-            Operand::Constant(..) | Operand::RuntimeChecks(..) => return Ok(()),
+            Operand::Constant(..) => return Ok(()),
+            #[allow(unreachable_patterns)]
+            _ => return Ok(()),
         };
         self.operand_triples.push(triple);
         Ok(())
@@ -128,7 +130,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
             Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref,
@@ -189,7 +191,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         statement: &Statement<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_statement_fallable(statement, location)?;
         use StatementKind::{
             Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
@@ -227,7 +229,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         terminator: &Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_terminator_fallable(terminator, location)?;
         use TerminatorKind::{
             Assert, Call, CoroutineDrop, Drop, FalseEdge, FalseUnwind, Goto, InlineAsm, Return,
@@ -273,7 +275,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         if place.contains_unsafe_deref(self.ctxt) {
             return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
         }

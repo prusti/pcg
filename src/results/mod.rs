@@ -91,7 +91,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     ///
     /// This function may return `None` if the PCG did not analyze this block.
     /// This could happen, for example, if the block would only be reached when unwinding from a panic.
-    fn next(&mut self, exp_loc: Location) -> Result<Option<PcgLocation<'a, 'tcx>>, PcgError> {
+    fn next(&mut self, exp_loc: Location) -> Result<Option<PcgLocation<'a, 'tcx>>, PcgError<'tcx>> {
         let location = self.curr_stmt.unwrap();
         assert_eq!(location, exp_loc);
         assert!(location < self.end_stmt.unwrap());
@@ -110,7 +110,9 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
         Ok(Some(result))
     }
-    pub(crate) fn terminator<'slf>(&'slf mut self) -> Result<PcgTerminator<'a, 'tcx>, PcgError> {
+    pub(crate) fn terminator<'slf>(
+        &'slf mut self,
+    ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
         let location = self.curr_stmt.unwrap();
         assert!(location == self.end_stmt.unwrap());
         self.curr_stmt = None;
@@ -185,7 +187,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     to.entry_state.borrow.clone().into(),
                 ))
             })
-            .collect::<Result<Vec<_>, PcgError>>()?;
+            .collect::<Result<Vec<_>, PcgError<'tcx>>>()?;
         Ok(PcgTerminator { succs })
     }
 
@@ -193,7 +195,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     ///
     /// This is rather expensive to compute and may take a lot of memory. You
     /// may want to consider using `get_all_for_bb` instead.
-    pub fn results_for_all_blocks(&mut self) -> Result<PcgBasicBlocks<'a, 'tcx>, PcgError> {
+    pub fn results_for_all_blocks(&mut self) -> Result<PcgBasicBlocks<'a, 'tcx>, PcgError<'tcx>> {
         let mut result = IndexVec::new();
         for block in self.body().basic_blocks.indices() {
             let pcg_block = self.get_all_for_bb(block)?;
@@ -208,7 +210,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn first_error(&self) -> Option<PcgError> {
+    pub fn first_error(&self) -> Option<PcgError<'tcx>> {
         self.analysis().first_error.borrow().error().cloned()
     }
 
@@ -219,8 +221,13 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     pub fn get_all_for_bb<'slf>(
         &'slf mut self,
         block: BasicBlock,
-    ) -> Result<Option<PcgBasicBlock<'a, 'tcx>>, PcgError> {
-        if !self.analysis().reachable_blocks.borrow().contains(block.index()) {
+    ) -> Result<Option<PcgBasicBlock<'a, 'tcx>>, PcgError<'tcx>> {
+        if !self
+            .analysis()
+            .reachable_blocks
+            .borrow()
+            .contains(block.index())
+        {
             return Ok(None);
         }
         self.analysis_for_bb(block);
@@ -325,23 +332,19 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<String> {
+    pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
         let mut result = Vec::new();
         for stmt in &self.statements {
             for phase in EvalStmtPhase::phases() {
                 for line in stmt.debug_lines(phase, ctxt) {
-                    result.push(format!("{:?} {}: {}", stmt.location, phase, line));
+                    result.push(format!("{:?} {}: {}", stmt.location, phase, line).into());
                 }
             }
         }
         for term_succ in &self.terminator.succs {
             for line in term_succ.debug_lines(ctxt) {
-                result.push(format!(
-                    "{:?} -> {:?}: {}",
-                    self.block,
-                    term_succ.block(),
-                    line
-                ));
+                result
+                    .push(format!("{:?} -> {:?}: {}", self.block, term_succ.block(), line).into());
             }
         }
         result

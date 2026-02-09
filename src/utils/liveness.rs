@@ -245,6 +245,9 @@ impl DefUse {
             | PlaceContext::NonMutatingUse(NonMutatingUseContext::Projection) => {
                 unreachable!("A projection could be a def or a use and must be handled separately")
             }
+
+            #[allow(unreachable_patterns)]
+            _ => None,
         }
     }
 }

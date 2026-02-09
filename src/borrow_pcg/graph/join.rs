@@ -109,7 +109,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &'slf ValidityConditions,
         mut args: JoinBorrowsArgs<'slf, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let other_block = args.other_block;
         let self_block = args.self_block;
         pcg_validity_assert!(
@@ -207,7 +207,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &ValidityConditions,
         mut args: JoinBorrowsArgs<'_, 'mir, 'tcx>,
         ctxt: AnalysisCtxt<'mir, 'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let loop_head = args.self_block;
         logging::log!(
             &LogPredicate::DebugBlock,

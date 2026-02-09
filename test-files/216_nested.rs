@@ -7,8 +7,8 @@ fn main() {
     let mut w = &mut (**z);        // **z borrowed (by *w) for `c; `b outlive `c
     // borrowed: x, y, **z;  `a : `b : `c
     *z = &mut a;     // This is allowed:  // `b still lives
-// PCG: bb0[22] post_main: *z↓'?27 -> z↓'?27 FUTURE
-// PCG: bb0[22] post_main: _7 before bb0[22]:PostOperands↓'?29 -> *z↓'?27
+// PCG: bb0[22] post_main: *z↓'?9 -> z↓'?9 FUTURE
+// PCG: bb0[22] post_main: _7 before bb0[22]:PostOperands↓'?11 -> *z↓'?9
     // y = &mut b; // This is not allowed // `b not alive
-    println!("{}", *w);                   // `c alive(3/4)
+    let baz = *w;                   // `c alive(3/4)
 }

@@ -11,7 +11,7 @@ use super::PcgVisitor;
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
     #[tracing::instrument(skip(self))]
-    pub(crate) fn require_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
+    pub(crate) fn require_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
         match triple.pre() {
             PlaceCondition::ExpandTwoPhase(place) => {
                 if place.contains_unsafe_deref(self.ctxt) {
@@ -42,7 +42,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     }
 
     #[tracing::instrument(skip(self, triple))]
-    pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
+    pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
         self.pcg.ensure_triple(triple, self.ctxt);
         Ok(())
     }

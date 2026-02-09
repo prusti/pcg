@@ -15,7 +15,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_statement_fallable(statement, location)
     }
 
@@ -23,7 +23,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_operand_fallable(operand, location)
     }
 
@@ -31,7 +31,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         match operand {
             mir::Operand::Copy(place) => {
                 self.visit_place_fallable(
@@ -47,8 +47,8 @@ pub(crate) trait FallableVisitor<'tcx> {
                     location,
                 )?;
             }
-            mir::Operand::Constant(_) | mir::Operand::RuntimeChecks(_) => {
-                // No places to visit in constants or runtime checks
+            #[allow(unreachable_patterns)]
+            mir::Operand::Constant(_) | _ => {
             }
         }
         Ok(())
@@ -59,7 +59,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         match &statement.kind {
             mir::StatementKind::Assign(box (place, rvalue)) => {
                 self.visit_place_fallable(
@@ -128,7 +128,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_terminator_fallable(terminator, location)
     }
 
@@ -137,13 +137,13 @@ pub(crate) trait FallableVisitor<'tcx> {
         place: Place<'tcx>,
         context: visit::PlaceContext,
         location: mir::Location,
-    ) -> Result<(), PcgError>;
+    ) -> Result<(), PcgError<'tcx>>;
 
     fn visit_rvalue_fallable(
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_rvalue_fallable(rvalue, location)
     }
 
@@ -152,7 +152,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         match rvalue {
             mir::Rvalue::Use(operand)
             | mir::Rvalue::Cast(_, operand, _)
@@ -236,7 +236,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         match &terminator.kind {
             mir::TerminatorKind::Goto { .. }
             | mir::TerminatorKind::UnwindResume

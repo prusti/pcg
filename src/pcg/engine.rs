@@ -72,6 +72,16 @@ impl<'tcx> BodyAndBorrows<'tcx> for BodyWithBorrowckFacts<'tcx> {
 type MonomorphizeEnv<'tcx> = ty::TypingEnv<'tcx>;
 
 impl<'tcx> BodyWithBorrowckFacts<'tcx> {
+    #[rustversion::since(2025-12-01)]
+    fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
+        tcx.erase_and_anonymize_regions(body)
+    }
+
+    #[rustversion::before(2025-12-01)]
+    fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
+        tcx.erase_regions(body)
+    }
+
     #[must_use]
     pub fn monomorphize(
         self,
@@ -79,7 +89,7 @@ impl<'tcx> BodyWithBorrowckFacts<'tcx> {
         substs: GenericArgsRef<'tcx>,
         param_env: MonomorphizeEnv<'tcx>,
     ) -> Self {
-        let body = tcx.erase_and_anonymize_regions(self.body.clone());
+        let body = Self::erase_regions(tcx, self.body.clone());
         let monomorphized_body = tcx.instantiate_and_normalize_erasing_regions(
             substs,
             param_env,
@@ -122,7 +132,7 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: RefCell<BitSet<Block>>,
     pub(crate) analyzed_blocks: RefCell<BitSet<Block>>,
-    pub(crate) first_error: RefCell<ErrorState>,
+    pub(crate) first_error: RefCell<ErrorState<'tcx>>,
     pub(crate) arena: PcgArena<'a>,
     pub(crate) settings: &'a PcgSettings,
 }
@@ -206,7 +216,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         object: AnalysisObject<'_, 'tcx>,
         tw: &TripleWalker<'a, 'tcx>,
         location: Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let domain = &mut state.data;
         for phase in EvalStmtPhase::phases() {
             let curr = PcgArenaRef::make_mut(&mut domain.pcg.states.0[phase]);
@@ -229,7 +239,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         state: &mut PcgDomain<'a, 'tcx>,
         object: AnalysisObject<'obj, 'tcx>,
         location: Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         if !self.reachable_blocks.borrow().contains(location.block.index()) {
             return Ok(());
         }
@@ -315,7 +325,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         }
     }
 
-    fn record_error_if_first(&self, error: &PcgError) {
+    fn record_error_if_first(&self, error: &PcgError<'tcx>) {
         if self.first_error.borrow().error().is_none() {
             self.first_error.borrow_mut().record_error(error.clone());
         }

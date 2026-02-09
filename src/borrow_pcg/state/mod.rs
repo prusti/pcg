@@ -269,7 +269,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
-    ) -> Result<ApplyActionResult, PcgError>
+    ) -> Result<ApplyActionResult, PcgError<'tcx>>
     where
         'tcx: 'a,
         VC: ValidityConditionOps<Ctxt>,
@@ -479,7 +479,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         other: &Self,
         args: JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.graph
             .join(&other.graph, self.validity_conditions, args, ctxt)?;
         if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self

@@ -489,7 +489,7 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), crate::error::PcgError> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), crate::error::PcgError<'tcx>> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {
@@ -533,7 +533,7 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         _expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
         _block_type: crate::pcg::place_capabilities::BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, crate::error::PcgError> {
+    ) -> Result<bool, crate::error::PcgError<'tcx>> {
         Ok(true)
     }
     fn update_capabilities_for_deref(
@@ -541,7 +541,7 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         _ref_place: Place<'tcx>,
         _capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, crate::error::PcgError> {
+    ) -> Result<bool, crate::error::PcgError<'tcx>> {
         Ok(true)
     }
 
