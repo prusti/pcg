@@ -349,6 +349,19 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         };
         Ok(result)
     }
+
+    fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt>(
+        &'slf self,
+        node: BlockedNode<'tcx>,
+        ctxt: Ctxt,
+    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>>
+    where
+        EdgeKind: EdgeData<'tcx, Ctxt, Place<'tcx>> + std::hash::Hash + Eq + 'slf,
+        VC: 'slf,
+        'tcx: 'slf,
+    {
+        self.graph().edges_blocking(node, ctxt)
+    }
 }
 
 impl<'pcg, 'tcx: 'pcg> BorrowsStateLike<'tcx> for BorrowStateMutRef<'pcg, 'tcx> {

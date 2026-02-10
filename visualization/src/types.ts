@@ -62,8 +62,8 @@ export type ReactFlowNodeData = BasicBlockData & {
 };
 
 export type PcgAction = GenericPcgAction<
-  ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, string | null>,
-  ActionKindWithDebugCtxt<RepackOp<string, string, string>, string | null>
+  ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>,
+  ActionKindWithDebugInfo<RepackOp<string, string, string>, string | null>
 >;
 
 export type PcgActions = PcgAction[];
@@ -84,7 +84,7 @@ export type FunctionSlug = Branded<string, "FunctionSlug">;
 export type FunctionName = Branded<string, "FunctionName">;
 
 import type {
-  ActionKindWithDebugCtxt,
+  ActionKindWithDebugInfo,
   BorrowPcgActionKindDebugRepr,
   EvalStmtPhase,
   FunctionMetadata,

@@ -164,6 +164,18 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
             })
             .collect()
     }
+
+    pub(crate) fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt, P: PcgNodeComponent>(
+        &'slf self,
+        node: BlockedNode<'tcx, P>,
+        ctxt: Ctxt,
+    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>>
+    where
+        EdgeKind: EdgeData<'tcx, Ctxt, P> + std::hash::Hash + Eq,
+    {
+        self.edges()
+            .filter(move |edge| edge.kind.blocks_node(node, ctxt))
+    }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC> {
@@ -231,18 +243,6 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
         Ok(expanded_places
             .into_iter()
             .all(|place| nodes.contains(&place.to_pcg_node(ctxt))))
-    }
-
-    pub(crate) fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt>(
-        &'slf self,
-        node: BlockedNode<'tcx, P>,
-        ctxt: Ctxt,
-    ) -> impl Iterator<Item = BorrowPcgEdgeRef<'tcx, 'slf, BorrowPcgEdgeKind<'tcx, P>, VC>>
-    where
-        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
-    {
-        self.edges()
-            .filter(move |edge| edge.kind.blocks_node(node, ctxt))
     }
 
     pub fn edges_blocked_by<'graph, Ctxt: Copy + DebugCtxt>(
