@@ -49,6 +49,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 Some(self.pre_operand_move_label()),
             )),
             Operand::Constant(const_) => PlaceOrConst::Const(const_.const_),
+            #[allow(unreachable_patterns)]
+            _ => todo!(),
         }
     }
 
@@ -56,7 +58,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         target: utils::Place<'tcx>,
         rvalue: &Rvalue<'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
 
         // If `target` is a reference, then the dereferenced place technically
@@ -141,7 +143,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         operand: &Operand<'tcx>,
         target_place: Place<'tcx>,
         cast_data: Option<CastData<'tcx>>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let (source_projections, operand_type) = match operand {
             Operand::Move(place) | Operand::Copy(place) => {
                 let operand_type = if matches!(operand, Operand::Move(_)) {
@@ -166,6 +168,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 PlaceOrConst::Const(const_.const_).lifetime_projections(self.ctxt),
                 OperandType::Const,
             ),
+            #[allow(unreachable_patterns)]
+            _ => return Ok(()),
         };
         for source_proj in source_projections {
             self.connect_outliving_projections(source_proj, target_place, |_| {
@@ -180,7 +184,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         blocked_place: utils::Place<'tcx>,
         target: utils::Place<'tcx>,
         kind: mir::BorrowKind,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
         for source_proj in blocked_place.lifetime_projections(self.ctxt).into_iter() {
             let mut obtainer = self.place_obtainer();

@@ -108,7 +108,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     fn initialize_start_block(&self, _body: &mir::Body<'tcx>, _state: &mut Self::Domain) {}
 
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
@@ -117,7 +117,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir mir::Terminator<'tcx>,
         location: mir::Location,
@@ -179,6 +179,7 @@ impl DefUse {
         }
     }
 
+    #[allow(clippy::match_same_arms)]
     fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
@@ -205,8 +206,7 @@ impl DefUse {
                 MutatingUseContext::Call
                 | MutatingUseContext::Yield
                 | MutatingUseContext::AsmOutput
-                | MutatingUseContext::Store
-                | MutatingUseContext::Deinit,
+                | MutatingUseContext::Store,
             ) => {
                 if place.is_indirect() {
                     // Treat derefs as a use of the base local. `*p = 4` is not a def of `p` but a
@@ -245,6 +245,9 @@ impl DefUse {
             | PlaceContext::NonMutatingUse(NonMutatingUseContext::Projection) => {
                 unreachable!("A projection could be a def or a use and must be handled separately")
             }
+
+            #[allow(unreachable_patterns)]
+            _ => None,
         }
     }
 }

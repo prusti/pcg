@@ -106,15 +106,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                         "{{{}}}",
                         loans
                             .iter()
-                            .map(|l| format!(
-                                "{:?}",
-                                self.ctxt
-                                    .borrow_checker
-                                    .rust_borrow_checker()
-                                    .unwrap()
-                                    .borrow_set()[*l]
-                                    .region()
-                            ))
+                            .map(|l| format!("{:?}", self.ctxt.borrow_set().unwrap()[*l].region()))
                             .collect::<Vec<_>>()
                             .join(", ")
                     )
@@ -123,12 +115,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 }
             };
             if let Some(location) = self.location {
-                let location_table = self
-                    .ctxt
-                    .borrow_checker
-                    .rust_borrow_checker()
-                    .unwrap()
-                    .location_table();
+                let location_table = self.ctxt.location_table().unwrap();
                 let loans_before = render_loans(
                     output
                         .origin_contains_loan_at(location_table.start_index(location))

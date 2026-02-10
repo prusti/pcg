@@ -34,12 +34,12 @@ impl<'tcx> BorrowLike<'tcx> for BorrowData<'tcx> {
     }
 }
 
-trait HasPcgRegion {
-    fn pcg_region(&self) -> PcgRegion;
+trait HasPcgRegion<'tcx> {
+    fn pcg_region(&self) -> PcgRegion<'tcx>;
 }
 
-impl HasPcgRegion for BorrowData<'_> {
-    fn pcg_region(&self) -> PcgRegion {
+impl<'tcx> HasPcgRegion<'tcx> for BorrowData<'tcx> {
+    fn pcg_region(&self) -> PcgRegion<'tcx> {
         self.region().into()
     }
 }
@@ -87,11 +87,11 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
         borrows
     }
 
-    fn region_to_borrow_index(&self, region: PcgRegion) -> Option<BorrowIndex> {
+    fn region_to_borrow_index(&self, region: PcgRegion<'tcx>) -> Option<BorrowIndex> {
         self.location_map()
             .iter()
             .enumerate()
-            .find_map(|(index, (_, data))| {
+            .find_map(move |(index, (_, data))| {
                 if data.pcg_region() == region {
                     Some(index.into())
                 } else {
@@ -171,7 +171,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
         self
     }
 
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, _location: Location) -> bool {
+    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, _location: Location) -> bool {
         self.outlives_everywhere(sup, sub)
     }
 
@@ -187,7 +187,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
         Some(self)
     }
 
-    fn outlives_everywhere(&self, sup: PcgRegion, sub: PcgRegion) -> bool {
+    fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
         match (sup, sub) {
             (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
                 self.region_infer_ctxt().eval_outlives(sup, sub)
@@ -221,12 +221,12 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     ) -> bool;
 
     /// Returns true iff `sup` is required to outlive `sub` at `location`.
-    fn outlives(&self, sup: PcgRegion, sub: PcgRegion, location: Location) -> bool;
+    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, location: Location) -> bool;
 
     /// Returns true iff `sup` is required to outlive `sub` everywhere. This can be
     /// useful e.g. for determining outlives relations of arguments to a function based
     /// on its signature
-    fn outlives_everywhere(&self, sup: PcgRegion, sub: PcgRegion) -> bool;
+    fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool;
 
     fn borrows_blocking(
         &self,
@@ -243,7 +243,12 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     /* Main Interface End */
 
     /// Returns true iff `reg1` outlives `reg2` and `reg2` outlives `reg1`.
-    fn same_region(&self, reg1: PcgRegion, reg2: PcgRegion, location: Location) -> bool {
+    fn same_region(
+        &self,
+        reg1: PcgRegion<'tcx>,
+        reg2: PcgRegion<'tcx>,
+        location: Location,
+    ) -> bool {
         self.outlives(reg1, reg2, location) && self.outlives(reg2, reg1, location)
     }
 
@@ -268,7 +273,7 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     /// Currently only used for associating borrows with their indexes for
     /// visualization purposes.
     /// TODO: Remove
-    fn region_to_borrow_index(&self, region: PcgRegion) -> Option<BorrowIndex>;
+    fn region_to_borrow_index(&self, region: PcgRegion<'tcx>) -> Option<BorrowIndex>;
 
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
@@ -315,16 +320,16 @@ pub trait RustBorrowCheckerInterface<'tcx> {
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         location: Location,
     ) -> bool;
 
-    fn region_to_borrow_index(&self, region: PcgRegion) -> Option<BorrowIndex> {
+    fn region_to_borrow_index(&self, region: PcgRegion<'tcx>) -> Option<BorrowIndex> {
         self.location_map()
             .iter()
             .enumerate()
-            .find_map(|(index, (_, data))| {
+            .find_map(move |(index, (_, data))| {
                 if data.pcg_region() == region {
                     Some(index.into())
                 } else {

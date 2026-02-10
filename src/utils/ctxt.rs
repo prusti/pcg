@@ -1,6 +1,6 @@
 use crate::{
     HasSettings, Sealed,
-    borrow_checker::BorrowCheckerInterface,
+    borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
@@ -11,6 +11,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
+        borrowck::{BorrowSet, LocationTable},
         middle::{
             mir::{
                 BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace, PlaceElem,
@@ -107,16 +108,16 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.tcx
     }
 
-    pub fn source_of_span(&self, sp: Span) -> Result<String, SpanSnippetError> {
+    pub fn source_of_span(&self, sp: Span) -> Result<String, Box<SpanSnippetError>> {
         let source_map = self.tcx.sess.source_map();
-        source_map.span_to_snippet(sp)
+        source_map.span_to_snippet(sp).map_err(Box::new)
     }
 
-    pub fn source(&self) -> Result<String, SpanSnippetError> {
+    pub fn source(&self) -> Result<String, Box<SpanSnippetError>> {
         self.source_of_span(self.mir.span)
     }
 
-    pub fn source_lines(&self) -> Result<Vec<String>, SpanSnippetError> {
+    pub fn source_lines(&self) -> Result<Vec<String>, Box<SpanSnippetError>> {
         let source = self.source()?;
         Ok(source
             .lines()
@@ -156,6 +157,20 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub(crate) fn def_id(&self) -> LocalDefId {
         self.mir.source.def_id().expect_local()
+    }
+}
+
+impl<'tcx> CompilerCtxt<'_, 'tcx> {
+    pub(crate) fn location_table(&self) -> Option<&LocationTable> {
+        self.borrow_checker
+            .rust_borrow_checker()
+            .map(RustBorrowCheckerInterface::location_table)
+    }
+
+    pub(crate) fn borrow_set(&self) -> Option<&BorrowSet<'tcx>> {
+        self.borrow_checker
+            .rust_borrow_checker()
+            .map(RustBorrowCheckerInterface::borrow_set)
     }
 }
 
@@ -279,7 +294,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     fn dest_places_for_region<'a>(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<Place<'tcx>>
     where
@@ -298,7 +313,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     pub(crate) fn place_expansion_for_region<'a>(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Option<PlaceExpansion<'tcx>>
     where
@@ -376,7 +391,7 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
 pub trait HasTyCtxt<'tcx> {
     fn tcx(&self) -> TyCtxt<'tcx>;
 
-    fn region_is_invariant_in_type(&self, region: PcgRegion, ty: ty::Ty<'tcx>) -> bool {
+    fn region_is_invariant_in_type(&self, region: PcgRegion<'tcx>, ty: ty::Ty<'tcx>) -> bool {
         let mut visitor = TyVarianceVisitor {
             tcx: self.tcx(),
             target: region,
@@ -461,7 +476,7 @@ impl<'tcx> Place<'tcx> {
         self,
         guide_place: Self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<ShallowExpansion<'tcx>, PcgError>
+    ) -> Result<ShallowExpansion<'tcx>, PcgError<'tcx>>
     where
         'tcx: 'a,
     {
@@ -546,7 +561,7 @@ impl<'tcx> Place<'tcx> {
         self,
         without_field: Option<usize>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<Self>, PcgError>
+    ) -> Result<Vec<Self>, PcgError<'tcx>>
     where
         'tcx: 'a,
     {

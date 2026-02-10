@@ -142,6 +142,30 @@ pub(crate) fn borrows_imgcat_debug(
         !DEBUG_IMGCAT.is_empty()
     }
 }
+
+impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+    pub(crate) fn nodes<Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
+        &self,
+        ctxt: Ctxt,
+    ) -> FxHashSet<PcgNodeWithPlace<'tcx, P>>
+    where
+        EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
+    {
+        self.edges()
+            .flat_map(|edge| {
+                edge.kind
+                    .blocked_nodes(ctxt)
+                    .chain(
+                        edge.kind
+                            .blocked_by_nodes(ctxt)
+                            .map(std::convert::Into::into),
+                    )
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+}
+
 impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC> {
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
@@ -179,30 +203,10 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
         false
     }
 
-    pub(crate) fn nodes<Ctxt: Copy + DebugCtxt>(
-        &self,
-        ctxt: Ctxt,
-    ) -> FxHashSet<PcgNodeWithPlace<'tcx, P>>
-    where
-        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
-    {
-        self.edges()
-            .flat_map(|edge| {
-                edge.kind
-                    .blocked_nodes(ctxt)
-                    .chain(
-                        edge.kind
-                            .blocked_by_nodes(ctxt)
-                            .map(std::convert::Into::into),
-                    )
-                    .collect::<Vec<_>>()
-            })
-            .collect()
-    }
-
     pub(crate) fn places<Ctxt: Copy + DebugCtxt>(&self, ctxt: Ctxt) -> HashSet<P>
     where
         BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+        P: PcgPlace<'tcx, Ctxt>,
     {
         self.nodes(ctxt)
             .into_iter()
@@ -217,7 +221,7 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
         &self,
         expanded_place: &ExpandedPlace<'tcx, P>,
         ctxt: Ctxt,
-    ) -> Result<bool, PcgUnsupportedError>
+    ) -> Result<bool, PcgUnsupportedError<'tcx>>
     where
         P: PlaceLike<'tcx, Ctxt>,
         BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
@@ -380,11 +384,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.edges
             .into_iter()
             .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
-    }
-
-    #[must_use]
-    pub fn frozen_graph(&self) -> FrozenGraphRef<'_, 'tcx> {
-        FrozenGraphRef::new(self)
     }
 
     pub(crate) fn abstraction_edges<'slf>(
@@ -599,5 +598,10 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
                     .as_local_node()
                     .is_some_and(|blocking| edge.kind.blocked_by_nodes(ctxt).contains(&blocking))
         })
+    }
+
+    #[must_use]
+    pub fn frozen_graph(&self) -> FrozenGraphRef<'_, 'tcx, Place<'tcx>, EdgeKind, VC> {
+        FrozenGraphRef::new(self)
     }
 }

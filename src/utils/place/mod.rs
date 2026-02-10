@@ -19,7 +19,7 @@ use crate::{
         borrow_pcg_expansion::PlaceExpansion,
         region_projection::{HasRegions, HasTy},
     },
-    error::{PcgError, PcgUnsupportedError},
+    error::{PcgError, PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
@@ -125,7 +125,7 @@ pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError>;
+    ) -> std::result::Result<Self, PcgError<'tcx>>;
 
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
@@ -168,7 +168,7 @@ pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>>;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
@@ -193,7 +193,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError> {
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
         self.expansion_places(expansion, ctxt)
     }
 }
@@ -212,7 +212,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError> {
+    ) -> std::result::Result<Self, PcgError<'tcx>> {
         Place::project_deeper(*self, elem, ctxt).map_err(PcgError::unsupported)
     }
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
@@ -261,7 +261,7 @@ impl<'tcx> Place<'tcx> {
         self,
         elem: PlaceElem<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgUnsupportedError>
+    ) -> std::result::Result<Self, PcgUnsupportedError<'tcx>>
     where
         'tcx: 'a,
     {
@@ -372,7 +372,7 @@ impl<'tcx> Place<'tcx> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError>
+    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError<'tcx>>
     where
         'tcx: 'a,
     {
@@ -411,10 +411,10 @@ impl<'tcx> Place<'tcx> {
         false
     }
 
-    pub(crate) fn has_lifetimes_under_unsafe_ptr<'a>(
-        &self,
+    pub(crate) fn check_lifetimes_under_unsafe_ptr<'a>(
+        self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
+    ) -> std::result::Result<(), PlaceContainingPtrWithNestedLifetime<'tcx>>
     where
         'tcx: 'a,
     {
@@ -422,23 +422,23 @@ impl<'tcx> Place<'tcx> {
             ty: Ty<'tcx>,
             seen: &mut HashSet<Ty<'tcx>>,
             ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-        ) -> bool
+        ) -> std::result::Result<(), Vec<ty::Ty<'tcx>>>
         where
             'tcx: 'a,
         {
             if seen.contains(&ty) {
-                return false;
+                return Ok(());
             }
             seen.insert(ty);
             if extract_regions(ty).is_empty() {
-                return false;
+                return Ok(());
             }
             #[rustversion::before(2025-03-01)]
             let is_raw_ptr = ty.is_unsafe_ptr();
             #[rustversion::since(2025-03-01)]
             let is_raw_ptr = ty.is_raw_ptr();
             if is_raw_ptr {
-                return true;
+                return std::result::Result::Err(vec![ty]);
             }
             let field_tys: Vec<Ty<'tcx>> = match ty.kind() {
                 TyKind::Array(ty, _) | TyKind::Slice(ty) | TyKind::Ref(_, ty, _) => vec![*ty],
@@ -459,7 +459,7 @@ impl<'tcx> Place<'tcx> {
                     vec![]
                 }
                 TyKind::Alias(_, _)
-                | TyKind::Dynamic(_, _, _)
+                | TyKind::Dynamic(..)
                 | TyKind::Param(_)
                 | TyKind::Bound(_, _)
                 | TyKind::CoroutineWitness(_, _) => vec![],
@@ -478,14 +478,25 @@ impl<'tcx> Place<'tcx> {
                 TyKind::Error(_) => todo!(),
                 _ => todo!(),
             };
-            field_tys
-                .iter()
-                .any(|ty| ty_has_lifetimes_under_unsafe_ptr(*ty, seen, ctxt))
+            for ty in field_tys {
+                if let Err(mut tys) = ty_has_lifetimes_under_unsafe_ptr(ty, seen, ctxt) {
+                    tys.push(ty);
+                    return Err(tys);
+                }
+            }
+            Ok(())
         }
         ty_has_lifetimes_under_unsafe_ptr(self.rust_ty(ctxt), &mut HashSet::default(), ctxt)
+            .map_err(|tys| PlaceContainingPtrWithNestedLifetime {
+                place: self,
+                invalid_ty_chain: tys,
+            })
     }
 
-    pub(crate) fn ty_region<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<PcgRegion>
+    pub(crate) fn ty_region<'a>(
+        &self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -545,7 +556,7 @@ impl<'tcx> Place<'tcx> {
     pub fn regions<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, PcgRegion>
+    ) -> IndexVec<RegionIdx, PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -569,7 +580,7 @@ impl<'tcx> Place<'tcx> {
     #[must_use]
     pub fn projection_index(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Option<RegionIdx> {
         extract_regions(self.rust_ty(ctxt))

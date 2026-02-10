@@ -18,10 +18,7 @@ use crate::{
         index::{Idx, IndexVec},
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
-            ty::{
-                self, DebruijnIndex, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable,
-                TypeVisitor,
-            },
+            ty::{self, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable, TypeVisitor},
         },
     },
     utils::{
@@ -35,16 +32,33 @@ use crate::{
 };
 
 /// A region occuring in region projections
+#[rustversion::since(2025-12-01)]
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
-pub enum PcgRegion {
+pub enum PcgRegion<'tcx> {
+    RegionVid(RegionVid),
+    ReErased,
+    ReStatic,
+    RePlaceholder(ty::PlaceholderRegion<'tcx>),
+    ReBound(ty::BoundVarIndexKind, ty::BoundRegion),
+    ReLateParam(ty::LateParamRegion),
+    PcgInternalError(PcgRegionInternalError),
+    ReEarlyParam(ty::EarlyParamRegion),
+}
+
+/// A region occuring in region projections
+#[rustversion::before(2025-12-01)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
+pub enum PcgRegion<'tcx> {
     RegionVid(RegionVid),
     ReErased,
     ReStatic,
     RePlaceholder(ty::PlaceholderRegion),
-    ReBound(DebruijnIndex, ty::BoundRegion),
+    ReBound(ty::DebruijnIndex, ty::BoundRegion),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
     ReEarlyParam(ty::EarlyParamRegion),
+    #[doc(hidden)]
+    _Phantom(PhantomData<&'tcx ()>),
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
@@ -83,7 +97,7 @@ impl OverrideRegionDebugString for () {
     }
 }
 
-impl std::fmt::Display for PcgRegion {
+impl std::fmt::Display for PcgRegion<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -94,7 +108,7 @@ impl std::fmt::Display for PcgRegion {
     }
 }
 
-impl PcgRegion {
+impl PcgRegion<'_> {
     #[must_use]
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
@@ -108,6 +122,35 @@ impl PcgRegion {
         }
     }
 
+    #[rustversion::since(2025-12-01)]
+    pub(crate) fn rust_region<'a, 'tcx: 'a>(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
+        #[rustversion::since(2025-03-01)]
+        fn new_late_param<'a, 'tcx: 'a>(
+            late_param_region: ty::LateParamRegion,
+            ctxt: ty::TyCtxt<'tcx>,
+        ) -> ty::Region<'tcx> {
+            ty::Region::new_late_param(ctxt, late_param_region.scope, late_param_region.kind)
+        }
+        match self {
+            PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt, region_vid),
+            PcgRegion::ReErased => todo!(),
+            PcgRegion::ReStatic => ctxt.lifetimes.re_static,
+            PcgRegion::RePlaceholder(..) => todo!(),
+            PcgRegion::ReBound(bound_var_index_kind, bound_region) => match bound_var_index_kind {
+                ty::BoundVarIndexKind::Bound(debruijn_index) => {
+                    ty::Region::new_bound(ctxt, debruijn_index, bound_region)
+                }
+                ty::BoundVarIndexKind::Canonical => todo!(),
+            },
+            PcgRegion::ReLateParam(late_param_region) => new_late_param(late_param_region, ctxt),
+            PcgRegion::PcgInternalError(_) => todo!(),
+            PcgRegion::ReEarlyParam(early_param_region) => {
+                ty::Region::new_early_param(ctxt, early_param_region)
+            }
+        }
+    }
+
+    #[rustversion::before(2025-12-01)]
     pub(crate) fn rust_region<'a, 'tcx: 'a>(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
         #[rustversion::before(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
@@ -120,7 +163,7 @@ impl PcgRegion {
                 late_param_region.bound_region,
             )
         }
-        #[rustversion::since(2025-03-01)]
+        #[rustversion::all(since(2025-03-01), before(2025-12-01))]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
             ctxt: ty::TyCtxt<'tcx>,
@@ -131,7 +174,7 @@ impl PcgRegion {
             PcgRegion::RegionVid(region_vid) => ty::Region::new_var(ctxt, region_vid),
             PcgRegion::ReErased => todo!(),
             PcgRegion::ReStatic => ctxt.lifetimes.re_static,
-            PcgRegion::RePlaceholder(_) => todo!(),
+            PcgRegion::RePlaceholder(..) => todo!(),
             PcgRegion::ReBound(debruijn_index, bound_region) => {
                 ty::Region::new_bound(ctxt, debruijn_index, bound_region)
             }
@@ -140,11 +183,13 @@ impl PcgRegion {
             PcgRegion::ReEarlyParam(early_param_region) => {
                 ty::Region::new_early_param(ctxt, early_param_region)
             }
+            _ => unreachable!(),
         }
     }
 }
 
-impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion {
+impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion<'_> {
+    #[allow(unreachable_patterns)]
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             PcgRegion::RegionVid(vid) => vid.display_output(ctxt, mode),
@@ -157,24 +202,25 @@ impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion {
             PcgRegion::PcgInternalError(pcg_region_internal_error) => {
                 format!("{pcg_region_internal_error:?}").into()
             }
-            PcgRegion::RePlaceholder(placeholder) => {
+            PcgRegion::RePlaceholder(placeholder, ..) => {
                 format!("RePlaceholder({placeholder:?})").into()
             }
             PcgRegion::ReEarlyParam(early_param_region) => {
                 format!("ReEarlyParam({early_param_region:?})").into()
             }
+            _ => unreachable!(),
         }
     }
 }
 
-impl<'tcx> From<ty::Region<'tcx>> for PcgRegion {
+impl<'tcx> From<ty::Region<'tcx>> for PcgRegion<'tcx> {
     fn from(region: ty::Region<'tcx>) -> Self {
         match region.kind() {
             ty::RegionKind::ReVar(vid) => PcgRegion::RegionVid(vid),
             ty::RegionKind::ReErased => PcgRegion::ReErased,
             ty::RegionKind::ReEarlyParam(p) => PcgRegion::ReEarlyParam(p),
-            ty::RegionKind::ReBound(debruijn_index, inner) => {
-                PcgRegion::ReBound(debruijn_index, inner)
+            ty::RegionKind::ReBound(bound_var_index_kind, inner) => {
+                PcgRegion::ReBound(bound_var_index_kind, inner)
             }
             ty::RegionKind::ReLateParam(late_param) => PcgRegion::ReLateParam(late_param),
             ty::RegionKind::ReStatic => PcgRegion::ReStatic,
@@ -523,7 +569,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>>
 
 pub(crate) struct TyVarianceVisitor<'tcx> {
     pub(crate) tcx: ty::TyCtxt<'tcx>,
-    pub(crate) target: PcgRegion,
+    pub(crate) target: PcgRegion<'tcx>,
     pub(crate) found: bool,
 }
 
@@ -559,7 +605,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'tcx> {
 
 pub(crate) fn region_is_invariant_in_type<'tcx>(
     tcx: ty::TyCtxt<'tcx>,
-    region: PcgRegion,
+    region: PcgRegion<'tcx>,
     ty: ty::Ty<'tcx>,
 ) -> bool {
     let mut visitor = TyVarianceVisitor {
@@ -679,7 +725,7 @@ impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
 }
 
 pub trait HasRegions<'tcx, Ctxt: Copy> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion>;
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>>;
     fn lifetime_projections<'a>(
         self,
         ctxt: Ctxt,
@@ -696,7 +742,7 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
 }
 
 impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt> + Sealed> HasRegions<'tcx, Ctxt> for T {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>> {
         extract_regions(self.rust_ty(ctxt))
     }
 }
@@ -735,7 +781,7 @@ impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjecti
 impl<'lproj: 'tcx, 'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>>
     DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
 where
-    PcgRegion: DisplayWithCtxt<Ctxt>,
+    PcgRegion<'tcx>: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let label_part = match self.label {
@@ -825,7 +871,7 @@ impl<
         + HasRegions<'tcx, Ctxt>,
 > PlaceProjectable<'tcx, Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError<'tcx>> {
         LifetimeProjection::new(
             self.base.project_deeper(elem, ctxt)?,
             self.region(ctxt),
@@ -914,7 +960,7 @@ impl<T> LifetimeProjection<'_, T> {
 impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
     pub fn new<'a, Ctxt: Copy>(
         base: T,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         label: Option<LifetimeProjectionLabel>,
         ctxt: Ctxt,
     ) -> Option<Self>
@@ -939,7 +985,7 @@ impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
 }
 
 impl<'tcx, T> LifetimeProjection<'tcx, T> {
-    pub fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion
+    pub fn region<'a, Ctxt: Copy>(&self, ctxt: Ctxt) -> PcgRegion<'tcx>
     where
         'tcx: 'a,
         T: HasRegions<'tcx, Ctxt>,

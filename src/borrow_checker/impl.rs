@@ -192,23 +192,21 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let regions: Vec<_> = match node {
             PcgNode::Place(place) => place.regions(self.ctxt()).into_iter().collect(),
-            PcgNode::LifetimeProjection(region_projection) => {
-                vec![region_projection.region(self.ctxt())]
+            PcgNode::LifetimeProjection(lifetime_projection) => {
+                vec![lifetime_projection.region(self.ctxt())]
             }
         };
-        let live_loans = self.output_facts.loans_in_scope_at(
-            self.borrow_checker_data
-                .location_table
-                .start_index(location),
-        );
+
+        let start_index = self
+            .borrow_checker_data
+            .location_table
+            .start_index(location);
+
+        let live_loans = self.output_facts.loans_in_scope_at(start_index);
 
         let live_origins: BTreeSet<ty::RegionVid> = self
             .output_facts
-            .origins_live_at(
-                self.borrow_checker_data
-                    .location_table
-                    .start_index(location),
-            )
+            .origins_live_at(start_index)
             .iter()
             .map(|r| (*r).into())
             .collect::<BTreeSet<_>>();
@@ -252,7 +250,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         location: Location,
     ) -> bool {
@@ -349,7 +347,7 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         _location: Location,
     ) -> bool {

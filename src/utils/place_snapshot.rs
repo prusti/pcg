@@ -72,6 +72,7 @@ impl AnalysisLocation {
             eval_stmt_phase,
         }
     }
+    #[must_use]
     pub fn next_snapshot_location(self, body: &mir::Body<'_>) -> SnapshotLocation {
         if let Some(phase) = self.eval_stmt_phase.next() {
             SnapshotLocation::Before(AnalysisLocation {
@@ -202,7 +203,7 @@ impl<'tcx, Ctxt: Copy, P: PlaceProjectable<'tcx, Ctxt> + PcgNodeComponent>
         &self,
         elem: mir::PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, crate::error::PcgError> {
+    ) -> std::result::Result<Self, crate::error::PcgError<'tcx>> {
         Ok(LabelledPlace::new(
             self.place.project_deeper(elem, ctxt)?,
             self.at,

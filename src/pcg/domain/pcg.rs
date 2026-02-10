@@ -358,7 +358,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut slf = self.clone();
         let mut other = other.clone();
         let mut slf_owned_data = slf.join_owned_data(self_block);
@@ -393,7 +393,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut other_capabilities = other.capabilities.clone();
         let mut other_borrows = other.borrow.clone();
         let mut self_owned_data = self.join_owned_data(self_block);

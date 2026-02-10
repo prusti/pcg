@@ -35,7 +35,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         match (&mut self.owned, &mut other.owned) {
             (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
             (OwnedPcgLocal::Allocated(to_places), OwnedPcgLocal::Allocated(from_places)) => {
@@ -102,7 +102,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
             let local: mir::Local = local.into();

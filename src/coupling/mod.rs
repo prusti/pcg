@@ -72,9 +72,9 @@ impl<SourceData> CouplingError<SourceData> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum CoupleAbstractionError {
+pub enum CoupleAbstractionError<'tcx> {
     CoupleInput(CoupleInputError),
-    MakeFunctionShape(MakeFunctionShapeError),
+    MakeFunctionShape(MakeFunctionShapeError<'tcx>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

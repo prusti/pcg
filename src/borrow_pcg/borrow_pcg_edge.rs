@@ -230,7 +230,7 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     for LocalNode<'tcx>
 {
-    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError<'tcx>> {
         Ok(match self {
             LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, ctxt)?),
             LocalNode::LifetimeProjection(rp) => {
@@ -379,6 +379,7 @@ impl<'tcx> BorrowPcgEdge<'tcx> {
 
     /// Whether the edge is valid for a given path (depending on its associated
     /// validity conditions)
+    #[must_use]
     pub fn valid_for_path(&self, path: &[BasicBlock], body: &mir::Body<'_>) -> bool {
         self.conditions.valid_for_path(path, body)
     }

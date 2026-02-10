@@ -18,7 +18,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn perform_statement_actions(
         &mut self,
         statement: &Statement<'tcx>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_statement_fallable(statement, self.location())?;
         match self.phase() {
             EvalStmtPhase::PreMain => {
@@ -32,7 +32,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         Ok(())
     }
 
-    fn stmt_pre_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError> {
+    fn stmt_pre_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
         assert!(self.phase() == EvalStmtPhase::PreMain);
         match &statement.kind {
             StatementKind::StorageDead(local) => {
@@ -123,7 +123,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         Ok(())
     }
 
-    fn stmt_post_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError> {
+    fn stmt_post_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
         assert!(self.phase() == EvalStmtPhase::PostMain);
         if let StatementKind::Assign(box (target, rvalue)) = &statement.kind {
             self.assign_post_main((*target).into(), rvalue)?;

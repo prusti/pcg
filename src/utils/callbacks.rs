@@ -84,7 +84,7 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> 
 
     fn origin_contains_loan_at(
         &self,
-        region: PcgRegion,
+        region: PcgRegion<'tcx>,
         loan: BorrowIndex,
         location: Location,
     ) -> bool {

@@ -5,7 +5,7 @@ use std::{
 };
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
-use pcg::utils::PcgSettings;
+use pcg::utils::{PcgSettings, display::DisplayWithCtxt};
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
     borrow_checker::r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
@@ -211,7 +211,9 @@ fn emit_and_check_annotations(
         let mut debug_lines = Vec::new();
 
         if let Some(err) = output.first_error() {
-            debug_lines.push(format!("{err:?}"));
+            let err_string = err.test_string(ctxt);
+            eprintln!("// PCG: {err_string}");
+            debug_lines.push(err.test_string(ctxt));
         }
         for block in ctxt.body().basic_blocks.indices() {
             if let Ok(Some(state)) = output.get_all_for_bb(block) {
@@ -227,7 +229,8 @@ fn emit_and_check_annotations(
         }
         if check_pcg_annotations {
             if let Ok(source) = ctxt.source_lines() {
-                let debug_lines_set: FxHashSet<_> = debug_lines.into_iter().collect();
+                let debug_lines_set: FxHashSet<String> =
+                    debug_lines.into_iter().map(|l| l.into_owned()).collect();
                 let expected_annotations = source
                     .iter()
                     .flat_map(|l| l.split("// PCG: ").nth(1))

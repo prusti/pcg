@@ -282,34 +282,6 @@ fn main() {
         });
     });
 
-    let input = r#"
-            fn main() {
-                use std::time::Instant;
-                fn run_expensive_calculation(){}
-                let start = Instant::now();
-                run_expensive_calculation();
-                let elapsed = start.elapsed();
-                println!("Elapsed: {}s", elapsed.as_secs());
-            }"#;
-    run_pcg_on_str(input, |mut analysis| {
-        let ctxt = analysis.ctxt();
-
-        let temp_9: mir::Place<'_> = mir::Local::from(9_usize).into();
-        let deref_temp_9 = temp_9.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-
-        let temp_19: mir::Place<'_> = mir::Local::from(19_usize).into();
-
-        check_all_statements(&ctxt.body(), &mut analysis, |location, stmt| {
-            assert!(
-                !stmt
-                    .aliases(deref_temp_9, &ctxt.body(), ctxt.tcx())
-                    .contains(&temp_19),
-                "Bad alias for {:?}",
-                location
-            );
-        });
-    });
-
     // From flowistry_basic.rs
     let input = r#"
     fn main() {

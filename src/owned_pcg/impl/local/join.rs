@@ -71,7 +71,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'other mut LocalExpansions<'tcx>>,
         other_expansion: &ExpandedPlace<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<JoinDifferentExpansionsResult<'tcx>, PcgError>
+    ) -> Result<JoinDifferentExpansionsResult<'tcx>, PcgError<'tcx>>
     where
         'pcg: 'other,
         'tcx: 'a,
@@ -159,7 +159,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         self_cap: SymbolicCapability,
         other_cap: SymbolicCapability,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
@@ -194,7 +194,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         expansion: &ExpandedPlace<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut actions = vec![];
         for expansion_place in expansion.expansion_places(ctxt).unwrap() {
             actions.extend(self.join_owned_places(other, expansion_place, ctxt)?);
@@ -208,7 +208,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         other_expansion: &ExpandedPlace<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError> {
+    ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError<'tcx>> {
         tracing::debug!("Joining expansion: {:?}", other_expansion);
         let place = other_expansion.place;
         let self_expansions = self
@@ -266,7 +266,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let expansions_shortest_first = other
             .owned
             .expansions_shortest_first()
@@ -295,7 +295,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut actions = vec![];
         let mut iteration = 0;
         loop {
@@ -332,7 +332,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(
@@ -364,7 +364,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         if !self.owned.is_leaf_place(place, ctxt) || !other.owned.is_leaf_place(place, ctxt) {
             return Ok(vec![]);
         }
@@ -403,7 +403,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
             actions.extend(

@@ -106,8 +106,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_operand_fallable(operand, location)?;
+        #[allow(clippy::match_same_arms)]
         let triple = match *operand {
             Operand::Copy(place) => Triple {
                 pre: PlaceCondition::read(place),
@@ -118,6 +119,8 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 post: Some(PlaceCondition::write(place)),
             },
             Operand::Constant(..) => return Ok(()),
+            #[allow(unreachable_patterns)]
+            _ => return Ok(()),
         };
         self.operand_triples.push(triple);
         Ok(())
@@ -128,11 +131,11 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
-            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
+            ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         let triple = match rvalue {
             Use(_)
@@ -140,11 +143,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             | ThreadLocalRef(_)
             | Cast(_, _, _)
             | BinaryOp(_, _)
-            | NullaryOp(_, _)
             | UnaryOp(_, _)
             | Aggregate(_, _)
             | ShallowInitBox(_, _) => return Ok(()),
-
             &Ref(_, kind, place) => match kind {
                 BorrowKind::Shared => Triple::new(
                     PlaceCondition::read(place),
@@ -177,10 +178,24 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                 };
                 Triple::new(pre, None)
             }
-            &Len(place) | &Discriminant(place) | &CopyForDeref(place) => {
+            &Discriminant(place) | &CopyForDeref(place) => {
                 Triple::new(PlaceCondition::read(place), None)
             }
-            _ => todo!(),
+            other => {
+                #[rustversion::since(2026-01-01)]
+                {
+                    assert!(matches!(other, Rvalue::WrapUnsafeBinder(_, _)));
+                    return Ok(());
+                }
+                #[rustversion::before(2026-01-01)]
+                {
+                    match other {
+                        &Rvalue::Len(place) => Triple::new(PlaceCondition::read(place), None),
+                        Rvalue::NullaryOp(_, _) => return Ok(()),
+                        _ => todo!("{other:?}"),
+                    }
+                }
+            }
         };
         self.operand_triples.push(triple);
         Ok(())
@@ -190,11 +205,9 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         statement: &Statement<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_statement_fallable(statement, location)?;
-        use StatementKind::{
-            Assign, Deinit, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive,
-        };
+        use StatementKind::{Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive};
         let t = match statement.kind {
             Assign(box (place, ref rvalue)) => Triple {
                 pre: PlaceCondition::write(place),
@@ -209,10 +222,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             SetDiscriminant { box place, .. } | Retag(_, box place) => Triple {
                 pre: PlaceCondition::exclusive(place, self.ctxt),
                 post: None,
-            },
-            Deinit(box place) => Triple {
-                pre: PlaceCondition::exclusive(place, self.ctxt),
-                post: Some(PlaceCondition::write(place)),
             },
             StorageLive(local) => Triple {
                 pre: PlaceCondition::Unalloc(local),
@@ -232,7 +241,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         terminator: &Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         self.super_terminator_fallable(terminator, location)?;
         use TerminatorKind::{
             Assert, Call, CoroutineDrop, Drop, FalseEdge, FalseUnwind, Goto, InlineAsm, Return,
@@ -278,7 +287,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: mir::Location,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         if place.contains_unsafe_deref(self.ctxt) {
             return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
         }
@@ -294,8 +303,8 @@ impl ProducesCapability for Rvalue<'_> {
     #[allow(unreachable_patterns)]
     fn capability(&self) -> Option<CapabilityKind> {
         use Rvalue::{
-            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, Len, NullaryOp, RawPtr, Ref,
-            Repeat, ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
+            Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
+            ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
         };
         match self {
             Ref(_, BorrowKind::Fake(_), _) => None,
@@ -304,16 +313,25 @@ impl ProducesCapability for Rvalue<'_> {
             | Ref(_, _, _)
             | RawPtr(_, _)
             | ThreadLocalRef(_)
-            | Len(_)
             | Cast(_, _, _)
             | BinaryOp(_, _)
-            | NullaryOp(_, _)
             | UnaryOp(_, _)
             | Discriminant(_)
             | Aggregate(_, _)
             | CopyForDeref(_) => Some(CapabilityKind::Exclusive),
             ShallowInitBox(_, _) => Some(CapabilityKind::ShallowExclusive),
-            _ => todo!(),
+            _ => {
+                #[rustversion::before(2026-01-01)]
+                {
+                    assert!(matches!(self, Rvalue::Len(_) | Rvalue::NullaryOp(_, _)));
+                    Some(CapabilityKind::Exclusive)
+                }
+                #[rustversion::since(2026-01-01)]
+                {
+                    assert!(matches!(self, Rvalue::WrapUnsafeBinder(_, _)));
+                    Some(CapabilityKind::Exclusive)
+                }
+            }
         }
     }
 }

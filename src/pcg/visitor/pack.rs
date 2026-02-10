@@ -124,7 +124,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     pub(crate) fn pack_old_and_dead_borrow_leaves(
         &mut self,
         for_place: Option<Place<'tcx>>,
-    ) -> Result<(), PcgError> {
+    ) -> Result<(), PcgError<'tcx>> {
         let debug_iteration_limit = 10000;
         let mut iteration = 0;
         self.restore_capability_to_leaf_places(for_place, self.ctxt)?;

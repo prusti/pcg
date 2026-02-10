@@ -120,6 +120,7 @@ impl BranchChoices {
         self.from
     }
 
+    #[must_use]
     pub fn successors(&self, body: &mir::Body<'_>) -> Vec<BasicBlock> {
         effective_successors(self.from, body)
             .into_iter()
@@ -388,6 +389,7 @@ impl ValidityConditions {
 }
 
 impl ValidityConditions {
+    #[must_use]
     pub fn valid_for_path(&self, path: &[BasicBlock], body: &mir::Body<'_>) -> bool {
         let get_successor_of_block_in_path = |block: BasicBlock| {
             let block_pos = path.iter().position(|b| *b == block);

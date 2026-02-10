@@ -1,4 +1,3 @@
-// compile-flags: -Punsafe_core_proof=true
 fn main(){}
 
 struct WrapperIterator<'a, T>{
@@ -26,10 +25,14 @@ fn test2() {
     for x in &mut v {
         s = x;
     }
-// PCG: bb7[0] post_operands: Loop(bb7): n -> s↓'?20 under conditions bb2 -> bb4
-// PCG: bb7[0] post_operands: Loop(bb7): v -> iter↓'?25 under conditions bb2 -> bb4
-// PCG: bb7[0] post_operands: Loop(bb7): v↓'?17 loop bb7 -> iter↓'?25 under conditions bb2 -> bb4
-// PCG: bb7[0] post_operands: Loop(bb7): v↓'?17 loop bb7 -> iter↓'?26 under conditions bb2 -> bb4
+// PCG_LIFETIME_DISPLAY: s 0 's
+// PCG_LIFETIME_DISPLAY: v 0 'v
+// PCG_LIFETIME_DISPLAY: iter 0 'iter0
+// PCG_LIFETIME_DISPLAY: iter 1 'iter1
+// PCG: bb7[0] post_operands: Loop(bb6): n -> s↓'s under conditions bb2 -> bb3
+// PCG: bb7[0] post_operands: Loop(bb6): v -> iter↓'iter0 under conditions bb2 -> bb3
+// PCG: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter0 under conditions bb2 -> bb3
+// PCG: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter1 under conditions bb2 -> bb3
 
     *s = 4;
     assert!(*s == 4);

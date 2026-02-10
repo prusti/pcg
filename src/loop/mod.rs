@@ -45,6 +45,7 @@ pub struct LoopAnalysis {
 }
 
 impl LoopAnalysis {
+    #[must_use]
     pub fn find_loops(body: &Body) -> Self {
         let mut analysis = LoopAnalysis {
             bb_data: IndexVec::from_elem_n(LoopSet::new(), body.basic_blocks.len()),
@@ -327,7 +328,7 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
         place: Place<'tcx>,
         context: mir::visit::PlaceContext,
         _location: mir::Location,
-    ) -> Result<(), crate::error::PcgError> {
+    ) -> Result<(), crate::error::PcgError<'tcx>> {
         match context {
             PlaceContext::MutatingUse(MutatingUseContext::Projection) | PlaceContext::NonUse(_) => {
             }
@@ -362,7 +363,7 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
     fn initialize_start_block(&self, _body: &Body<'tcx>, _state: &mut Self::Domain) {}
 
     fn apply_statement_effect(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
@@ -376,7 +377,7 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
     }
 
     fn apply_terminator_effect<'mir>(
-        &mut self,
+        &self,
         state: &mut Self::Domain,
         terminator: &'mir mir::Terminator<'tcx>,
         location: mir::Location,
