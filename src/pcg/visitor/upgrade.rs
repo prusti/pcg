@@ -32,7 +32,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         place: Place<'tcx>,
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError<'tcx>> {
-        if place.is_mut_ref(self.ctxt) && reason == AdjustCapabilityReason::UpgradeReadToExclusive {
+        if place.is_mut_ref(self.ctxt) {
             // We've reached an indirection (e.g from **s to *s), we
             // downgrade the ref from R to W
             // We need to continue: `s` would previously have capability R, which
@@ -223,8 +223,28 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     }
 }
 
+/// The reason for performing in-place updates on the PCG capabilities.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub(crate) enum AdjustCapabilityReason {
+    /// Just prior to activating a two-phase borrow, the capability of the
+    /// blocked place is R. The PCG evaluates the two-phase borrow by removing
+    /// this capability and adjusting the capabilities of the parents of the
+    /// blocked place as well as their related places. In particular, if the
+    /// blocked place's parent place also has capability R, it should be removed
+    /// as well.
     TwoPhaseBorrowActivation,
+
+    /// Currently, there are situations in the analysis that require obtaining
+    /// capability E to a place with capability R. In particular, consider the following code:
+    /// ```rust
+    /// let mut pair = (String::new(), String::new());
+    /// let fst = &pair.0;
+    /// let snd = pair.1;
+    /// ```
+    /// For the assignment to `fst`, the PCG will weaken `pair` to capability
+    /// `R`, and then unpack it. Therefore, `pair.1` will have capability `R`.
+    /// The assignment to `snd` requires obtaining capability `E` to `pair.1`,
+    /// To handle this case, we would remove capability from `pair` and upgrade
+    /// `pair.1` to `E`.
     UpgradeReadToExclusive,
 }
