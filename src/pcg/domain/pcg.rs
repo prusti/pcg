@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
-        edge::kind::BorrowPcgEdgeKind,
+        edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
@@ -325,6 +325,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     #[must_use]
     pub fn owned_pcg(&self) -> &OwnedPcg<'tcx> {
         &self.owned
+    }
+
+    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
+        self.borrow.graph().borrow_created_at(location)
     }
 
     #[must_use]

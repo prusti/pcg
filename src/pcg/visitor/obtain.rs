@@ -25,6 +25,7 @@ use crate::{
             BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
             SymbolicPlaceCapabilities,
         },
+        visitor::upgrade::AdjustCapabilityReason,
     },
     pcg_validity_assert,
     rustc_interface::middle::mir,
@@ -420,7 +421,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         )?;
         self.remove_read_permission_downwards(place)?;
         if let Some(parent) = place.parent_place() {
-            self.remove_read_permission_upwards_and_label_rps(parent, "Upgrade read to exclusive")?;
+            self.remove_read_permission_upwards_and_label_rps(
+                parent,
+                AdjustCapabilityReason::UpgradeReadToExclusive,
+            )?;
         }
         Ok(())
     }

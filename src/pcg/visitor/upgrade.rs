@@ -16,7 +16,7 @@ use crate::{
     pcg::{
         CapabilityKind, PcgNode, PcgRefLike,
         obtain::{HasSnapshotLocation, PlaceObtainer},
-        place_capabilities::{BlockType, PlaceCapabilitiesReader},
+        place_capabilities::BlockType,
     },
     utils::{
         DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
@@ -27,12 +27,12 @@ use crate::{
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn weaken_place_from_read_upwards(
+    fn weaken_capability_from_read(
         &mut self,
         place: Place<'tcx>,
-        debug_ctxt: &str,
+        reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError<'tcx>> {
-        if place.is_mut_ref(self.ctxt) {
+        if place.is_mut_ref(self.ctxt) && reason == AdjustCapabilityReason::UpgradeReadToExclusive {
             // We've reached an indirection (e.g from **s to *s), we
             // downgrade the ref from R to W
             // We need to continue: `s` would previously have capability R, which
@@ -43,8 +43,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                         CapabilityKind::Read,
                         BlockType::DerefMutRefForExclusive.blocked_place_maximum_retained_capability(),
                         format!(
-                            "{}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
-                            debug_ctxt,
+                            "{:?}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
+                            reason,
                             place.display_string(self.ctxt.bc_ctxt()),
                         )
                     )
@@ -57,8 +57,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     CapabilityKind::Read,
                     None,
                     format!(
-                        "{}: remove read permission upwards from base place {}",
-                        debug_ctxt,
+                        "{:?}: remove read permission upwards from base place {}",
+                        reason,
                         place.display_string(self.ctxt.bc_ctxt()),
                     ),
                 )
@@ -75,13 +75,16 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     pub(crate) fn remove_read_permission_upwards_and_label_rps(
         &mut self,
         place: Place<'tcx>,
-        debug_ctxt: &str,
+        reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError<'tcx>> {
         let place_regions = place.regions(self.ctxt);
         let mut prev = None;
         let mut current = place;
-        while self.pcg.capabilities.get(current, self.ctxt) == Some(CapabilityKind::Read.into()) {
-            self.weaken_place_from_read_upwards(current, debug_ctxt)?;
+        while self
+            .pcg
+            .place_capability_equals(current, CapabilityKind::Read)
+        {
+            self.weaken_capability_from_read(current, reason)?;
             let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
             for place in self.pcg.borrow.graph.places(self.ctxt.bc_ctxt()) {
                 if prev != Some(place)
@@ -97,8 +100,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             place,
                             CapabilityKind::Exclusive,
                             format!(
-                                "{}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
-                                debug_ctxt,
+                                "{:?}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
+                                reason,
                                 place.display_string(self.ctxt.bc_ctxt())
                             ),
                         )
@@ -123,7 +126,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 let edges_blocking_current_rp = self
                     .pcg
                     .borrow
-                    .graph
                     .edges_blocking(current_rp.into(), self.ctxt.bc_ctxt())
                     .collect::<Vec<_>>();
                 if !edges_blocking_current_rp.is_empty() {
@@ -154,8 +156,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             LabelNodePredicate::equals_lifetime_projection(current_rp.into()),
                             Some(self.prev_snapshot_location().into()),
                             format!(
-                                "{}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
-                                debug_ctxt,
+                                "{:?}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
+                                reason,
                                 current_rp.display_string(self.ctxt.bc_ctxt()),
                                 self.prev_snapshot_location()
                             ),
@@ -219,4 +221,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         }
         Ok(())
     }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub(crate) enum AdjustCapabilityReason {
+    TwoPhaseBorrowActivation,
+    UpgradeReadToExclusive,
 }

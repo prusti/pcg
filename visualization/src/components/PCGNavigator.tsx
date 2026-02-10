@@ -286,69 +286,75 @@ export default function PCGNavigator({
   // Render navigation items in order
   const renderItems = () => {
     return navigationItems.map((item, idx) => {
-      if (item.type === "iteration") {
-        const isSelected =
-          selectedPoint?.type === "iteration" &&
-          selectedPoint.name === item.name;
-        return (
-          <div
-            key={`iteration-${item.name}-${idx}`}
-            style={{
-              border: "1px solid #000",
-              padding: "8px",
-              marginBottom: "8px",
-              backgroundColor: isSelected ? "lightgreen" : "transparent",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
-            onClick={() => {
-              onSelectPoint({ type: "iteration", name: item.name });
-            }}
-          >
-            {item.name}
-          </div>
-        );
-      } else {
-        // action
-        const isSelected =
-          selectedPoint?.type === "action" &&
-          selectedPoint.phase === item.phase &&
-          selectedPoint.index === item.index;
-        const action =
-          item.phase === "successor" ? item.action : item.action.action;
-        let hoverText = action.data.debug_context || "";
-        const itemContent = actionLine(action.data.kind);
-        if (item.phase !== "successor") {
-          if (!hoverText) {
-            hoverText = item.action.result.change_summary;
-          } else {
-            hoverText += " " + item.action.result.change_summary;
+      try {
+        if (item.type === "iteration") {
+          const isSelected =
+            selectedPoint?.type === "iteration" &&
+            selectedPoint.name === item.name;
+          return (
+            <div
+              key={`iteration-${item.name}-${idx}`}
+              style={{
+                border: "1px solid #000",
+                padding: "8px",
+                marginBottom: "8px",
+                backgroundColor: isSelected ? "lightgreen" : "transparent",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+              onClick={() => {
+                onSelectPoint({ type: "iteration", name: item.name });
+              }}
+            >
+              {item.name}
+            </div>
+          );
+        } else {
+          // action
+          const isSelected =
+            selectedPoint?.type === "action" &&
+            selectedPoint.phase === item.phase &&
+            selectedPoint.index === item.index;
+          const action =
+            item.phase === "successor" ? item.action : item.action.action;
+          let hoverText = action.data.debug_context || "";
+          const itemContent = actionLine(action.data.kind);
+          if (item.phase !== "successor") {
+            if (!hoverText) {
+              hoverText = item.action.result.change_summary;
+            } else {
+              hoverText += " " + item.action.result.change_summary;
+            }
           }
+          return (
+            <div
+              key={`action-${item.phase}-${item.index}-${idx}`}
+              style={{
+                cursor: "pointer",
+                padding: "6px 12px",
+                marginBottom: "4px",
+                borderRadius: "4px",
+                backgroundColor: isSelected ? "#007acc" : "#f5f5f5",
+                color: isSelected ? "white" : "inherit",
+                border: isSelected ? "1px solid #007acc" : "1px solid #ddd",
+              }}
+              onClick={() => {
+                onSelectPoint({
+                  type: "action",
+                  phase: item.phase,
+                  index: item.index,
+                });
+              }}
+              title={hoverText || undefined}
+            >
+              <code>{itemContent}</code>
+            </div>
+          );
         }
-        return (
-          <div
-            key={`action-${item.phase}-${item.index}-${idx}`}
-            style={{
-              cursor: "pointer",
-              padding: "6px 12px",
-              marginBottom: "4px",
-              borderRadius: "4px",
-              backgroundColor: isSelected ? "#007acc" : "#f5f5f5",
-              color: isSelected ? "white" : "inherit",
-              border: isSelected ? "1px solid #007acc" : "1px solid #ddd",
-            }}
-            onClick={() => {
-              onSelectPoint({
-                type: "action",
-                phase: item.phase,
-                index: item.index,
-              });
-            }}
-            title={hoverText || undefined}
-          >
-            <code>{itemContent}</code>
-          </div>
-        );
+      } catch (error) {
+        console.error("Error rendering item %O:", item, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        <div>{errorMessage}</div>
       }
     });
   };

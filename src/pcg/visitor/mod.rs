@@ -15,9 +15,10 @@ use crate::{
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::TripleWalker,
+        visitor::upgrade::AdjustCapabilityReason,
     },
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
-    utils::{PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use crate::utils::{
@@ -418,21 +419,20 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         created_location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        let Some(borrow) = self.pcg.borrow.graph().borrow_created_at(created_location) else {
+        let Some(borrow) = self.pcg.borrow_created_at(created_location) else {
             return Ok(());
         };
-        tracing::debug!(
-            "activate twophase borrow: {}",
+        tracing::info!(
+            "{:?} activate twophase borrow: {}",
+            self.location(),
             borrow.display_string(self.ctxt.bc_ctxt())
         );
         let blocked_place = borrow.blocked_place.place();
-        if !blocked_place.is_owned(self.ctxt) {
-            self.place_obtainer()
-                .remove_read_permission_upwards_and_label_rps(
-                    blocked_place,
-                    "Activate twophase borrow",
-                )?;
-        }
+        self.place_obtainer()
+            .remove_read_permission_upwards_and_label_rps(
+                blocked_place,
+                AdjustCapabilityReason::TwoPhaseBorrowActivation,
+            )?;
         Ok(())
     }
 }
