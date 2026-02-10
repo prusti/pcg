@@ -25,9 +25,15 @@ checksum = "5e764a1d40d510daf35e07be9eb06e75770908c27d411ee6c92109c9840eaaf7"
 
 [[package]]
 name = "bumpalo"
-version = "3.19.0"
+version = "3.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
+checksum = "5dd9dc738b7a8311c7ade152424974d8115f2cdad61e8dab8dac9f2362298510"
+
+[[package]]
+name = "bytes"
+version = "1.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cfg-if"
@@ -197,10 +203,11 @@ version = "0.1.0"
 dependencies = [
  "bit-set",
  "bumpalo",
+ "bytes",
  "derive_more",
  "dot",
  "itertools",
- "lazy_static",
+ "pcg-macros",
  "petgraph",
  "rustversion",
  "serde",
@@ -212,6 +219,16 @@ dependencies = [
  "strum_macros",
  "tracing",
  "tracing-subscriber",
+ "union-find",
+]
+
+[[package]]
+name = "pcg-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -476,6 +493,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "union-find"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "039142448432983c34b64739f8526f8f233a1eec7a66e61b6ab29acfa781194e"
 
 [[package]]
 name = "valuable"

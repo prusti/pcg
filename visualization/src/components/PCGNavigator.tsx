@@ -287,6 +287,7 @@ export default function PCGNavigator({
   const renderItems = () => {
     return navigationItems.map((item, idx) => {
       try {
+        console.log(item);
         if (item.type === "iteration") {
           const isSelected =
             selectedPoint?.type === "iteration" &&
@@ -317,7 +318,7 @@ export default function PCGNavigator({
             selectedPoint.index === item.index;
           const action =
             item.phase === "successor" ? item.action : item.action.action;
-          let hoverText = action.data.debug_context || "";
+          let hoverText = action.data.debug_info || "";
           const itemContent = actionLine(action.data.kind);
           if (item.phase !== "successor") {
             if (!hoverText) {
@@ -353,8 +354,9 @@ export default function PCGNavigator({
         }
       } catch (error) {
         console.error("Error rendering item %O:", item, error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        <div>{errorMessage}</div>
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        <div>{errorMessage}</div>;
       }
     });
   };

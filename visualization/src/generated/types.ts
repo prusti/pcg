@@ -5,7 +5,7 @@ import type { StringOf } from "../generated_type_deps.ts";
  * A pair of a PCG action and a debug context (indicating the source of the
  * action and possibly its effects).
  */
-export type ActionKindWithDebugCtxt<T, Ctxt> = { kind: T; debug_context: Ctxt };
+export type ActionKindWithDebugInfo<T, DebugInfo> = { kind: T; debug_info: DebugInfo };
 
 export type AppliedAction<Action, Result> = { action: Action; result: Result; _marker: null };
 
@@ -100,9 +100,9 @@ export type PathToDotFile = string;
 
 export type PcgBlockVisualizationData = { statements: PcgStmtVisualizationData[]; successors: { [key in BasicBlock]: PcgSuccessorVisualizationData } };
 
-export type PcgStmtVisualizationData = { actions: EvalStmtData<(AppliedAction<GenericPcgAction<ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugCtxt<RepackOp<string, string, string>, string | null>>, ApplyActionResult<string>>)[]>; graphs: StmtGraphs<StringOf<DataflowStmtPhase>> };
+export type PcgStmtVisualizationData = { actions: EvalStmtData<(AppliedAction<GenericPcgAction<ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugInfo<RepackOp<string, string, string>, string | null>>, ApplyActionResult<string>>)[]>; graphs: StmtGraphs<StringOf<DataflowStmtPhase>> };
 
-export type PcgSuccessorVisualizationData = { actions: (GenericPcgAction<ActionKindWithDebugCtxt<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugCtxt<RepackOp<string, string, string>, string | null>>)[] };
+export type PcgSuccessorVisualizationData = { actions: (GenericPcgAction<ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugInfo<RepackOp<string, string, string>, string | null>>)[] };
 
 export type PcgVisualizationData = { [key in BasicBlock]: PcgBlockVisualizationData };
 
@@ -114,7 +114,7 @@ export type RepackExpand<Place, Guide> = { from: Place; guide: Guide | null; cap
 
 export type RepackOp<Local, Place, Guide> = 
 /**
- * Rust will sometimes join two BasicBlocks where a local is live in one and dead in the other.
+ * Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
  * Our analysis will join these two into a state where the local is dead, and this Op marks the
  * edge from where it was live.
  * 
@@ -130,7 +130,7 @@ export type RepackOp<Local, Place, Guide> =
  */
 { type: "StorageDead"; data: Local } | 
 /**
- * This Op only appears within a BasicBlock and is attached to a
+ * This Op only appears within a `BasicBlock` and is attached to a
  * [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
  * statement. We emit it for any such statement where the local may already be dead. We
  * guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
