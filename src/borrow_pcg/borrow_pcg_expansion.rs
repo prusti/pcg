@@ -264,20 +264,6 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
             )?,
         ))
     }
-    pub(crate) fn new_place_expansion<'a>(
-        base: Place<'tcx>,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        Ok(BorrowPcgExpansion::Place(BorrowPcgPlaceExpansion::new(
-            base.into(),
-            expansion,
-            ctxt,
-        )?))
-    }
 }
 
 impl<

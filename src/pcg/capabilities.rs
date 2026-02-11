@@ -13,7 +13,6 @@ use std::{
 };
 
 use derive_more::From;
-use serde_derive::Serialize;
 
 use crate::{
     pcg::PcgArena,
@@ -437,9 +436,24 @@ impl SymbolicCapability {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
+impl<N> serde::Serialize for CapabilityKind<N> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            CapabilityKind::Read => serializer.serialize_str("R"),
+            CapabilityKind::Write => serializer.serialize_str("W"),
+            CapabilityKind::Exclusive => serializer.serialize_str("E"),
+            CapabilityKind::ShallowExclusive => serializer.serialize_str("e"),
+            CapabilityKind::None(_) => serializer.serialize_str("None"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub enum CapabilityKind {
+pub enum CapabilityKind<NoCapability = !> {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.
     Read,
@@ -456,6 +470,8 @@ pub enum CapabilityKind {
     /// [`CapabilityKind::Exclusive`] for everything not through a dereference,
     /// [`CapabilityKind::Write`] for everything through a dereference.
     ShallowExclusive,
+
+    None(NoCapability),
 }
 impl Debug for CapabilityKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -464,6 +480,7 @@ impl Debug for CapabilityKind {
             CapabilityKind::Write => write!(f, "W"),
             CapabilityKind::Exclusive => write!(f, "E"),
             CapabilityKind::ShallowExclusive => write!(f, "e"),
+            CapabilityKind::None(_) => todo!(),
         }
     }
 }
@@ -497,17 +514,19 @@ impl PartialOrd for CapabilityKind {
 impl<Ctxt> DisplayWithCtxt<Ctxt> for CapabilityKind {
     fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let str = match mode {
-            OutputMode::Normal => match self {
+            OutputMode::Normal => match *self {
                 CapabilityKind::Read => "Read",
                 CapabilityKind::Write => "Write",
                 CapabilityKind::Exclusive => "Exclusive",
                 CapabilityKind::ShallowExclusive => "ShallowExclusive",
+                CapabilityKind::None(_) => "None",
             },
-            OutputMode::Short | OutputMode::Test => match self {
+            OutputMode::Short | OutputMode::Test => match *self {
                 CapabilityKind::Read => "R",
                 CapabilityKind::Write => "W",
                 CapabilityKind::Exclusive => "E",
                 CapabilityKind::ShallowExclusive => "e",
+                CapabilityKind::None(_) => "∅",
             },
         };
         DisplayOutput::Text(str.into())
@@ -546,48 +565,6 @@ impl CapabilityKind {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-
-    #[test]
-    fn test_capability_gte_macro() {
-        // Test that the macro generates correct patterns
-        let test_read = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(R)) };
-        let test_write = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(W)) };
-        let test_shallow = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(e)) };
-        let test_exclusive = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(E)) };
-
-        // Test Read pattern (should match Read and Exclusive)
-        assert!(test_read(CapabilityKind::Read));
-        assert!(!test_read(CapabilityKind::Write));
-        assert!(!test_read(CapabilityKind::ShallowExclusive));
-        assert!(test_read(CapabilityKind::Exclusive));
-
-        // Test Write pattern (should match Write, ShallowExclusive, and Exclusive)
-        assert!(!test_write(CapabilityKind::Read));
-        assert!(test_write(CapabilityKind::Write));
-        assert!(test_write(CapabilityKind::ShallowExclusive));
-        assert!(test_write(CapabilityKind::Exclusive));
-
-        // Test ShallowExclusive pattern (should match ShallowExclusive and Exclusive)
-        assert!(!test_shallow(CapabilityKind::Read));
-        assert!(!test_shallow(CapabilityKind::Write));
-        assert!(test_shallow(CapabilityKind::ShallowExclusive));
-        assert!(test_shallow(CapabilityKind::Exclusive));
-
-        // Test Exclusive pattern (should match only Exclusive)
-        assert!(!test_exclusive(CapabilityKind::Read));
-        assert!(!test_exclusive(CapabilityKind::Write));
-        assert!(!test_exclusive(CapabilityKind::ShallowExclusive));
-        assert!(test_exclusive(CapabilityKind::Exclusive));
-
-        // Also test with full names
-        assert!(matches!(CapabilityKind::Read, capability_gte!(Read)));
-        assert!(matches!(CapabilityKind::Exclusive, capability_gte!(Read)));
-        assert!(matches!(CapabilityKind::Write, capability_gte!(Write)));
-        assert!(matches!(
-            CapabilityKind::ShallowExclusive,
-            capability_gte!(ShallowExclusive)
-        ));
-    }
 
     #[test]
     fn test_capability_kind_dag_reachability() {

@@ -24,6 +24,7 @@ may already be stabilized */
 #![feature(box_patterns)]
 #![feature(if_let_guard)]
 #![feature(never_type)]
+#![feature(min_exhaustive_patterns)]
 #![feature(proc_macro_hygiene)]
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(stmt_expr_attributes)]

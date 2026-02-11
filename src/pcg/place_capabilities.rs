@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion},
+        borrow_pcg_expansion::BorrowPcgPlaceExpansion,
         edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
