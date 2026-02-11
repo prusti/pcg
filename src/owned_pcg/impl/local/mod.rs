@@ -12,8 +12,11 @@ use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgUnsupportedError,
     owned_pcg::RepackGuide,
-    pcg::place_capabilities::{
-        PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+    pcg::{
+        CapabilityKind,
+        place_capabilities::{
+            PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+        },
     },
     rustc_interface::middle::mir::Local,
     utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
@@ -22,7 +25,7 @@ use itertools::Itertools;
 
 use crate::{
     owned_pcg::RepackOp,
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
@@ -255,7 +258,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &mut self,
         to: Place<'tcx>,
-        _for_cap: Option<CapabilityKind>,
+        _for_cap: Option<PositiveCapability>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) -> Vec<RepackOp<'tcx>>

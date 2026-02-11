@@ -14,7 +14,7 @@ use crate::{
         },
     },
     pcg::{
-        CapabilityLike, PcgNodeWithPlace,
+        CapabilityConstraint, CapabilityKind, CapabilityLike, PcgNodeWithPlace, SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     utils::{
@@ -45,7 +45,8 @@ use crate::{
     },
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgNode, ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface,
+        PcgNode, PositiveCapability, ctxt::AnalysisCtxt,
+        place_capabilities::PlaceCapabilitiesInterface,
     },
     pcg_validity_assert,
     rustc_interface::middle::{
@@ -286,10 +287,14 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 if let Some(cap) = capabilities.get(restore_place, ctxt) {
                     pcg_validity_assert!(cap.expect_concrete() < restore.capability());
                 }
-                if !capabilities.insert(restore_place, restore.capability(), ctxt) {
+                if !capabilities.insert(
+                    restore_place,
+                    restore.capability().into_capability_kind(),
+                    ctxt,
+                ) {
                     // panic!("Capability should have been updated")
                 }
-                if restore.capability() == CapabilityKind::Exclusive {
+                if restore.capability() == PositiveCapability::Exclusive {
                     self.label_lifetime_projections(
                         &LabelNodePredicate::all_future_postfixes(restore_place),
                         None,
@@ -314,14 +319,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                         .expect_concrete(),
                     weaken.from
                 );
-                match weaken.to {
-                    Some(to) => {
-                        capabilities.insert(weaken_place, to, ctxt);
-                    }
-                    None => {
-                        assert!(capabilities.remove(weaken_place, ctxt).is_some());
-                    }
-                }
+                capabilities.insert(weaken_place, weaken.to, ctxt);
                 ApplyActionResult::changed_no_display()
             }
             BorrowPcgActionKind::LabelPlace(action) => self
@@ -574,11 +572,9 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             let _ = capabilities.remove(blocked_place, ctxt);
         } else {
             let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-            match blocked_place_capability
-                .map(super::super::pcg::capabilities::SymbolicCapability::expect_concrete)
-            {
+            match blocked_place_capability.map(SymbolicCapability::expect_concrete) {
                 Some(CapabilityKind::Exclusive) => {
-                    assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
+                    assert!(capabilities.insert(blocked_place, PositiveCapability::Read, ctxt));
                 }
                 Some(CapabilityKind::Read) => {
                     // Do nothing, this just adds another shared borrow

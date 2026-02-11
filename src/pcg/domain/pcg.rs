@@ -11,7 +11,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike, SymbolicCapability,
+        CapabilityKind, CapabilityLike, PositiveCapability, SymbolicCapability,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -254,7 +254,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                         && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) = self
                             .capabilities
                             .get(blocked_place, ctxt)
-                            .map(super::super::capabilities::SymbolicCapability::expect_concrete)
+                            .map(SymbolicCapability::expect_concrete)
                         && self.capabilities.get(deref_place, ctxt).is_none()
                     {
                         return Err(format!(
@@ -304,7 +304,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
+    pub fn places_with_capapability(&self, capability: PositiveCapability) -> HashSet<Place<'tcx>> {
         self.capabilities
             .iter()
             .filter_map(|(p, c)| {
@@ -382,8 +382,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             {
                 repacks.push(RepackOp::Weaken(Weaken::new(
                     place,
-                    cap.expect_concrete(),
-                    other_cap.expect_concrete(),
+                    cap.expect_concrete().as_positive().unwrap(),
+                    other_cap.expect_concrete().as_positive().unwrap(),
                 )));
             }
         }

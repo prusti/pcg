@@ -15,7 +15,7 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     owned_pcg::{RegainedCapability, RepackOp},
-    pcg::capabilities::CapabilityKind,
+    pcg::capabilities::PositiveCapability,
     rustc_interface::middle::mir,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place, PlaceLike,
@@ -287,7 +287,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
 impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn restore_capability<Ctxt>(
         place: P,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         debug_context: impl Into<DisplayOutput>,
         ctxt: Ctxt,
     ) -> Self

@@ -20,7 +20,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
+        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
@@ -86,7 +86,7 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ObtainType {
     ForStorageDead,
-    Capability(CapabilityKind),
+    Capability(PositiveCapability),
     TwoPhaseExpand,
     LoopInvariant {
         is_blocked: bool,
@@ -109,16 +109,16 @@ impl ObtainType {
     pub(crate) fn capability_for_expand<'a, 'tcx>(
         self,
         place: Place<'tcx>,
-        current_cap: CapabilityKind,
+        current_cap: PositiveCapability,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind
+    ) -> PositiveCapability
     where
         'tcx: 'a,
     {
-        if let ObtainType::Capability(CapabilityKind::Write) = self
+        if let ObtainType::Capability(PositiveCapability::Write) = self
             && current_cap.is_exclusive()
         {
-            CapabilityKind::Exclusive
+            PositiveCapability::Exclusive
         } else {
             self.capability(place, ctxt)
         }
@@ -127,14 +127,14 @@ impl ObtainType {
         self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind
+    ) -> PositiveCapability
     where
         'tcx: 'a,
     {
         match self {
-            ObtainType::ForStorageDead => CapabilityKind::Write,
+            ObtainType::ForStorageDead => PositiveCapability::Write,
             ObtainType::Capability(cap) => cap,
-            ObtainType::TwoPhaseExpand => CapabilityKind::Read,
+            ObtainType::TwoPhaseExpand => PositiveCapability::Read,
             ObtainType::LoopInvariant {
                 is_blocked: _,
                 usage_type,
@@ -143,9 +143,9 @@ impl ObtainType {
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)
                 {
-                    CapabilityKind::Read
+                    PositiveCapability::Read
                 } else {
-                    CapabilityKind::Exclusive
+                    PositiveCapability::Exclusive
                 }
             }
         }
@@ -211,7 +211,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             leaf_places.display_string(ctxt.bc_ctxt())
         );
         leaf_places.retain(|p| {
-            self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read.into())
+            self.capabilities().get(*p, ctxt) == Some(PositiveCapability::Read.into())
                 && !p.projects_shared_ref(ctxt)
                 && p.parent_place()
                     .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())
@@ -228,7 +228,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             }
             let action = PcgAction::restore_capability(
                 place,
-                CapabilityKind::Exclusive,
+                PositiveCapability::Exclusive,
                 "restore capability to leaf place",
                 ctxt,
             );
@@ -241,7 +241,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     fn collapse_owned_places_and_lifetime_projections_to(
         &mut self,
         place: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {

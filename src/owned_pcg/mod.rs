@@ -12,4 +12,4 @@ pub use r#impl::*;
 pub use results::*;
 
 #[deprecated(note = "Use `crate::pcg::CapabilityKind` instead")]
-pub type CapabilityKind = crate::pcg::CapabilityKind;
+pub type CapabilityKind = crate::pcg::PositiveCapability;

@@ -18,7 +18,7 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
         validity_conditions::ValidityConditions,
     },
-    pcg::{CapabilityKind, PcgNodeType},
+    pcg::{CapabilityKind, PcgNodeType, PositiveCapability},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
@@ -91,7 +91,7 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn restore_capability(
         place: P,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         debug_context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -104,8 +104,8 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
 
     pub(crate) fn weaken(
         place: P,
-        from: CapabilityKind,
-        to: Option<CapabilityKind>,
+        from: PositiveCapability,
+        to: CapabilityKind,
         context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {

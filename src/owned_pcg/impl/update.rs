@@ -7,7 +7,7 @@
 use crate::{
     owned_pcg::{LocalExpansions, OwnedPcgLocal},
     pcg::{
-        CapabilityKind,
+        PositiveCapability,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
@@ -43,16 +43,16 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::AllocateOrDeallocate(_local) => {}
             PlaceCondition::Capability(place, required_cap) => {
                 match required_cap {
-                    CapabilityKind::Read => {
+                    PositiveCapability::Read => {
                         // TODO
                     }
-                    CapabilityKind::Write => {
+                    PositiveCapability::Write => {
                         // Cannot get write on a shared ref
                         pcg_validity_assert!(
                             place.is_mutable(LocalMutationIsAllowed::Yes, ctxt).is_ok()
                         );
                     }
-                    CapabilityKind::Exclusive => {
+                    PositiveCapability::Exclusive => {
                         // Cannot get exclusive on a shared ref
                         pcg_validity_assert!(
                             !place.projects_shared_ref(ctxt),
@@ -60,7 +60,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                             place.display_string(ctxt.bc_ctxt())
                         );
                     }
-                    CapabilityKind::ShallowExclusive => unreachable!(),
+                    PositiveCapability::ShallowExclusive => unreachable!(),
                 }
                 if place.is_owned(ctxt) {
                     if capabilities.get(place, ctxt).is_some() {
@@ -84,7 +84,7 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::Return => {
                 pcg_validity_assert!(
                     capabilities.get(RETURN_PLACE.into(), ctxt).unwrap()
-                        == CapabilityKind::Exclusive.into(),
+                        == PositiveCapability::Exclusive.into(),
                     [ctxt]
                 );
             }
@@ -111,7 +111,7 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
                 self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(local));
-                place_capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
+                place_capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
             }
             PlaceCondition::Capability(place, cap) => {
                 place_capabilities.insert(place, cap, ctxt);
@@ -119,17 +119,17 @@ impl<'tcx> OwnedPcg<'tcx> {
                 // exclusively (when it could have originally been expanded for
                 // read), in which case we pretend we did the right thing all
                 // along
-                if cap == CapabilityKind::Read {
+                if cap == PositiveCapability::Read {
                     for (p, _) in place_capabilities
                         .capabilities_for_strict_postfixes_of(place)
                         .collect::<Vec<_>>()
                     {
-                        place_capabilities.insert(p, CapabilityKind::Read, ctxt);
+                        place_capabilities.insert(p, PositiveCapability::Read, ctxt);
                     }
                 }
             }
             PlaceCondition::ExpandTwoPhase(place) => {
-                place_capabilities.insert(place, CapabilityKind::Read, ctxt);
+                place_capabilities.insert(place, PositiveCapability::Read, ctxt);
             }
             PlaceCondition::RemoveCapability(place) => {
                 place_capabilities.remove(place, ctxt);

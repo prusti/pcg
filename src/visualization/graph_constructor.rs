@@ -6,7 +6,8 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, PositiveCapability,
+        SymbolicCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
@@ -192,10 +193,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),
             label,
-            capability: capability.and_then(|c| match c {
-                SymbolicCapability::Concrete(cap) => Some(cap),
-                _ => None,
-            }),
+            capability: capability.and_then(|c| c.as_positive()),
             location,
             ty: format!("{:?}", place_ty.ty),
         };

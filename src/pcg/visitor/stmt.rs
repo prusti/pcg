@@ -5,7 +5,10 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
     },
-    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesReader},
+    pcg::{
+        CapabilityKind, CapabilityLike, PcgRefLike, PositiveCapability,
+        place_capabilities::PlaceCapabilitiesReader,
+    },
     pcg_validity_assert,
     rustc_interface::middle::mir::{Statement, StatementKind},
 };
@@ -63,15 +66,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // and its permission should be Exclusive.
                     if self
                         .pcg
-                        .capabilities
-                        .get(target, self.ctxt)
-                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
-                        == Some(CapabilityKind::Read)
+                        .place_capability_equals(target, PositiveCapability::Read)
                     {
                         self.record_and_apply_action(
                             BorrowPcgAction::restore_capability(
                                 target,
-                                CapabilityKind::Exclusive,
+                                PositiveCapability::Exclusive,
                                 "Assign: restore capability to exclusive",
                             )
                             .into(),
@@ -80,18 +80,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
 
                 if let Some(target_cap_sym) = self.pcg.capabilities.get(target, self.ctxt) {
-                    let target_cap = target_cap_sym.expect_concrete();
+                    let target_cap = target_cap_sym.expect_positive();
                     pcg_validity_assert!(
-                        target_cap >= CapabilityKind::Write,
+                        target_cap >= PositiveCapability::Write,
                         "target_cap: {:?}",
                         target_cap
                     );
-                    if target_cap != CapabilityKind::Write {
+                    if target_cap != PositiveCapability::Write {
                         self.record_and_apply_action(
                             BorrowPcgAction::weaken(
                                 target,
                                 target_cap,
-                                Some(CapabilityKind::Write),
+                                CapabilityKind::Write,
                                 "pre_main",
                             )
                             .into(),

@@ -17,7 +17,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{ExpandedPlace, RepackOp},
     pcg::{
-        CapabilityKind, PcgNodeLike,
+        PcgNodeLike, PositiveCapability,
         obtain::{
             ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, ObtainType,
             RenderDebugGraph,
@@ -45,7 +45,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     fn update_capabilities_for_deref(
         &mut self,
         ref_place: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>>;
 
@@ -111,7 +111,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind;
+    ) -> PositiveCapability;
 
     fn expand_owned_place_one_level(
         &mut self,

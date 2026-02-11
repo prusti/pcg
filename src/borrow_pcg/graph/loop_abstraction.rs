@@ -18,7 +18,7 @@ use crate::{
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
+        LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
@@ -41,14 +41,14 @@ use crate::{
 pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
     pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
-    pub(crate) capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
+    pub(crate) capability_updates: HashMap<Place<'tcx>, Option<PositiveCapability>>,
 }
 
 impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
     pub(crate) fn new(
         graph: BorrowsGraph<'tcx>,
         to_label: HashSet<LabelNodePredicate<'tcx>>,
-        capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
+        capability_updates: HashMap<Place<'tcx>, Option<PositiveCapability>>,
     ) -> Self {
         Self {
             graph,
@@ -189,7 +189,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 if blocked_place_usage.usage == PlaceUsageType::Mutate {
                     capability_updates.insert(blocked_place, None);
                 } else {
-                    capability_updates.insert(blocked_place, Some(CapabilityKind::Read));
+                    capability_updates.insert(blocked_place, Some(PositiveCapability::Read));
                 }
                 for rp in blocked_place.lifetime_projections(ctxt) {
                     to_label.insert(LabelNodePredicate::all_non_future(
@@ -542,7 +542,7 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
     fn update_capabilities_for_deref(
         &mut self,
         _ref_place: Place<'tcx>,
-        _capability: CapabilityKind,
+        _capability: PositiveCapability,
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, crate::error::PcgError<'tcx>> {
         Ok(true)
@@ -557,7 +557,7 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl crate::utils::HasCompilerCtxt<'mir, 'tcx>,
-    ) -> CapabilityKind {
+    ) -> PositiveCapability {
         obtain_type.capability(base_place, ctxt)
     }
 }

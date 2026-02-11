@@ -10,7 +10,7 @@ use crate::{
         region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
-        CapabilityKind, EvalStmtPhase,
+        EvalStmtPhase, PositiveCapability,
         obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
         place_capabilities::PlaceCapabilitiesInterface,
     },
@@ -74,7 +74,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
         self.pcg
             .capabilities
-            .insert(target, CapabilityKind::Exclusive, self.ctxt);
+            .insert(target, PositiveCapability::Exclusive, self.ctxt);
         match rvalue {
             Rvalue::Aggregate(
                 box (mir::AggregateKind::Adt(..)

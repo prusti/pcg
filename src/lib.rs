@@ -55,7 +55,7 @@ pub mod visualization;
 
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::{CapabilityKind, PcgEngine};
+use pcg::{PcgEngine, PositiveCapability};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -86,9 +86,9 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// If `_.2` is `None`, the capability is removed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = CapabilityKind> {
     pub(crate) place: Place,
-    pub(crate) from: CapabilityKind,
+    pub(crate) from: PositiveCapability,
     pub(crate) to: ToCap,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
@@ -109,7 +109,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
 }
 
 impl<Place, ToCap> Weaken<'_, Place, ToCap> {
-    pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+    pub(crate) fn new(place: Place, from: PositiveCapability, to: ToCap) -> Self {
         Self {
             place,
             from,
@@ -118,7 +118,7 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         }
     }
 
-    pub fn from_cap(&self) -> CapabilityKind {
+    pub fn from_cap(&self) -> PositiveCapability {
         self.from
     }
 
@@ -139,10 +139,7 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Weaken<'tcx> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        let to_str = match self.to {
-            Some(to) => to.display_output(ctxt, mode),
-            None => "None".into(),
-        };
+        let to_str = self.to.display_output(ctxt, mode);
         DisplayOutput::join(
             vec![
                 "Weaken".into(),
@@ -163,7 +160,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct RestoreCapability<'tcx, P = Place<'tcx>> {
     place: P,
-    capability: CapabilityKind,
+    capability: PositiveCapability,
     _marker: PhantomData<&'tcx ()>,
 }
 
@@ -195,7 +192,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 }
 
 impl<P: Copy> RestoreCapability<'_, P> {
-    pub(crate) fn new(place: P, capability: CapabilityKind) -> Self {
+    pub(crate) fn new(place: P, capability: PositiveCapability) -> Self {
         Self {
             place,
             capability,
@@ -207,7 +204,7 @@ impl<P: Copy> RestoreCapability<'_, P> {
         self.place
     }
 
-    pub fn capability(&self) -> CapabilityKind {
+    pub fn capability(&self) -> PositiveCapability {
         self.capability
     }
 }
@@ -720,6 +717,7 @@ use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     borrow_pcg::region_projection::OverrideRegionDebugString,
+    pcg::CapabilityKind,
     utils::{
         DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},

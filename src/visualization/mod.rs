@@ -29,7 +29,7 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     pcg::{
-        CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
+        PcgRef, PositiveCapability, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Location,
     utils::{
@@ -101,7 +101,7 @@ impl GraphNode {
                 };
                 let color = if location.is_some()
                     || capability.is_none()
-                    || matches!(capability, Some(CapabilityKind::Write))
+                    || matches!(capability, Some(PositiveCapability::Write))
                 {
                     "gray"
                 } else if *owned {
@@ -162,7 +162,7 @@ enum NodeType {
     PlaceNode {
         owned: bool,
         label: String,
-        capability: Option<CapabilityKind>,
+        capability: Option<PositiveCapability>,
         location: Option<SnapshotLocation>,
         ty: String,
     },

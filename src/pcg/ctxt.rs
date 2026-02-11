@@ -2,8 +2,8 @@ use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::validity_conditions::effective_successors,
     pcg::{
-        BodyAnalysis, CapabilityConstraint, CapabilityKind, CapabilityRule, CapabilityRules,
-        CapabilityVar, Choice, IntroduceConstraints, PcgArena, SymbolicCapability,
+        BodyAnalysis, CapabilityConstraint, CapabilityRule, CapabilityRules, CapabilityVar, Choice,
+        IntroduceConstraints, PcgArena, PositiveCapability, SymbolicCapability,
         SymbolicCapabilityCtxt,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -170,17 +170,17 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
             } => {
                 let base_cap = capabilities.get(*base_place, self).unwrap();
                 let expand_read = CapabilityRule::new(
-                    base_cap.gte(CapabilityKind::Read),
+                    base_cap.gte(PositiveCapability::Read),
                     expansion_places
                         .iter()
-                        .map(|p| (*p, CapabilityKind::Read))
+                        .map(|p| (*p, PositiveCapability::Read))
                         .collect(),
                 );
                 let expand_exclusive = CapabilityRule::new(
-                    CapabilityConstraint::eq(base_cap, CapabilityKind::Exclusive),
+                    CapabilityConstraint::eq(base_cap, PositiveCapability::Exclusive),
                     expansion_places
                         .iter()
-                        .map(|p| (*p, CapabilityKind::Exclusive))
+                        .map(|p| (*p, PositiveCapability::Exclusive))
                         .collect(),
                 );
                 CapabilityRules::one_of(vec![expand_read, expand_exclusive])
