@@ -4,7 +4,7 @@ use crate::{
     borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
-        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion, PlaceExpansion},
         edge::{
             borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
@@ -763,9 +763,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
-        _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>> {
         Ok(self
             .pcg

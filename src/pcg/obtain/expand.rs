@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
-        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion, PlaceExpansion},
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
@@ -38,9 +38,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
-        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>>;
 
     fn update_capabilities_for_deref(
@@ -255,8 +254,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgExpansion<'tcx> =
-            BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgPlaceExpansion<'tcx> =
+            BorrowPcgPlaceExpansion::new(base.into(), &expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -265,14 +264,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.display_string(ctxt.bc_ctxt())
             ),
         );
-        self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt())?;
+        self.update_capabilities_for_borrow_expansion(&expansion, block_type)?;
         self.render_debug_graph(
             None,
             "add_borrow_pcg_expansion: after update_capabilities_for_borrow_expansion",
         );
         let action = BorrowPcgAction::add_edge(
             BorrowPcgEdge::new(
-                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion),
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion.into()),
                 self.path_conditions(),
             ),
             "add_borrow_pcg_expansion",

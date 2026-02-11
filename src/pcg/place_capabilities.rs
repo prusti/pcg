@@ -4,7 +4,7 @@ use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion,
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion},
         edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
@@ -202,14 +202,10 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
 
     pub(crate) fn update_for_expansion<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
         ctxt: Ctxt,
     ) -> bool {
-        // We dont change if only expanding region projections
-        let BorrowPcgExpansion::Place(expansion) = expansion else {
-            return false;
-        };
         let mut changed = false;
         let base = expansion.base;
         let base_capability = self.get(base.place(), ctxt);

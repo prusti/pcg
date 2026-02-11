@@ -5,6 +5,7 @@ use crate::{
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
+        borrow_pcg_expansion::BorrowPcgPlaceExpansion,
         edge::{
             abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
             kind::BorrowPcgEdgeKind,
@@ -533,9 +534,8 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        _expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
+        _expansion: &BorrowPcgPlaceExpansion<'tcx>,
         _block_type: crate::pcg::place_capabilities::BlockType,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, crate::error::PcgError<'tcx>> {
         Ok(true)
     }
