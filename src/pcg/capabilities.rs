@@ -418,9 +418,14 @@ mod private {
     use crate::pcg::{CapabilityKind, PositiveCapability};
 
     pub trait CapabilityLike<NoCapability = ()>:
-        Copy + PartialEq + From<PositiveCapability> + From<CapabilityKind<NoCapability>> + 'static
+        std::fmt::Debug
+        + Copy
+        + PartialEq
+        + From<PositiveCapability>
+        + From<CapabilityKind<NoCapability>>
+        + 'static
     {
-        type Minimum = Self;
+        type Minimum: std::fmt::Debug = Self;
         fn expect_concrete(self) -> CapabilityKind;
         fn minimum<C>(self, other: Self, _ctxt: C) -> Self::Minimum;
     }
@@ -434,9 +439,7 @@ impl CapabilityLike for CapabilityKind {
     }
 
     fn minimum<C>(self, other: Self, _ctxt: C) -> Self {
-        if self == other {
-            self
-        } else if self < other {
+        if self <= other {
             self
         } else if other < self {
             other
@@ -471,8 +474,10 @@ impl CapabilityLike for SymbolicCapability {
             SymbolicCapability::Variable(_) => panic!("Expected concrete capability"),
         }
     }
-    fn minimum<C>(self, other: Self, _ctxt: C) -> Self::Minimum {
-        todo!()
+    fn minimum<C>(self, other: Self, ctxt: C) -> Self::Minimum {
+        self.expect_concrete()
+            .minimum(other.expect_concrete(), ctxt)
+            .into()
     }
 }
 
@@ -518,7 +523,9 @@ impl PartialEq<PositiveCapability> for CapabilityKind {
 
 impl PartialOrd<PositiveCapability> for CapabilityKind {
     fn partial_cmp(&self, other: &PositiveCapability) -> Option<Ordering> {
-        let positive = self.as_positive()?;
+        let Some(positive) = self.as_positive() else {
+            return Some(Ordering::Less);
+        };
         positive.partial_cmp(other)
     }
 }
@@ -542,6 +549,7 @@ impl<N: Copy + Eq> PartialOrd<CapabilityKind<N>> for CapabilityKind<N> {
             (ShallowExclusive, Write | CapabilityKind::None(_)) => Some(Ordering::Greater),
             (Write, ShallowExclusive | Exclusive) => Some(Ordering::Less),
             (Read, CapabilityKind::None(_)) => Some(Ordering::Greater),
+            (Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
             (CapabilityKind::None(_), _) => Some(Ordering::Less),
             _ => None,
         }

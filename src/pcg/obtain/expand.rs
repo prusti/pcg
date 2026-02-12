@@ -26,8 +26,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
-        ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
+        ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -110,15 +110,16 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &self,
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> PositiveCapability;
 
+    #[tracing::instrument(skip(self, ctxt), level = "warn")]
     fn expand_owned_place_one_level(
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> Result<bool, PcgError<'tcx>> {
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(

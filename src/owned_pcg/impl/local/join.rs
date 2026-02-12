@@ -1,5 +1,5 @@
 use crate::{
-    DebugLines,
+    DebugLines, HasSettings,
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::action::LabelPlaceReason,
     capability_gte,
@@ -70,7 +70,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'other mut LocalExpansions<'tcx>>,
         other_expansion: &ExpandedPlace<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<JoinDifferentExpansionsResult<'tcx>, PcgError<'tcx>>
     where
         'pcg: 'other,
@@ -109,7 +109,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             Ok(JoinDifferentExpansionsResult::ExpandedForNoCapability)
         } else {
             let mut self_obtainer = JoinObtainer {
-                ctxt,
+                ctxt: ctxt.bc_ctxt(),
                 data: self,
                 actions: vec![],
             };
@@ -134,7 +134,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             );
 
             let mut other_obtainer = JoinObtainer {
-                ctxt,
+                ctxt: ctxt.bc_ctxt(),
                 data: other,
                 actions: vec![],
             };
@@ -161,8 +161,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         expansion: &ExpandedPlace<'tcx>,
         self_cap: SymbolicCapability,
         other_cap: SymbolicCapability,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
@@ -188,7 +191,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 "No join expansion from place {}",
                 place.display_string(ctxt)
             );
-            let actions = self.join_leaf_read_and_write_capabilities(other, place, ctxt)?;
+            let actions =
+                self.join_leaf_read_and_write_capabilities(other, place, ctxt.bc_ctxt())?;
             pcg_validity_assert!(!actions.is_empty());
             Ok(actions)
         } else {
@@ -200,8 +204,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         expansion: &ExpandedPlace<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut actions = vec![];
         for expansion_place in expansion.expansion_places(ctxt).unwrap() {
             actions.extend(self.join_owned_places(other, expansion_place, ctxt)?);
@@ -214,8 +221,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         other_expansion: &ExpandedPlace<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         tracing::debug!("Joining expansion: {:?}", other_expansion);
         let place = other_expansion.place;
         let self_expansions = self
@@ -278,8 +288,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     fn visit_each_other_expansion_iteration(
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let expansions_shortest_first = other
             .owned
             .expansions_shortest_first()
@@ -307,8 +320,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     fn visit_each_other_expansion(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut actions = vec![];
         let mut iteration = 0;
         loop {
@@ -326,7 +342,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     fn render_debug_graph<'slf>(
         &'slf self,
         comment: &str,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) where
         'tcx: 'slf,
         'tcx: 'a,
@@ -336,7 +352,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             Some(crate::utils::DebugImgcat::JoinOwned),
             self.capabilities,
             comment,
-            ctxt.bc_ctxt(),
+            ctxt,
         );
     }
 
@@ -344,8 +360,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(
@@ -355,7 +374,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             other.capabilities.get(place, ctxt) == Some(PositiveCapability::Write.into())
         );
         let mut join_obtainer = JoinObtainer {
-            ctxt,
+            ctxt: ctxt.bc_ctxt(),
             data: self,
             actions: vec![],
         };
@@ -376,8 +395,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         if !self.owned.is_leaf_place(place, ctxt) || !other.owned.is_leaf_place(place, ctxt) {
             return Ok(vec![]);
         }
@@ -409,15 +431,18 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             (CapabilityKind::ShallowExclusive, _) => {
                 todo!()
             }
-            _ => todo!(),
+            (CapabilityKind::None(_), _) => Ok(vec![]),
         }
     }
 
     pub(crate) fn join(
         mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
             actions.extend(
@@ -441,11 +466,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         tracing::debug!(
             "Join {} actions:\n\t{}",
             Place::from(self.owned.get_local()).display_string(ctxt),
-            actions.debug_lines(ctxt).join("\n\t")
+            actions.debug_lines(ctxt.bc_ctxt()).join("\n\t")
         );
         tracing::debug!(
             "Capabilities:\n\t{}",
-            self.capabilities.debug_lines(ctxt).join("\n\t")
+            self.capabilities.debug_lines(ctxt.bc_ctxt()).join("\n\t")
         );
         Ok(actions)
     }
@@ -456,8 +481,11 @@ impl<'tcx> LocalExpansions<'tcx> {
         &self,
         place: Place<'tcx>,
         place_capabilities: &impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.leaf_places(ctxt).into_iter().any(|p| {
             if place.is_prefix_of(p) && place_capabilities.get(p, ctxt).is_none() {
                 tracing::debug!(
@@ -476,8 +504,10 @@ fn copy_read_capabilities<'a, 'tcx>(
     cap_source: &impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
     cap_target: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
     place: Place<'tcx>,
-    ctxt: CompilerCtxt<'a, 'tcx>,
-) {
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+) where
+    'tcx: 'a,
+{
     cap_target.insert(place, PositiveCapability::Read, ctxt);
     for (p, c) in cap_source.capabilities_for_strict_postfixes_of(place) {
         pcg_validity_assert!(c.expect_concrete().is_read());

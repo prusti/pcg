@@ -18,11 +18,12 @@ use crate::{
         },
         triple::Triple,
     },
+    pcg_validity_assert, pcg_validity_expect_some,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -141,6 +142,26 @@ pub(crate) trait PcgRefLike<'tcx> {
             .capabilities
             .get(place, ())
             .is_some_and(|c| c == capability.into())
+    }
+
+    fn expect_positive_capability<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> PositiveCapability
+    where
+        'tcx: 'a,
+    {
+        pcg_validity_expect_some!(
+            self.as_ref()
+                .capabilities
+                .get(place, ctxt)
+                .and_then(SymbolicCapability::as_positive),
+            fallback: PositiveCapability::Exclusive,
+            [ctxt],
+            "Expected positive capability for place {} but got none",
+            place.display_string(ctxt)
+        )
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
@@ -361,7 +382,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other: &Self,
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut slf = self.clone();
         let mut other = other.clone();
@@ -377,7 +398,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if !place.is_owned(ctxt) {
                 continue;
             }
-            if let Some(other_cap) = other.capabilities.get(place, ctxt)
+            if let Some(other_cap) = other
+                .capabilities
+                .get(place, ctxt)
+                .and_then(SymbolicCapability::as_positive)
                 && cap.expect_concrete() > other_cap.expect_concrete()
             {
                 repacks.push(RepackOp::Weaken(Weaken::new(
@@ -407,7 +431,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut other_capabilities,
             block: other_block,
         };
-        let repack_ops = self_owned_data.join(other_owned_data, ctxt.ctxt)?;
+        let repack_ops = self_owned_data.join(other_owned_data, ctxt)?;
         // For edges in the other graph that actually belong to it,
         // add the path condition that leads them to this block
         let mut other = other.clone();

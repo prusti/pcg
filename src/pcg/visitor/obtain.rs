@@ -31,7 +31,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
         data_structures::HashSet, display::DisplayWithCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
@@ -788,21 +788,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
             .update_for_deref(ref_place, capability, self.ctxt))
     }
 
+    #[tracing::instrument(skip(self, base_place, obtain_type, ctxt), level = "warn", fields(location = ?self.location))]
     fn capability_for_expand(
         &self,
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl crate::utils::HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> PositiveCapability {
         obtain_type.capability_for_expand(
             base_place,
-            self.pcg
-                .capabilities
-                .get(base_place, ctxt)
-                .unwrap()
-                .expect_concrete()
-                .as_positive()
-                .unwrap(),
+            self.pcg.expect_positive_capability(base_place, ctxt),
             ctxt,
         )
     }

@@ -6,8 +6,7 @@ use crate::{
         action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
     },
     pcg::{
-        CapabilityKind, CapabilityLike, PcgRefLike, PositiveCapability,
-        place_capabilities::PlaceCapabilitiesReader,
+        CapabilityKind, PcgRefLike, PositiveCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     pcg_validity_assert,
     rustc_interface::middle::mir::{Statement, StatementKind},

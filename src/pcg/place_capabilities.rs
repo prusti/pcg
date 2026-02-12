@@ -134,8 +134,10 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub(crate) struct ConditionMap<V>(HashMap<V, ValidityConditions>);
 
+#[allow(dead_code)]
 pub(crate) type ConditionalCapabilities<'tcx> =
     PlaceCapabilities<'tcx, ConditionMap<CapabilityKind>>;
 
@@ -163,6 +165,14 @@ where
 pub(crate) type SymbolicPlaceCapabilities<'tcx> = PlaceCapabilities<'tcx, SymbolicCapability>;
 
 impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
+    pub(crate) fn get_positive_capability(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
+    ) -> Option<PositiveCapability> {
+        self.get(place, ctxt)
+            .and_then(SymbolicCapability::as_positive)
+    }
     pub(crate) fn to_concrete(
         &self,
         ctxt: impl HasCompilerCtxt<'_, 'tcx>,
@@ -273,6 +283,7 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'t
                         true
                     }
                     (CapabilityKind::Read, CapabilityKind::Read) => true,
+                    (CapabilityKind::None(()), _) => true,
                     _ => false,
                 }
             }

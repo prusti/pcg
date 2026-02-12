@@ -17,8 +17,9 @@ use crate::{
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityLike, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, PositiveCapability,
-        ctxt::HasSettings, place_capabilities::PlaceCapabilitiesReader, successor_blocks,
+        CapabilityLike, DomainDataWithCtxt, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor,
+        PositiveCapability, ResultsCtxt, ctxt::HasSettings,
+        place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
         data_structures::fx::FxHashSet,
@@ -110,6 +111,15 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
         Ok(Some(result))
     }
+
+    fn expect_results(&self) -> &DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
+        self.cursor.get().expect_results_or_error().unwrap()
+    }
+
+    fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
+        self.expect_results().ctxt
+    }
+
     pub(crate) fn terminator<'slf>(
         &'slf mut self,
     ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
@@ -145,16 +155,10 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             .into_iter()
             .map(|succ| {
                 self.cursor.seek_to_block_start(succ);
-                let to = self
-                    .cursor
-                    .get()
-                    .expect_results_or_error()?
-                    .data
-                    .pcg
-                    .clone();
+                let to = self.expect_results().data.pcg.clone();
 
                 let owned_bridge = from_post_main
-                    .bridge(&to.entry_state, location.block, succ, ctxt)
+                    .bridge(&to.entry_state, location.block, succ, self.results_ctxt())
                     .unwrap();
 
                 let mut borrow_actions = BorrowPcgActions::new();

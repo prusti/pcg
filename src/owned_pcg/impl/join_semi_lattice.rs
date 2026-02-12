@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
         state::BorrowsStateLike,
@@ -20,7 +21,7 @@ use crate::{
     },
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -37,8 +38,11 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         match (&mut self.owned, &mut other.owned) {
             (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
             (OwnedPcgLocal::Allocated(to_places), OwnedPcgLocal::Allocated(from_places)) => {
@@ -104,8 +108,11 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
             let local: mir::Local = local.into();
@@ -247,6 +254,11 @@ impl<'tcx> LocalExpansions<'tcx> {
                     );
                     removed_cap.minimum(acc, ctxt)
                 });
+        tracing::warn!(
+            "Retained cap of {:?} : {:?}",
+            expansion_places,
+            retained_cap
+        );
         self.remove_all_expansions_from(collapse.to, ctxt);
         place_capabilities.insert(collapse.to, retained_cap, ctxt);
     }

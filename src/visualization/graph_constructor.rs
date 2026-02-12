@@ -6,8 +6,7 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, PositiveCapability,
-        SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},

@@ -1,6 +1,7 @@
 use derive_more::From;
 
 use crate::{
+    HasSettings,
     action::PcgAction,
     borrow_pcg::{
         action::BorrowPcgActionKind,
@@ -12,13 +13,16 @@ use crate::{
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
-        region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
+        region_projection::{
+            HasRegions, LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
+            RegionIdx,
+        },
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability,
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
@@ -27,9 +31,10 @@ use crate::{
         place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
-    rustc_interface::middle::mir::{self},
+    rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
+        PcgSettings, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         logging::{self, LogPredicate},
@@ -41,14 +46,14 @@ use crate::{
 pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
     pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
-    pub(crate) capability_updates: HashMap<Place<'tcx>, Option<PositiveCapability>>,
+    pub(crate) capability_updates: HashMap<Place<'tcx>, CapabilityKind>,
 }
 
 impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
     pub(crate) fn new(
         graph: BorrowsGraph<'tcx>,
         to_label: HashSet<LabelNodePredicate<'tcx>>,
-        capability_updates: HashMap<Place<'tcx>, Option<PositiveCapability>>,
+        capability_updates: HashMap<Place<'tcx>, CapabilityKind>,
     ) -> Self {
         Self {
             graph,
@@ -133,6 +138,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             graph: &mut graph,
             validity_conditions,
             ctxt,
+            settings: analysis_ctxt.settings,
         };
 
         tracing::debug!(
@@ -187,9 +193,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     add_block_edges(&mut expander, blocked_place.into(), *blocker, ctxt);
                 }
                 if blocked_place_usage.usage == PlaceUsageType::Mutate {
-                    capability_updates.insert(blocked_place, None);
+                    capability_updates.insert(blocked_place, CapabilityKind::None(()));
                 } else {
-                    capability_updates.insert(blocked_place, Some(PositiveCapability::Read));
+                    capability_updates.insert(blocked_place, CapabilityKind::Read);
                 }
                 for rp in blocked_place.lifetime_projections(ctxt) {
                     to_label.insert(LabelNodePredicate::all_non_future(
@@ -394,8 +400,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
         &'graph self,
         block: mir::BasicBlock,
         abstraction_graph_nodes: &HashSet<PcgNode<'tcx>>,
-        ctxt: CompilerCtxt<'mir, 'tcx>,
-    ) -> BorrowsGraph<'tcx> {
+        ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
+    ) -> BorrowsGraph<'tcx>
+    where
+        'tcx: 'mir,
+    {
         type Path<'tcx, 'graph> = Vec<BorrowPcgEdgeRef<'tcx, 'graph>>;
         let mut to_cut = HashSet::default();
         let mut paths: Vec<Path<'tcx, 'graph>> = abstraction_graph_nodes
@@ -451,6 +460,56 @@ struct AbsExpander<'pcg, 'mir, 'tcx> {
     graph: &'pcg mut BorrowsGraph<'tcx>,
     validity_conditions: &'pcg ValidityConditions,
     ctxt: CompilerCtxt<'mir, 'tcx>,
+    settings: &'mir PcgSettings,
+}
+
+impl<'pcg, 'mir, 'tcx> OverrideRegionDebugString for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.ctxt.override_region_debug_string(region)
+    }
+}
+
+impl<'pcg, 'mir, 'tcx> DebugCtxt for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn func_name(&self) -> String {
+        self.ctxt.func_name()
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.ctxt.num_basic_blocks()
+    }
+}
+
+impl<'pcg, 'mir, 'tcx> HasSettings<'mir> for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn settings(&self) -> &'mir PcgSettings {
+        self.settings
+    }
+}
+
+impl<'pcg, 'mir, 'tcx> HasTyCtxt<'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.ctxt.tcx()
+    }
+}
+
+impl<'pcg, 'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn ctxt(self) -> CompilerCtxt<'mir, 'tcx, ()> {
+        self.ctxt.ctxt()
+    }
+}
+
+impl<'pcg, 'mir, 'tcx> HasBorrowCheckerCtxt<'mir, 'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
+    fn bc(&self) -> &'mir (dyn crate::borrow_checker::BorrowCheckerInterface<'tcx> + 'static) {
+        todo!()
+    }
+
+    fn bc_ctxt(
+        &self,
+    ) -> CompilerCtxt<
+        'mir,
+        'tcx,
+        &'mir (dyn crate::borrow_checker::BorrowCheckerInterface<'tcx> + 'static),
+    > {
+        todo!()
+    }
 }
 
 impl RenderDebugGraph for AbsExpander<'_, '_, '_> {
@@ -460,7 +519,7 @@ impl RenderDebugGraph for AbsExpander<'_, '_, '_> {
             debug_imgcat,
             &PlaceCapabilities::default(),
             comment,
-            self.ctxt,
+            self,
         );
     }
 }

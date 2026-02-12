@@ -232,10 +232,10 @@ impl<'a> GraphEdge<'a> {
             | GraphEdge::Coupled { .. } => None,
         }
     }
-    pub(super) fn to_dot_edge<'tcx: 'a>(
+    pub(super) fn to_dot_edge<'mir: 'a, 'tcx: 'mir>(
         &self,
         edge_id: Option<DotEdgeId>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'mir, 'tcx>,
     ) -> DotEdge {
         match self {
             GraphEdge::Projection { source, target } => DotEdge {
@@ -389,13 +389,13 @@ impl<'a> Graph<'a> {
     }
 }
 
-pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
+pub(crate) fn generate_borrows_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    capabilities: &'a impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-    borrows_domain: &'a BorrowsGraph<'tcx>,
+    capabilities: &'pcg impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    borrows_domain: &'pcg BorrowsGraph<'tcx>,
 ) -> io::Result<String> {
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
-    let graph = constructor.construct_graph();
+    let graph: Graph<'pcg> = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf, None);
     drawer.draw(&graph, ctxt)?;

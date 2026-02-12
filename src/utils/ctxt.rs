@@ -240,7 +240,7 @@ pub enum ProjectionKind {
     Other,
 }
 // TODO: Merge with ExpandedPlace?
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShallowExpansion<'tcx> {
     pub(crate) target_place: Place<'tcx>,
 

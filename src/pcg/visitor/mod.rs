@@ -10,7 +10,7 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, RepackExpand},
     pcg::{
-        CapabilityLike, PcgRefLike, PositiveCapability,
+        PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
@@ -367,9 +367,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
             return Ok(false);
         }
         for (place, candidate_cap) in places_to_collapse {
+            let _span = tracing::span!(tracing::Level::WARN, "collapse_iteration",
+            place = place.display_string(self.ctxt.bc_ctxt()),
+            candidate_cap = ?candidate_cap
+            )
+            .entered();
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
-                candidate_cap.expect_concrete().as_positive().unwrap(),
+                candidate_cap.expect_positive(),
                 format!(
                     "Collapse owned place {} (iteration {})",
                     place.display_string(self.ctxt.bc_ctxt()),

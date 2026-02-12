@@ -14,7 +14,7 @@ use crate::{
         },
     },
     pcg::{
-        CapabilityConstraint, CapabilityKind, CapabilityLike, PcgNodeWithPlace, SymbolicCapability,
+        CapabilityKind, CapabilityLike, PcgNodeWithPlace, SymbolicCapability,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     utils::{

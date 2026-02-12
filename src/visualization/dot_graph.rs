@@ -27,8 +27,8 @@ pub struct DotGraphWithEdgeCtxt<Ctxt> {
 }
 
 impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
-    pub(crate) fn from_graph<'a, 'tcx: 'a>(
-        graph: &Graph<'a>,
+    pub(crate) fn from_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
+        graph: &Graph<'pcg>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {
         let nodes = graph.nodes.iter().map(GraphNode::to_dot_node).collect();

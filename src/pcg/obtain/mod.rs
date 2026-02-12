@@ -247,8 +247,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError<'tcx>> {
         let to_collapse = self
             .get_local_expansions(place.local)
-            .places_to_collapse_for_obtain_of(place, ctxt);
-        tracing::debug!(
+            .places_to_collapse_to_for_obtain_of(place, ctxt);
+        tracing::warn!(
             "To obtain {}, will collapse {}",
             place.display_string(ctxt.ctxt()),
             to_collapse.display_string(ctxt.ctxt())
