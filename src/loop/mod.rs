@@ -187,6 +187,8 @@ impl JoinSemiLattice for LoopPlaceUsageDomain<'_> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub enum PlaceUsageType {
     Read,
     Mutate,
@@ -234,6 +236,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
 }
 
 #[derive(Clone, Debug, Deref, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(P=String)))]
 pub struct PlaceUsages<'tcx, P: std::hash::Hash + Eq = Place<'tcx>> {
     #[deref]
     usages: HashMap<P, PlaceUsageType>,

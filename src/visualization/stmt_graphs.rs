@@ -143,6 +143,8 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct PcgDebugDataForBlock {
     pub(crate) loop_data: Option<PcgLoopDebugData>,
     pub(crate) graphs: Vec<StmtGraphs>,
@@ -186,6 +188,8 @@ impl PcgDebugDataForBlock {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct PcgLoopDebugData {
     used_places: PlaceUsages<'static, String>,
 }
@@ -197,6 +201,8 @@ impl PcgLoopDebugData {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct PcgBlockDebugData<'a> {
     pub(crate) dot_output_dir: &'a Path,
     pub(crate) dot_graphs: &'a RefCell<PcgDebugDataForBlock>,

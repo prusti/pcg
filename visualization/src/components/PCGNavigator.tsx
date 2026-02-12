@@ -7,12 +7,11 @@ import {
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import {
-  PcgBlockVisualizationData,
-  DotFileAtPhase,
-  AppliedAction,
-  ApplyActionResult,
-} from "../generated/types";
+import { PcgBlockDebugData } from "../generated_types/PcgBlockDebugData";
+import { PcgSuccessorVisualizationData } from "../generated_types/PcgSuccessorVisualizationData";
+import { DotFileAtPhase } from "../generated_types/DotFileAtPhase";
+import { AppliedAction } from "../generated_types/AppliedAction";
+import { ApplyActionResult } from "../generated_types/ApplyActionResult";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
@@ -21,6 +20,7 @@ import {
 import { Api } from "../api";
 import { openDotGraphInNewWindow } from "../dot_graph";
 import { toBasicBlock } from "../util";
+import { PcgBlockVisualizationData } from "../generated_types/PcgBlockVisualizationData";
 
 type NavigationItem =
   | { type: "iteration"; name: string; filename: string }
@@ -34,7 +34,7 @@ type NavigationItem =
       type: "action";
       phase: EvalStmtPhase;
       index: number;
-      action: AppliedAction<PcgAction, ApplyActionResult<string>>;
+      action: AppliedAction;
     };
 
 export const NAVIGATOR_DEFAULT_WIDTH = 200;

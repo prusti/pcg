@@ -2,12 +2,6 @@ use derive_more::From;
 
 use crate::rustc_interface::middle::mir;
 
-#[cfg(feature = "type-export")]
-#[derive(ts_rs::TS)]
-struct BasicBlockMarker {
-    _basic_block: (),
-}
-
 #[derive(Copy, Clone, From, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct BasicBlock(#[cfg_attr(feature = "type-export", ts(type = "string"))] mir::BasicBlock);

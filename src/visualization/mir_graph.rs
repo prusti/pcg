@@ -26,6 +26,7 @@ use rustc_interface::ast::Mutability;
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct MirGraph {
     nodes: Vec<MirNode>,
     edges: Vec<MirEdge>,

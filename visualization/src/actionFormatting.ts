@@ -1,8 +1,6 @@
-import {
-  BorrowPcgActionKindDebugRepr,
-  CapabilityKind,
-  RepackOp,
-} from "./generated/types";
+import { BorrowPcgActionKindDebugRepr } from "./generated_types/BorrowPcgActionKindDebugRepr";
+import { CapabilityKind } from "./generated_types/CapabilityKind";
+import { RepackOp } from "./generated_types/RepackOp";
 
 export function capabilityLetter(capability: CapabilityKind): string {
   switch (capability) {
@@ -14,11 +12,13 @@ export function capabilityLetter(capability: CapabilityKind): string {
       return "E";
     case "ShallowExclusive":
       return "e";
+    case "None":
+      return "⦰";
   }
 }
 
 export function actionLine(
-  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+  action: RepackOp | BorrowPcgActionKindDebugRepr
 ): string {
   switch (action.type) {
     case "Expand":

@@ -152,8 +152,8 @@ impl<'tcx> RepackExpand<'tcx> {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(concrete(Guide=String)))]
-pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
-    pub(crate) to: Place,
+pub struct RepackCollapse<'tcx, P = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+    pub(crate) to: P,
     pub(crate) capability: PositiveCapability,
     pub(crate) guide: Option<Guide>,
     #[serde(skip)]
@@ -272,7 +272,10 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
-    #[cfg_attr(feature = "type-export", ts(type = "string"))]
+    #[cfg_attr(
+        feature = "type-export",
+        ts(as = "crate::pcg::capabilities::debug_reprs::PositiveCapabilityDebugRepr")
+    )]
     pub(crate) capability: PositiveCapability,
 }
 

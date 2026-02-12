@@ -88,11 +88,11 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct Weaken<
     'tcx,
-    Place = crate::utils::Place<'tcx>,
+    P = crate::utils::Place<'tcx>,
     FromCap = PositiveCapability,
     ToCap = CapabilityKind,
 > {
-    pub(crate) place: Place,
+    pub(crate) place: P,
     pub(crate) from: FromCap,
     pub(crate) to: ToCap,
     #[serde(skip)]
@@ -441,6 +441,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
@@ -449,6 +450,7 @@ struct PcgBlockVisualizationData {
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
 
 #[cfg(feature = "visualization")]

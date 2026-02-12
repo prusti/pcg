@@ -194,6 +194,7 @@ pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub struct ValidityConditionsDebugRepr {
     pub branch_choices: Vec<BranchChoicesDebugRepr>,
 }

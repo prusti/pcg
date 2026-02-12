@@ -25,7 +25,7 @@ use crate::{
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(concrete(Action=PcgActionDebugRepr, Result=ApplyActionResult<String>)))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(Action=PcgActionDebugRepr, Result=ApplyActionResult<String>)))]
 pub(crate) struct AppliedAction<'tcx, Action = PcgAction<'tcx>, Result = ApplyActionResult> {
     pub(crate) action: Action,
     pub(crate) result: Result,

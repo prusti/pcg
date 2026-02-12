@@ -494,7 +494,7 @@ pub type PositiveCapability = CapabilityKind<!>;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(concrete(NoCapability=String)))]
+#[cfg_attr(feature = "type-export", ts(as="debug_reprs::CapabilityDebugRepr", concrete(NoCapability=String)))]
 pub enum CapabilityKind<NoCapability = ()> {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.
@@ -513,11 +513,10 @@ pub enum CapabilityKind<NoCapability = ()> {
     /// [`CapabilityKind::Write`] for everything through a dereference.
     ShallowExclusive,
 
-    #[cfg_attr(feature = "type-export", ts(type = "string"))]
     None(NoCapability),
 }
 
-mod debug_reprs {
+pub(crate) mod debug_reprs {
     use serde_derive::Serialize;
 
     use crate::{

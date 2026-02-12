@@ -4,6 +4,7 @@ use crate::utils::display::{DisplayOutput, DisplayWithCtxt, OutputMode};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub enum EvalStmtPhase {
     #[cfg_attr(feature = "type-export", serde(rename = "pre_operands"))]
     PreOperands,
