@@ -18,7 +18,7 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
         validity_conditions::ValidityConditions,
     },
-    pcg::{CapabilityKind, PcgNodeType},
+    pcg::{CapabilityKind, PcgNodeType, PositiveCapability},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
@@ -31,7 +31,7 @@ pub mod actions;
 
 /// The result of applying an action to the PCG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct ApplyActionResult<Summary = DisplayOutput> {
     /// Whether the action had any effect on the PCG state.
     pub changed: bool,
@@ -91,7 +91,7 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn restore_capability(
         place: P,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         debug_context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -104,8 +104,8 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
 
     pub(crate) fn weaken(
         place: P,
-        from: CapabilityKind,
-        to: Option<CapabilityKind>,
+        from: PositiveCapability,
+        to: CapabilityKind,
         context: impl Into<DisplayOutput>,
     ) -> Self {
         BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -324,7 +324,9 @@ use private::LabelLifetimeProjectionAction;
 
 #[derive(Clone, Debug, PartialEq, Eq, strum_macros::EnumDiscriminants)]
 #[strum_discriminants(derive(Serialize))]
-#[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
+#[strum_discriminants(derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(as="BorrowPcgActionKindDebugRepr", bound="EdgeKind: ts_rs::TS, P: ts_rs::TS, VC: ts_rs::TS", concrete(EdgeKind=String, P=String, VC=String)))]
 pub enum BorrowPcgActionKind<
     'tcx,
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
@@ -364,7 +366,7 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgActionKind<'tcx, BorrowPcgEdgeKind<
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct BorrowPcgActionKindDebugRepr {
     r#type: BorrowPcgActionKindDiscriminants,
     data: String,

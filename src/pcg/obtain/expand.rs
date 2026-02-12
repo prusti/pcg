@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
-        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion, PlaceExpansion},
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
@@ -17,7 +17,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{ExpandedPlace, RepackOp},
     pcg::{
-        CapabilityKind, PcgNodeLike,
+        PcgNodeLike, PositiveCapability,
         obtain::{
             ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, ObtainType,
             RenderDebugGraph,
@@ -26,8 +26,8 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
-        ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
+        ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -38,15 +38,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
-        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>>;
 
     fn update_capabilities_for_deref(
         &mut self,
         ref_place: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>>;
 
@@ -111,15 +110,16 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &self,
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind;
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> PositiveCapability;
 
+    #[tracing::instrument(skip(self, ctxt), level = "warn")]
     fn expand_owned_place_one_level(
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> Result<bool, PcgError<'tcx>> {
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(
@@ -255,8 +255,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgExpansion<'tcx> =
-            BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgPlaceExpansion<'tcx> =
+            BorrowPcgPlaceExpansion::new(base.into(), &expanded_place.expansion, ctxt)?;
 
         self.render_debug_graph(
             None,
@@ -265,14 +265,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.display_string(ctxt.bc_ctxt())
             ),
         );
-        self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt())?;
+        self.update_capabilities_for_borrow_expansion(&expansion, block_type)?;
         self.render_debug_graph(
             None,
             "add_borrow_pcg_expansion: after update_capabilities_for_borrow_expansion",
         );
         let action = BorrowPcgAction::add_edge(
             BorrowPcgEdge::new(
-                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion),
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion.into()),
                 self.path_conditions(),
             ),
             "add_borrow_pcg_expansion",

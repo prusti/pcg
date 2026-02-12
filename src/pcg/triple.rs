@@ -20,7 +20,7 @@ use crate::rustc_interface::middle::mir::RawPtrKind;
 
 use crate::{
     error::{PcgError, PcgUnsupportedError},
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt, visitor::FallableVisitor},
 };
 
@@ -50,7 +50,7 @@ pub(crate) enum PlaceCondition<'tcx> {
     /// This distinction is relevant for expanding lifetime projections: the lifetime projection base of *x will
     /// be labelled, similarly to the situation where the borrow was exclusive.
     ExpandTwoPhase(Place<'tcx>),
-    Capability(Place<'tcx>, CapabilityKind),
+    Capability(Place<'tcx>, PositiveCapability),
     RemoveCapability(Place<'tcx>),
     AllocateOrDeallocate(Local),
     Unalloc(Local),
@@ -58,7 +58,7 @@ pub(crate) enum PlaceCondition<'tcx> {
 }
 
 impl<'tcx> PlaceCondition<'tcx> {
-    fn new<T: Into<Place<'tcx>>>(place: T, capability: CapabilityKind) -> PlaceCondition<'tcx> {
+    fn new<T: Into<Place<'tcx>>>(place: T, capability: PositiveCapability) -> PlaceCondition<'tcx> {
         PlaceCondition::Capability(place.into(), capability)
     }
 
@@ -72,15 +72,15 @@ impl<'tcx> PlaceCondition<'tcx> {
             "Cannot get exclusive on projection of shared ref {}",
             place.display_string(ctxt)
         );
-        Self::new(place, CapabilityKind::Exclusive)
+        Self::new(place, PositiveCapability::Exclusive)
     }
 
     fn write<T: Into<Place<'tcx>>>(place: T) -> PlaceCondition<'tcx> {
-        Self::new(place, CapabilityKind::Write)
+        Self::new(place, PositiveCapability::Write)
     }
 
     fn read<T: Into<Place<'tcx>>>(place: T) -> PlaceCondition<'tcx> {
-        Self::new(place, CapabilityKind::Read)
+        Self::new(place, PositiveCapability::Read)
     }
 }
 
@@ -296,12 +296,12 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
 }
 
 trait ProducesCapability {
-    fn capability(&self) -> Option<CapabilityKind>;
+    fn capability(&self) -> Option<PositiveCapability>;
 }
 
 impl ProducesCapability for Rvalue<'_> {
     #[allow(unreachable_patterns)]
-    fn capability(&self) -> Option<CapabilityKind> {
+    fn capability(&self) -> Option<PositiveCapability> {
         use Rvalue::{
             Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
             ShallowInitBox, ThreadLocalRef, UnaryOp, Use,
@@ -318,18 +318,18 @@ impl ProducesCapability for Rvalue<'_> {
             | UnaryOp(_, _)
             | Discriminant(_)
             | Aggregate(_, _)
-            | CopyForDeref(_) => Some(CapabilityKind::Exclusive),
-            ShallowInitBox(_, _) => Some(CapabilityKind::ShallowExclusive),
+            | CopyForDeref(_) => Some(PositiveCapability::Exclusive),
+            ShallowInitBox(_, _) => Some(PositiveCapability::ShallowExclusive),
             _ => {
                 #[rustversion::before(2026-01-01)]
                 {
                     assert!(matches!(self, Rvalue::Len(_) | Rvalue::NullaryOp(_, _)));
-                    Some(CapabilityKind::Exclusive)
+                    Some(PositiveCapability::Exclusive)
                 }
                 #[rustversion::since(2026-01-01)]
                 {
                     assert!(matches!(self, Rvalue::WrapUnsafeBinder(_, _)));
-                    Some(CapabilityKind::Exclusive)
+                    Some(PositiveCapability::Exclusive)
                 }
             }
         }

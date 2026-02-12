@@ -3,10 +3,8 @@ import * as Viz from "@viz-js/viz";
 import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { Api } from "../api";
-import {
-  PcgBlockVisualizationData,
-  ValidityConditionsDebugRepr,
-} from "../generated/types";
+import { PcgBlockVisualizationData } from "../generated_types/PcgBlockVisualizationData";
+import { ValidityConditionsDebugRepr } from "../generated_types/ValidityConditionsDebugRepr";
 import { assert } from "../util";
 
 interface PcgGraphProps {

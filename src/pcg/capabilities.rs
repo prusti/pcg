@@ -13,7 +13,6 @@ use std::{
 };
 
 use derive_more::From;
-use serde_derive::Serialize;
 
 use crate::{
     pcg::PcgArena,
@@ -331,11 +330,14 @@ impl<'tcx> IntroduceConstraints<'tcx> {
 
 pub(crate) struct CapabilityRule<'a, 'tcx> {
     pub(crate) pre: CapabilityConstraint<'a>,
-    pub(crate) post: HashMap<Place<'tcx>, CapabilityKind>,
+    pub(crate) post: HashMap<Place<'tcx>, PositiveCapability>,
 }
 
 impl<'a, 'tcx> CapabilityRule<'a, 'tcx> {
-    pub fn new(pre: CapabilityConstraint<'a>, post: HashMap<Place<'tcx>, CapabilityKind>) -> Self {
+    pub fn new(
+        pre: CapabilityConstraint<'a>,
+        post: HashMap<Place<'tcx>, PositiveCapability>,
+    ) -> Self {
         Self { pre, post }
     }
 }
@@ -392,22 +394,40 @@ pub enum SymbolicCapability {
     Variable(CapabilityVar),
 }
 
+impl From<PositiveCapability> for SymbolicCapability {
+    fn from(cap: PositiveCapability) -> Self {
+        SymbolicCapability::Concrete(cap.into_capability_kind())
+    }
+}
+
 impl SymbolicCapability {
     pub(crate) fn gte<'a>(self, other: impl Into<Self>) -> CapabilityConstraint<'a> {
         CapabilityConstraint::gte(self, other.into())
     }
+
+    pub(crate) fn expect_positive(self) -> PositiveCapability {
+        self.as_positive().unwrap()
+    }
+
+    pub(crate) fn as_positive(self) -> Option<PositiveCapability> {
+        self.expect_concrete().as_positive()
+    }
 }
 
 mod private {
-    use crate::pcg::CapabilityKind;
+    use crate::pcg::{CapabilityKind, PositiveCapability};
 
-    pub trait CapabilityLike: Copy + PartialEq + From<CapabilityKind> + 'static {
+    pub trait CapabilityLike<NoCapability = ()>:
+        std::fmt::Debug
+        + Copy
+        + PartialEq
+        + From<PositiveCapability>
+        + From<CapabilityKind<NoCapability>>
+        + 'static
+    {
+        type Minimum: std::fmt::Debug = Self;
         fn expect_concrete(self) -> CapabilityKind;
-        fn minimum<C>(self, other: Self, _ctxt: C) -> Option<Self> {
-            self.expect_concrete()
-                .minimum(other.expect_concrete())
-                .map(std::convert::Into::into)
-        }
+        fn minimum<C>(self, other: Self, _ctxt: C) -> Self::Minimum;
     }
 }
 
@@ -416,6 +436,34 @@ pub(crate) use private::*;
 impl CapabilityLike for CapabilityKind {
     fn expect_concrete(self) -> CapabilityKind {
         self
+    }
+
+    fn minimum<C>(self, other: Self, _ctxt: C) -> Self {
+        if self <= other {
+            self
+        } else if other < self {
+            other
+        } else {
+            CapabilityKind::None(())
+        }
+    }
+}
+
+impl From<PositiveCapability> for CapabilityKind {
+    fn from(cap: PositiveCapability) -> Self {
+        cap.into_capability_kind()
+    }
+}
+
+impl CapabilityLike<!> for CapabilityKind<!> {
+    type Minimum = Option<Self>;
+    fn expect_concrete(self) -> CapabilityKind {
+        self.into_capability_kind()
+    }
+    fn minimum<C>(self, other: Self, ctxt: C) -> Self::Minimum {
+        self.into_capability_kind()
+            .minimum(other.into_capability_kind(), ctxt)
+            .as_positive()
     }
 }
 
@@ -426,20 +474,28 @@ impl CapabilityLike for SymbolicCapability {
             SymbolicCapability::Variable(_) => panic!("Expected concrete capability"),
         }
     }
-}
-
-impl SymbolicCapability {
-    pub(crate) fn expect_concrete(self) -> CapabilityKind {
-        match self {
-            SymbolicCapability::Concrete(c) => c,
-            other => panic!("Expected concrete capability, got {other:?}"),
-        }
+    fn minimum<C>(self, other: Self, ctxt: C) -> Self::Minimum {
+        self.expect_concrete()
+            .minimum(other.expect_concrete(), ctxt)
+            .into()
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub enum CapabilityKind {
+impl<N> serde::Serialize for CapabilityKind<N> {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_short_string(()))
+    }
+}
+
+pub type PositiveCapability = CapabilityKind<!>;
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(as="debug_reprs::CapabilityDebugRepr", concrete(NoCapability=String)))]
+pub enum CapabilityKind<NoCapability = ()> {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.
     Read,
@@ -456,65 +512,148 @@ pub enum CapabilityKind {
     /// [`CapabilityKind::Exclusive`] for everything not through a dereference,
     /// [`CapabilityKind::Write`] for everything through a dereference.
     ShallowExclusive,
+
+    None(NoCapability),
 }
-impl Debug for CapabilityKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            CapabilityKind::Read => write!(f, "R"),
-            CapabilityKind::Write => write!(f, "W"),
-            CapabilityKind::Exclusive => write!(f, "E"),
-            CapabilityKind::ShallowExclusive => write!(f, "e"),
+
+pub(crate) mod debug_reprs {
+    use serde_derive::Serialize;
+
+    use crate::{
+        pcg::{CapabilityKind, PositiveCapability},
+        utils::DebugRepr,
+    };
+
+    impl<Ctxt> DebugRepr<Ctxt> for CapabilityKind {
+        type Repr = CapabilityDebugRepr;
+        fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
+            match self {
+                CapabilityKind::Read => CapabilityDebugRepr::Read,
+                CapabilityKind::Write => CapabilityDebugRepr::Write,
+                CapabilityKind::Exclusive => CapabilityDebugRepr::Exclusive,
+                CapabilityKind::ShallowExclusive => CapabilityDebugRepr::ShallowExclusive,
+                CapabilityKind::None(_) => CapabilityDebugRepr::None,
+            }
         }
+    }
+
+    impl<Ctxt> DebugRepr<Ctxt> for PositiveCapability {
+        type Repr = PositiveCapabilityDebugRepr;
+        fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
+            match *self {
+                PositiveCapability::Read => PositiveCapabilityDebugRepr::Read,
+                PositiveCapability::Write => PositiveCapabilityDebugRepr::Write,
+                PositiveCapability::Exclusive => PositiveCapabilityDebugRepr::Exclusive,
+                PositiveCapability::ShallowExclusive => {
+                    PositiveCapabilityDebugRepr::ShallowExclusive
+                }
+                PositiveCapability::None(_) => unreachable!(),
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+    #[derive(Serialize)]
+    pub enum CapabilityDebugRepr {
+        Read,
+        Write,
+        Exclusive,
+        ShallowExclusive,
+        None,
+    }
+
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+    #[derive(Serialize)]
+    pub enum PositiveCapabilityDebugRepr {
+        Read,
+        Write,
+        Exclusive,
+        ShallowExclusive,
     }
 }
 
-impl PartialOrd for CapabilityKind {
+impl PartialEq<PositiveCapability> for CapabilityKind {
+    fn eq(&self, other: &PositiveCapability) -> bool {
+        self.as_positive() == Some(*other)
+    }
+}
+
+impl PartialOrd<PositiveCapability> for CapabilityKind {
+    fn partial_cmp(&self, other: &PositiveCapability) -> Option<Ordering> {
+        let Some(positive) = self.as_positive() else {
+            return Some(Ordering::Less);
+        };
+        positive.partial_cmp(other)
+    }
+}
+
+impl<T> Debug for CapabilityKind<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.to_short_string(()))
+    }
+}
+
+impl<N: Copy + Eq> PartialOrd<CapabilityKind<N>> for CapabilityKind<N> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         if *self == *other {
             return Some(Ordering::Equal);
         }
+
+        use CapabilityKind::{Exclusive, Read, ShallowExclusive, Write};
         match (*self, *other) {
-            // Greater relationships
-            (
-                CapabilityKind::Exclusive,
-                CapabilityKind::ShallowExclusive | CapabilityKind::Write | CapabilityKind::Read,
-            )
-            | (CapabilityKind::ShallowExclusive, CapabilityKind::Write) => Some(Ordering::Greater),
-
-            // Less relationships (inverses of the above)
-            (
-                CapabilityKind::ShallowExclusive | CapabilityKind::Write | CapabilityKind::Read,
-                CapabilityKind::Exclusive,
-            )
-            | (CapabilityKind::Write, CapabilityKind::ShallowExclusive) => Some(Ordering::Less),
-
-            // All other pairs are incomparable
+            (Exclusive, _) => Some(Ordering::Greater),
+            (ShallowExclusive, Exclusive) => Some(Ordering::Less),
+            (ShallowExclusive, Write | CapabilityKind::None(_)) => Some(Ordering::Greater),
+            (Write, ShallowExclusive | Exclusive) => Some(Ordering::Less),
+            (Read, CapabilityKind::None(_)) => Some(Ordering::Greater),
+            (Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
+            (CapabilityKind::None(_), _) => Some(Ordering::Less),
             _ => None,
         }
     }
 }
 
-impl<Ctxt> DisplayWithCtxt<Ctxt> for CapabilityKind {
+impl<Ctxt, N> DisplayWithCtxt<Ctxt> for CapabilityKind<N> {
     fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let str = match mode {
-            OutputMode::Normal => match self {
+            OutputMode::Normal => match *self {
                 CapabilityKind::Read => "Read",
                 CapabilityKind::Write => "Write",
                 CapabilityKind::Exclusive => "Exclusive",
                 CapabilityKind::ShallowExclusive => "ShallowExclusive",
+                CapabilityKind::None(_) => "None",
             },
-            OutputMode::Short | OutputMode::Test => match self {
+            OutputMode::Short | OutputMode::Test => match *self {
                 CapabilityKind::Read => "R",
                 CapabilityKind::Write => "W",
                 CapabilityKind::Exclusive => "E",
                 CapabilityKind::ShallowExclusive => "e",
+                CapabilityKind::None(_) => "∅",
             },
         };
         DisplayOutput::Text(str.into())
     }
 }
 
-impl CapabilityKind {
+impl<T> CapabilityKind<T> {
+    pub(crate) fn into_capability_kind(self) -> CapabilityKind<()> {
+        match self {
+            CapabilityKind::Read => CapabilityKind::Read,
+            CapabilityKind::Write => CapabilityKind::Write,
+            CapabilityKind::Exclusive => CapabilityKind::Exclusive,
+            CapabilityKind::ShallowExclusive => CapabilityKind::ShallowExclusive,
+            CapabilityKind::None(_) => CapabilityKind::None(()),
+        }
+    }
+    pub(crate) fn as_positive(self) -> Option<PositiveCapability> {
+        match self {
+            CapabilityKind::Read => Some(PositiveCapability::Read),
+            CapabilityKind::Write => Some(PositiveCapability::Write),
+            CapabilityKind::Exclusive => Some(PositiveCapability::Exclusive),
+            CapabilityKind::ShallowExclusive => Some(PositiveCapability::ShallowExclusive),
+            CapabilityKind::None(_) => None,
+        }
+    }
     #[must_use]
     pub fn is_exclusive(self) -> bool {
         matches!(self, CapabilityKind::Exclusive)
@@ -531,63 +670,11 @@ impl CapabilityKind {
     pub fn is_shallow_exclusive(self) -> bool {
         matches!(self, CapabilityKind::ShallowExclusive)
     }
-
-    #[must_use]
-    pub fn minimum(self, other: Self) -> Option<Self> {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Greater) => Some(other),
-            Some(Ordering::Less | Ordering::Equal) => Some(self),
-            None => None,
-        }
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
-
-    #[test]
-    fn test_capability_gte_macro() {
-        // Test that the macro generates correct patterns
-        let test_read = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(R)) };
-        let test_write = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(W)) };
-        let test_shallow = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(e)) };
-        let test_exclusive = |cap: CapabilityKind| -> bool { matches!(cap, capability_gte!(E)) };
-
-        // Test Read pattern (should match Read and Exclusive)
-        assert!(test_read(CapabilityKind::Read));
-        assert!(!test_read(CapabilityKind::Write));
-        assert!(!test_read(CapabilityKind::ShallowExclusive));
-        assert!(test_read(CapabilityKind::Exclusive));
-
-        // Test Write pattern (should match Write, ShallowExclusive, and Exclusive)
-        assert!(!test_write(CapabilityKind::Read));
-        assert!(test_write(CapabilityKind::Write));
-        assert!(test_write(CapabilityKind::ShallowExclusive));
-        assert!(test_write(CapabilityKind::Exclusive));
-
-        // Test ShallowExclusive pattern (should match ShallowExclusive and Exclusive)
-        assert!(!test_shallow(CapabilityKind::Read));
-        assert!(!test_shallow(CapabilityKind::Write));
-        assert!(test_shallow(CapabilityKind::ShallowExclusive));
-        assert!(test_shallow(CapabilityKind::Exclusive));
-
-        // Test Exclusive pattern (should match only Exclusive)
-        assert!(!test_exclusive(CapabilityKind::Read));
-        assert!(!test_exclusive(CapabilityKind::Write));
-        assert!(!test_exclusive(CapabilityKind::ShallowExclusive));
-        assert!(test_exclusive(CapabilityKind::Exclusive));
-
-        // Also test with full names
-        assert!(matches!(CapabilityKind::Read, capability_gte!(Read)));
-        assert!(matches!(CapabilityKind::Exclusive, capability_gte!(Read)));
-        assert!(matches!(CapabilityKind::Write, capability_gte!(Write)));
-        assert!(matches!(
-            CapabilityKind::ShallowExclusive,
-            capability_gte!(ShallowExclusive)
-        ));
-    }
 
     #[test]
     fn test_capability_kind_dag_reachability() {
@@ -598,10 +685,10 @@ mod tests {
         let mut node_indices = HashMap::new();
 
         let caps = [
-            CapabilityKind::Exclusive,
-            CapabilityKind::ShallowExclusive,
-            CapabilityKind::Write,
-            CapabilityKind::Read,
+            PositiveCapability::Exclusive,
+            PositiveCapability::ShallowExclusive,
+            PositiveCapability::Write,
+            PositiveCapability::Read,
         ];
         // Add nodes
         for cap in caps {
@@ -610,9 +697,15 @@ mod tests {
 
         // Add edges (a -> b means a is greater than b)
         let edges = [
-            (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive),
-            (CapabilityKind::ShallowExclusive, CapabilityKind::Write),
-            (CapabilityKind::Exclusive, CapabilityKind::Read),
+            (
+                PositiveCapability::Exclusive,
+                PositiveCapability::ShallowExclusive,
+            ),
+            (
+                PositiveCapability::ShallowExclusive,
+                PositiveCapability::Write,
+            ),
+            (PositiveCapability::Exclusive, PositiveCapability::Read),
         ];
 
         for (from, to) in edges {

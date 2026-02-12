@@ -1,4 +1,5 @@
 use crate::{
+    HasSettings,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
@@ -20,13 +21,14 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, DebugRepr, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
     validity_checks_enabled,
+    visualization::stmt_graphs::PcgLoopDebugData,
 };
 
 #[cfg(feature = "visualization")]
@@ -55,18 +57,19 @@ impl<'mir, 'tcx> JoinBorrowsArgs<'_, 'mir, 'tcx> {
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
-    pub(crate) fn render_debug_graph<'a>(
-        &self,
+    pub(crate) fn render_debug_graph<'slf, 'a>(
+        &'slf self,
         block: mir::BasicBlock,
         debug_imgcat: Option<DebugImgcat>,
-        capabilities: &impl PlaceCapabilitiesReader<'tcx>,
+        capabilities: &'slf impl PlaceCapabilitiesReader<'tcx>,
         comment: &str,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) where
         'tcx: 'a,
+        'a: 'slf,
     {
         #[cfg(feature = "visualization")]
-        if borrows_imgcat_debug(block, debug_imgcat)
+        if borrows_imgcat_debug(block, debug_imgcat, ctxt.settings())
             && let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, capabilities, self)
         {
             DotGraph::render_with_imgcat(&dot_graph, comment).unwrap_or_else(|e| {
@@ -127,7 +130,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         if let Some(used_places) = args.body_analysis.get_places_used_in_loop(self_block) {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
             #[cfg(feature = "visualization")]
-            if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
+            if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop), ctxt.settings())
                 && let Ok(dot_graph) =
                     generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self)
             {
@@ -225,6 +228,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 p.place,
             )
         });
+        ctxt.set_debug_loop_data(PcgLoopDebugData::new(
+            used_places.debug_repr(ctxt),
+            live_loop_places.debug_repr(ctxt),
+        ));
 
         if !live_loop_places
             .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))
@@ -283,7 +290,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "G_Pre'",
-            ctxt.ctxt,
+            ctxt,
         );
 
         // p_roots
@@ -332,7 +339,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "Abstraction graph",
-            ctxt.ctxt,
+            ctxt,
         );
 
         for rp in &to_label {
@@ -349,30 +356,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
             });
         }
 
-        for (place, cap_option) in capability_updates {
-            if let Some(cap) = cap_option {
-                capabilities.insert(place, cap, ctxt);
-            } else {
-                capabilities.remove(place, ctxt);
-            }
+        for (place, cap) in capability_updates {
+            capabilities.insert(place, cap, ctxt);
         }
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
-        let to_cut =
-            self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt.ctxt);
+        let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
         to_cut.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "To cut",
-            ctxt.ctxt,
+            ctxt,
         );
         self.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "Self before cut",
-            ctxt.ctxt,
+            ctxt,
         );
         for edge in to_cut.edges() {
             self.remove(edge.kind());
@@ -382,7 +384,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "Self after cut",
-            ctxt.ctxt,
+            ctxt,
         );
         for edge in abstraction_graph.into_edges() {
             self.insert(edge, ctxt.ctxt);
@@ -401,7 +403,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             Some(DebugImgcat::JoinLoop),
             capabilities,
             "Final graph",
-            ctxt.ctxt,
+            ctxt,
         );
         Ok(())
     }

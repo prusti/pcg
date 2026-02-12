@@ -11,18 +11,19 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike, SymbolicCapability,
+        CapabilityKind, CapabilityLike, PositiveCapability, SymbolicCapability,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
         triple::Triple,
     },
+    pcg_validity_assert, pcg_validity_expect_some,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -56,17 +57,19 @@ pub struct PcgRef<'pcg, 'tcx> {
     pub(crate) capabilities: &'pcg SymbolicPlaceCapabilities<'tcx>,
 }
 
-impl<'tcx> PcgRef<'_, 'tcx> {
+impl<'pcg, 'tcx> PcgRef<'pcg, 'tcx> {
     #[cfg(feature = "visualization")]
-    pub(crate) fn render_debug_graph<'slf, 'a>(
-        &'slf self,
+    pub(crate) fn render_debug_graph<'a: 'pcg>(
+        self,
         location: mir::Location,
         debug_imgcat: Option<DebugImgcat>,
         comment: &str,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) {
-        if borrows_imgcat_debug(location.block, debug_imgcat) {
-            let dot_graph = generate_pcg_dot_graph(self.as_ref(), ctxt, location).unwrap();
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) where
+        'tcx: 'a,
+    {
+        if borrows_imgcat_debug(location.block, debug_imgcat, ctxt.settings()) {
+            let dot_graph = generate_pcg_dot_graph(self, ctxt, location).unwrap();
             DotGraph::render_with_imgcat(&dot_graph, comment).unwrap_or_else(|e| {
                 eprintln!("Error rendering self graph: {e}");
             });
@@ -141,6 +144,26 @@ pub(crate) trait PcgRefLike<'tcx> {
             .capabilities
             .get(place, ())
             .is_some_and(|c| c == capability.into())
+    }
+
+    fn expect_positive_capability<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> PositiveCapability
+    where
+        'tcx: 'a,
+    {
+        pcg_validity_expect_some!(
+            self.as_ref()
+                .capabilities
+                .get(place, ctxt)
+                .and_then(SymbolicCapability::as_positive),
+            fallback: PositiveCapability::Exclusive,
+            [ctxt],
+            "Expected positive capability for place {} but got none",
+            place.display_string(ctxt)
+        )
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
@@ -254,7 +277,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                         && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) = self
                             .capabilities
                             .get(blocked_place, ctxt)
-                            .map(super::super::capabilities::SymbolicCapability::expect_concrete)
+                            .map(SymbolicCapability::expect_concrete)
                         && self.capabilities.get(deref_place, ctxt).is_none()
                     {
                         return Err(format!(
@@ -304,7 +327,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
+    pub fn places_with_capapability(&self, capability: PositiveCapability) -> HashSet<Place<'tcx>> {
         self.capabilities
             .iter()
             .filter_map(|(p, c)| {
@@ -361,7 +384,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other: &Self,
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut slf = self.clone();
         let mut other = other.clone();
@@ -377,13 +400,16 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if !place.is_owned(ctxt) {
                 continue;
             }
-            if let Some(other_cap) = other.capabilities.get(place, ctxt)
+            if let Some(other_cap) = other
+                .capabilities
+                .get(place, ctxt)
+                .and_then(SymbolicCapability::as_positive)
                 && cap.expect_concrete() > other_cap.expect_concrete()
             {
                 repacks.push(RepackOp::Weaken(Weaken::new(
                     place,
-                    cap.expect_concrete(),
-                    other_cap.expect_concrete(),
+                    cap.expect_concrete().as_positive().unwrap(),
+                    other_cap.expect_concrete().as_positive().unwrap(),
                 )));
             }
         }
@@ -407,7 +433,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut other_capabilities,
             block: other_block,
         };
-        let repack_ops = self_owned_data.join(other_owned_data, ctxt.ctxt)?;
+        let repack_ops = self_owned_data.join(other_owned_data, ctxt)?;
         // For edges in the other graph that actually belong to it,
         // add the path condition that leads them to this block
         let mut other = other.clone();

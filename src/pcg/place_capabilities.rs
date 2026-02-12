@@ -4,11 +4,12 @@ use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion,
+        borrow_pcg_expansion::BorrowPcgPlaceExpansion,
         edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
+        validity_conditions::ValidityConditions,
     },
-    pcg::{CapabilityKind, CapabilityLike, SymbolicCapability},
+    pcg::{CapabilityKind, CapabilityLike, PositiveCapability, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
@@ -133,6 +134,13 @@ where
     }
 }
 
+#[allow(dead_code)]
+pub(crate) struct ConditionMap<V>(HashMap<V, ValidityConditions>);
+
+#[allow(dead_code)]
+pub(crate) type ConditionalCapabilities<'tcx> =
+    PlaceCapabilities<'tcx, ConditionMap<CapabilityKind>>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaceCapabilities<'tcx, C = CapabilityKind, P = Place<'tcx>>
 where
@@ -157,10 +165,18 @@ where
 pub(crate) type SymbolicPlaceCapabilities<'tcx> = PlaceCapabilities<'tcx, SymbolicCapability>;
 
 impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
+    pub(crate) fn get_positive_capability(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
+    ) -> Option<PositiveCapability> {
+        self.get(place, ctxt)
+            .and_then(SymbolicCapability::as_positive)
+    }
     pub(crate) fn to_concrete(
         &self,
         ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> PlaceCapabilities<'tcx, CapabilityKind> {
+    ) -> PlaceCapabilities<'tcx> {
         let mut concrete = PlaceCapabilities::default();
         for (place, cap) in self.iter() {
             concrete.insert(place, cap.expect_concrete(), ctxt);
@@ -171,7 +187,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
     pub(crate) fn update_for_deref<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         ref_place: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         ctxt: Ctxt,
     ) -> bool {
         if capability.is_read() || ref_place.is_shared_ref(ctxt.bc_ctxt()) {
@@ -202,21 +218,17 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
 
     pub(crate) fn update_for_expansion<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
-        expansion: &BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
         ctxt: Ctxt,
     ) -> bool {
-        // We dont change if only expanding region projections
-        let BorrowPcgExpansion::Place(expansion) = expansion else {
-            return false;
-        };
         let mut changed = false;
         let base = expansion.base;
         let base_capability = self.get(base.place(), ctxt);
         let expanded_capability = if let Some(capability) = base_capability {
-            let concrete_cap = capability.expect_concrete();
+            let concrete_cap = capability.expect_concrete().as_positive().unwrap();
             let expanded = block_type.expansion_capability(base.place(), concrete_cap, ctxt);
-            SymbolicCapability::Concrete(expanded)
+            SymbolicCapability::Concrete(expanded.into())
         } else {
             return true;
         };
@@ -236,15 +248,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         ctxt: Ctxt,
     ) -> bool {
         let retained_capability = block_type.blocked_place_maximum_retained_capability();
-        if let Some(capability) = retained_capability {
-            self.insert(
-                blocked_place,
-                SymbolicCapability::Concrete(capability),
-                ctxt,
-            )
-        } else {
-            self.remove(blocked_place, ctxt).is_some()
-        }
+        self.insert(blocked_place, retained_capability, ctxt)
     }
 }
 
@@ -279,6 +283,7 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'t
                         true
                     }
                     (CapabilityKind::Read, CapabilityKind::Read) => true,
+                    (CapabilityKind::None(()), _) => true,
                     _ => false,
                 }
             }
@@ -333,25 +338,25 @@ pub(crate) enum BlockType {
 }
 
 impl BlockType {
-    pub(crate) fn blocked_place_maximum_retained_capability(self) -> Option<CapabilityKind> {
+    pub(crate) fn blocked_place_maximum_retained_capability(self) -> CapabilityKind {
         match self {
-            BlockType::DerefSharedRef => Some(CapabilityKind::Exclusive),
-            BlockType::DerefMutRefForExclusive => Some(CapabilityKind::Write),
-            BlockType::DerefMutRefUnderSharedRef | BlockType::Read => Some(CapabilityKind::Read),
-            BlockType::Other => None,
+            BlockType::DerefSharedRef => CapabilityKind::Exclusive,
+            BlockType::DerefMutRefForExclusive => CapabilityKind::Write,
+            BlockType::DerefMutRefUnderSharedRef | BlockType::Read => CapabilityKind::Read,
+            BlockType::Other => CapabilityKind::None(()),
         }
     }
     pub(crate) fn expansion_capability<'tcx>(
         self,
         _blocked_place: Place<'tcx>,
-        blocked_capability: CapabilityKind,
+        blocked_capability: PositiveCapability,
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> CapabilityKind {
+    ) -> PositiveCapability {
         match self {
             BlockType::DerefMutRefUnderSharedRef | BlockType::Read | BlockType::DerefSharedRef => {
-                CapabilityKind::Read
+                PositiveCapability::Read
             }
-            BlockType::DerefMutRefForExclusive => CapabilityKind::Exclusive,
+            BlockType::DerefMutRefForExclusive => PositiveCapability::Exclusive,
             BlockType::Other => blocked_capability,
         }
     }
@@ -372,7 +377,7 @@ where
         C: 'static,
     {
         self.insert((*place).into(), capability, ctxt);
-        if capability == CapabilityKind::Exclusive.into() {
+        if capability == PositiveCapability::Exclusive.into() {
             borrows.label_lifetime_projections(
                 &LabelNodePredicate::all_future_postfixes(place),
                 None,
@@ -390,7 +395,7 @@ where
     }
 }
 
-impl<C: CapabilityLike, P> PlaceCapabilities<'_, C, P>
+impl<C: CapabilityLike<Minimum = C>, P> PlaceCapabilities<'_, C, P>
 where
     P: Copy + Eq + std::hash::Hash,
 {
@@ -404,12 +409,8 @@ where
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {
-                if let Some(c) = self_capability.minimum(other_capability, ctxt) {
-                    changed |= self.map.insert(place, c) != Some(c);
-                } else {
-                    self.map.remove(&place);
-                    changed = true;
-                }
+                let c = self_capability.minimum(other_capability, ctxt);
+                changed |= self.map.insert(place, c) != Some(c);
             }
         }
         changed
@@ -449,6 +450,6 @@ impl<'tcx> PlaceCapabilities<'tcx, SymbolicCapability> {
     #[must_use]
     pub fn is_exclusive(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.get(place, ctxt)
-            .is_some_and(|c| c.expect_concrete() == CapabilityKind::Exclusive)
+            .is_some_and(|c| c.expect_concrete() == PositiveCapability::Exclusive)
     }
 }

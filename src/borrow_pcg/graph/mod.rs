@@ -24,8 +24,8 @@ use crate::{
         middle::mir::{self},
     },
     utils::{
-        CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt,
-        HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place, PlaceLike,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        PcgNodeComponent, PcgPlace, PcgSettings, Place, PlaceLike,
         data_structures::{HashMap, HashSet},
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -130,16 +130,17 @@ impl<Kind: Eq + std::hash::Hash + PartialEq, VC: PartialEq> PartialEq
 pub(crate) fn borrows_imgcat_debug(
     block: mir::BasicBlock,
     debug_imgcat: Option<DebugImgcat>,
+    settings: &PcgSettings,
 ) -> bool {
-    if let Some(debug_block) = *DEBUG_BLOCK
+    if let Some(debug_block) = settings.debug_block
         && debug_block != block
     {
         return false;
     }
     if let Some(debug_imgcat) = debug_imgcat {
-        DEBUG_IMGCAT.contains(&debug_imgcat)
+        settings.debug_imgcat.contains(&debug_imgcat)
     } else {
-        !DEBUG_IMGCAT.is_empty()
+        !settings.debug_imgcat.is_empty()
     }
 }
 
@@ -501,7 +502,8 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Conditions=String)))]
 pub struct Conditioned<T, Conditions = ValidityConditions> {
     pub(crate) conditions: Conditions,
     pub(crate) value: T,

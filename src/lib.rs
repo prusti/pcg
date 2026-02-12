@@ -24,6 +24,7 @@ may already be stabilized */
 #![feature(box_patterns)]
 #![feature(if_let_guard)]
 #![feature(never_type)]
+#![feature(min_exhaustive_patterns)]
 #![feature(proc_macro_hygiene)]
 #![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(stmt_expr_attributes)]
@@ -54,7 +55,7 @@ pub mod visualization;
 
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::{CapabilityKind, PcgEngine};
+use pcg::{PcgEngine, PositiveCapability};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -84,19 +85,29 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
 /// If `_.2` is `None`, the capability is removed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
-    pub(crate) place: Place,
-    pub(crate) from: CapabilityKind,
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+pub struct Weaken<
+    'tcx,
+    P = crate::utils::Place<'tcx>,
+    FromCap = PositiveCapability,
+    ToCap = CapabilityKind,
+> {
+    pub(crate) place: P,
+    pub(crate) from: FromCap,
     pub(crate) to: ToCap,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Serialize> DebugRepr<Ctxt>
-    for Weaken<'tcx, Place<'tcx>, ToCap>
+impl<
+    'a,
+    'tcx: 'a,
+    Ctxt: HasCompilerCtxt<'a, 'tcx>,
+    FromCap: Copy + serde::Serialize,
+    ToCap: Copy + serde::Serialize,
+> DebugRepr<Ctxt> for Weaken<'tcx, Place<'tcx>, FromCap, ToCap>
 {
-    type Repr = Weaken<'static, String, ToCap>;
+    type Repr = Weaken<'static, String, FromCap, ToCap>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         Weaken {
             place: self.place.display_string(ctxt),
@@ -107,8 +118,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
     }
 }
 
-impl<Place, ToCap> Weaken<'_, Place, ToCap> {
-    pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+impl<Place, FromCap, ToCap> Weaken<'_, Place, FromCap, ToCap> {
+    pub(crate) fn new(place: Place, from: FromCap, to: ToCap) -> Self {
         Self {
             place,
             from,
@@ -117,7 +128,10 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         }
     }
 
-    pub fn from_cap(&self) -> CapabilityKind {
+    pub fn from_cap(&self) -> FromCap
+    where
+        FromCap: Copy,
+    {
         self.from
     }
 
@@ -138,10 +152,7 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Weaken<'tcx> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        let to_str = match self.to {
-            Some(to) => to.display_output(ctxt, mode),
-            None => "None".into(),
-        };
+        let to_str = self.to.display_output(ctxt, mode);
         DisplayOutput::join(
             vec![
                 "Weaken".into(),
@@ -162,7 +173,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct RestoreCapability<'tcx, P = Place<'tcx>> {
     place: P,
-    capability: CapabilityKind,
+    capability: PositiveCapability,
     _marker: PhantomData<&'tcx ()>,
 }
 
@@ -194,7 +205,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 }
 
 impl<P: Copy> RestoreCapability<'_, P> {
-    pub(crate) fn new(place: P, capability: CapabilityKind) -> Self {
+    pub(crate) fn new(place: P, capability: PositiveCapability) -> Self {
         Self {
             place,
             capability,
@@ -206,7 +217,7 @@ impl<P: Copy> RestoreCapability<'_, P> {
         self.place
     }
 
-    pub fn capability(&self) -> CapabilityKind {
+    pub fn capability(&self) -> PositiveCapability {
         self.capability
     }
 }
@@ -237,14 +248,14 @@ use utils::eval_stmt_data::EvalStmtData;
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct PcgStmtVisualizationData {
     actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct PcgSuccessorVisualizationData {
     actions: Vec<PcgActionDebugRepr>,
 }
@@ -340,7 +351,7 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
 }
 
 pub struct PcgCtxt<'a, 'tcx> {
-    compiler_ctxt: CompilerCtxt<'a, 'tcx>,
+    pub(crate) compiler_ctxt: CompilerCtxt<'a, 'tcx>,
     move_data: MoveData<'tcx>,
     settings: Cow<'a, PcgSettings>,
     pub(crate) arena: bumpalo::Bump,
@@ -429,15 +440,18 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
+    loop_data: Option<PcgLoopDebugData>,
 }
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
 
 #[cfg(feature = "visualization")]
@@ -457,19 +471,11 @@ impl PcgVisualizationData {
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
 pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
-    let settings = pcg_ctxt.settings.borrow();
     tracing::info!(
         "Running PCG (visualization: {})",
         pcg_ctxt.settings.visualization
     );
-    let engine = PcgEngine::new(
-        pcg_ctxt.compiler_ctxt,
-        &pcg_ctxt.move_data,
-        &pcg_ctxt.arena,
-        settings,
-        #[cfg(feature = "visualization")]
-        pcg_ctxt.visualization_output_path(),
-    );
+    let engine = PcgEngine::new(pcg_ctxt);
     let body = pcg_ctxt.compiler_ctxt.body();
     let tcx = pcg_ctxt.compiler_ctxt.tcx();
     let mut analysis = compute_fixpoint(AnalysisEngine(engine), tcx, body);
@@ -492,10 +498,11 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 continue;
             };
             let ctxt = analysis_results.analysis().analysis_ctxt(block);
-            let debug_graphs = if let Some(graphs) = ctxt.graphs {
-                graphs.dot_graphs.borrow().graphs.clone()
+            let (loop_data, debug_graphs) = if let Some(data) = ctxt.visualization_data {
+                let block_data = data.block_data.borrow();
+                (block_data.loop_data.clone(), block_data.graphs.clone())
             } else {
-                Vec::new()
+                (None, Vec::new())
             };
 
             let statements = pcg_block
@@ -530,6 +537,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 PcgBlockVisualizationData {
                     statements,
                     successors,
+                    loop_data,
                 },
             );
         }
@@ -715,10 +723,13 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs::PcgLoopDebugData;
 use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
     borrow_pcg::region_projection::OverrideRegionDebugString,
+    pcg::CapabilityKind,
     utils::{
         DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -733,11 +744,6 @@ pub(crate) fn validity_checks_enabled() -> bool {
 
 pub(crate) fn validity_checks_warn_only() -> bool {
     *VALIDITY_CHECKS_WARN_ONLY
-}
-
-#[cfg(feature = "type-export")]
-pub fn type_collection() -> specta::TypeCollection {
-    specta::export()
 }
 
 pub(crate) trait Sealed {}

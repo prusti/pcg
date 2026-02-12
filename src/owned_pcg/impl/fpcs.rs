@@ -8,7 +8,7 @@ use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
     pcg::{
-        CapabilityKind,
+        PositiveCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
     },
     rustc_interface::{
@@ -36,7 +36,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn start_block<
         'a,
         Ctxt: HasLocals,
-        C: From<CapabilityKind>,
+        C: From<PositiveCapability>,
         P: PlaceLike<'tcx, Ctxt>,
     >(
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
@@ -48,13 +48,13 @@ impl<'tcx> OwnedPcg<'tcx> {
         let capability_summary = IndexVec::from_fn_n(
             |local: mir::Local| {
                 if local == return_local {
-                    capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
+                    capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
                     OwnedPcgLocal::new(local)
                 } else if local <= last_arg {
-                    capabilities.insert(local.into(), CapabilityKind::Exclusive, ctxt);
+                    capabilities.insert(local.into(), PositiveCapability::Exclusive, ctxt);
                     OwnedPcgLocal::new(local)
                 } else if always_live.contains(local) {
-                    capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
+                    capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
                     OwnedPcgLocal::new(local)
                 } else {
                     // Other locals are unallocated

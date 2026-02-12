@@ -25,14 +25,15 @@ use rustc_interface::middle::mir::RawPtrKind;
 use rustc_interface::ast::Mutability;
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct MirGraph {
     nodes: Vec<MirNode>,
     edges: Vec<MirEdge>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct SourcePos {
     pub line: usize,
     pub column: usize,
@@ -50,14 +51,14 @@ impl SourcePos {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct MirStmtSpan {
     low: SourcePos,
     high: SourcePos,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct MirStmt {
     stmt: String,
     debug_stmt: String,
@@ -69,7 +70,7 @@ struct MirStmt {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct MirNode {
     id: String,
     block: usize,
@@ -78,7 +79,7 @@ struct MirNode {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 struct MirEdge {
     source: String,
     target: String,

@@ -17,7 +17,8 @@ use crate::{
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
+        CapabilityLike, DomainDataWithCtxt, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor,
+        PositiveCapability, ResultsCtxt, ctxt::HasSettings,
         place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
@@ -110,6 +111,15 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
         Ok(Some(result))
     }
+
+    fn expect_results(&self) -> &DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
+        self.cursor.get().expect_results_or_error().unwrap()
+    }
+
+    fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
+        self.expect_results().ctxt
+    }
+
     pub(crate) fn terminator<'slf>(
         &'slf mut self,
     ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
@@ -145,16 +155,10 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             .into_iter()
             .map(|succ| {
                 self.cursor.seek_to_block_start(succ);
-                let to = self
-                    .cursor
-                    .get()
-                    .expect_results_or_error()?
-                    .data
-                    .pcg
-                    .clone();
+                let to = self.expect_results().data.pcg.clone();
 
                 let owned_bridge = from_post_main
-                    .bridge(&to.entry_state, location.block, succ, ctxt)
+                    .bridge(&to.entry_state, location.block, succ, self.results_ctxt())
                     .unwrap();
 
                 let mut borrow_actions = BorrowPcgActions::new();
@@ -310,19 +314,20 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         &self,
         place_usages: &PlaceUsages<'tcx>,
         ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> HashMap<Place<'tcx>, CapabilityKind> {
+    ) -> HashMap<Place<'tcx>, PositiveCapability> {
         let initial_capabilities =
             self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
         let mut result = HashMap::default();
         for place_usage in place_usages.iter() {
             if let Some(initial_capability) = initial_capabilities.get(place_usage.place, ctxt) {
                 let usage_capability = match place_usage.usage {
-                    PlaceUsageType::Read => CapabilityKind::Read,
-                    PlaceUsageType::Mutate => CapabilityKind::Exclusive,
+                    PlaceUsageType::Read => PositiveCapability::Read,
+                    PlaceUsageType::Mutate => PositiveCapability::Exclusive,
                 };
                 if let Some(joined_capability) = initial_capability
                     .expect_concrete()
-                    .minimum(usage_capability)
+                    .minimum(usage_capability.into(), ())
+                    .as_positive()
                 {
                     result.insert(place_usage.place, joined_capability);
                 }

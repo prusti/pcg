@@ -52,7 +52,7 @@ impl PlaceDisplay<'_> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub enum DisplayOutput {
     Html(Html),
     Text(Cow<'static, str>),

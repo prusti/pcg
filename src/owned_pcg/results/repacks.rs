@@ -12,7 +12,7 @@ use crate::{
 };
 
 use crate::{
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{
         CompilerCtxt, ConstantIndex, DebugRepr, HasCompilerCtxt, Place,
@@ -84,13 +84,13 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
         }
     }
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Place=String,Guide=String)))]
 pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) from: Place,
     pub(crate) guide: Option<Guide>,
-    pub(crate) capability: CapabilityKind,
+    pub(crate) capability: PositiveCapability,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
@@ -111,7 +111,7 @@ impl<'tcx> RepackExpand<'tcx> {
     pub(crate) fn new(
         from: Place<'tcx>,
         guide: Option<RepackGuide>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
     ) -> Self {
         Self {
             from,
@@ -122,7 +122,7 @@ impl<'tcx> RepackExpand<'tcx> {
     }
 
     #[must_use]
-    pub fn capability(&self) -> CapabilityKind {
+    pub fn capability(&self) -> PositiveCapability {
         self.capability
     }
 
@@ -150,10 +150,11 @@ impl<'tcx> RepackExpand<'tcx> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
-    pub(crate) to: Place,
-    pub(crate) capability: CapabilityKind,
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Guide=String)))]
+pub struct RepackCollapse<'tcx, P = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+    pub(crate) to: P,
+    pub(crate) capability: PositiveCapability,
     pub(crate) guide: Option<Guide>,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
@@ -174,7 +175,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackCo
 impl<'tcx> RepackCollapse<'tcx> {
     pub(crate) fn new(
         to: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         guide: Option<RepackGuide>,
     ) -> Self {
         Self {
@@ -205,7 +206,7 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 
     #[must_use]
-    pub fn capability(&self) -> CapabilityKind {
+    pub fn capability(&self) -> PositiveCapability {
         self.capability
     }
 
@@ -215,8 +216,9 @@ impl<'tcx> RepackCollapse<'tcx> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "data")]
+#[cfg_attr(feature = "type-export", ts(concrete(Local=String, Place=String, Guide=String)))]
 pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
 {
     /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
@@ -245,7 +247,7 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
     /// the same capability. It can also appear at basic block join points, where one branch has
     /// a weaker capability than the other.
-    Weaken(Weaken<'tcx, Place, CapabilityKind>),
+    Weaken(Weaken<'tcx, Place, PositiveCapability, PositiveCapability>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
@@ -267,14 +269,18 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
-    pub(crate) capability: CapabilityKind,
+    #[cfg_attr(
+        feature = "type-export",
+        ts(as = "crate::pcg::capabilities::debug_reprs::PositiveCapabilityDebugRepr")
+    )]
+    pub(crate) capability: PositiveCapability,
 }
 
 impl<Place> RegainedCapability<Place> {
-    pub fn new(place: Place, capability: CapabilityKind) -> Self {
+    pub fn new(place: Place, capability: PositiveCapability) -> Self {
         Self { place, capability }
     }
 }
@@ -338,13 +344,17 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> RepackOp<'tcx> {
-    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
+    pub(crate) fn weaken(
+        place: Place<'tcx>,
+        from: PositiveCapability,
+        to: PositiveCapability,
+    ) -> Self {
         Self::Weaken(Weaken::new(place, from, to))
     }
     pub(crate) fn expand<'a>(
         from: Place<'tcx>,
         guide: Option<RepackGuide>,
-        for_cap: CapabilityKind,
+        for_cap: PositiveCapability,
         _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {
         // Note that we might generate expand annotations with `Write` capability for

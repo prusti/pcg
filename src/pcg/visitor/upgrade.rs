@@ -14,7 +14,7 @@ use crate::{
     },
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgNode, PcgRefLike,
+        CapabilityKind, PcgNode, PcgRefLike, PositiveCapability,
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::BlockType,
     },
@@ -40,7 +40,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             self.record_and_apply_action(
                     BorrowPcgAction::weaken(
                         place,
-                        CapabilityKind::Read,
+                        PositiveCapability::Read,
                         BlockType::DerefMutRefForExclusive.blocked_place_maximum_retained_capability(),
                         format!(
                             "{:?}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
@@ -54,8 +54,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             self.record_and_apply_action(
                 BorrowPcgAction::weaken(
                     place,
-                    CapabilityKind::Read,
-                    None,
+                    PositiveCapability::Read,
+                    CapabilityKind::None(()),
                     format!(
                         "{:?}: remove read permission upwards from base place {}",
                         reason,
@@ -82,7 +82,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut current = place;
         while self
             .pcg
-            .place_capability_equals(current, CapabilityKind::Read)
+            .place_capability_equals(current, PositiveCapability::Read)
         {
             self.weaken_capability_from_read(current, reason)?;
             let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
@@ -92,13 +92,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     && leaf_nodes.contains(&place.into())
                     && self
                         .pcg
-                        .place_capability_equals(place, CapabilityKind::Read)
+                        .place_capability_equals(place, PositiveCapability::Read)
                     && !place.projects_shared_ref(self.ctxt)
                 {
                     self.record_and_apply_action(
                         BorrowPcgAction::restore_capability(
                             place,
-                            CapabilityKind::Exclusive,
+                            PositiveCapability::Exclusive,
                             format!(
                                 "{:?}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
                                 reason,

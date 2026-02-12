@@ -2,7 +2,7 @@ import React from "react";
 import { BasicBlockData, CurrentPoint } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
-import { PcgBlockVisualizationData } from "../generated/types";
+import { PcgBlockVisualizationData } from "../generated_types/PcgBlockVisualizationData";
 import { actionLine } from "../actionFormatting";
 
 interface BasicBlockTableProps {

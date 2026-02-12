@@ -54,6 +54,8 @@ pub mod maybe_remote;
 pub mod remote;
 
 #[derive(Clone, Copy, Deref, DerefMut)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(as = "String"))]
 pub struct Place<'tcx>(
     #[deref]
     #[deref_mut]

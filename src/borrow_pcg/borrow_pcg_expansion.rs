@@ -28,7 +28,8 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
+        LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PositiveCapability,
+        SymbolicCapability,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
@@ -92,7 +93,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
     {
         if matches!(
             obtain_type,
-            ObtainType::Capability(CapabilityKind::Read)
+            ObtainType::Capability(PositiveCapability::Read)
                 | ObtainType::TwoPhaseExpand
                 | ObtainType::LoopInvariant {
                     usage_type: PlaceUsageType::Read,
@@ -263,20 +264,6 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
                 ctxt,
             )?,
         ))
-    }
-    pub(crate) fn new_place_expansion<'a>(
-        base: Place<'tcx>,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        Ok(BorrowPcgExpansion::Place(BorrowPcgPlaceExpansion::new(
-            base.into(),
-            expansion,
-            ctxt,
-        )?))
     }
 }
 

@@ -10,7 +10,7 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, RepackExpand},
     pcg::{
-        CapabilityKind,
+        PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
@@ -117,7 +117,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             {
                 let action = PcgAction::restore_capability(
                     place,
-                    CapabilityKind::Exclusive,
+                    PositiveCapability::Exclusive,
                     "Leaf future node restore cap",
                     self.ctxt,
                 );
@@ -367,9 +367,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
             return Ok(false);
         }
         for (place, candidate_cap) in places_to_collapse {
+            let _span = tracing::span!(tracing::Level::WARN, "collapse_iteration",
+            place = place.display_string(self.ctxt.bc_ctxt()),
+            candidate_cap = ?candidate_cap
+            )
+            .entered();
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
-                candidate_cap.expect_concrete(),
+                candidate_cap.expect_positive(),
                 format!(
                     "Collapse owned place {} (iteration {})",
                     place.display_string(self.ctxt.bc_ctxt()),
@@ -380,14 +385,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
             if place.projection.is_empty()
                 && self
                     .pcg
-                    .capabilities
-                    .get(place, self.ctxt)
-                    .map(super::capabilities::SymbolicCapability::expect_concrete)
-                    == Some(CapabilityKind::Read)
+                    .place_capability_equals(place, PositiveCapability::Read)
             {
                 self.pcg
                     .capabilities
-                    .insert(place, CapabilityKind::Exclusive, self.ctxt);
+                    .insert(place, PositiveCapability::Exclusive, self.ctxt);
             }
         }
         Ok(true)

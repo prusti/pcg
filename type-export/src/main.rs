@@ -3,6 +3,7 @@
 use specta_typescript::{BigIntExportBehavior, Typescript};
 use std::fs;
 use std::path::PathBuf;
+use ts_rs::TS;
 
 fn main() {
     let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

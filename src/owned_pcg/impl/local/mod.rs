@@ -12,17 +12,22 @@ use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgUnsupportedError,
     owned_pcg::RepackGuide,
-    pcg::place_capabilities::{
-        PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+    pcg::{
+        CapabilityKind,
+        place_capabilities::{
+            PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+        },
     },
     rustc_interface::middle::mir::Local,
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
+    utils::{
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet,
+    },
 };
 use itertools::Itertools;
 
 use crate::{
     owned_pcg::RepackOp,
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
@@ -177,7 +182,14 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn is_leaf_place(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    pub(crate) fn is_leaf_place<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.leaf_places(ctxt).contains(&place)
     }
 
@@ -230,7 +242,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         self.local
     }
 
-    pub(crate) fn places_to_collapse_for_obtain_of<'a>(
+    pub(crate) fn places_to_collapse_to_for_obtain_of<'a>(
         &self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -255,7 +267,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &mut self,
         to: Place<'tcx>,
-        _for_cap: Option<CapabilityKind>,
+        _for_cap: Option<PositiveCapability>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) -> Vec<RepackOp<'tcx>>
@@ -265,7 +277,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         if !self.contains_expansion_from(to) {
             return vec![];
         }
-        let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
+        let places_to_collapse = self.places_to_collapse_to_for_obtain_of(to, ctxt);
         let ops: Vec<RepackOp<'tcx>> = places_to_collapse
             .into_iter()
             .flat_map(|place| {

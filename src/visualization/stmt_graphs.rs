@@ -1,4 +1,5 @@
 use crate::{
+    r#loop::PlaceUsages,
     pcg::{DataflowStmtPhase, EvalStmtPhase, PcgArena, PcgEngine, PcgRef, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{index::IndexVec, middle::mir},
@@ -15,18 +16,18 @@ use std::{
 
 #[derive(Clone, Serialize, Debug, From, Deref)]
 #[serde(transparent)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct PathToDotFile(PathBuf);
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct StmtGraphs<PhaseKey = StringOf<DataflowStmtPhase>> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
     filename: PathToDotFile,
@@ -100,6 +101,11 @@ fn dot_filename_for(output_dir: &Path, relative_filename: &PathToDotFile) -> Pat
 }
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
+    pub(crate) fn set_debug_loop_data(self, loop_data: PcgLoopDebugData) {
+        if let Some(debug_data) = self.visualization_data {
+            debug_data.block_data.borrow_mut().set_loop_data(loop_data);
+        }
+    }
     pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
         self,
         location: mir::Location,
@@ -112,19 +118,19 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 ToGraph::Phase(DataflowStmtPhase::Join(_))
             ));
         }
-        if let Some(debug_data) = self.graphs {
+        if let Some(debug_data) = self.visualization_data {
             let relative_filename = StmtGraphs::relative_filename(location, to_graph);
             let filename = dot_filename_for(debug_data.dot_output_dir, &relative_filename);
             match to_graph {
                 ToGraph::Action(phase, action_idx) => {
-                    debug_data.dot_graphs.borrow_mut().insert_for_action(
+                    debug_data.block_data.borrow_mut().insert_for_action(
                         location,
                         phase,
                         action_idx,
                         relative_filename,
                     );
                 }
-                ToGraph::Phase(phase) => debug_data.dot_graphs.borrow_mut().insert_for_phase(
+                ToGraph::Phase(phase) => debug_data.block_data.borrow_mut().insert_for_phase(
                     location.statement_index,
                     phase,
                     relative_filename,
@@ -137,19 +143,27 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub(crate) struct PcgDotGraphsForBlock {
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
+pub(crate) struct PcgDebugDataForBlock {
+    pub(crate) loop_data: Option<PcgLoopDebugData>,
     pub(crate) graphs: Vec<StmtGraphs>,
     #[serde(skip)]
     block: mir::BasicBlock,
 }
 
-impl PcgDotGraphsForBlock {
+impl PcgDebugDataForBlock {
     pub(crate) fn new(block: mir::BasicBlock, ctxt: CompilerCtxt<'_, '_>) -> Self {
         let num_statements = ctxt.body().basic_blocks[block].statements.len();
         Self {
             block,
+            loop_data: None,
             graphs: vec![StmtGraphs::default(); num_statements + 1],
         }
+    }
+
+    pub(crate) fn set_loop_data(&mut self, loop_data: PcgLoopDebugData) {
+        self.loop_data = Some(loop_data);
     }
 
     pub(crate) fn insert_for_action(
@@ -173,31 +187,47 @@ impl PcgDotGraphsForBlock {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct PcgBlockDebugVisualizationGraphs<'a> {
-    #[allow(dead_code)]
-    block: mir::BasicBlock,
-    pub(crate) dot_output_dir: &'a Path,
-    pub(crate) dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
+pub(crate) struct PcgLoopDebugData {
+    used_places: PlaceUsages<'static, String>,
+    live_loop_places: PlaceUsages<'static, String>,
 }
 
-impl<'a> PcgBlockDebugVisualizationGraphs<'a> {
+impl PcgLoopDebugData {
     pub(crate) fn new(
-        block: mir::BasicBlock,
-        dot_output_dir: &'a Path,
-        dot_graphs: &'a RefCell<PcgDotGraphsForBlock>,
+        used_places: PlaceUsages<'static, String>,
+        live_loop_places: PlaceUsages<'static, String>,
     ) -> Self {
         Self {
-            block,
+            used_places,
+            live_loop_places,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct AnalysisDebugData<'a> {
+    pub(crate) dot_output_dir: &'a Path,
+    pub(crate) block_data: &'a RefCell<PcgDebugDataForBlock>,
+}
+
+impl<'a> AnalysisDebugData<'a> {
+    pub(crate) fn new(
+        dot_output_dir: &'a Path,
+        dot_graphs: &'a RefCell<PcgDebugDataForBlock>,
+    ) -> Self {
+        Self {
             dot_output_dir,
-            dot_graphs,
+            block_data: dot_graphs,
         }
     }
 }
 
 pub(crate) struct PcgEngineDebugData<'a> {
     debug_output_dir: &'a Path,
-    dot_graphs: IndexVec<mir::BasicBlock, &'a RefCell<PcgDotGraphsForBlock>>,
+    dot_graphs: IndexVec<mir::BasicBlock, &'a RefCell<PcgDebugDataForBlock>>,
 }
 
 impl<'a> PcgEngineDebugData<'a> {
@@ -206,11 +236,11 @@ impl<'a> PcgEngineDebugData<'a> {
             std::fs::remove_dir_all(&dir_path).expect("Failed to delete directory contents");
         }
         create_dir_all(&dir_path).expect("Failed to create directory for DOT files");
-        let dot_graphs: IndexVec<mir::BasicBlock, &'a RefCell<PcgDotGraphsForBlock>> =
+        let dot_graphs: IndexVec<mir::BasicBlock, &'a RefCell<PcgDebugDataForBlock>> =
             IndexVec::from_fn_n(
                 |b| {
-                    let blocks: &'a RefCell<PcgDotGraphsForBlock> =
-                        arena.alloc(RefCell::new(PcgDotGraphsForBlock::new(b, ctxt)));
+                    let blocks: &'a RefCell<PcgDebugDataForBlock> =
+                        arena.alloc(RefCell::new(PcgDebugDataForBlock::new(b, ctxt)));
                     blocks
                 },
                 ctxt.body().basic_blocks.len(),
@@ -223,16 +253,9 @@ impl<'a> PcgEngineDebugData<'a> {
 }
 
 impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
-    pub(crate) fn dot_graphs(
-        &self,
-        block: mir::BasicBlock,
-    ) -> Option<PcgBlockDebugVisualizationGraphs<'a>> {
-        self.debug_graphs.as_ref().map(|data| {
-            PcgBlockDebugVisualizationGraphs::new(
-                block,
-                data.debug_output_dir,
-                data.dot_graphs[block],
-            )
-        })
+    pub(crate) fn dot_graphs(&self, block: mir::BasicBlock) -> Option<AnalysisDebugData<'a>> {
+        self.debug_graphs
+            .as_ref()
+            .map(|data| AnalysisDebugData::new(data.debug_output_dir, data.dot_graphs[block]))
     }
 }

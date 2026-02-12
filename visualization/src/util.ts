@@ -1,4 +1,4 @@
-import { BasicBlock } from "./generated/types";
+import { BasicBlock } from "./generated_types/BasicBlock";
 
 export function toBasicBlock(block: number): BasicBlock {
   return `bb${block}` as BasicBlock;

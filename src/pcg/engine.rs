@@ -11,7 +11,7 @@ use derive_more::From;
 
 use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
 use crate::{
-    BodyAndBorrows,
+    BodyAndBorrows, PcgCtxt,
     error::PcgError,
     r#loop::{LoopAnalysis, PlaceUsages},
     pcg::{
@@ -301,33 +301,32 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         Ok(())
     }
 
-    pub(crate) fn new(
-        ctxt: CompilerCtxt<'a, 'tcx>,
-        move_data: &'a MoveData<'tcx>,
-        arena: PcgArena<'a>,
-        settings: &'a PcgSettings,
-        #[cfg(feature = "visualization")] debug_output_dir: Option<PathBuf>,
-    ) -> Self {
-        #[cfg(feature = "visualization")]
-        let debug_data = debug_output_dir.map(|dir_path| {
-            crate::visualization::stmt_graphs::PcgEngineDebugData::new(dir_path, arena, ctxt)
+    pub(crate) fn new(ctxt: &'a PcgCtxt<'a, 'tcx>) -> Self {
+        let debug_data = ctxt.visualization_output_path().map(|dir_path| {
+            crate::visualization::stmt_graphs::PcgEngineDebugData::new(
+                dir_path,
+                &ctxt.arena,
+                ctxt.compiler_ctxt,
+            )
         });
         let mut reachable_blocks = BitSet::default();
-        reachable_blocks.reserve_len(ctxt.body().basic_blocks.len());
+        reachable_blocks.reserve_len(ctxt.compiler_ctxt.body().basic_blocks.len());
         reachable_blocks.insert(START_BLOCK.index());
         let mut analyzed_blocks = BitSet::default();
-        analyzed_blocks.reserve_len(ctxt.body().basic_blocks.len());
+        analyzed_blocks.reserve_len(ctxt.compiler_ctxt.body().basic_blocks.len());
         Self {
             first_error: RefCell::new(ErrorState::default()),
             reachable_blocks: RefCell::new(reachable_blocks),
-            ctxt,
+            ctxt: ctxt.compiler_ctxt,
             #[cfg(feature = "visualization")]
             debug_graphs: debug_data,
-            body_analysis: arena.alloc(BodyAnalysis::new(ctxt, move_data)),
-            arena,
-            symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(arena),
+            body_analysis: ctxt
+                .arena
+                .alloc(BodyAnalysis::new(ctxt.compiler_ctxt, &ctxt.move_data)),
+            arena: &ctxt.arena,
+            symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(&ctxt.arena),
             analyzed_blocks: RefCell::new(analyzed_blocks),
-            settings,
+            settings: &ctxt.settings,
         }
     }
 
