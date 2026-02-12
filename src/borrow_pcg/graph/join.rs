@@ -21,13 +21,14 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, DebugRepr, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
     validity_checks_enabled,
+    visualization::stmt_graphs::PcgLoopDebugData,
 };
 
 #[cfg(feature = "visualization")]
@@ -217,6 +218,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "used places: {}",
             used_places.display_string(ctxt.ctxt)
         );
+        ctxt.set_debug_loop_data(PcgLoopDebugData::new(used_places.debug_repr(ctxt)));
         // p_loop
         let live_loop_places = used_places.usages_where(|p| {
             args.body_analysis.is_live_and_initialized_at(

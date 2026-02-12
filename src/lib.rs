@@ -86,18 +86,28 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// If `_.2` is `None`, the capability is removed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = CapabilityKind> {
+pub struct Weaken<
+    'tcx,
+    Place = crate::utils::Place<'tcx>,
+    FromCap = PositiveCapability,
+    ToCap = CapabilityKind,
+> {
     pub(crate) place: Place,
-    pub(crate) from: PositiveCapability,
+    pub(crate) from: FromCap,
     pub(crate) to: ToCap,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Serialize> DebugRepr<Ctxt>
-    for Weaken<'tcx, Place<'tcx>, ToCap>
+impl<
+    'a,
+    'tcx: 'a,
+    Ctxt: HasCompilerCtxt<'a, 'tcx>,
+    FromCap: Copy + serde::Serialize,
+    ToCap: Copy + serde::Serialize,
+> DebugRepr<Ctxt> for Weaken<'tcx, Place<'tcx>, FromCap, ToCap>
 {
-    type Repr = Weaken<'static, String, ToCap>;
+    type Repr = Weaken<'static, String, FromCap, ToCap>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         Weaken {
             place: self.place.display_string(ctxt),
@@ -108,8 +118,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
     }
 }
 
-impl<Place, ToCap> Weaken<'_, Place, ToCap> {
-    pub(crate) fn new(place: Place, from: PositiveCapability, to: ToCap) -> Self {
+impl<Place, FromCap, ToCap> Weaken<'_, Place, FromCap, ToCap> {
+    pub(crate) fn new(place: Place, from: FromCap, to: ToCap) -> Self {
         Self {
             place,
             from,
@@ -118,7 +128,10 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         }
     }
 
-    pub fn from_cap(&self) -> PositiveCapability {
+    pub fn from_cap(&self) -> FromCap
+    where
+        FromCap: Copy,
+    {
         self.from
     }
 

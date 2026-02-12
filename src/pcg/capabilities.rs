@@ -493,7 +493,6 @@ impl<N> serde::Serialize for CapabilityKind<N> {
 pub type PositiveCapability = CapabilityKind<!>;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub enum CapabilityKind<NoCapability = ()> {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.
@@ -513,6 +512,62 @@ pub enum CapabilityKind<NoCapability = ()> {
     ShallowExclusive,
 
     None(NoCapability),
+}
+
+mod debug_reprs {
+    use serde_derive::Serialize;
+
+    use crate::{
+        pcg::{CapabilityKind, PositiveCapability},
+        utils::DebugRepr,
+    };
+
+    impl<Ctxt> DebugRepr<Ctxt> for CapabilityKind {
+        type Repr = CapabilityDebugRepr;
+        fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
+            match self {
+                CapabilityKind::Read => CapabilityDebugRepr::Read,
+                CapabilityKind::Write => CapabilityDebugRepr::Write,
+                CapabilityKind::Exclusive => CapabilityDebugRepr::Exclusive,
+                CapabilityKind::ShallowExclusive => CapabilityDebugRepr::ShallowExclusive,
+                CapabilityKind::None(_) => CapabilityDebugRepr::None,
+            }
+        }
+    }
+
+    impl<Ctxt> DebugRepr<Ctxt> for PositiveCapability {
+        type Repr = PositiveCapabilityDebugRepr;
+        fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
+            match *self {
+                PositiveCapability::Read => PositiveCapabilityDebugRepr::Read,
+                PositiveCapability::Write => PositiveCapabilityDebugRepr::Write,
+                PositiveCapability::Exclusive => PositiveCapabilityDebugRepr::Exclusive,
+                PositiveCapability::ShallowExclusive => {
+                    PositiveCapabilityDebugRepr::ShallowExclusive
+                }
+                PositiveCapability::None(_) => unreachable!(),
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[derive(Serialize)]
+    pub enum CapabilityDebugRepr {
+        Read,
+        Write,
+        Exclusive,
+        ShallowExclusive,
+        None,
+    }
+
+    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[derive(Serialize)]
+    pub enum PositiveCapabilityDebugRepr {
+        Read,
+        Write,
+        Exclusive,
+        ShallowExclusive,
+    }
 }
 
 impl PartialEq<PositiveCapability> for CapabilityKind {

@@ -245,7 +245,7 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
     /// the same capability. It can also appear at basic block join points, where one branch has
     /// a weaker capability than the other.
-    Weaken(Weaken<'tcx, Place, PositiveCapability>),
+    Weaken(Weaken<'tcx, Place, PositiveCapability, PositiveCapability>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use

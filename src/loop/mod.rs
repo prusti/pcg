@@ -8,8 +8,11 @@
 
 mod loop_set;
 
+use std::marker::PhantomData;
+
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
+use serde_derive::Serialize;
 
 use crate::{
     // borrow_checker::BorrowCheckerInterface,
@@ -28,7 +31,7 @@ use crate::{
         mir_dataflow::{Forward, JoinSemiLattice, fmt::DebugWithContext},
     },
     utils::{
-        HasCompilerCtxt, Place,
+        DebugRepr, HasCompilerCtxt, Place,
         data_structures::HashMap,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         visitor::FallableVisitor,
@@ -183,7 +186,7 @@ impl JoinSemiLattice for LoopPlaceUsageDomain<'_> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize)]
 pub enum PlaceUsageType {
     Read,
     Mutate,
@@ -230,13 +233,43 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
     }
 }
 
-#[derive(Clone, Debug, Deref, PartialEq, Eq, Default)]
-pub struct PlaceUsages<'tcx>(HashMap<Place<'tcx>, PlaceUsageType>);
+#[derive(Clone, Debug, Deref, PartialEq, Eq, Serialize)]
+pub struct PlaceUsages<'tcx, P: std::hash::Hash + Eq = Place<'tcx>> {
+    #[deref]
+    usages: HashMap<P, PlaceUsageType>,
+    _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'tcx, P: std::hash::Hash + Eq + DisplayWithCtxt<Ctxt>, Ctxt: Copy> DebugRepr<Ctxt>
+    for PlaceUsages<'tcx, P>
+{
+    type Repr = PlaceUsages<'static, String>;
+
+    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
+        PlaceUsages {
+            usages: self
+                .usages
+                .iter()
+                .map(|(p, usage)| (p.to_short_string(ctxt), *usage))
+                .collect(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'tcx, P: std::hash::Hash + Eq> Default for PlaceUsages<'tcx, P> {
+    fn default() -> Self {
+        Self {
+            usages: HashMap::default(),
+            _marker: PhantomData,
+        }
+    }
+}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for PlaceUsages<'tcx> {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
-            self.0
+            self.usages
                 .iter()
                 .map(|(p, usage)| format!("{}: {:?}", p.display_string(ctxt), usage))
                 .join("\n")
@@ -247,11 +280,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
 
 impl<'tcx> PlaceUsages<'tcx> {
     pub(crate) fn iter_places(&self) -> impl Iterator<Item = Place<'tcx>> + '_ {
-        self.0.keys().copied()
+        self.usages.keys().copied()
     }
 
     pub(crate) fn contains(&self, place: Place<'tcx>) -> bool {
-        self.0.contains_key(&place)
+        self.usages.contains_key(&place)
     }
 
     pub(crate) fn joined_with(&self, other: &Self) -> Self {
@@ -261,7 +294,7 @@ impl<'tcx> PlaceUsages<'tcx> {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.usages.is_empty()
     }
 
     pub(crate) fn usages_where(
@@ -269,7 +302,7 @@ impl<'tcx> PlaceUsages<'tcx> {
         predicate: impl Fn(PlaceUsage<'tcx>) -> bool,
     ) -> PlaceUsages<'tcx> {
         let mut clone = self.clone();
-        clone.0.retain(|p, usage| {
+        clone.usages.retain(|p, usage| {
             predicate(PlaceUsage {
                 place: *p,
                 usage: *usage,
@@ -280,21 +313,19 @@ impl<'tcx> PlaceUsages<'tcx> {
 
     #[must_use]
     fn update(&mut self, place: Place<'tcx>, usage: PlaceUsageType) -> bool {
-        if let Some(existing_usage) = self.0.get(&place) {
+        if let Some(existing_usage) = self.usages.get(&place) {
             if usage == PlaceUsageType::Mutate && existing_usage == &PlaceUsageType::Read {
-                self.0.insert(place, PlaceUsageType::Mutate);
-                false
-            } else {
-                false
+                self.usages.insert(place, PlaceUsageType::Mutate);
             }
+            false
         } else {
-            self.0.insert(place, usage);
+            self.usages.insert(place, usage);
             true
         }
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = PlaceUsage<'tcx>> + '_ {
-        self.0.iter().map(|(p, usage)| PlaceUsage {
+        self.usages.iter().map(|(p, usage)| PlaceUsage {
             place: *p,
             usage: *usage,
         })
