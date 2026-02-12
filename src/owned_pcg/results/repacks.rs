@@ -84,9 +84,9 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
         }
     }
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Place=String,Guide=String)))]
 pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) from: Place,
     pub(crate) guide: Option<Guide>,
@@ -150,7 +150,8 @@ impl<'tcx> RepackExpand<'tcx> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Guide=String)))]
 pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) to: Place,
     pub(crate) capability: PositiveCapability,
@@ -215,8 +216,9 @@ impl<'tcx> RepackCollapse<'tcx> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "data")]
+#[cfg_attr(feature = "type-export", ts(concrete(Local=String, Place=String, Guide=String)))]
 pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
 {
     /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
@@ -267,9 +269,10 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
+    #[cfg_attr(feature = "type-export", ts(type = "string"))]
     pub(crate) capability: PositiveCapability,
 }
 

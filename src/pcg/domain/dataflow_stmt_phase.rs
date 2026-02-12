@@ -4,7 +4,7 @@ use serde::{Serialize, Serializer};
 use crate::{pcg::EvalStmtPhase, utils::mir::BasicBlock};
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Ord, PartialOrd, TryInto)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub enum DataflowStmtPhase {
     Initial,
     EvalStmt(EvalStmtPhase),

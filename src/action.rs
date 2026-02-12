@@ -24,7 +24,8 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Action=PcgActionDebugRepr, Result=ApplyActionResult<String>)))]
 pub(crate) struct AppliedAction<'tcx, Action = PcgAction<'tcx>, Result = ApplyActionResult> {
     pub(crate) action: Action,
     pub(crate) result: Result,
@@ -179,7 +180,7 @@ impl<'tcx> PcgActions<'tcx> {
 /// A pair of a PCG action and a debug context (indicating the source of the
 /// action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct ActionKindWithDebugInfo<T, DebugInfo = Option<DisplayOutput>> {
     pub(crate) kind: T,
     pub(crate) debug_info: DebugInfo,
@@ -237,7 +238,11 @@ pub type BorrowPcgAction<
 mod private {
     use serde_derive::Serialize;
 
-    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+    #[cfg_attr(
+        feature = "type-export",
+        ts(bound = "Borrow: ts_rs::TS, Owned: ts_rs::TS")
+    )]
     #[derive(Clone, PartialEq, Eq, Debug, Serialize)]
     #[serde(tag = "type", content = "data")]
     pub enum GenericPcgAction<Borrow, Owned> {

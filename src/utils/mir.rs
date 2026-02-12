@@ -3,17 +3,14 @@ use derive_more::From;
 use crate::rustc_interface::middle::mir;
 
 #[cfg(feature = "type-export")]
-#[derive(specta::Type)]
+#[derive(ts_rs::TS)]
 struct BasicBlockMarker {
     _basic_block: (),
 }
 
 #[derive(Copy, Clone, From, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct BasicBlock(
-    #[cfg_attr(feature = "type-export", specta(type = crate::utils::StringOf<BasicBlockMarker>))]
-    mir::BasicBlock,
-);
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+pub struct BasicBlock(#[cfg_attr(feature = "type-export", ts(type = "string"))] mir::BasicBlock);
 
 impl std::fmt::Debug for BasicBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

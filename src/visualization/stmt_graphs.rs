@@ -16,18 +16,18 @@ use std::{
 
 #[derive(Clone, Serialize, Debug, From, Deref)]
 #[serde(transparent)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct PathToDotFile(PathBuf);
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct StmtGraphs<PhaseKey = StringOf<DataflowStmtPhase>> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
     filename: PathToDotFile,

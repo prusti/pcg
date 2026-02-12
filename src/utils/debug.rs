@@ -7,8 +7,8 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-#[cfg_attr(feature = "type-export", specta(export = false))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(type="string",concrete(T=String)))]
 pub struct StringOf<T> {
     value: String,
     _marker: PhantomData<T>,

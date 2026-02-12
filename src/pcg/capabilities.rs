@@ -493,6 +493,8 @@ impl<N> serde::Serialize for CapabilityKind<N> {
 pub type PositiveCapability = CapabilityKind<!>;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(NoCapability=String)))]
 pub enum CapabilityKind<NoCapability = ()> {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.
@@ -511,6 +513,7 @@ pub enum CapabilityKind<NoCapability = ()> {
     /// [`CapabilityKind::Write`] for everything through a dereference.
     ShallowExclusive,
 
+    #[cfg_attr(feature = "type-export", ts(type = "string"))]
     None(NoCapability),
 }
 
@@ -550,7 +553,7 @@ mod debug_reprs {
         }
     }
 
-    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
     #[derive(Serialize)]
     pub enum CapabilityDebugRepr {
         Read,
@@ -560,7 +563,7 @@ mod debug_reprs {
         None,
     }
 
-    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
     #[derive(Serialize)]
     pub enum PositiveCapabilityDebugRepr {
         Read,
