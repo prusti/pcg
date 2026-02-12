@@ -21,7 +21,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
@@ -68,7 +68,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         'a: 'slf,
     {
         #[cfg(feature = "visualization")]
-        if borrows_imgcat_debug(block, debug_imgcat)
+        if borrows_imgcat_debug(block, debug_imgcat, ctxt.settings())
             && let Ok(dot_graph) = generate_borrows_dot_graph(ctxt, capabilities, self)
         {
             DotGraph::render_with_imgcat(&dot_graph, comment).unwrap_or_else(|e| {
@@ -129,7 +129,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         if let Some(used_places) = args.body_analysis.get_places_used_in_loop(self_block) {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
             #[cfg(feature = "visualization")]
-            if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
+            if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop), ctxt.settings())
                 && let Ok(dot_graph) =
                     generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, self)
             {

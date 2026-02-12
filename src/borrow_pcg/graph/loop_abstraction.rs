@@ -3,6 +3,7 @@ use derive_more::From;
 use crate::{
     HasSettings,
     action::PcgAction,
+    borrow_checker::BorrowCheckerInterface,
     borrow_pcg::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
@@ -496,19 +497,15 @@ impl<'pcg, 'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &AbsExpander<'pcg, 'mir, 
     }
 }
 
-impl<'pcg, 'mir, 'tcx> HasBorrowCheckerCtxt<'mir, 'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
-    fn bc(&self) -> &'mir (dyn crate::borrow_checker::BorrowCheckerInterface<'tcx> + 'static) {
-        todo!()
+impl<'pcg, 'mir: 'pcg, 'tcx: 'mir> HasBorrowCheckerCtxt<'mir, 'tcx>
+    for &AbsExpander<'pcg, 'mir, 'tcx>
+{
+    fn bc(&self) -> &'mir dyn BorrowCheckerInterface<'tcx> {
+        self.ctxt.borrow_checker()
     }
 
-    fn bc_ctxt(
-        &self,
-    ) -> CompilerCtxt<
-        'mir,
-        'tcx,
-        &'mir (dyn crate::borrow_checker::BorrowCheckerInterface<'tcx> + 'static),
-    > {
-        todo!()
+    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'mir dyn BorrowCheckerInterface<'tcx>> {
+        self.ctxt.bc_ctxt()
     }
 }
 

@@ -57,17 +57,19 @@ pub struct PcgRef<'pcg, 'tcx> {
     pub(crate) capabilities: &'pcg SymbolicPlaceCapabilities<'tcx>,
 }
 
-impl<'tcx> PcgRef<'_, 'tcx> {
+impl<'pcg, 'tcx> PcgRef<'pcg, 'tcx> {
     #[cfg(feature = "visualization")]
-    pub(crate) fn render_debug_graph<'slf, 'a>(
-        &'slf self,
+    pub(crate) fn render_debug_graph<'a: 'pcg>(
+        self,
         location: mir::Location,
         debug_imgcat: Option<DebugImgcat>,
         comment: &str,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) {
-        if borrows_imgcat_debug(location.block, debug_imgcat) {
-            let dot_graph = generate_pcg_dot_graph(self.as_ref(), ctxt, location).unwrap();
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) where
+        'tcx: 'a,
+    {
+        if borrows_imgcat_debug(location.block, debug_imgcat, ctxt.settings()) {
+            let dot_graph = generate_pcg_dot_graph(self, ctxt, location).unwrap();
             DotGraph::render_with_imgcat(&dot_graph, comment).unwrap_or_else(|e| {
                 eprintln!("Error rendering self graph: {e}");
             });

@@ -402,8 +402,8 @@ pub(crate) fn generate_borrows_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
     Ok(String::from_utf8(buf).unwrap())
 }
 
-pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
-    pcg: PcgRef<'a, 'tcx>,
+pub(crate) fn generate_pcg_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
+    pcg: PcgRef<'pcg, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
 ) -> io::Result<String> {

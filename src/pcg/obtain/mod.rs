@@ -45,12 +45,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> RenderDebugGraph
 {
     #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
-        self.pcg.as_ref().render_debug_graph(
-            self.location(),
-            debug_imgcat,
-            comment,
-            self.ctxt.bc_ctxt(),
-        );
+        self.pcg
+            .as_ref()
+            .render_debug_graph(self.location(), debug_imgcat, comment, self.ctxt);
     }
 }
 
@@ -249,8 +246,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             .get_local_expansions(place.local)
             .places_to_collapse_to_for_obtain_of(place, ctxt);
         tracing::warn!(
-            "To obtain {}, will collapse {}",
+            "To obtain {} at {:?}, will collapse {}",
             place.display_string(ctxt.ctxt()),
+            capability,
             to_collapse.display_string(ctxt.ctxt())
         );
         for place in to_collapse {
