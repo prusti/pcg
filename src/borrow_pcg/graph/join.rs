@@ -218,7 +218,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "used places: {}",
             used_places.display_string(ctxt.ctxt)
         );
-        ctxt.set_debug_loop_data(PcgLoopDebugData::new(used_places.debug_repr(ctxt)));
         // p_loop
         let live_loop_places = used_places.usages_where(|p| {
             args.body_analysis.is_live_and_initialized_at(
@@ -229,6 +228,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 p.place,
             )
         });
+        ctxt.set_debug_loop_data(PcgLoopDebugData::new(
+            used_places.debug_repr(ctxt),
+            live_loop_places.debug_repr(ctxt),
+        ));
 
         if !live_loop_places
             .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))

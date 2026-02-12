@@ -59,7 +59,8 @@ mod private {
         pub(crate) block: mir::BasicBlock,
         pub(crate) arena: PcgArena<'a>,
         #[cfg(feature = "visualization")]
-        pub(crate) graphs: Option<crate::visualization::stmt_graphs::PcgBlockDebugData<'a>>,
+        pub(crate) visualization_data:
+            Option<crate::visualization::stmt_graphs::AnalysisDebugData<'a>>,
     }
 
     impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
@@ -255,7 +256,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         arena: PcgArena<'a>,
         settings: &'a PcgSettings,
         #[cfg(feature = "visualization")] graphs: Option<
-            crate::visualization::stmt_graphs::PcgBlockDebugData<'a>,
+            crate::visualization::stmt_graphs::AnalysisDebugData<'a>,
         >,
     ) -> Self {
         Self {
@@ -266,7 +267,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
             block,
             arena,
             #[cfg(feature = "visualization")]
-            graphs,
+            visualization_data: graphs,
         }
     }
     pub(crate) fn matches(&self, predicate: &LogPredicate) -> bool {

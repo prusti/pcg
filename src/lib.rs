@@ -351,7 +351,7 @@ impl<'tcx> PcgCtxtCreator<'tcx> {
 }
 
 pub struct PcgCtxt<'a, 'tcx> {
-    compiler_ctxt: CompilerCtxt<'a, 'tcx>,
+    pub(crate) compiler_ctxt: CompilerCtxt<'a, 'tcx>,
     move_data: MoveData<'tcx>,
     settings: Cow<'a, PcgSettings>,
     pub(crate) arena: bumpalo::Bump,
@@ -445,6 +445,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
 struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
+    loop_data: Option<PcgLoopDebugData>,
 }
 
 #[cfg(feature = "visualization")]
@@ -470,19 +471,11 @@ impl PcgVisualizationData {
 ///
 /// * `pcg_ctxt` - The context the PCG will use for its analysis. Use [`PcgCtxt::new`] to create this.
 pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx> {
-    let settings = pcg_ctxt.settings.borrow();
     tracing::info!(
         "Running PCG (visualization: {})",
         pcg_ctxt.settings.visualization
     );
-    let engine = PcgEngine::new(
-        pcg_ctxt.compiler_ctxt,
-        &pcg_ctxt.move_data,
-        &pcg_ctxt.arena,
-        settings,
-        #[cfg(feature = "visualization")]
-        pcg_ctxt.visualization_output_path(),
-    );
+    let engine = PcgEngine::new(pcg_ctxt);
     let body = pcg_ctxt.compiler_ctxt.body();
     let tcx = pcg_ctxt.compiler_ctxt.tcx();
     let mut analysis = compute_fixpoint(AnalysisEngine(engine), tcx, body);
@@ -505,10 +498,11 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 continue;
             };
             let ctxt = analysis_results.analysis().analysis_ctxt(block);
-            let debug_graphs = if let Some(graphs) = ctxt.graphs {
-                graphs.dot_graphs.borrow().graphs.clone()
+            let (loop_data, debug_graphs) = if let Some(data) = ctxt.visualization_data {
+                let block_data = data.block_data.borrow();
+                (block_data.loop_data.clone(), block_data.graphs.clone())
             } else {
-                Vec::new()
+                (None, Vec::new())
             };
 
             let statements = pcg_block
@@ -543,6 +537,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 PcgBlockVisualizationData {
                     statements,
                     successors,
+                    loop_data,
                 },
             );
         }
@@ -728,6 +723,8 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs::PcgLoopDebugData;
 use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,

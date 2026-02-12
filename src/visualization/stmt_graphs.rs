@@ -102,8 +102,8 @@ fn dot_filename_for(output_dir: &Path, relative_filename: &PathToDotFile) -> Pat
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
     pub(crate) fn set_debug_loop_data(self, loop_data: PcgLoopDebugData) {
-        if let Some(debug_data) = self.graphs {
-            debug_data.dot_graphs.borrow_mut().set_loop_data(loop_data);
+        if let Some(debug_data) = self.visualization_data {
+            debug_data.block_data.borrow_mut().set_loop_data(loop_data);
         }
     }
     pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
@@ -118,19 +118,19 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 ToGraph::Phase(DataflowStmtPhase::Join(_))
             ));
         }
-        if let Some(debug_data) = self.graphs {
+        if let Some(debug_data) = self.visualization_data {
             let relative_filename = StmtGraphs::relative_filename(location, to_graph);
             let filename = dot_filename_for(debug_data.dot_output_dir, &relative_filename);
             match to_graph {
                 ToGraph::Action(phase, action_idx) => {
-                    debug_data.dot_graphs.borrow_mut().insert_for_action(
+                    debug_data.block_data.borrow_mut().insert_for_action(
                         location,
                         phase,
                         action_idx,
                         relative_filename,
                     );
                 }
-                ToGraph::Phase(phase) => debug_data.dot_graphs.borrow_mut().insert_for_phase(
+                ToGraph::Phase(phase) => debug_data.block_data.borrow_mut().insert_for_phase(
                     location.statement_index,
                     phase,
                     relative_filename,
@@ -192,30 +192,35 @@ impl PcgDebugDataForBlock {
 #[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct PcgLoopDebugData {
     used_places: PlaceUsages<'static, String>,
+    live_loop_places: PlaceUsages<'static, String>,
 }
 
 impl PcgLoopDebugData {
-    pub(crate) fn new(used_places: PlaceUsages<'static, String>) -> Self {
-        Self { used_places }
+    pub(crate) fn new(
+        used_places: PlaceUsages<'static, String>,
+        live_loop_places: PlaceUsages<'static, String>,
+    ) -> Self {
+        Self {
+            used_places,
+            live_loop_places,
+        }
     }
 }
 
 #[derive(Copy, Clone, Debug)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(export))]
-pub(crate) struct PcgBlockDebugData<'a> {
+pub(crate) struct AnalysisDebugData<'a> {
     pub(crate) dot_output_dir: &'a Path,
-    pub(crate) dot_graphs: &'a RefCell<PcgDebugDataForBlock>,
+    pub(crate) block_data: &'a RefCell<PcgDebugDataForBlock>,
 }
 
-impl<'a> PcgBlockDebugData<'a> {
+impl<'a> AnalysisDebugData<'a> {
     pub(crate) fn new(
         dot_output_dir: &'a Path,
         dot_graphs: &'a RefCell<PcgDebugDataForBlock>,
     ) -> Self {
         Self {
             dot_output_dir,
-            dot_graphs,
+            block_data: dot_graphs,
         }
     }
 }
@@ -248,9 +253,9 @@ impl<'a> PcgEngineDebugData<'a> {
 }
 
 impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
-    pub(crate) fn dot_graphs(&self, block: mir::BasicBlock) -> Option<PcgBlockDebugData<'a>> {
+    pub(crate) fn dot_graphs(&self, block: mir::BasicBlock) -> Option<AnalysisDebugData<'a>> {
         self.debug_graphs
             .as_ref()
-            .map(|data| PcgBlockDebugData::new(data.debug_output_dir, data.dot_graphs[block]))
+            .map(|data| AnalysisDebugData::new(data.debug_output_dir, data.dot_graphs[block]))
     }
 }
