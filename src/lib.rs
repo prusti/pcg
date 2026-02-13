@@ -38,11 +38,7 @@ pub mod coupling;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{
-    borrow::{Borrow, Cow},
-    cell::RefCell,
-    marker::PhantomData,
-};
+use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;

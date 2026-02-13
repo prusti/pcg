@@ -192,7 +192,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),
             label,
-            capability: capability.and_then(|c| c.as_positive()),
+            capability: capability.and_then(SymbolicCapability::into_positive),
             location,
             ty: format!("{:?}", place_ty.ty),
         };

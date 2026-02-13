@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use bit_set::BitSet;
 use derive_more::From;
@@ -30,7 +30,7 @@ use crate::{
             },
             ty::{self, GenericArgsRef},
         },
-        mir_dataflow::{Forward, move_paths::MoveData},
+        mir_dataflow::Forward,
     },
     utils::{
         AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef,

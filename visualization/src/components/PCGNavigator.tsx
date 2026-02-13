@@ -12,7 +12,10 @@ import {
   useLocalStorageNumber,
 } from "../hooks/useLocalStorageState";
 import { Api } from "../api";
-import { openDotGraphInNewWindow } from "../dot_graph";
+import {
+  openDotGraphInNewWindow,
+  openDotContentInNewWindow,
+} from "../dot_graph";
 import { toBasicBlock } from "../util";
 import { PcgBlockVisualizationData } from "../generated_types/PcgBlockVisualizationData";
 import NavigationItemList, { NavigationItem } from "./NavigationItemList";
@@ -71,6 +74,132 @@ const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
     return `bb${currentPoint.block1} -> bb${currentPoint.block2}`;
   }
 };
+
+function DotGraphButton({
+  label,
+  dotContent,
+  title,
+}: {
+  label: string;
+  dotContent: string;
+  title: string;
+}) {
+  return (
+    <button
+      style={{
+        display: "block",
+        marginTop: "6px",
+        marginBottom: "6px",
+        padding: "4px 8px",
+        cursor: "pointer",
+        backgroundColor: "#007acc",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        fontSize: "12px",
+      }}
+      onClick={() => openDotContentInNewWindow(dotContent, title)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CollapsiblePlaceUsages({
+  title,
+  usages,
+}: {
+  title: string;
+  usages: { [key: string]: string };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const keys = Object.keys(usages);
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "▼" : "▶"} {title} ({keys.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {keys.map((k) => (
+            <div key={k}>
+              {k}: {usages[k]}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsibleRootPlaces({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: Array<[string, Array<string>]>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(
+    new Set()
+  );
+  const toggleEntry = (index: number) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "▼" : "▶"} {title} ({entries.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {entries.map(([livePlace, rootPlaces], i) => (
+            <div key={i} style={{ marginTop: "4px" }}>
+              <div
+                onClick={() => toggleEntry(i)}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                {expandedEntries.has(i) ? "▼" : "▶"} {livePlace} (
+                {rootPlaces.length})
+              </div>
+              {expandedEntries.has(i) && (
+                <div style={{ paddingLeft: "12px" }}>
+                  {rootPlaces.map((rp, j) => (
+                    <div key={j}>{rp}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PCGNavigator({
   selectedPoint,
@@ -350,13 +479,41 @@ export default function PCGNavigator({
             {loopData ? (
               <div>
                 <b>Loop Head</b>
-                {Object.keys(loopData.used_places.usages).map((k) => {
-                  return (
-                    <div key={k}>
-                      {k}: {loopData.used_places.usages[k]}
-                    </div>
-                  );
-                })}
+                <DotGraphButton
+                  label="Show Pre Loop Graph"
+                  dotContent={loopData.pre_loop_dot_graph}
+                  title="Pre Loop Graph"
+                />
+                <DotGraphButton
+                  label="Show Abstraction Graph"
+                  dotContent={loopData.abstraction_dot_graph}
+                  title="Abstraction Graph"
+                />
+                <DotGraphButton
+                  label="Show To Cut Graph"
+                  dotContent={loopData.subgraph_to_cut_dot_graph}
+                  title="To Cut Graph"
+                />
+                <CollapsiblePlaceUsages
+                  title="Used Places"
+                  usages={loopData.used_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Live Loop Places"
+                  usages={loopData.live_loop_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Loop Blocked Places"
+                  usages={loopData.loop_blocked_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Loop Blocker Places"
+                  usages={loopData.loop_blocker_places.usages}
+                />
+                <CollapsibleRootPlaces
+                  title="Root Places"
+                  entries={loopData.root_places}
+                />
               </div>
             ) : null}
             <NavigationItemList

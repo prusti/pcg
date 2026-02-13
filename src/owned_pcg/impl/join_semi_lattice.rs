@@ -21,7 +21,7 @@ use crate::{
     },
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -74,7 +74,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     if k.expect_concrete() > PositiveCapability::Write {
                         repacks.push(RepackOp::weaken(
                             place,
-                            k.expect_concrete().as_positive().unwrap(),
+                            k.expect_concrete().into_positive().unwrap(),
                             PositiveCapability::Write,
                         ));
                         *k = PositiveCapability::Write.into();
@@ -216,7 +216,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                 .get(child, ctxt)
                 .unwrap()
                 .expect_concrete()
-                .as_positive()
+                .into_positive()
                 .unwrap();
             let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
             *entry = entry.minimum(child_cap, ctxt).unwrap();

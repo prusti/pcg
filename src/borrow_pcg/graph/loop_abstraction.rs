@@ -296,19 +296,18 @@ impl<'tcx> BorrowsGraph<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<PcgNode<'tcx>> {
         let mut result = HashSet::default();
+
+        let loop_head_label =
+            LifetimeProjectionLabel::Location(SnapshotLocation::Loop(loop_head_block));
+
         let mut queue: Vec<LocalNode<'tcx>> = node
             .lifetime_projections(ctxt)
             .into_iter()
             .flat_map(|rp| {
                 vec![
                     rp.to_local_node(ctxt),
-                    rp.with_label(
-                        Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
-                            loop_head_block,
-                        ))),
-                        ctxt,
-                    )
-                    .to_local_node(ctxt),
+                    rp.with_label(Some(loop_head_label), ctxt)
+                        .to_local_node(ctxt),
                 ]
             })
             .collect();
@@ -464,13 +463,13 @@ struct AbsExpander<'pcg, 'mir, 'tcx> {
     settings: &'mir PcgSettings,
 }
 
-impl<'pcg, 'mir, 'tcx> OverrideRegionDebugString for &AbsExpander<'pcg, 'mir, 'tcx> {
+impl OverrideRegionDebugString for &AbsExpander<'_, '_, '_> {
     fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
         self.ctxt.override_region_debug_string(region)
     }
 }
 
-impl<'pcg, 'mir, 'tcx> DebugCtxt for &AbsExpander<'pcg, 'mir, 'tcx> {
+impl DebugCtxt for &AbsExpander<'_, '_, '_> {
     fn func_name(&self) -> String {
         self.ctxt.func_name()
     }
@@ -479,19 +478,19 @@ impl<'pcg, 'mir, 'tcx> DebugCtxt for &AbsExpander<'pcg, 'mir, 'tcx> {
     }
 }
 
-impl<'pcg, 'mir, 'tcx> HasSettings<'mir> for &AbsExpander<'pcg, 'mir, 'tcx> {
+impl<'mir> HasSettings<'mir> for &AbsExpander<'_, 'mir, '_> {
     fn settings(&self) -> &'mir PcgSettings {
         self.settings
     }
 }
 
-impl<'pcg, 'mir, 'tcx> HasTyCtxt<'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
+impl<'tcx> HasTyCtxt<'tcx> for &AbsExpander<'_, '_, 'tcx> {
     fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.ctxt.tcx()
     }
 }
 
-impl<'pcg, 'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &AbsExpander<'pcg, 'mir, 'tcx> {
+impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &AbsExpander<'_, 'mir, 'tcx> {
     fn ctxt(self) -> CompilerCtxt<'mir, 'tcx, ()> {
         self.ctxt.ctxt()
     }

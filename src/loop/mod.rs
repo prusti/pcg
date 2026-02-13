@@ -244,8 +244,8 @@ pub struct PlaceUsages<'tcx, P: std::hash::Hash + Eq = Place<'tcx>> {
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'tcx, P: std::hash::Hash + Eq + DisplayWithCtxt<Ctxt>, Ctxt: Copy> DebugRepr<Ctxt>
-    for PlaceUsages<'tcx, P>
+impl<P: std::hash::Hash + Eq + DisplayWithCtxt<Ctxt>, Ctxt: Copy> DebugRepr<Ctxt>
+    for PlaceUsages<'_, P>
 {
     type Repr = PlaceUsages<'static, String>;
 
@@ -261,7 +261,7 @@ impl<'tcx, P: std::hash::Hash + Eq + DisplayWithCtxt<Ctxt>, Ctxt: Copy> DebugRep
     }
 }
 
-impl<'tcx, P: std::hash::Hash + Eq> Default for PlaceUsages<'tcx, P> {
+impl<P: std::hash::Hash + Eq> Default for PlaceUsages<'_, P> {
     fn default() -> Self {
         Self {
             usages: HashMap::default(),

@@ -193,16 +193,35 @@ impl PcgDebugDataForBlock {
 pub(crate) struct PcgLoopDebugData {
     used_places: PlaceUsages<'static, String>,
     live_loop_places: PlaceUsages<'static, String>,
+    pre_loop_dot_graph: String,
+    abstraction_dot_graph: String,
+    subgraph_to_cut_dot_graph: String,
+    loop_blocked_places: PlaceUsages<'static, String>,
+    root_places: Vec<(String, Vec<String>)>,
+    loop_blocker_places: PlaceUsages<'static, String>,
 }
 
 impl PcgLoopDebugData {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         used_places: PlaceUsages<'static, String>,
         live_loop_places: PlaceUsages<'static, String>,
+        loop_blocked_places: PlaceUsages<'static, String>,
+        loop_blocker_places: PlaceUsages<'static, String>,
+        root_places: Vec<(String, Vec<String>)>,
+        pre_loop_dot_graph: String,
+        abstraction_dot_graph: String,
+        subgraph_to_cut_dot_graph: String,
     ) -> Self {
         Self {
             used_places,
             live_loop_places,
+            pre_loop_dot_graph,
+            abstraction_dot_graph,
+            subgraph_to_cut_dot_graph,
+            loop_blocked_places,
+            root_places,
+            loop_blocker_places,
         }
     }
 }

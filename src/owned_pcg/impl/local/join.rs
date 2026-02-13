@@ -15,8 +15,7 @@ use crate::{
     },
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        HasBorrowCheckerCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -172,7 +171,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         if let Some(expand_cap) = self_cap
             .minimum(other_cap, ctxt)
             .expect_concrete()
-            .as_positive()
+            .into_positive()
         {
             tracing::debug!(
                 "Expanding from place {} with cap {:?}",
@@ -270,7 +269,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 let expand_action = RepackExpand::new(
                     place,
                     other_expansion.guide(),
-                    self_cap.expect_concrete().as_positive().unwrap(),
+                    self_cap.expect_concrete().into_positive().unwrap(),
                 );
                 self.owned
                     .perform_expand_action(expand_action, self.capabilities, ctxt);
@@ -426,12 +425,17 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 }
                 Ok(vec![])
             }
-            (CapabilityKind::Read | CapabilityKind::Write | CapabilityKind::Exclusive, _)
+            (
+                CapabilityKind::Read
+                | CapabilityKind::Write
+                | CapabilityKind::Exclusive
+                | CapabilityKind::None(()),
+                _,
+            )
             | (CapabilityKind::ShallowExclusive, CapabilityKind::ShallowExclusive) => Ok(vec![]),
             (CapabilityKind::ShallowExclusive, _) => {
                 todo!()
             }
-            (CapabilityKind::None(_), _) => Ok(vec![]),
         }
     }
 

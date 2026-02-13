@@ -4,7 +4,7 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
-        graph::loop_abstraction::ConstructAbstractionGraphResult,
+        graph::loop_abstraction::{ConstructAbstractionGraphResult, MaybeRemoteCurrentPlace},
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
     },
@@ -228,10 +228,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 p.place,
             )
         });
-        ctxt.set_debug_loop_data(PcgLoopDebugData::new(
-            used_places.debug_repr(ctxt),
-            live_loop_places.debug_repr(ctxt),
-        ));
 
         if !live_loop_places
             .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))
@@ -293,33 +289,29 @@ impl<'tcx> BorrowsGraph<'tcx> {
             ctxt,
         );
 
+        let pre_loop_dot_graph = generate_borrows_dot_graph(ctxt.ctxt, capabilities, self).unwrap();
+
         // p_roots
         let live_roots = live_loop_places
             .iter()
-            .flat_map(|p| self.get_borrow_roots(p.place, loop_head, ctxt.ctxt))
-            .collect::<HashSet<_>>();
+            .map(|p| (p, self.get_borrow_roots(p.place, loop_head, ctxt.ctxt)));
 
-        logging::log!(
-            &LogPredicate::DebugBlock,
-            ctxt,
-            "live roots: {}",
-            live_roots.display_string(ctxt.ctxt)
-        );
+        fn roots_to_places<'tcx>(
+            roots: &HashSet<PcgNode<'tcx>>,
+            live_loop_places: &PlaceUsages<'tcx>,
+        ) -> HashSet<MaybeRemoteCurrentPlace<'tcx>> {
+            roots
+                .iter()
+                .filter_map(PcgNode::related_maybe_remote_current_place)
+                .filter(|p| {
+                    !(p.is_local() && live_loop_places.contains(p.relevant_place_for_blocking()))
+                })
+                .collect()
+        }
 
         let root_places = live_roots
-            .iter()
-            .filter_map(PcgNode::related_maybe_remote_current_place)
-            .filter(|p| {
-                !(p.is_local() && live_loop_places.contains(p.relevant_place_for_blocking()))
-            })
-            .collect::<HashSet<_>>();
-
-        logging::log!(
-            &LogPredicate::DebugBlock,
-            ctxt,
-            "root places: {}",
-            root_places.display_string(ctxt.ctxt)
-        );
+            .map(|(p, roots)| (p, roots_to_places(&roots, &live_loop_places)))
+            .collect::<Vec<_>>();
 
         let ConstructAbstractionGraphResult {
             graph: abstraction_graph,
@@ -327,7 +319,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
             capability_updates,
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
-            &root_places,
+            &root_places
+                .iter()
+                .flat_map(|(_, snd)| snd)
+                .copied()
+                .collect::<HashSet<_>>(),
             &loop_blocker_places,
             loop_head,
             validity_conditions,
@@ -362,6 +358,27 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
         let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
+        ctxt.set_debug_loop_data(PcgLoopDebugData::new(
+            used_places.debug_repr(ctxt),
+            live_loop_places.debug_repr(ctxt),
+            loop_blocked_places.debug_repr(ctxt),
+            loop_blocker_places.debug_repr(ctxt),
+            root_places
+                .iter()
+                .map(|(p, roots)| {
+                    (
+                        p.display_string(ctxt),
+                        roots
+                            .iter()
+                            .map(|p| p.display_string(ctxt))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            pre_loop_dot_graph,
+            generate_borrows_dot_graph(ctxt.ctxt, capabilities, &abstraction_graph).unwrap(),
+            generate_borrows_dot_graph(ctxt.ctxt, capabilities, &to_cut).unwrap(),
+        ));
         to_cut.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),

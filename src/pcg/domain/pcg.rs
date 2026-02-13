@@ -158,7 +158,7 @@ pub(crate) trait PcgRefLike<'tcx> {
             self.as_ref()
                 .capabilities
                 .get(place, ctxt)
-                .and_then(SymbolicCapability::as_positive),
+                .and_then(SymbolicCapability::into_positive),
             fallback: PositiveCapability::Exclusive,
             [ctxt],
             "Expected positive capability for place {} but got none",
@@ -403,13 +403,13 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if let Some(other_cap) = other
                 .capabilities
                 .get(place, ctxt)
-                .and_then(SymbolicCapability::as_positive)
+                .and_then(SymbolicCapability::into_positive)
                 && cap.expect_concrete() > other_cap.expect_concrete()
             {
                 repacks.push(RepackOp::Weaken(Weaken::new(
                     place,
-                    cap.expect_concrete().as_positive().unwrap(),
-                    other_cap.expect_concrete().as_positive().unwrap(),
+                    cap.expect_concrete().into_positive().unwrap(),
+                    other_cap.expect_concrete().into_positive().unwrap(),
                 )));
             }
         }

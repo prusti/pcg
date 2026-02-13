@@ -327,7 +327,7 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                 if let Some(joined_capability) = initial_capability
                     .expect_concrete()
                     .minimum(usage_capability.into(), ())
-                    .as_positive()
+                    .into_positive()
                 {
                     result.insert(place_usage.place, joined_capability);
                 }

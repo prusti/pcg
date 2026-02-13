@@ -406,11 +406,11 @@ impl SymbolicCapability {
     }
 
     pub(crate) fn expect_positive(self) -> PositiveCapability {
-        self.as_positive().unwrap()
+        self.into_positive().unwrap()
     }
 
-    pub(crate) fn as_positive(self) -> Option<PositiveCapability> {
-        self.expect_concrete().as_positive()
+    pub(crate) fn into_positive(self) -> Option<PositiveCapability> {
+        self.expect_concrete().into_positive()
     }
 }
 
@@ -463,7 +463,7 @@ impl CapabilityLike<!> for CapabilityKind<!> {
     fn minimum<C>(self, other: Self, ctxt: C) -> Self::Minimum {
         self.into_capability_kind()
             .minimum(other.into_capability_kind(), ctxt)
-            .as_positive()
+            .into_positive()
     }
 }
 
@@ -532,7 +532,7 @@ pub(crate) mod debug_reprs {
                 CapabilityKind::Write => CapabilityDebugRepr::Write,
                 CapabilityKind::Exclusive => CapabilityDebugRepr::Exclusive,
                 CapabilityKind::ShallowExclusive => CapabilityDebugRepr::ShallowExclusive,
-                CapabilityKind::None(_) => CapabilityDebugRepr::None,
+                CapabilityKind::None(()) => CapabilityDebugRepr::None,
             }
         }
     }
@@ -574,13 +574,13 @@ pub(crate) mod debug_reprs {
 
 impl PartialEq<PositiveCapability> for CapabilityKind {
     fn eq(&self, other: &PositiveCapability) -> bool {
-        self.as_positive() == Some(*other)
+        self.into_positive() == Some(*other)
     }
 }
 
 impl PartialOrd<PositiveCapability> for CapabilityKind {
     fn partial_cmp(&self, other: &PositiveCapability) -> Option<Ordering> {
-        let Some(positive) = self.as_positive() else {
+        let Some(positive) = self.into_positive() else {
             return Some(Ordering::Less);
         };
         positive.partial_cmp(other)
@@ -601,13 +601,12 @@ impl<N: Copy + Eq> PartialOrd<CapabilityKind<N>> for CapabilityKind<N> {
 
         use CapabilityKind::{Exclusive, Read, ShallowExclusive, Write};
         match (*self, *other) {
-            (Exclusive, _) => Some(Ordering::Greater),
-            (ShallowExclusive, Exclusive) => Some(Ordering::Less),
-            (ShallowExclusive, Write | CapabilityKind::None(_)) => Some(Ordering::Greater),
-            (Write, ShallowExclusive | Exclusive) => Some(Ordering::Less),
-            (Read, CapabilityKind::None(_)) => Some(Ordering::Greater),
-            (Read, CapabilityKind::Exclusive) => Some(Ordering::Less),
-            (CapabilityKind::None(_), _) => Some(Ordering::Less),
+            (ShallowExclusive | Read, Exclusive)
+            | (Write, ShallowExclusive | Exclusive)
+            | (CapabilityKind::None(_), _) => Some(Ordering::Less),
+            (Exclusive, _)
+            | (ShallowExclusive, Write | CapabilityKind::None(_))
+            | (Read, CapabilityKind::None(_)) => Some(Ordering::Greater),
             _ => None,
         }
     }
@@ -645,7 +644,7 @@ impl<T> CapabilityKind<T> {
             CapabilityKind::None(_) => CapabilityKind::None(()),
         }
     }
-    pub(crate) fn as_positive(self) -> Option<PositiveCapability> {
+    pub(crate) fn into_positive(self) -> Option<PositiveCapability> {
         match self {
             CapabilityKind::Read => Some(PositiveCapability::Read),
             CapabilityKind::Write => Some(PositiveCapability::Write),

@@ -341,7 +341,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     self.record_and_apply_action(
                         BorrowPcgAction::weaken(
                             place,
-                            existing_cap.expect_concrete().as_positive().unwrap(),
+                            existing_cap.expect_concrete().into_positive().unwrap(),
                             CapabilityKind::Write,
                             "remove borrow edge",
                         )
@@ -394,7 +394,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.record_and_apply_action(
                 BorrowPcgAction::weaken(
                     p,
-                    cap.expect_concrete().as_positive().unwrap(),
+                    cap.expect_concrete().into_positive().unwrap(),
                     CapabilityKind::None(()),
                     "Remove read permission downwards",
                 )
