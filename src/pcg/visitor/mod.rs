@@ -284,10 +284,10 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 if let Some(place) = operand.node.place() {
                     let place: utils::Place<'tcx> = place.into();
                     if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                        let function = format!("{:?}", func);
+                        let function = format!("{func:?}");
                         if function != "std::io::_print" {
                             let err = CallWithUnsafePtrWithNestedLifetime {
-                                function: format!("{:?}", func),
+                                function: format!("{func:?}"),
                                 span: *fn_span,
                                 place: e,
                             };
