@@ -327,9 +327,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     match blocked_by.try_to_local_node(ctxt) {
                         Some(local_node) => {
                             if local_node.related_current_place().is_some() {
-                                result.insert(local_node.into());
-                            } else {
                                 queue.push(local_node);
+                            } else {
+                                result.insert(local_node.into());
                             }
                         }
                         None => {

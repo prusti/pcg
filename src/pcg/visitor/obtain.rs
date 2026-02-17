@@ -618,14 +618,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
 
         let current_cap = self.pcg.capabilities.get(place, self.ctxt);
-        tracing::warn!(
-            "Obtain {:?} to place {} in phase {:?}: Current cap: {:?}, Obtain cap: {:?}",
-            obtain_type,
-            place.display_string(self.ctxt.bc_ctxt()),
-            self.phase(),
-            current_cap,
-            obtain_cap
-        );
 
         // STEP 2
         if current_cap.is_none()

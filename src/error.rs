@@ -2,7 +2,7 @@ use derive_more::From;
 
 use crate::{
     coupling::CoupleInputError,
-    rustc_interface::middle::ty,
+    rustc_interface::{middle::ty, span::Span},
     utils::{
         self, PANIC_ON_ERROR,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -117,12 +117,19 @@ pub struct PlaceContainingPtrWithNestedLifetime<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallWithUnsafePtrWithNestedLifetime<'tcx> {
+    pub(crate) function: String,
+    pub(crate) span: Span,
+    pub(crate) place: PlaceContainingPtrWithNestedLifetime<'tcx>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum PcgUnsupportedError<'tcx> {
     AssignBorrowToNonReferenceType,
     DerefUnsafePtr,
     MoveUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
     ExpansionOfAliasType,
-    CallWithUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
+    CallWithUnsafePtrWithNestedLifetime(CallWithUnsafePtrWithNestedLifetime<'tcx>),
     IndexingNonIndexableType,
     InlineAssembly,
     MaxNodesExceeded,

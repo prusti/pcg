@@ -8,6 +8,7 @@ use crate::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
     },
+    error::CallWithUnsafePtrWithNestedLifetime,
     owned_pcg::{OwnedPcg, RepackExpand},
     pcg::{
         PcgRefLike, PositiveCapability,
@@ -283,9 +284,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 if let Some(place) = operand.node.place() {
                     let place: utils::Place<'tcx> = place.into();
                     if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                        return Err(
-                            PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(e).into()
-                        );
+                        let function = format!("{:?}", func);
+                        if function != "std::io::_print" {
+                            let err = CallWithUnsafePtrWithNestedLifetime {
+                                function: format!("{:?}", func),
+                                span: *fn_span,
+                                place: e,
+                            };
+                            return Err(PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(
+                                err,
+                            )
+                            .into());
+                        }
                     }
                 }
             }
