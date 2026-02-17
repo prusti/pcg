@@ -274,7 +274,7 @@ pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
     #[cfg_attr(
         feature = "type-export",
-        ts(as = "crate::pcg::capabilities::debug_reprs::PositiveCapabilityDebugRepr")
+        ts(as = "crate::pcg::capabilities::capability_kind::debug_reprs::PositiveCapabilityDebugRepr")
     )]
     pub(crate) capability: PositiveCapability,
 }
