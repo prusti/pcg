@@ -16,7 +16,7 @@ use crate::{
     Weaken,
     borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, graph::BorrowsGraph},
     error::PcgUnsupportedError,
-    owned_pcg::{RepackCollapse, RepackGuide},
+    owned_pcg::{RepackCollapse, RepackExpand, RepackGuide},
     pcg::{
         CapabilityKind, OwnedCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
@@ -70,7 +70,7 @@ impl<'tcx> OwnedPcgLocal<'tcx> {
             Self::Unallocated => panic!("Expected allocated local"),
         }
     }
-    pub fn get_allocated_mut(&mut self) -> &mut OwnedPcgNode<'tcx> {
+    pub fn get_allocated_mut(&mut self) -> &mut LocalExpansions<'tcx> {
         match self {
             Self::Allocated(cps) => cps,
             Self::Unallocated => panic!("Expected allocated local"),
@@ -122,7 +122,7 @@ impl<'tcx, P> ExpandedPlace<'tcx, P> {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(crate) struct OwnedPcgLeafNode<'tcx> {
+pub struct OwnedPcgLeafNode<'tcx> {
     pub(crate) inherent_capability: OwnedCapability,
     _marker: PhantomData<&'tcx ()>,
 }
@@ -137,18 +137,19 @@ impl<'tcx> OwnedPcgLeafNode<'tcx> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) enum OwnedPcgNode<'tcx, InternalNode = OwnedPcgInternalNode<'tcx>> {
+pub enum OwnedPcgNode<'tcx, InternalNode = OwnedPcgInternalNode<'tcx>> {
     Leaf(OwnedPcgLeafNode<'tcx>),
     Internal(InternalNode),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deref, DerefMut)]
-pub(crate) struct OwnedPcgInternalNode<'tcx> {
+pub struct OwnedPcgInternalNode<'tcx> {
     expansions: Vec<OwnedExpansion<'tcx>>,
 }
 
 impl<'tcx> OwnedPcgInternalNode<'tcx> {
     pub(crate) fn new(expansions: Vec<OwnedExpansion<'tcx>>) -> Self {
+        assert!(!expansions.is_empty());
         Self { expansions }
     }
 }
@@ -171,13 +172,55 @@ impl<'tcx> OwnedPcgInternalNode<'tcx> {
 }
 
 #[derive(Deref, DerefMut, Clone, PartialEq, Eq, Debug)]
-pub(crate) struct LocalExpansions<'tcx> {
+pub struct LocalExpansions<'tcx> {
     root: OwnedPcgNode<'tcx>,
 }
 
 impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn new(root: OwnedPcgNode<'tcx>) -> Self {
         Self { root }
+    }
+    pub(crate) fn perform_collapse_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
+        &mut self,
+        collapse: RepackCollapse<'tcx>,
+        ctxt: Ctxt,
+    ) where
+        'tcx: 'a,
+    {
+        let Some(subtree) = self.subtree_mut(&collapse.to.projection) else {
+            panic!(
+                "Expected subtree at projection {:?}",
+                collapse.to.projection
+            );
+        };
+        subtree.collapse(collapse.to, ctxt);
+    }
+
+    pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
+        &mut self,
+        expand: RepackExpand<'tcx>,
+        ctxt: Ctxt,
+    ) where
+        'tcx: 'a,
+    {
+        let subtree = self.subtree_mut(&expand.from.projection).unwrap();
+        match subtree {
+            OwnedPcgNode::Leaf(leaf) => {
+                *subtree =
+                    OwnedPcgNode::Internal(OwnedPcgInternalNode::new(vec![OwnedExpansion::new(
+                        if expand.capability.is_read() {
+                            OwnedExpansionKind::Read
+                        } else {
+                            OwnedExpansionKind::Mutate
+                        },
+                        expand
+                            .from
+                            .expansion(expand.guide, ctxt)
+                            .map_data(|_| OwnedPcgNode::Leaf(*leaf)),
+                    )]))
+            }
+            OwnedPcgNode::Internal(_) => todo!(),
+        }
     }
 
     pub(crate) fn join<'a>(
@@ -190,7 +233,8 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        self.root.join(local.into(), &mut other.root, is_borrowed, ctxt)
+        self.root
+            .join(local.into(), &mut other.root, is_borrowed, ctxt)
     }
 
     pub(crate) fn expansions_shortest_first<'a>(
@@ -219,11 +263,6 @@ impl<'tcx> LocalExpansions<'tcx> {
         if !place.is_owned(ctxt.ctxt()) {
             return vec![];
         }
-        pcg_validity_assert!(
-            self.root.contains_projection_to(place.projection),
-            "Place {} is not in the local expansions",
-            place.display_string(ctxt.ctxt())
-        );
         let Some(tree) = self.root.subtree(place.projection) else {
             return vec![];
         };
@@ -385,7 +424,7 @@ pub(crate) enum OwnedExpansionKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub(crate) struct OwnedExpansion<'tcx, Data = OwnedPcgNode<'tcx>> {
+pub struct OwnedExpansion<'tcx, Data = OwnedPcgNode<'tcx>> {
     kind: OwnedExpansionKind,
     pub(crate) expansion: PlaceExpansion<'tcx, Data>,
     _marker: PhantomData<Data>,
@@ -503,7 +542,9 @@ impl<'tcx> OwnedExpansion<'tcx> {
             match elem_data {
                 Some(data) => {
                     let place = base_place.project_deeper(elem, ctxt).unwrap();
-                    result.join(data.collapse(place, ctxt));
+                    if let Some(collapse_result) = data.collapse(place, ctxt) {
+                        result.join(collapse_result);
+                    }
                 }
                 None => {}
             }
@@ -611,18 +652,23 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &mut self,
         base_place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CollapseResult<'tcx>
+    ) -> Option<CollapseResult<'tcx>>
     where
         'tcx: 'a,
     {
-        let ops = self
-            .expansions_mut()
-            .into_iter()
-            .map(|e| e.collapse(base_place, ctxt))
-            .collect::<Vec<_>>();
-        let result = CollapseResult::join_all(ops);
-        *self = OwnedPcgNode::new(result.result_capability);
-        result
+        match self {
+            OwnedPcgNode::Leaf(_) => None,
+            OwnedPcgNode::Internal(internal) => {
+                let ops = internal
+                    .expansions
+                    .iter_mut()
+                    .map(|e| e.collapse(base_place, ctxt))
+                    .collect::<Vec<_>>();
+                let result = CollapseResult::join_all(ops);
+                *self = OwnedPcgNode::new(result.result_capability);
+                Some(result)
+            }
+        }
     }
     pub(crate) fn subtree_mut<'slf>(
         &'slf mut self,

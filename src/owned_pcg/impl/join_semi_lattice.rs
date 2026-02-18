@@ -85,7 +85,10 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     &SetLabel(SnapshotLocation::before_block(self.block)),
                     ctxt,
                 );
-                let mut repacks = expansions.collapse(local.into(), ctxt).ops;
+                let mut repacks = expansions
+                    .collapse(local.into(), ctxt)
+                    .map(|r| r.ops)
+                    .unwrap_or_default();
                 repacks.push(RepackOp::StorageDead(local));
                 *self.owned = OwnedPcgLocal::Unallocated;
                 Ok(repacks)
@@ -137,16 +140,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             &|place, expansion| ExpandedPlace::new(place, expansion.clone()),
             ctxt,
         )
-    }
-
-    pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
-        &mut self,
-        expand: RepackExpand<'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        let subtree = self.subtree_mut(&expand.from.projection);
     }
 
     pub(crate) fn all_children_of<'a>(

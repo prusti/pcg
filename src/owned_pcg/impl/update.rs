@@ -9,7 +9,7 @@ use crate::{
     owned_pcg::{LocalExpansions, OwnedPcgLocal, OwnedPcgNode},
     pcg::{
         CapabilityKind, OwnedCapability, PositiveCapability,
-        place_capabilities::{PlaceCapabilitiesReader},
+        place_capabilities::PlaceCapabilitiesReader,
         triple::{PlaceCondition, Triple},
     },
     pcg_validity_assert,
@@ -113,13 +113,17 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::Capability(place, cap) => {
                 if place.is_owned(ctxt) {
-                    let Some(owned_cap) = cap.into_owned_capability() else {
-                        panic!("Expected owned capability for owned place");
-                    };
+                    pcg_validity_assert!(
+                        self.owned_subtree_mut(place, ctxt).is_some(),
+                        "No owned subtree for {place:?}"
+                    );
                     let Some(OwnedPcgNode::Leaf(leaf)) = self.owned_subtree_mut(place, ctxt) else {
-                        panic!("Expected owned subtree for owned place");
+                        return; // Validity assertion would fail
                     };
-                    if leaf.inherent_capability < owned_cap {
+                    if leaf.inherent_capability < cap {
+                        let Some(owned_cap) = cap.into_owned_capability() else {
+                            panic!("Expected owned capability for owned place {place:?}");
+                        };
                         leaf.inherent_capability = owned_cap;
                     }
                 }

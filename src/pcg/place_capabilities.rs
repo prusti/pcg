@@ -28,7 +28,8 @@ mod private {
         fn get(&self, place: P, ctxt: Ctxt) -> C;
         fn uniform_capability(&self, mut places: impl Iterator<Item = P>, ctxt: Ctxt) -> Option<C>
         where
-            C: PartialEq, Ctxt: Copy
+            C: PartialEq,
+            Ctxt: Copy,
         {
             let place = places.next()?;
             let cap = self.get(place, ctxt);

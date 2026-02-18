@@ -20,13 +20,14 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, OwnedPcgNode, RepackCollapse, RepackOp},
     pcg::{
-        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability,
-        ctxt::AnalysisCtxt,
-        place_capabilities::{PlaceCapabilitiesReader},
+        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability, ctxt::AnalysisCtxt,
+        place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt
+        CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        Place, PlaceLike, SnapshotLocation, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -202,13 +203,13 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
-        let to_collapse = self
-            .get_local_expansions(place.local)
-            .places_to_collapse_to_for_obtain_of(place, ctxt);
+        let local_expansions = self.get_local_expansions(place.local);
+        let to_collapse = local_expansions.places_to_collapse_to_for_obtain_of(place, ctxt);
         tracing::warn!(
-            "To obtain {} at {:?}, will collapse {}",
+            "To obtain {} at {:?} from {:?}, will collapse {}",
             place.display_string(ctxt.ctxt()),
             capability,
+            local_expansions,
             to_collapse.display_string(ctxt.ctxt())
         );
         for place in to_collapse {
@@ -217,6 +218,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .subtree(&place.projection)
                 .unwrap()
                 .expansions_longest_first(place, ctxt);
+            assert!(!expansions.is_empty());
             for pe in expansions {
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
