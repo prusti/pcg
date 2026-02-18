@@ -159,7 +159,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         assert!(place.is_owned(ctxt));
         let owned_local = &mut self.0[place.local];
         if let OwnedPcgLocal::Allocated(expansions) = owned_local {
-            expansions.subtree_mut(&place.projection)
+            expansions.subtree_mut(&place.with_inherent_region(ctxt).projection)
         } else {
             None
         }

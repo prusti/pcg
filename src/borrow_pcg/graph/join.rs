@@ -228,7 +228,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let pre_loop_dot_graph = self.debug_graph(args.owned, ctxt);
 
         // p_roots
-        let live_roots = live_loop_places
+        let roots_of_live_places = live_loop_places
             .iter()
             .map(|p| (p, self.get_borrow_roots(p.place, loop_head, ctxt.ctxt)));
 
@@ -245,7 +245,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 .collect()
         }
 
-        let root_places = live_roots
+        let root_places = roots_of_live_places
             .map(|(p, roots)| (p, roots_to_places(&roots, &live_loop_places)))
             .collect::<Vec<_>>();
 
