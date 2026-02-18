@@ -66,8 +66,9 @@ impl<'tcx> OwnedPcg<'tcx> {
                         pcg_validity_assert!(
                             false,
                             [ctxt],
-                            "No capability for {}",
-                            place.display_string(ctxt.bc_ctxt())
+                            "No capability for {} in {}",
+                            place.display_string(ctxt.bc_ctxt()),
+                            self.display_string(ctxt)
                         );
                     } else {
                         // pcg_validity_assert!(
@@ -107,7 +108,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                 self[local] = OwnedPcgLocal::Unallocated;
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
-                self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(OwnedPcgNode::new(
+                self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(OwnedPcgNode::leaf(
                     OwnedCapability::Write,
                 )));
             }
@@ -120,7 +121,14 @@ impl<'tcx> OwnedPcg<'tcx> {
                     let Some(OwnedPcgNode::Leaf(leaf)) = self.owned_subtree_mut(place, ctxt) else {
                         return; // Validity assertion would fail
                     };
-                    if leaf.inherent_capability < cap {
+                    if cap.is_read() {
+                        pcg_validity_assert!(
+                            leaf.inherent_capability >= cap,
+                            "Expected read capability for owned place {place:?}"
+                        );
+                        return;
+                    }
+                    if leaf.inherent_capability != cap {
                         let Some(owned_cap) = cap.into_owned_capability() else {
                             panic!("Expected owned capability for owned place {place:?}");
                         };

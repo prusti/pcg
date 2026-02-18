@@ -6,7 +6,8 @@ use crate::{
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PositiveCapability, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PositiveCapability,
+        SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, DebugRepr, Place, maybe_old::MaybeLabelledPlace},
@@ -46,10 +47,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
             }
         }
     }
-    fn draw_borrow_pcg_edge(
-        &mut self,
-        edge: BorrowPcgEdgeRef<'tcx, 'a>,
-    ) {
+    fn draw_borrow_pcg_edge(&mut self, edge: BorrowPcgEdgeRef<'tcx, 'a>) {
         let validity_conditions = edge.conditions;
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref_edge) => {

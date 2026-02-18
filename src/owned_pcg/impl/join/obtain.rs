@@ -3,9 +3,7 @@ use crate::{
     borrow_pcg::state::{BorrowStateMutRef, BorrowsStateLike},
     error::PcgError,
     owned_pcg::{LocalExpansions, OwnedPcgNode, RepackOp, join::data::JoinOwnedData},
-    pcg::{
-        obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
-    },
+    pcg::obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, Place, SnapshotLocation, data_structures::HashSet},
 };
@@ -27,17 +25,11 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
     fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError<'tcx>> {
         match action {
             PcgAction::Borrow(action) => {
-                self.data.borrows.apply_action(
-                    action.clone(),
-                    self.ctxt,
-                )?;
+                self.data.borrows.apply_action(action.clone(), self.ctxt)?;
             }
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::Collapse(collapse) => {
-                    self.data.owned.perform_collapse_action(
-                        collapse,
-                        self.ctxt,
-                    );
+                    self.data.owned.perform_collapse_action(collapse, self.ctxt);
                     self.actions.push(action.kind);
                 }
                 RepackOp::RegainLoanedCapability(regained_capability) => {

@@ -29,7 +29,6 @@ use crate::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
         },
-        place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
@@ -502,8 +501,7 @@ impl<'pcg, 'mir: 'pcg, 'tcx: 'mir> HasBorrowCheckerCtxt<'mir, 'tcx>
 }
 
 impl RenderDebugGraph for AbsExpander<'_, '_, '_> {
-    fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
-    }
+    fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {}
 }
 
 impl<'tcx> AbsExpander<'_, '_, 'tcx> {

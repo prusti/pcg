@@ -4,8 +4,7 @@ use crate::{
     pcg::{
         BodyAnalysis, CapabilityConstraint, CapabilityRule, CapabilityRules, CapabilityVar, Choice,
         IntroduceConstraints, PcgArena, PositiveCapability, SymbolicCapability,
-        SymbolicCapabilityCtxt,
-        place_capabilities::{PlaceCapabilitiesReader}
+        SymbolicCapabilityCtxt, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::{mir, ty},
     utils::{

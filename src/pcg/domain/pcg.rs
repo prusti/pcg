@@ -315,7 +315,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         t: Triple<'tcx>,
         ctxt: Ctxt,
     ) {
-        self.owned.ensures(t, &mut self.borrow.graph(), ctxt);
+        self.owned.ensures(t, &self.borrow.graph(), ctxt);
     }
 
     pub(crate) fn join_owned_data(
@@ -378,8 +378,21 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
+    fn places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
+        let mut result = self.borrow.graph().places(ctxt);
+        result.extend(self.owned.places(ctxt));
+        result
+    }
+
     pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
+        for place in self.places(ctxt) {
+            result.push(Cow::Owned(format!(
+                "{}: {:?}",
+                place.display_string(ctxt),
+                self.owned.capability(place, &self.borrow.graph(), ctxt)
+            )));
+        }
         result.sort();
         result
     }

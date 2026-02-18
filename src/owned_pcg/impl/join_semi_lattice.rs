@@ -137,9 +137,18 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     {
         self.postorder(
             base_place,
-            &|place, expansion| ExpandedPlace::new(place, expansion.clone()),
+            &|place, node| match node {
+                OwnedPcgNode::Leaf(_) => vec![],
+                OwnedPcgNode::Internal(internal) => internal
+                    .iter()
+                    .map(|e| ExpandedPlace::new(place, e.expansion.without_data()))
+                    .collect(),
+            },
             ctxt,
         )
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     pub(crate) fn all_children_of<'a>(
@@ -178,27 +187,5 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             .into_iter()
             .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
             .collect()
-    }
-
-    pub(crate) fn perform_collapse_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
-        &mut self,
-        collapse: RepackCollapse<'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        let Some(subtree) = self.subtree_mut(&collapse.to.projection) else {
-            panic!(
-                "Expected subtree at projection {:?}",
-                collapse.to.projection
-            );
-        };
-        for expansion in subtree.expansions_mut() {
-            for (elem, elem_data) in expansion.expansion.elems_data_mut() {
-                if let Some(data) = elem_data {
-                    data.collapse(collapse.to, ctxt);
-                }
-            }
-        }
     }
 }

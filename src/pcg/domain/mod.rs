@@ -16,9 +16,7 @@ use crate::{
     action::AppliedActions,
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
-    pcg::{
-        ctxt::{AnalysisCtxt, HasSettings},
-    },
+    pcg::ctxt::{AnalysisCtxt, HasSettings},
     pcg_validity_assert,
     rustc_interface::{
         middle::mir::{self, BasicBlock},

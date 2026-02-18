@@ -16,11 +16,7 @@ use crate::{
     },
 };
 
-use super::{
-    Graph, GraphEdge, GraphNode, NodeId, NodeType,
-    grapher::Grapher,
-    node::IdLookup,
-};
+use super::{Graph, GraphEdge, GraphNode, NodeId, NodeType, grapher::Grapher, node::IdLookup};
 use crate::{
     borrow_pcg::edge::abstraction::AbstractionEdge, utils::place::maybe_old::MaybeLabelledPlace,
 };
@@ -258,7 +254,7 @@ impl<'a, 'tcx: 'a> Grapher<'a, 'tcx> for PcgGraphConstructor<'a, 'tcx> {
         )
     }
 
-    fn insert_abstraction(&mut self, abstraction: &AbstractionEdge<'tcx>){
+    fn insert_abstraction(&mut self, abstraction: &AbstractionEdge<'tcx>) {
         self.constructor.insert_abstraction(
             abstraction,
             GraphCapabilities::new(&self.summary, self.borrows_domain, self.ctxt),

@@ -1,7 +1,4 @@
-use crate::{
-    borrow_pcg::state::BorrowsState,
-    rustc_interface::middle::mir,
-};
+use crate::{borrow_pcg::state::BorrowsState, rustc_interface::middle::mir};
 
 pub(crate) struct JoinOwnedData<'a, 'pcg, 'tcx, T> {
     pub(crate) owned: T,

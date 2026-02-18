@@ -314,8 +314,7 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         &self,
         place_usages: &PlaceUsages<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
-    ) -> HashMap<Place<'tcx>, PositiveCapability>
-    {
+    ) -> HashMap<Place<'tcx>, PositiveCapability> {
         let initial_capabilities = &self.statements[0].states[EvalStmtPhase::PreOperands];
         let mut result = HashMap::default();
         for place_usage in place_usages.iter() {

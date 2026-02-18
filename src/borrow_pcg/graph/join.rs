@@ -1,5 +1,4 @@
 use crate::{
-    HasSettings,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
@@ -11,20 +10,13 @@ use crate::{
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsages,
     owned_pcg::OwnedPcg,
-    pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
-        ctxt::AnalysisCtxt,
-        place_capabilities::{
-            PlaceCapabilitiesReader
-        },
-    },
+    pcg::{BodyAnalysis, PcgNode, PcgNodeLike, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        DebugCtxt, DebugImgcat, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, PlaceLike,
-        SnapshotLocation,
+        DebugRepr, HasBorrowCheckerCtxt, SnapshotLocation,
         data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        display::DisplayWithCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
@@ -33,9 +25,9 @@ use crate::{
 };
 
 #[cfg(feature = "visualization")]
-use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
+use crate::visualization::generate_pcg_dot_graph;
 
-use super::{BorrowsGraph, borrows_imgcat_debug};
+use super::BorrowsGraph;
 
 pub(crate) struct JoinBorrowsArgs<'pcg, 'a, 'tcx> {
     pub(crate) self_block: BasicBlock,
@@ -100,8 +92,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             [ctxt],
             "Joining back edge from {other_block:?} to {self_block:?}"
         );
-        let old_self = self.clone();
-
         if let Some(used_places) = args.body_analysis.get_places_used_in_loop(self_block) {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
             pcg_validity_assert!(
@@ -262,7 +252,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let ConstructAbstractionGraphResult {
             graph: abstraction_graph,
             to_label,
-            capability_updates,
+            ..
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
             &root_places

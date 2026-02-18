@@ -8,7 +8,8 @@ use std::marker::PhantomData;
 
 use crate::{
     Weaken,
-    rustc_interface::middle::mir::{self, PlaceElem}, utils::PlaceLike,
+    rustc_interface::middle::mir::{self, PlaceElem},
+    utils::PlaceLike,
 };
 
 use crate::{

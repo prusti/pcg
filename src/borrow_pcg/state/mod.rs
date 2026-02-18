@@ -15,7 +15,7 @@ use crate::{
     },
     pcg::{
         CapabilityKind, CapabilityLike, PcgNodeWithPlace, SymbolicCapability,
-        place_capabilities::{PlaceCapabilitiesReader}
+        place_capabilities::PlaceCapabilitiesReader,
     },
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,

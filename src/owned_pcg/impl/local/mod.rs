@@ -13,26 +13,17 @@ use std::{
 };
 
 use crate::{
-    Weaken,
     borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, graph::BorrowsGraph},
     error::PcgUnsupportedError,
     owned_pcg::{RepackCollapse, RepackExpand, RepackGuide},
-    pcg::{
-        CapabilityKind, OwnedCapability,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    },
-    pcg_validity_assert,
+    pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::middle::mir,
-    utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet,
-    },
+    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
-use itertools::Itertools;
 
 use crate::{
     owned_pcg::RepackOp,
-    pcg::PositiveCapability,
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
@@ -77,7 +68,7 @@ impl<'tcx> OwnedPcgLocal<'tcx> {
         }
     }
     pub fn new(capability: OwnedCapability) -> Self {
-        Self::Allocated(LocalExpansions::new(OwnedPcgNode::new(capability)))
+        Self::Allocated(LocalExpansions::new(OwnedPcgNode::leaf(capability)))
     }
     pub fn is_unallocated(&self) -> bool {
         matches!(self, Self::Unallocated)
@@ -136,21 +127,45 @@ impl<'tcx> OwnedPcgLeafNode<'tcx> {
     }
 }
 
+pub trait InternalData<'tcx> {
+    type Data: Clone + Eq + Debug;
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub enum OwnedPcgNode<'tcx, InternalNode = OwnedPcgInternalNode<'tcx>> {
+pub struct Deep;
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Shallow<T = ()>(PhantomData<T>);
+
+impl<'tcx> InternalData<'tcx> for Deep {
+    type Data = OwnedPcgNode<'tcx>;
+}
+
+impl<'tcx, T: Clone + Eq + Debug> InternalData<'tcx> for Shallow<T> {
+    type Data = T;
+}
+
+pub(crate) type ShallowOwnedNode<'tcx> = OwnedPcgNode<'tcx, Shallow>;
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum OwnedPcgNode<'tcx, IData: InternalData<'tcx> = Deep> {
     Leaf(OwnedPcgLeafNode<'tcx>),
-    Internal(InternalNode),
+    Internal(OwnedPcgInternalNode<'tcx, IData>),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deref, DerefMut)]
-pub struct OwnedPcgInternalNode<'tcx> {
-    expansions: Vec<OwnedExpansion<'tcx>>,
+pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
+    expansions: Vec<OwnedExpansion<'tcx, IData>>,
 }
 
-impl<'tcx> OwnedPcgInternalNode<'tcx> {
-    pub(crate) fn new(expansions: Vec<OwnedExpansion<'tcx>>) -> Self {
-        assert!(!expansions.is_empty());
-        Self { expansions }
+impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
+    pub(crate) fn new(expansions: OwnedExpansion<'tcx, IData>) -> Self {
+        Self {
+            expansions: vec![expansions],
+        }
+    }
+    pub(crate) fn expansions(&self) -> &Vec<OwnedExpansion<'tcx, IData>> {
+        &self.expansions
     }
 }
 
@@ -177,6 +192,22 @@ pub struct LocalExpansions<'tcx> {
 }
 
 impl<'tcx> LocalExpansions<'tcx> {
+    pub(crate) fn places(
+        &self,
+        local: mir::Local,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> HashSet<Place<'tcx>> {
+        self.root
+            .traverse(
+                local.into(),
+                &|place, _expansion| place,
+                TraverseOrder::Postorder,
+                ctxt,
+            )
+            .into_iter()
+            .collect()
+    }
+
     pub(crate) fn new(root: OwnedPcgNode<'tcx>) -> Self {
         Self { root }
     }
@@ -206,18 +237,18 @@ impl<'tcx> LocalExpansions<'tcx> {
         let subtree = self.subtree_mut(&expand.from.projection).unwrap();
         match subtree {
             OwnedPcgNode::Leaf(leaf) => {
-                *subtree =
-                    OwnedPcgNode::Internal(OwnedPcgInternalNode::new(vec![OwnedExpansion::new(
-                        if expand.capability.is_read() {
-                            OwnedExpansionKind::Read
-                        } else {
-                            OwnedExpansionKind::Mutate
-                        },
-                        expand
-                            .from
-                            .expansion(expand.guide, ctxt)
-                            .map_data(|_| OwnedPcgNode::Leaf(*leaf)),
-                    )]))
+                let expansion_kind = if expand.capability.is_read() {
+                    OwnedExpansionKind::Read
+                } else {
+                    OwnedExpansionKind::Mutate
+                };
+                let expansion: PlaceExpansion<'tcx, OwnedPcgNode<'tcx>> = expand
+                    .from
+                    .expansion(expand.guide, ctxt)
+                    .map_data(|_| OwnedPcgNode::Leaf(*leaf));
+                let owned_expansion: OwnedExpansion<'tcx, Deep> =
+                    OwnedExpansion::new(expansion_kind, expansion);
+                *subtree = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(owned_expansion));
             }
             OwnedPcgNode::Internal(_) => todo!(),
         }
@@ -247,9 +278,22 @@ impl<'tcx> LocalExpansions<'tcx> {
     {
         self.preorder(
             Place::from(local),
-            &|place, expansion| ExpandedPlace::new(place, expansion.clone()),
+            &|place, node| {
+                node.as_internal()
+                    .map(|internal| {
+                        internal
+                            .expansions()
+                            .iter()
+                            .map(|e| ExpandedPlace::new(place, e.expansion.without_data()))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            },
             ctxt,
         )
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     pub(crate) fn places_to_collapse_to_for_obtain_of<'a>(
@@ -268,10 +312,13 @@ impl<'tcx> LocalExpansions<'tcx> {
         };
         tree.traverse(
             place,
-            &|place, _expansion| place,
+            &|place, node| if !node.is_leaf() { vec![place] } else { vec![] },
             TraverseOrder::Postorder,
             ctxt,
         )
+        .into_iter()
+        .flatten()
+        .collect()
     }
 }
 
@@ -291,13 +338,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         }
     }
 
-    pub(crate) fn as_internal_node(&self) -> Option<&OwnedPcgInternalNode<'tcx>> {
-        match self {
-            Self::Leaf(_) => None,
-            Self::Internal(internal) => Some(internal),
-        }
-    }
-
     pub(crate) fn insert_expansion(
         &mut self,
         kind: OwnedExpansionKind,
@@ -307,18 +347,13 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         let tree = self.subtree_mut(projection).unwrap();
         match tree {
             OwnedPcgNode::Leaf(leaf) => {
-                *self =
-                    OwnedPcgNode::Internal(OwnedPcgInternalNode::new(vec![OwnedExpansion::new(
-                        kind,
-                        expansion.map_data(|_| OwnedPcgNode::Leaf(*leaf)),
-                    )]));
+                *self = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
+                    kind,
+                    expansion.map_data(|_| OwnedPcgNode::Leaf(*leaf)),
+                )));
             }
             OwnedPcgNode::Internal(_) => todo!(),
         }
-    }
-
-    pub(crate) fn new(inherent_capability: OwnedCapability) -> Self {
-        Self::Leaf(OwnedPcgLeafNode::new(inherent_capability))
     }
 
     pub(crate) fn expansions_mut(&mut self) -> Vec<&mut OwnedExpansion<'tcx>> {
@@ -331,7 +366,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     pub(crate) fn preorder<'a, T>(
         &self,
         place: Place<'tcx>,
-        f: &impl Fn(Place<'tcx>, &PlaceExpansion<'tcx>) -> T,
+        f: &impl Fn(Place<'tcx>, ShallowOwnedNode<'tcx>) -> T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<T>
     where
@@ -343,7 +378,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     pub(crate) fn postorder<'a, T>(
         &self,
         place: Place<'tcx>,
-        f: &impl Fn(Place<'tcx>, &PlaceExpansion<'tcx>) -> T,
+        f: &impl Fn(Place<'tcx>, ShallowOwnedNode<'tcx>) -> T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<T>
     where
@@ -375,45 +410,73 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     pub(crate) fn traverse<'a, T>(
         &self,
         place: Place<'tcx>,
-        f: &impl Fn(Place<'tcx>, &PlaceExpansion<'tcx>) -> T,
+        f: &impl Fn(Place<'tcx>, OwnedPcgNode<'tcx, Shallow>) -> T,
         order: TraverseOrder,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<T>
     where
         'tcx: 'a,
     {
-        let OwnedPcgNode::Internal(internal) = self else {
-            return vec![];
-        };
-        let mut descendants: Vec<T> = internal
-            .expansions
-            .iter()
-            .flat_map(|e| {
-                e.expansion
-                    .data()
+        match self {
+            OwnedPcgNode::Leaf(owned_pcg_leaf_node) => vec![f(
+                place,
+                OwnedPcgNode::leaf(owned_pcg_leaf_node.inherent_capability),
+            )],
+            OwnedPcgNode::Internal(internal) => {
+                let mut descendants: Vec<T> = internal
+                    .expansions
                     .iter()
-                    .flat_map(|(elem, data)| {
-                        let expanded_place = place.project_deeper(*elem, ctxt).unwrap();
-                        data.traverse(expanded_place, f, order, ctxt)
+                    .flat_map(|e| {
+                        e.expansion
+                            .data()
+                            .iter()
+                            .flat_map(|(elem, data)| {
+                                let expanded_place = place.project_deeper(*elem, ctxt).unwrap();
+                                data.traverse(expanded_place, f, order, ctxt)
+                            })
+                            .collect::<Vec<_>>()
                     })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let mut this_expansion = internal
-            .expansions
-            .iter()
-            .map(|e| f(place, &e.expansion.without_data()))
-            .collect::<Vec<_>>();
-        match order {
-            TraverseOrder::Postorder => {
-                descendants.extend(this_expansion);
-                descendants
-            }
-            TraverseOrder::Preorder => {
-                this_expansion.extend(descendants);
-                this_expansion
+                    .collect();
+                let mut this_expansion = internal
+                    .expansions
+                    .iter()
+                    .map(|e| {
+                        f(
+                            place,
+                            OwnedPcgNode::internal(e.kind, e.expansion.without_data()),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                match order {
+                    TraverseOrder::Postorder => {
+                        descendants.extend(this_expansion);
+                        descendants
+                    }
+                    TraverseOrder::Preorder => {
+                        this_expansion.extend(descendants);
+                        this_expansion
+                    }
+                }
             }
         }
+    }
+}
+
+impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
+    pub(crate) fn is_leaf(&self) -> bool {
+        matches!(self, Self::Leaf(_))
+    }
+    pub(crate) fn leaf(inherent_capability: OwnedCapability) -> Self {
+        Self::Leaf(OwnedPcgLeafNode::new(inherent_capability))
+    }
+    pub(crate) fn internal(
+        kind: OwnedExpansionKind,
+        place_expansion: PlaceExpansion<'tcx, IData::Data>,
+    ) -> Self {
+        Self::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
+            kind,
+            place_expansion,
+        )))
     }
 }
 
@@ -424,23 +487,20 @@ pub(crate) enum OwnedExpansionKind {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct OwnedExpansion<'tcx, Data = OwnedPcgNode<'tcx>> {
+pub struct OwnedExpansion<'tcx, IData: InternalData<'tcx> = Deep> {
     kind: OwnedExpansionKind,
-    pub(crate) expansion: PlaceExpansion<'tcx, Data>,
-    _marker: PhantomData<Data>,
+    pub(crate) expansion: PlaceExpansion<'tcx, IData::Data>,
 }
-
-pub(crate) type ShallowOwnedExpansion<'tcx> = OwnedExpansion<'tcx, ()>;
 
 pub(crate) struct LeafOwnedExpansion<'tcx> {
     pub(crate) base_place: Place<'tcx>,
-    expansion: OwnedExpansion<'tcx, OwnedCapability>,
+    expansion: OwnedExpansion<'tcx, Shallow<OwnedCapability>>,
 }
 
 impl<'tcx> LeafOwnedExpansion<'tcx> {
     pub(crate) fn new(
         base_place: Place<'tcx>,
-        expansion: OwnedExpansion<'tcx, OwnedCapability>,
+        expansion: OwnedExpansion<'tcx, Shallow<OwnedCapability>>,
     ) -> Self {
         Self {
             base_place,
@@ -449,16 +509,25 @@ impl<'tcx> LeafOwnedExpansion<'tcx> {
     }
 }
 
-impl<'tcx, Data: 'tcx> OwnedExpansion<'tcx, Data> {
-    pub(crate) fn new(kind: OwnedExpansionKind, expansion: PlaceExpansion<'tcx, Data>) -> Self {
-        Self {
-            kind,
-            expansion,
-            _marker: PhantomData,
-        }
+impl<'tcx, IData: InternalData<'tcx>> OwnedExpansion<'tcx, IData> {
+    pub(crate) fn new(
+        kind: OwnedExpansionKind,
+        expansion: PlaceExpansion<'tcx, IData::Data>,
+    ) -> Self {
+        Self { kind, expansion }
     }
-    pub(crate) fn without_data(&self) -> ShallowOwnedExpansion<'tcx> {
-        ShallowOwnedExpansion::new(self.kind, self.expansion.without_data())
+
+    pub(crate) fn without_data(&self) -> OwnedExpansion<'tcx, Shallow> {
+        OwnedExpansion::new(self.kind, self.expansion.without_data())
+    }
+}
+
+impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
+    pub(crate) fn as_internal(&self) -> Option<&OwnedPcgInternalNode<'tcx, IData>> {
+        match self {
+            Self::Leaf(_) => None,
+            Self::Internal(internal) => Some(internal),
+        }
     }
 }
 
@@ -605,6 +674,9 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
+        if self == other {
+            return vec![];
+        }
         match (self, other) {
             (OwnedPcgNode::Leaf(leaf), OwnedPcgNode::Leaf(other_leaf)) => {
                 if leaf.inherent_capability < other_leaf.inherent_capability {
@@ -624,10 +696,62 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 vec![]
             }
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other_internal)) => {
-                todo!()
+                todo!("Join {:?} and {:?}", internal, other_internal);
             }
-            _ => todo!(),
+            (OwnedPcgNode::Internal(internal), OwnedPcgNode::Leaf(other_leaf)) => {
+                vec![]
+            }
+            (OwnedPcgNode::Leaf(leaf), other) => {
+                other.repack_ops_to_expand_from(base_place, leaf.inherent_capability, ctxt)
+            }
         }
+    }
+
+    pub(crate) fn repack_ops_to_expand_from<'a>(
+        &self,
+        base_place: Place<'tcx>,
+        base_inherent_capability: OwnedCapability,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Vec<RepackOp<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        self.traverse(
+            base_place,
+            &|place, node| match node {
+                OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
+                    if owned_pcg_leaf_node.inherent_capability < base_inherent_capability {
+                        vec![RepackOp::weaken(
+                            place,
+                            owned_pcg_leaf_node.inherent_capability.into(),
+                            base_inherent_capability.into(),
+                        )]
+                    } else {
+                        vec![]
+                    }
+                }
+                OwnedPcgNode::Internal(expansions) => expansions
+                    .iter()
+                    .map(|e| {
+                        RepackOp::expand(
+                            place,
+                            e.expansion.guide().copied(),
+                            if e.kind == OwnedExpansionKind::Read {
+                                PositiveCapability::Read
+                            } else {
+                                PositiveCapability::Exclusive
+                            },
+                            ctxt,
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            },
+            TraverseOrder::Preorder,
+            ctxt,
+        )
+        .into_iter()
+        .flatten()
+        .collect()
     }
 
     pub(crate) fn leaf_expansions<'a>(
@@ -665,7 +789,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                     .map(|e| e.collapse(base_place, ctxt))
                     .collect::<Vec<_>>();
                 let result = CollapseResult::join_all(ops);
-                *self = OwnedPcgNode::new(result.result_capability);
+                *self = OwnedPcgNode::leaf(result.result_capability);
                 Some(result)
             }
         }
@@ -717,10 +841,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
 
     pub(crate) fn contains_projection_to(&self, projection: &[mir::PlaceElem<'tcx>]) -> bool {
         self.subtree(projection).is_some()
-    }
-
-    pub(crate) fn is_leaf(&self) -> bool {
-        matches!(self, Self::Leaf(_))
     }
 
     pub(crate) fn leaf_places<'a>(

@@ -9,7 +9,8 @@ use crate::{
         graph::{Conditioned, frozen::FrozenGraphRef},
     },
     pcg::{
-        PcgNode, PcgRefLike, obtain::{PlaceCollapser, PlaceObtainer}
+        PcgNode, PcgRefLike,
+        obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
         DataflowCtxt, DebugCtxt, HasPlace, Place,

@@ -133,6 +133,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), level = "warn")]
     pub(crate) fn apply(
         mut self,
         object: AnalysisObject<'_, 'tcx>,

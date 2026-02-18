@@ -7,7 +7,7 @@
 use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
-    borrow_pcg::graph::BorrowsGraph,
+    borrow_pcg::{graph::BorrowsGraph, region_projection::HasRegions},
     owned_pcg::OwnedPcgNode,
     pcg::{
         CapabilityKind, CapabilityLike, OwnedCapability, PositiveCapability,
@@ -17,7 +17,11 @@ use crate::{
         index::{Idx, IndexVec},
         middle::mir::{self, Local, RETURN_PLACE},
     },
-    utils::{DebugCtxt, HasCompilerCtxt, HasLocals, Place, PlaceLike, data_structures::HashSet},
+    utils::{
+        DebugCtxt, HasCompilerCtxt, HasLocals, Place, PlaceLike,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 use derive_more::{Deref, DerefMut};
 
@@ -27,10 +31,119 @@ use crate::{owned_pcg::OwnedPcgLocal, utils::CompilerCtxt};
 /// The expansions of all locals.
 pub struct OwnedPcg<'tcx>(IndexVec<Local, OwnedPcgLocal<'tcx>>);
 
+impl<'tcx> OwnedPcg<'tcx> {
+    pub(crate) fn places(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> HashSet<Place<'tcx>> {
+        self.0
+            .iter_enumerated()
+            .filter(|(_, c)| !c.is_unallocated())
+            .flat_map(|(local, e)| e.get_allocated().places(local, ctxt))
+            .collect()
+    }
+}
+
 impl Debug for OwnedPcg<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let v: Vec<_> = self.0.iter().filter(|c| !c.is_unallocated()).collect();
         v.fmt(f)
+    }
+}
+
+fn child_nodes<'a, 'tcx: 'a, 'node, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
+    node: &'node OwnedPcgNode<'tcx>,
+    place: Place<'tcx>,
+    ctxt: Ctxt,
+) -> Vec<(Place<'tcx>, &'node OwnedPcgNode<'tcx>)> {
+    let OwnedPcgNode::Internal(internal) = node else {
+        return vec![];
+    };
+    internal
+        .expansions()
+        .into_iter()
+        .flat_map(|expansion| {
+            expansion
+                .expansion
+                .data()
+                .into_iter()
+                .map(|(elem, child)| {
+                    let child_place = place.project_deeper(elem, ctxt).unwrap_or_else(|err| {
+                        panic!(
+                            "Failed to project place {} with element {elem:?}: {err:?}",
+                            place.display_string(ctxt)
+                        )
+                    });
+                    (child_place, child)
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn push_subtree_lines<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
+    node: &OwnedPcgNode<'tcx>,
+    place: Place<'tcx>,
+    ctxt: Ctxt,
+    prefix: &str,
+    is_last: bool,
+    lines: &mut Vec<String>,
+) {
+    let connector = if is_last { "`-- " } else { "|-- " };
+    lines.push(format!(
+        "{prefix}{connector}{} ({:?})",
+        place.display_string(ctxt),
+        node.inherent_capability()
+    ));
+
+    let child_prefix = format!("{prefix}{}", if is_last { "    " } else { "|   " });
+    let children = child_nodes(node, place, ctxt);
+    let children_len = children.len();
+    for (index, (child_place, child_node)) in children.into_iter().enumerate() {
+        push_subtree_lines(
+            child_node,
+            child_place,
+            ctxt,
+            &child_prefix,
+            index + 1 == children_len,
+            lines,
+        );
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy> DisplayWithCtxt<Ctxt>
+    for OwnedPcg<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        let mut lines = vec!["OwnedPcg".to_owned()];
+        let allocated_locals = self
+            .0
+            .iter_enumerated()
+            .filter_map(|(local, local_expansions)| {
+                if local_expansions.is_unallocated() {
+                    None
+                } else {
+                    Some((local, local_expansions))
+                }
+            })
+            .collect::<Vec<_>>();
+
+        if allocated_locals.is_empty() {
+            lines.push("`-- <empty>".to_owned());
+            return DisplayOutput::Text(lines.join("\n").into());
+        }
+
+        let allocated_len = allocated_locals.len();
+        for (index, (local, local_expansions)) in allocated_locals.into_iter().enumerate() {
+            let root_place: Place<'tcx> = local.into();
+            push_subtree_lines(
+                local_expansions.get_allocated(),
+                root_place,
+                ctxt,
+                "",
+                index + 1 == allocated_len,
+                &mut lines,
+            );
+        }
+
+        DisplayOutput::Text(lines.join("\n").into())
     }
 }
 
@@ -62,7 +175,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         assert!(place.is_owned(ctxt));
         let owned_local = &self.0[place.local];
         if let OwnedPcgLocal::Allocated(expansions) = owned_local {
-            expansions.subtree(&place.projection)
+            expansions.subtree(&place.with_inherent_region(ctxt).projection)
         } else {
             None
         }
@@ -81,6 +194,11 @@ impl<'tcx> OwnedPcg<'tcx> {
                 return CapabilityKind::None(());
             };
             let mut capability: CapabilityKind = owned_subtree.inherent_capability().into();
+            for lifetime_projection in place.lifetime_projections(ctxt) {
+                if !borrows.contains(lifetime_projection, ctxt) {
+                    return CapabilityKind::ShallowExclusive;
+                }
+            }
             for borrow_place in borrows.places(ctxt) {
                 if place.is_prefix_of(borrow_place) {
                     let borrow_capability = borrows.capability(borrow_place, ctxt).unwrap();
