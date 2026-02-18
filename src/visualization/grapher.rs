@@ -14,10 +14,6 @@ use crate::{
 
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
 
-pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
-    fn get(&self, node: Place<'tcx>) -> Option<CapabilityKind>;
-}
-
 pub(super) trait Grapher<'a, 'tcx: 'a> {
     fn insert_maybe_labelled_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId;
     fn insert_abstraction(&mut self, abstraction: &AbstractionEdge<'tcx>);

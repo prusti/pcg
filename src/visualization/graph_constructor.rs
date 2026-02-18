@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     Graph, GraphEdge, GraphNode, NodeId, NodeType,
-    grapher::{CapabilityGetter, Grapher},
+    grapher::Grapher,
     node::IdLookup,
 };
 use crate::{

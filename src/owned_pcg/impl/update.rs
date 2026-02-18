@@ -63,6 +63,13 @@ impl<'tcx> OwnedPcg<'tcx> {
                 }
                 if place.is_owned(ctxt) {
                     if self.capability(place, borrows, ctxt).is_none() {
+                        pcg_validity_assert!(
+                            false,
+                            [ctxt],
+                            "No capability for {}",
+                            place.display_string(ctxt.bc_ctxt())
+                        );
+                    } else {
                         // pcg_validity_assert!(
                         //     matches!(
                         //         current_cap.partial_cmp(&required_cap),
@@ -70,13 +77,6 @@ impl<'tcx> OwnedPcg<'tcx> {
                         //     ),
                         //     "Capability {current_cap:?} is not >= {required_cap:?} for {place:?}"
                         // )
-                    } else {
-                        pcg_validity_assert!(
-                            false,
-                            [ctxt],
-                            "No capability for {}",
-                            place.display_string(ctxt.bc_ctxt())
-                        );
                     }
                 }
             }

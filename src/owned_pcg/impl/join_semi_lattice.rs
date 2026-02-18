@@ -12,7 +12,7 @@ use crate::{
     },
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
+        ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
         join::data::JoinOwnedData,
     },
     pcg::{
@@ -33,6 +33,24 @@ use crate::{
     rustc_interface::middle::mir,
 };
 
+impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>> {
+    pub(crate) fn join(
+        &mut self,
+        local: mir::Local,
+        other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        Ok(self.owned.join(
+            local,
+            other.owned,
+            |place| self.borrows.graph.capability(place, ctxt).is_some(),
+            ctxt,
+        ))
+    }
+}
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
     #[tracing::instrument(skip(self, other, ctxt), fields(self.block = ?self.block, other.block = ?other.block), level = "warn")]
     pub(crate) fn join(
@@ -47,7 +65,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
         match (&mut self.owned, &mut other.owned) {
             (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
             (OwnedPcgLocal::Allocated(to_places), OwnedPcgLocal::Allocated(from_places)) => {
-                let self_allocated = JoinOwnedData {
+                let mut self_allocated = JoinOwnedData {
                     owned: to_places,
                     borrows: self.borrows,
                     block: self.block,
@@ -58,7 +76,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     borrows: other.borrows,
                     block: other.block,
                 };
-                todo!()
+                self_allocated.join(local, other_allocated, ctxt)
             }
             (OwnedPcgLocal::Allocated(expansions), OwnedPcgLocal::Unallocated) => {
                 self.borrows.label_place(

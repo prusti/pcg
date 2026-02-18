@@ -19,10 +19,9 @@ use crate::{
     owned_pcg::{RepackCollapse, RepackGuide},
     pcg::{
         CapabilityKind, OwnedCapability,
-        place_capabilities::{
-            PlaceCapabilities, PlaceCapabilitiesReader,
-        },
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet,
@@ -181,6 +180,19 @@ impl<'tcx> LocalExpansions<'tcx> {
         Self { root }
     }
 
+    pub(crate) fn join<'a>(
+        &mut self,
+        local: mir::Local,
+        other: &mut Self,
+        is_borrowed: impl Fn(Place<'tcx>) -> bool,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Vec<RepackOp<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        self.root.join(local.into(), &mut other.root, is_borrowed, ctxt)
+    }
+
     pub(crate) fn expansions_shortest_first<'a>(
         &self,
         local: mir::Local,
@@ -204,7 +216,17 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        let tree = self.root.subtree(place.projection).unwrap();
+        if !place.is_owned(ctxt.ctxt()) {
+            return vec![];
+        }
+        pcg_validity_assert!(
+            self.root.contains_projection_to(place.projection),
+            "Place {} is not in the local expansions",
+            place.display_string(ctxt.ctxt())
+        );
+        let Some(tree) = self.root.subtree(place.projection) else {
+            return vec![];
+        };
         tree.traverse(
             place,
             &|place, _expansion| place,
@@ -536,13 +558,35 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &mut self,
         base_place: Place<'tcx>,
         other: &mut OwnedPcgNode<'tcx>,
-        is_borrowed: impl Fn(Place<'tcx>) -> Option<mir::BorrowKind>,
+        is_borrowed: impl Fn(Place<'tcx>) -> bool,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
         'tcx: 'a,
     {
-        todo!()
+        match (self, other) {
+            (OwnedPcgNode::Leaf(leaf), OwnedPcgNode::Leaf(other_leaf)) => {
+                if leaf.inherent_capability < other_leaf.inherent_capability {
+                    let mut result = vec![];
+                    leaf.inherent_capability = other_leaf.inherent_capability;
+                    if !is_borrowed(base_place) {
+                        result.push(RepackOp::weaken(
+                            base_place,
+                            leaf.inherent_capability.into(),
+                            other_leaf.inherent_capability.into(),
+                        ))
+                    };
+                    return result;
+                } else if leaf.inherent_capability > other_leaf.inherent_capability {
+                    other_leaf.inherent_capability = leaf.inherent_capability;
+                }
+                vec![]
+            }
+            (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other_internal)) => {
+                todo!()
+            }
+            _ => todo!(),
+        }
     }
 
     pub(crate) fn leaf_expansions<'a>(

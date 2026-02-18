@@ -194,43 +194,6 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
 
-    fn restore_capability_to_leaf_places(
-        &mut self,
-        parent_place: Option<Place<'tcx>>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        let mut leaf_places = self.leaf_places(ctxt.bc_ctxt());
-        tracing::debug!(
-            "Leaf places: {}",
-            leaf_places.display_string(ctxt.bc_ctxt())
-        );
-        // leaf_places.retain(|p| {
-        //     self.capabilities().get(*p, ctxt) == Some(PositiveCapability::Read.into())
-        //         && !p.projects_shared_ref(ctxt)
-        //         && p.parent_place()
-        //             .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())
-        // });
-        tracing::debug!(
-            "Restoring capability to leaf places: {}",
-            leaf_places.display_string(ctxt.bc_ctxt())
-        );
-        for place in leaf_places {
-            if let Some(parent_place) = parent_place
-                && !parent_place.is_prefix_of(place)
-            {
-                continue;
-            }
-            let action = PcgAction::restore_capability(
-                place,
-                PositiveCapability::Exclusive,
-                "restore capability to leaf place",
-                ctxt,
-            );
-            self.apply_action(action)?;
-        }
-        Ok(())
-    }
-
     /// Collapses owned places and performs appropriate updates to lifetime projections.
     fn collapse_owned_places_and_lifetime_projections_to(
         &mut self,

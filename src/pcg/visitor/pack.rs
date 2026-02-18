@@ -126,7 +126,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     ) -> Result<(), PcgError<'tcx>> {
         let debug_iteration_limit = 10000;
         let mut iteration = 0;
-        self.restore_capability_to_leaf_places(for_place, self.ctxt)?;
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
