@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use crate::{
     Weaken,
-    rustc_interface::middle::mir::{self, PlaceElem},
+    rustc_interface::middle::mir::{self, PlaceElem}, utils::PlaceLike,
 };
 
 use crate::{
@@ -22,18 +22,175 @@ use crate::{
 use serde_derive::Serialize;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum RepackGuide<Local = mir::Local> {
-    Downcast(Option<Symbol>, VariantIdx),
-    ConstantIndex(ConstantIndex),
-    Index(Local),
-    Subslice { from: u64, to: u64, from_end: bool },
+pub enum RepackGuide<Local = mir::Local, D = ()> {
+    Downcast(Downcast, D),
+    ConstantIndex(ConstantIndex, D),
+    Index(Local, D),
+    Subslice {
+        from: u64,
+        to: u64,
+        from_end: bool,
+        data: D,
+    },
+}
+
+impl<'tcx, D> RepackGuide<mir::Local, D> {
+    pub(crate) fn try_map_data<'slf, R>(
+        &'slf self,
+        f: impl Fn(&'slf D) -> Option<R>,
+    ) -> Option<RepackGuide<mir::Local, R>> {
+        match self {
+            RepackGuide::Index(local, data) => Some(RepackGuide::Index(*local, f(data)?)),
+            RepackGuide::Downcast(downcast, data) => {
+                Some(RepackGuide::Downcast(*downcast, f(data)?))
+            }
+            RepackGuide::ConstantIndex(constant_index, data) => {
+                Some(RepackGuide::ConstantIndex(*constant_index, f(data)?))
+            }
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => Some(RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: f(data)?,
+            }),
+        }
+    }
+
+    pub(crate) fn map_data<'slf, R>(
+        &'slf self,
+        f: impl Fn(&'slf D) -> R,
+    ) -> RepackGuide<mir::Local, R> {
+        match self {
+            RepackGuide::Index(local, data) => RepackGuide::Index(*local, f(data)),
+            RepackGuide::Downcast(downcast, data) => RepackGuide::Downcast(*downcast, f(data)),
+            RepackGuide::ConstantIndex(constant_index, data) => {
+                RepackGuide::ConstantIndex(*constant_index, f(data))
+            }
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: f(data),
+            },
+        }
+    }
+    pub(crate) fn elem_data_mut(&mut self) -> (PlaceElem<'tcx>, &mut D) {
+        match self {
+            RepackGuide::Index(local, data) => (PlaceElem::Index(*local), data),
+            RepackGuide::Downcast(downcast, data) => (
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx),
+                data,
+            ),
+            RepackGuide::ConstantIndex(constant_index, data) => (
+                PlaceElem::ConstantIndex {
+                    offset: constant_index.offset,
+                    min_length: constant_index.min_length,
+                    from_end: constant_index.from_end,
+                },
+                data,
+            ),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => (
+                PlaceElem::Subslice {
+                    from: *from,
+                    to: *to,
+                    from_end: *from_end,
+                },
+                data,
+            ),
+        }
+    }
+    pub(crate) fn without_data(&self) -> RepackGuide<mir::Local, ()> {
+        self.map_data(|_| ())
+    }
+    pub(crate) fn elem_data(&self) -> (PlaceElem<'tcx>, &D) {
+        match self {
+            RepackGuide::Index(local, data) => (PlaceElem::Index(*local), data),
+            RepackGuide::Downcast(downcast, data) => (
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx),
+                data,
+            ),
+            RepackGuide::ConstantIndex(constant_index, data) => (
+                PlaceElem::ConstantIndex {
+                    offset: constant_index.offset,
+                    min_length: constant_index.min_length,
+                    from_end: constant_index.from_end,
+                },
+                data,
+            ),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => (
+                PlaceElem::Subslice {
+                    from: *from,
+                    to: *to,
+                    from_end: *from_end,
+                },
+                data,
+            ),
+        }
+    }
+}
+
+impl RepackGuide {
+    fn downcast(symbol: Option<Symbol>, variant_idx: VariantIdx) -> Self {
+        Self::Downcast(
+            Downcast {
+                symbol,
+                variant_idx,
+            },
+            (),
+        )
+    }
+    fn constant_index(offset: u64, min_length: u64, from_end: bool) -> Self {
+        Self::ConstantIndex(
+            ConstantIndex {
+                offset,
+                min_length,
+                from_end,
+            },
+            (),
+        )
+    }
+
+    fn subslice(from: u64, to: u64, from_end: bool) -> Self {
+        Self::Subslice {
+            from,
+            to,
+            from_end,
+            data: (),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct Downcast {
+    pub(crate) symbol: Option<Symbol>,
+    pub(crate) variant_idx: VariantIdx,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
-                RepackGuide::Index(local) => {
+                RepackGuide::Index(local, _) => {
                     format!("index with local {}", (*local).display_string(ctxt))
                 }
                 _ => format!("{self:?}"),
@@ -46,16 +203,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
 impl From<RepackGuide> for PlaceElem<'_> {
     fn from(val: RepackGuide) -> Self {
         match val {
-            RepackGuide::Index(local) => PlaceElem::Index(local),
-            RepackGuide::Downcast(symbol, variant_idx) => PlaceElem::Downcast(symbol, variant_idx),
-            RepackGuide::ConstantIndex(constant_index) => PlaceElem::ConstantIndex {
+            RepackGuide::Index(local, _) => PlaceElem::Index(local),
+            RepackGuide::Downcast(downcast, _) => {
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx)
+            }
+            RepackGuide::ConstantIndex(constant_index, _) => PlaceElem::ConstantIndex {
                 offset: constant_index.offset,
                 min_length: constant_index.min_length,
                 from_end: constant_index.from_end,
             },
-            RepackGuide::Subslice { from, to, from_end } => {
-                PlaceElem::Subslice { from, to, from_end }
-            }
+            RepackGuide::Subslice {
+                from, to, from_end, ..
+            } => PlaceElem::Subslice { from, to, from_end },
         }
     }
 }
@@ -64,21 +223,17 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
     type Error = ();
     fn try_from(elem: PlaceElem<'_>) -> Result<Self, Self::Error> {
         match elem {
-            PlaceElem::Index(local) => Ok(RepackGuide::Index(local)),
+            PlaceElem::Index(local) => Ok(RepackGuide::Index(local, ())),
             PlaceElem::Downcast(symbol, variant_idx) => {
-                Ok(RepackGuide::Downcast(symbol, variant_idx))
+                Ok(RepackGuide::downcast(symbol, variant_idx))
             }
             PlaceElem::ConstantIndex {
                 offset,
                 min_length,
                 from_end,
-            } => Ok(RepackGuide::ConstantIndex(ConstantIndex {
-                offset,
-                min_length,
-                from_end,
-            })),
+            } => Ok(RepackGuide::constant_index(offset, min_length, from_end)),
             PlaceElem::Subslice { from, to, from_end } => {
-                Ok(RepackGuide::Subslice { from, to, from_end })
+                Ok(RepackGuide::subslice(from, to, from_end))
             }
             _ => Err(()),
         }

@@ -33,7 +33,7 @@ use crate::{
     },
     rustc_interface::middle::mir::Location,
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCtxt, OutputMode},
         html::Html,
     },
@@ -45,8 +45,6 @@ use std::{
     io::{self},
     path::Path,
 };
-
-use graph_constructor::BorrowsGraphConstructor;
 
 use self::{
     dot_graph::{
@@ -389,23 +387,10 @@ impl<'a> Graph<'a> {
     }
 }
 
-pub(crate) fn generate_borrows_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    capabilities: &'pcg impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-    borrows_domain: &'pcg BorrowsGraph<'tcx>,
-) -> io::Result<String> {
-    let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
-    let graph: Graph<'pcg> = constructor.construct_graph();
-    let mut buf = vec![];
-    let drawer = GraphDrawer::new(&mut buf, None);
-    drawer.draw(&graph, ctxt)?;
-    Ok(String::from_utf8(buf).unwrap())
-}
-
 pub(crate) fn generate_pcg_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
     pcg: PcgRef<'pcg, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    location: Location,
+    location: Option<Location>,
 ) -> io::Result<String> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
@@ -421,7 +406,7 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     location: Location,
     file_path: &Path,
 ) -> io::Result<()> {
-    let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
+    let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), Some(location));
     let graph = constructor.construct_graph();
     let dot_file = File::create(file_path).unwrap();
     let ctxt_file = File::create(file_path.with_extension("json")).unwrap();

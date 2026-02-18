@@ -196,7 +196,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
-        self.expansion_places(expansion, ctxt)
+        let mut places = Vec::new();
+        for (elem, _) in expansion.elems_data() {
+            let place = self.project_deeper(elem, ctxt)?;
+            places.push(place);
+        }
+        Ok(places)
     }
 }
 
@@ -342,7 +347,7 @@ impl<'tcx> Place<'tcx> {
         if let Some(guide) = guide {
             guide.into()
         } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::Deref
+            PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
                 ty::TyKind::Adt(adt_def, substs) => {
@@ -350,7 +355,7 @@ impl<'tcx> Place<'tcx> {
                         Some(v) => adt_def.variant(v),
                         None => adt_def.non_enum_variant(),
                     };
-                    PlaceExpansion::Fields(
+                    PlaceExpansion::fields(
                         variant
                             .fields
                             .iter()
@@ -359,7 +364,7 @@ impl<'tcx> Place<'tcx> {
                             .collect(),
                     )
                 }
-                ty::TyKind::Tuple(tys) => PlaceExpansion::Fields(
+                ty::TyKind::Tuple(tys) => PlaceExpansion::fields(
                     tys.iter()
                         .enumerate()
                         .map(|(i, ty)| (i.into(), ty))
@@ -368,21 +373,6 @@ impl<'tcx> Place<'tcx> {
                 _ => unreachable!("Unexpected type: {:?}", self.ty(ctxt).ty),
             }
         }
-    }
-
-    pub(crate) fn expansion_places<'a>(
-        self,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        let mut places = Vec::new();
-        for elem in expansion.elems() {
-            places.push(self.project_deeper(elem, ctxt)?);
-        }
-        Ok(places)
     }
 
     pub(crate) fn base_lifetime_projection<'a>(

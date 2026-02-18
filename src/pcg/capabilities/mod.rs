@@ -1,6 +1,8 @@
 pub(crate) mod capability_kind;
+pub(crate) mod owned;
 
 pub use capability_kind::*;
+pub(crate) use owned::*;
 
 use crate::{
     pcg_validity_assert,
@@ -338,6 +340,12 @@ pub enum SymbolicCapability {
     Variable(CapabilityVar),
 }
 
+impl From<OwnedCapability> for SymbolicCapability {
+    fn from(cap: OwnedCapability) -> Self {
+        SymbolicCapability::Concrete(cap.into())
+    }
+}
+
 impl From<PositiveCapability> for SymbolicCapability {
     fn from(cap: PositiveCapability) -> Self {
         SymbolicCapability::Concrete(cap.into_capability_kind())
@@ -359,12 +367,13 @@ impl SymbolicCapability {
 }
 
 mod private {
-    use crate::pcg::{CapabilityKind, PositiveCapability};
+    use crate::pcg::{CapabilityKind, OwnedCapability, PositiveCapability};
 
     pub trait CapabilityLike<NoCapability = ()>:
         std::fmt::Debug
         + Copy
         + PartialEq
+        + From<OwnedCapability>
         + From<PositiveCapability>
         + From<CapabilityKind<NoCapability>>
         + 'static

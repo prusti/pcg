@@ -7,15 +7,17 @@
 use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
+    borrow_pcg::graph::BorrowsGraph,
+    owned_pcg::OwnedPcgNode,
     pcg::{
-        PositiveCapability,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
+        CapabilityKind, CapabilityLike, OwnedCapability, PositiveCapability,
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{
         index::{Idx, IndexVec},
         middle::mir::{self, Local, RETURN_PLACE},
     },
-    utils::{HasCompilerCtxt, HasLocals, Place, PlaceLike, data_structures::HashSet},
+    utils::{DebugCtxt, HasCompilerCtxt, HasLocals, Place, PlaceLike, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
 
@@ -33,29 +35,78 @@ impl Debug for OwnedPcg<'_> {
 }
 
 impl<'tcx> OwnedPcg<'tcx> {
-    pub(crate) fn start_block<
-        'a,
-        Ctxt: HasLocals,
-        C: From<PositiveCapability>,
-        P: PlaceLike<'tcx, Ctxt>,
-    >(
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
-        ctxt: Ctxt,
-    ) -> Self {
+    pub(crate) fn owned_subtree_mut<'a>(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<&mut OwnedPcgNode<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        assert!(place.is_owned(ctxt));
+        let owned_local = &mut self.0[place.local];
+        if let OwnedPcgLocal::Allocated(expansions) = owned_local {
+            expansions.subtree_mut(&place.projection)
+        } else {
+            None
+        }
+    }
+    pub(crate) fn owned_subtree<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<&OwnedPcgNode<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        assert!(place.is_owned(ctxt));
+        let owned_local = &self.0[place.local];
+        if let OwnedPcgLocal::Allocated(expansions) = owned_local {
+            expansions.subtree(&place.projection)
+        } else {
+            None
+        }
+    }
+    pub(crate) fn capability<'a>(
+        &self,
+        place: Place<'tcx>,
+        borrows: &BorrowsGraph<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> CapabilityKind
+    where
+        'tcx: 'a,
+    {
+        if place.is_owned(ctxt) {
+            let Some(owned_subtree) = self.owned_subtree(place, ctxt) else {
+                return CapabilityKind::None(());
+            };
+            let mut capability: CapabilityKind = owned_subtree.inherent_capability().into();
+            for borrow_place in borrows.places(ctxt) {
+                if place.is_prefix_of(borrow_place) {
+                    let borrow_capability = borrows.capability(borrow_place, ctxt).unwrap();
+                    capability = capability.minimum(borrow_capability.into(), ctxt);
+                }
+            }
+            capability
+        } else {
+            borrows
+                .capability(place, ctxt)
+                .map(|c| c.into())
+                .unwrap_or(CapabilityKind::None(()))
+        }
+    }
+    pub(crate) fn start_block<Ctxt: HasLocals>(ctxt: Ctxt) -> Self {
         let always_live = ctxt.always_live_locals();
         let return_local = RETURN_PLACE;
         let last_arg = Local::new(ctxt.arg_count());
         let capability_summary = IndexVec::from_fn_n(
             |local: mir::Local| {
                 if local == return_local {
-                    capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
-                    OwnedPcgLocal::new(local)
+                    OwnedPcgLocal::new(OwnedCapability::Write)
                 } else if local <= last_arg {
-                    capabilities.insert(local.into(), PositiveCapability::Exclusive, ctxt);
-                    OwnedPcgLocal::new(local)
+                    OwnedPcgLocal::new(OwnedCapability::Exclusive)
                 } else if always_live.contains(local) {
-                    capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
-                    OwnedPcgLocal::new(local)
+                    OwnedPcgLocal::new(OwnedCapability::Write)
                 } else {
                     // Other locals are unallocated
                     OwnedPcgLocal::Unallocated
@@ -68,14 +119,14 @@ impl<'tcx> OwnedPcg<'tcx> {
 }
 
 impl<'tcx> OwnedPcg<'tcx> {
-    pub(crate) fn check_validity(
+    pub(crate) fn check_validity<'a>(
         &self,
-        capabilities: &PlaceCapabilities<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        borrows: &BorrowsGraph<'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> std::result::Result<(), String> {
         self.0
             .iter()
-            .try_for_each(|c| c.check_validity(capabilities, ctxt))
+            .try_for_each(|c| c.check_validity(borrows, ctxt))
     }
 
     pub(crate) fn num_locals(&self) -> usize {
@@ -90,9 +141,9 @@ impl<'tcx> OwnedPcg<'tcx> {
         'tcx: 'a,
     {
         self.0
-            .iter()
-            .filter(|c| !c.is_unallocated())
-            .flat_map(|c| c.get_allocated().leaf_places(ctxt))
+            .iter_enumerated()
+            .filter(|(_, c)| !c.is_unallocated())
+            .flat_map(|(local, c)| c.get_allocated().leaf_places(local.into(), ctxt))
             .collect()
     }
 
@@ -101,7 +152,9 @@ impl<'tcx> OwnedPcg<'tcx> {
         if expansion.is_unallocated() {
             return false;
         }
-        expansion.get_allocated().contains_place(place, ctxt)
+        expansion
+            .get_allocated()
+            .contains_projection_to(&place.projection)
     }
 
     pub(crate) fn is_allocated(&self, local: Local) -> bool {

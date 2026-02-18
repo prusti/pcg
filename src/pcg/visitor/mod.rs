@@ -11,10 +11,10 @@ use crate::{
     error::CallWithUnsafePtrWithNestedLifetime,
     owned_pcg::{OwnedPcg, RepackExpand},
     pcg::{
-        PcgRefLike, PositiveCapability,
+        CapabilityKind, PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
-        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
+        place_capabilities::PlaceCapabilitiesReader,
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
@@ -47,6 +47,11 @@ pub(crate) struct PcgVisitor<'pcg, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
 }
 
 impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx, Ctxt> {
+    pub(crate) fn capability(&self, place: Place<'tcx>) -> CapabilityKind {
+        self.pcg
+            .owned
+            .capability(place, &self.pcg.borrow.graph, self.ctxt)
+    }
     pub(crate) fn visit(
         pcg: &'pcg mut Pcg<'a, 'tcx>,
         tw: &'pcg TripleWalker<'a, 'tcx>,
@@ -114,7 +119,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
-                && self.pcg.capabilities.get(place, self.ctxt).is_none()
+                && self.capability(place).is_none()
             {
                 let action = PcgAction::restore_capability(
                     place,
@@ -350,10 +355,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
         Ctxt: DataflowCtxt<'a, 'tcx>,
     {
         let local_expansions = self.pcg.owned[local].get_allocated();
-        let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
+        let leaf_expansions = local_expansions.leaf_expansions(local.into(), self.ctxt);
         let parent_places = leaf_expansions
             .iter()
-            .map(|pe| pe.place)
+            .map(|pe| pe.base_place)
             .collect::<HashSet<_>>();
         let places_to_collapse = parent_places
             .into_iter()
@@ -364,7 +369,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                     .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt.bc_ctxt()))
                     && let Some(candidate_cap) = self
                         .pcg
-                        .capabilities
+                        .as_ref()
                         .uniform_capability(expansion_places.into_iter(), self.ctxt)
                 {
                     Some((place, candidate_cap))
@@ -384,7 +389,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
             .entered();
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
-                candidate_cap.expect_positive(),
+                candidate_cap.into_positive().unwrap(),
                 format!(
                     "Collapse owned place {} (iteration {})",
                     place.display_string(self.ctxt.bc_ctxt()),
@@ -392,15 +397,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 ),
                 self.ctxt,
             )?;
-            if place.projection.is_empty()
-                && self
-                    .pcg
-                    .place_capability_equals(place, PositiveCapability::Read)
-            {
-                self.pcg
-                    .capabilities
-                    .insert(place, PositiveCapability::Exclusive, self.ctxt);
-            }
         }
         Ok(true)
     }
@@ -453,12 +449,11 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &mut self,
         expand: RepackExpand<'tcx>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].get_allocated_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt);
+        expansions.perform_expand_action(expand, ctxt);
     }
 }

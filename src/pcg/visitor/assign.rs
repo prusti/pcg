@@ -12,7 +12,6 @@ use crate::{
     pcg::{
         EvalStmtPhase, PositiveCapability,
         obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
-        place_capabilities::PlaceCapabilitiesInterface,
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
     utils::Place,
@@ -61,20 +60,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
 
-        // If `target` is a reference, then the dereferenced place technically
-        // still retains its capabilities. However, because we currently only
-        // keep capabilities for non-labelled places, we remove all the capabilities
-        // to everything postfix of `target`.
-        //
-        // We should change this logic once we start keeping capabilities for
-        // labelled places.
-        if target.is_ref(ctxt) {
-            self.pcg.capabilities.remove_all_postfixes(target, ctxt);
-        }
-
-        self.pcg
-            .capabilities
-            .insert(target, PositiveCapability::Exclusive, self.ctxt);
         match rvalue {
             Rvalue::Aggregate(
                 box (mir::AggregateKind::Adt(..)
@@ -128,7 +113,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     *kind,
                     self.location(),
                     *borrow_region,
-                    &mut self.pcg.capabilities,
                     self.ctxt,
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;

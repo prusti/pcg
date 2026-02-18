@@ -313,13 +313,16 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     pub fn loop_invariant_place_capabilities(
         &self,
         place_usages: &PlaceUsages<'tcx>,
-        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> HashMap<Place<'tcx>, PositiveCapability> {
-        let initial_capabilities =
-            self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> HashMap<Place<'tcx>, PositiveCapability>
+    {
+        let initial_capabilities = &self.statements[0].states[EvalStmtPhase::PreOperands];
         let mut result = HashMap::default();
         for place_usage in place_usages.iter() {
-            if let Some(initial_capability) = initial_capabilities.get(place_usage.place, ctxt) {
+            if let Some(initial_capability) = initial_capabilities
+                .get(place_usage.place, ctxt)
+                .into_positive()
+            {
                 let usage_capability = match place_usage.usage {
                     PlaceUsageType::Read => PositiveCapability::Read,
                     PlaceUsageType::Mutate => PositiveCapability::Exclusive,

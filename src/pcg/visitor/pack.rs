@@ -9,8 +9,7 @@ use crate::{
         graph::{Conditioned, frozen::FrozenGraphRef},
     },
     pcg::{
-        PcgNode,
-        obtain::{PlaceCollapser, PlaceObtainer},
+        PcgNode, PcgRefLike, obtain::{PlaceCollapser, PlaceObtainer}
     },
     utils::{
         DataflowCtxt, DebugCtxt, HasPlace, Place,
@@ -252,7 +251,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: "Expansion is old or dead".into(),
                     }
-                } else if expansion.is_packable(self.pcg.capabilities, self.ctxt) {
+                } else if expansion.is_packable(&self.pcg.as_ref(), self.ctxt) {
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",

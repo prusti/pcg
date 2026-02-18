@@ -356,7 +356,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let borrow = BorrowStateMutRef::new(self, validity_conditions);
-        let pcg = PcgMutRef::new(args.owned, borrow, args.capabilities);
+        let pcg = PcgMutRef::new(args.owned, borrow);
         let snapshot_location = SnapshotLocation::Loop(args.self_block);
         let mut obtainer = PlaceObtainer::new(
             pcg,
@@ -429,13 +429,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             for blocked_by_node in blocked_by_nodes {
                 for edge in self.edges_blocking(blocked_by_node.into(), ctxt) {
                     if path.contains(&edge) {
-                        self.render_debug_graph(
-                            block,
-                            Some(DebugImgcat::JoinLoop),
-                            &PlaceCapabilities::default(),
-                            "Invalid abstraction graph",
-                            ctxt,
-                        );
                         pcg_validity_assert!(false, [ctxt], "edge already in path");
                         // panic!("edge already in path");
                         // For debugging, just stop here and we can try to visualize the graph
@@ -510,13 +503,6 @@ impl<'pcg, 'mir: 'pcg, 'tcx: 'mir> HasBorrowCheckerCtxt<'mir, 'tcx>
 
 impl RenderDebugGraph for AbsExpander<'_, '_, '_> {
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
-        self.graph.render_debug_graph(
-            self.loop_head_block,
-            debug_imgcat,
-            &PlaceCapabilities::default(),
-            comment,
-            self,
-        );
     }
 }
 

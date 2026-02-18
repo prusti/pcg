@@ -3,7 +3,9 @@ use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
-        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion, PlaceExpansion},
+        borrow_pcg_expansion::{
+            BorrowPcgExpansion, BorrowPcgPlaceExpansion, ExpansionMutability, PlaceExpansion,
+        },
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
@@ -255,8 +257,16 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgPlaceExpansion<'tcx> =
-            BorrowPcgPlaceExpansion::new(base.into(), &expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgPlaceExpansion<'tcx> = BorrowPcgPlaceExpansion::new(
+            base.into(),
+            &expanded_place.expansion,
+            if matches!(block_type, BlockType::Read | BlockType::DerefSharedRef) {
+                ExpansionMutability::Read
+            } else {
+                ExpansionMutability::Mut
+            },
+            ctxt,
+        )?;
 
         self.render_debug_graph(
             None,

@@ -10,6 +10,7 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
+        borrow_pcg_expansion::{BorrowPcgExpansion, ExpansionMutability},
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
@@ -259,7 +260,47 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
     }
 }
 
+pub(crate) enum BorrowedCapability {
+    Exclusive,
+    Read,
+    None,
+}
+
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub(crate) fn capability<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> Option<BorrowedCapability>
+    where
+        'tcx: 'a,
+    {
+        if !self.contains(place, ctxt) {
+            return None;
+        }
+        if place.projects_shared_ref(ctxt) {
+            return Some(BorrowedCapability::Read);
+        }
+        for edge in self.edges_blocking(place.into(), ctxt) {
+            match &edge.kind {
+                BorrowPcgEdgeKind::Borrow(borrow_edge) => {
+                    if borrow_edge.is_mut() {
+                        return Some(BorrowedCapability::None);
+                    } else {
+                        return Some(BorrowedCapability::Read);
+                    }
+                }
+                BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(
+                    place_expansion,
+                )) => match place_expansion.mutability {
+                    ExpansionMutability::Read => return Some(BorrowedCapability::Read),
+                    ExpansionMutability::Mut => return Some(BorrowedCapability::None),
+                },
+                _ => {}
+            }
+        }
+        Some(BorrowedCapability::Exclusive)
+    }
     #[must_use]
     pub fn coupled_edges(&self) -> HashSet<Conditioned<PcgCoupledEdgeKind<'tcx>>> {
         self.edges

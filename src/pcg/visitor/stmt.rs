@@ -65,7 +65,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // and its permission should be Exclusive.
                     if self
                         .pcg
-                        .place_capability_equals(target, PositiveCapability::Read)
+                        .place_capability_equals(target, PositiveCapability::Read, self.ctxt)
                     {
                         self.record_and_apply_action(
                             BorrowPcgAction::restore_capability(
@@ -78,24 +78,23 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
 
-                if let Some(target_cap_sym) = self.pcg.capabilities.get(target, self.ctxt) {
-                    let target_cap = target_cap_sym.expect_positive();
-                    pcg_validity_assert!(
-                        target_cap >= PositiveCapability::Write,
-                        "target_cap: {:?}",
-                        target_cap
-                    );
-                    if target_cap != PositiveCapability::Write {
-                        self.record_and_apply_action(
-                            BorrowPcgAction::weaken(
-                                target,
-                                target_cap,
-                                CapabilityKind::Write,
-                                "pre_main",
-                            )
-                            .into(),
-                        )?;
-                    }
+                let target_cap_sym = self.pcg.get(target, self.ctxt);
+                let target_cap = target_cap_sym.into_positive().unwrap();
+                pcg_validity_assert!(
+                    target_cap >= PositiveCapability::Write,
+                    "target_cap: {:?}",
+                    target_cap
+                );
+                if target_cap != PositiveCapability::Write {
+                    self.record_and_apply_action(
+                        BorrowPcgAction::weaken(
+                            target,
+                            target_cap,
+                            CapabilityKind::Write,
+                            "pre_main",
+                        )
+                        .into(),
+                    )?;
                 }
                 for rp in target.lifetime_projections(self.ctxt).into_iter() {
                     let blocked_edges = self

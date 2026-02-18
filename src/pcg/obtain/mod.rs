@@ -18,16 +18,15 @@ use crate::{
     },
     error::PcgError,
     r#loop::PlaceUsageType,
-    owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
+    owned_pcg::{LocalExpansions, OwnedPcgNode, RepackCollapse, RepackOp},
     pcg::{
         LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
-        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
+        place_capabilities::{PlaceCapabilitiesReader},
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt
     },
 };
 
@@ -193,8 +192,6 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn borrows_state(&mut self) -> BorrowStateMutRef<'_, 'tcx>;
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx>;
-
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
 
     fn restore_capability_to_leaf_places(
@@ -207,12 +204,12 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             "Leaf places: {}",
             leaf_places.display_string(ctxt.bc_ctxt())
         );
-        leaf_places.retain(|p| {
-            self.capabilities().get(*p, ctxt) == Some(PositiveCapability::Read.into())
-                && !p.projects_shared_ref(ctxt)
-                && p.parent_place()
-                    .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())
-        });
+        // leaf_places.retain(|p| {
+        //     self.capabilities().get(*p, ctxt) == Some(PositiveCapability::Read.into())
+        //         && !p.projects_shared_ref(ctxt)
+        //         && p.parent_place()
+        //             .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())
+        // });
         tracing::debug!(
             "Restoring capability to leaf places: {}",
             leaf_places.display_string(ctxt.bc_ctxt())
@@ -254,9 +251,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         for place in to_collapse {
             let expansions = self
                 .get_local_expansions(place.local)
-                .expansions_from(place)
-                .cloned()
-                .collect::<Vec<_>>();
+                .subtree(&place.projection)
+                .unwrap()
+                .expansions_longest_first(place, ctxt);
             for pe in expansions {
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),

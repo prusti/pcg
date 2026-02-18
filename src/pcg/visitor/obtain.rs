@@ -14,7 +14,7 @@ use crate::{
         graph::Conditioned,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
-    owned_pcg::RepackOp,
+    owned_pcg::{OwnedExpansionKind, RepackOp},
     pcg::{
         CapabilityKind, CapabilityLike, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         PositiveCapability, SymbolicCapability,
@@ -22,10 +22,7 @@ use crate::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
             RenderDebugGraph, expand::PlaceExpander,
         },
-        place_capabilities::{
-            BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
-            SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{BlockType, PlaceCapabilitiesReader},
         visitor::upgrade::AdjustCapabilityReason,
     },
     pcg_validity_assert,
@@ -71,10 +68,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
         self.pcg.borrow.as_mut_ref()
     }
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx> {
-        self.pcg.capabilities
-    }
-
     fn leaf_places(
         &self,
         ctxt: CompilerCtxt<'a, 'tcx>,
@@ -105,11 +98,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if !self.pcg.owned.is_allocated(place.local) {
             return Ok(());
         }
-        let blocked_cap = self
-            .pcg
-            .capabilities
-            .get(place, self.ctxt)
-            .map(SymbolicCapability::expect_concrete);
+        let blocked_cap = self.pcg.as_ref().get(place, self.ctxt).into_positive();
 
         // TODO: If the place projects a shared ref, do we even need to restore a capability?
         let restore_cap = if place.place().projects_shared_ref(self.ctxt) {
@@ -269,11 +258,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             && let Some(place) = expansion.base().as_current_place()
         {
             matches!(
-                self.pcg
-                    .capabilities
-                    .get(place, self.ctxt)
-                    .map(SymbolicCapability::expect_concrete),
-                Some(CapabilityKind::Write) | None
+                self.pcg.as_ref().get(place, self.ctxt),
+                CapabilityKind::Write | CapabilityKind::None(())
             )
         } else {
             false
@@ -336,8 +322,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         .to_pcg_node(self.ctxt.bc_ctxt()),
                     self.location(),
                 ) && let MaybeLabelledPlace::Current(place) = borrow.assigned_ref()
-                    && let Some(existing_cap) = self.pcg.capabilities.get(place, self.ctxt)
                 {
+                    let existing_cap = self.pcg.as_ref().get(place, self.ctxt);
                     self.record_and_apply_action(
                         BorrowPcgAction::weaken(
                             place,
@@ -377,89 +363,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn remove_read_permission_downwards(
-        &mut self,
-        upgraded_place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        let to_remove = self
-            .pcg
-            .capabilities
-            .iter()
-            .filter(|(p, _)| {
-                p.projection.len() > upgraded_place.projection.len()
-                    && upgraded_place.is_prefix_of(*p)
-            })
-            .collect::<Vec<_>>();
-        for (p, cap) in to_remove {
-            self.record_and_apply_action(
-                BorrowPcgAction::weaken(
-                    p,
-                    cap.expect_concrete().into_positive().unwrap(),
-                    CapabilityKind::None(()),
-                    "Remove read permission downwards",
-                )
-                .into(),
-            )?;
-        }
-        Ok(())
-    }
-
-    pub(crate) fn upgrade_read_to_exclusive(
-        &mut self,
-        place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        tracing::debug!(
-            "upgrade_read_to_exclusive: {}",
-            place.display_string(self.ctxt.bc_ctxt())
-        );
-        self.record_and_apply_action(
-            BorrowPcgAction::restore_capability(
-                place,
-                PositiveCapability::Exclusive,
-                "upgrade_read_to_exclusive",
-            )
-            .into(),
-        )?;
-        self.remove_read_permission_downwards(place)?;
-        if let Some(parent) = place.parent_place() {
-            self.remove_read_permission_upwards_and_label_rps(
-                parent,
-                AdjustCapabilityReason::UpgradeReadToExclusive,
-            )?;
-        }
-        Ok(())
-    }
-
-    // This function is called if we want to obtain non-read capability to `place`
-    // If the closest ancestor of `place` has read capability, then we are allowed to
-    // upgrade the capability of the ancestor to `E` in exchange for downgrading all
-    // other pre / postfix places to None.
-    //
-    // This is sound because if we need to obtain non-read capability to
-    // `place`, and there are any ancestors of `place` in the graph with R
-    // capability, one such ancestor originally had E capability was
-    // subsequently downgraded. This function finds such an ancestor (if one
-    // exists), and performs the capability exchange.
-    pub(crate) fn upgrade_closest_read_ancestor_to_exclusive_and_update_rps(
-        &mut self,
-        place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        let mut expand_root = place;
-        loop {
-            if let Some(cap) = self.pcg.capabilities.get(expand_root, self.ctxt) {
-                if cap.expect_concrete().is_read() {
-                    self.upgrade_read_to_exclusive(expand_root)?;
-                }
-                return Ok(());
-            }
-            if let Some(parent) = expand_root.parent_place() {
-                expand_root = parent;
-            } else {
-                return Ok(());
-            }
-        }
-    }
-
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
@@ -473,62 +376,40 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         );
         let analysis_ctxt = self.ctxt;
         let result = match &action {
-            PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
-                action.clone(),
-                self.pcg.capabilities,
-                analysis_ctxt.bc_ctxt(),
-            )?,
+            PcgAction::Borrow(action) => self
+                .pcg
+                .borrow
+                .apply_action(action.clone(), analysis_ctxt.bc_ctxt())?,
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
-                    self.pcg.capabilities.regain_loaned_capability(
-                        regained_capability.place,
-                        regained_capability.capability.into(),
-                        self.pcg.borrow.as_mut_ref(),
-                        analysis_ctxt,
-                    );
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
-                    self.pcg.owned.perform_expand_action(
-                        expand,
-                        self.pcg.capabilities,
-                        analysis_ctxt,
-                    );
+                    self.pcg.owned.perform_expand_action(expand, analysis_ctxt);
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
                     let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
                     let capability_projections = self.pcg.owned[from.local].get_allocated_mut();
                     capability_projections.insert_expansion(
-                        from,
+                        OwnedExpansionKind::Mutate,
+                        from.projection,
                         PlaceExpansion::from_places(target_places.clone(), self.ctxt),
                     );
-                    for target_place in target_places {
-                        self.pcg.capabilities.insert(
-                            target_place,
-                            PositiveCapability::Read,
-                            analysis_ctxt,
-                        );
-                    }
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Collapse(collapse) => {
                     let capability_projections =
                         self.pcg.owned[collapse.local()].get_allocated_mut();
-                    capability_projections.perform_collapse_action(
-                        collapse,
-                        self.pcg.capabilities,
-                        analysis_ctxt,
-                    );
+                    capability_projections.perform_collapse_action(collapse, analysis_ctxt);
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {
-                    pcg_validity_assert!(
-                        self.pcg.place_capability_equals(weaken.place, weaken.from)
-                    );
-                    self.pcg
-                        .capabilities
-                        .insert(weaken.place, weaken.to, analysis_ctxt);
+                    pcg_validity_assert!(self.pcg.place_capability_equals(
+                        weaken.place,
+                        weaken.from,
+                        analysis_ctxt
+                    ));
                     ApplyActionResult::changed_no_display()
                 }
                 _ => unreachable!(),
@@ -543,7 +424,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             let pcg_ref = PcgRef {
                 owned: self.pcg.owned,
                 borrow: self.pcg.borrow.as_ref(),
-                capabilities: self.pcg.capabilities,
             };
             #[cfg(feature = "visualization")]
             if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
@@ -617,24 +497,19 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.render_debug_graph(None, "after step 1");
         }
 
-        let current_cap = self.pcg.capabilities.get(place, self.ctxt);
+        let current_cap = self.pcg.as_ref().get(place, self.ctxt);
 
         // STEP 2
         if current_cap.is_none()
             || matches!(
-                current_cap
-                    .unwrap()
-                    .expect_concrete()
-                    .partial_cmp(&obtain_cap),
+                current_cap.partial_cmp(&obtain_cap),
                 Some(Ordering::Less) | None
             )
         {
             // If we want to get e.g. write permission but we currently have
             // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
-            let collapse_cap = if current_cap.map(SymbolicCapability::expect_concrete)
-                == Some(CapabilityKind::Read)
-            {
+            let collapse_cap = if current_cap.is_read() {
                 PositiveCapability::Read
             } else {
                 obtain_cap
@@ -682,20 +557,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             // case (e.g. if we wanted to obtain (*c).f2.f3 instead)
             //
             // This also labels rps and adds placeholder projections
-            self.upgrade_closest_read_ancestor_to_exclusive_and_update_rps(place)?;
             self.render_debug_graph(None, "after step 3");
-        }
-
-        // STEP 4
-        if obtain_cap.is_write() {
-            // If this place is a reference or contains references, reborrows of
-            // (postfixes of) place may have not yet expired, and therefore the borrowed
-            // caps are still in the PCG.
-            // This will remove them (since we're going to overwrite anyways)
-            self.pcg
-                .capabilities
-                .remove_all_strict_postfixes(place, self.ctxt);
-            self.render_debug_graph(None, "after step 4");
         }
 
         self.expand_to(place, obtain_type, self.ctxt)?;
@@ -703,7 +565,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if let ObtainType::ForStorageDead = obtain_type
             && self
                 .pcg
-                .place_capability_equals(place, PositiveCapability::Exclusive)
+                .place_capability_equals(place, PositiveCapability::Exclusive, self.ctxt)
         {
             self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
                 RepackOp::Weaken(Weaken::new(
@@ -742,7 +604,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool {
         self.pcg.owned[target.local]
             .get_allocated()
-            .contains_expansion_to(target, self.ctxt)
+            .contains_projection_to(&target.projection)
     }
 
     fn borrows_graph(&self) -> &crate::borrow_pcg::graph::BorrowsGraph<'tcx> {
@@ -758,10 +620,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         expansion: &BorrowPcgPlaceExpansion<'tcx>,
         block_type: BlockType,
     ) -> Result<bool, PcgError<'tcx>> {
-        Ok(self
-            .pcg
-            .capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt))
+        Ok(true)
     }
 
     fn location(&self) -> mir::Location {
@@ -774,10 +633,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         capability: PositiveCapability,
         _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>> {
-        Ok(self
-            .pcg
-            .capabilities
-            .update_for_deref(ref_place, capability, self.ctxt))
+        Ok(true)
     }
 
     #[tracing::instrument(skip(self, base_place, obtain_type, ctxt), level = "warn", fields(location = ?self.location))]

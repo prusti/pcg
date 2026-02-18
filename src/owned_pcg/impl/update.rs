@@ -5,12 +5,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    owned_pcg::{LocalExpansions, OwnedPcgLocal},
+    borrow_pcg::graph::BorrowsGraph,
+    owned_pcg::{LocalExpansions, OwnedPcgLocal, OwnedPcgNode},
     pcg::{
-        PositiveCapability,
-        place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        },
+        CapabilityKind, OwnedCapability, PositiveCapability,
+        place_capabilities::{PlaceCapabilitiesReader},
         triple::{PlaceCondition, Triple},
     },
     pcg_validity_assert,
@@ -27,7 +26,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     fn check_pre_satisfied<'a>(
         &self,
         pre: PlaceCondition<'tcx>,
-        capabilities: &SymbolicPlaceCapabilities<'tcx>,
+        borrows: &BorrowsGraph<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) where
         'tcx: 'a,
@@ -63,7 +62,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     PositiveCapability::ShallowExclusive => unreachable!(),
                 }
                 if place.is_owned(ctxt) {
-                    if capabilities.get(place, ctxt).is_some() {
+                    if self.capability(place, borrows, ctxt).is_none() {
                         // pcg_validity_assert!(
                         //     matches!(
                         //         current_cap.partial_cmp(&required_cap),
@@ -83,9 +82,8 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::Return => {
                 pcg_validity_assert!(
-                    capabilities.get(RETURN_PLACE.into(), ctxt).unwrap()
-                        == PositiveCapability::Exclusive.into(),
-                    [ctxt]
+                    self.capability(RETURN_PLACE.into(), borrows, ctxt)
+                        .is_exclusive()
                 );
             }
             PlaceCondition::RemoveCapability(_) => unreachable!(),
@@ -94,12 +92,12 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         t: Triple<'tcx>,
-        place_capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
+        borrows: &BorrowsGraph<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
     {
-        self.check_pre_satisfied(t.pre(), place_capabilities, ctxt);
+        self.check_pre_satisfied(t.pre(), borrows, ctxt);
         let Some(post) = t.post() else {
             return;
         };
@@ -107,33 +105,27 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::Return => unreachable!(),
             PlaceCondition::Unalloc(local) => {
                 self[local] = OwnedPcgLocal::Unallocated;
-                place_capabilities.remove_all_for_local(local, ctxt);
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
-                self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(local));
-                place_capabilities.insert(local.into(), PositiveCapability::Write, ctxt);
+                self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(OwnedPcgNode::new(
+                    OwnedCapability::Write,
+                )));
             }
             PlaceCondition::Capability(place, cap) => {
-                place_capabilities.insert(place, cap, ctxt);
-                // It's possible that the place could have been already expanded
-                // exclusively (when it could have originally been expanded for
-                // read), in which case we pretend we did the right thing all
-                // along
-                if cap == PositiveCapability::Read {
-                    for (p, _) in place_capabilities
-                        .capabilities_for_strict_postfixes_of(place)
-                        .collect::<Vec<_>>()
-                    {
-                        place_capabilities.insert(p, PositiveCapability::Read, ctxt);
+                if place.is_owned(ctxt) {
+                    let Some(owned_cap) = cap.into_owned_capability() else {
+                        panic!("Expected owned capability for owned place");
+                    };
+                    let Some(OwnedPcgNode::Leaf(leaf)) = self.owned_subtree_mut(place, ctxt) else {
+                        panic!("Expected owned subtree for owned place");
+                    };
+                    if leaf.inherent_capability < owned_cap {
+                        leaf.inherent_capability = owned_cap;
                     }
                 }
             }
-            PlaceCondition::ExpandTwoPhase(place) => {
-                place_capabilities.insert(place, PositiveCapability::Read, ctxt);
-            }
-            PlaceCondition::RemoveCapability(place) => {
-                place_capabilities.remove(place, ctxt);
-            }
+            PlaceCondition::ExpandTwoPhase(place) => {}
+            PlaceCondition::RemoveCapability(place) => {}
         }
     }
 }

@@ -1,4 +1,8 @@
-use crate::utils::display::{DisplayOutput, DisplayWithCtxt, OutputMode};
+use crate::{
+    borrow_pcg::graph::BorrowedCapability,
+    pcg::OwnedCapability,
+    utils::display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+};
 use std::{
     cmp::Ordering,
     fmt::{Debug, Formatter, Result},
@@ -81,6 +85,43 @@ pub enum CapabilityKind<NoCapability = ()> {
     ShallowExclusive,
 
     None(NoCapability),
+}
+
+impl<N> CapabilityKind<N> {
+    pub(crate) fn into_owned_capability(self) -> Option<OwnedCapability> {
+        match self {
+            CapabilityKind::ShallowExclusive => Some(OwnedCapability::ShallowExclusive),
+            CapabilityKind::Write => Some(OwnedCapability::Write),
+            CapabilityKind::Exclusive => Some(OwnedCapability::Exclusive),
+            _ => None,
+        }
+    }
+}
+
+impl<N> From<OwnedCapability> for CapabilityKind<N> {
+    fn from(cap: OwnedCapability) -> Self {
+        match cap {
+            OwnedCapability::Exclusive => CapabilityKind::Exclusive,
+            OwnedCapability::Write => CapabilityKind::Write,
+            OwnedCapability::ShallowExclusive => CapabilityKind::ShallowExclusive,
+        }
+    }
+}
+
+impl From<BorrowedCapability> for CapabilityKind {
+    fn from(value: BorrowedCapability) -> Self {
+        match value {
+            BorrowedCapability::Exclusive => CapabilityKind::Exclusive,
+            BorrowedCapability::Read => CapabilityKind::Read,
+            BorrowedCapability::None => CapabilityKind::None(()),
+        }
+    }
+}
+
+impl CapabilityKind {
+    pub(crate) fn is_none(self) -> bool {
+        matches!(self, CapabilityKind::None(_))
+    }
 }
 
 pub(crate) mod debug_reprs {

@@ -5,9 +5,7 @@ use crate::{
         BodyAnalysis, CapabilityConstraint, CapabilityRule, CapabilityRules, CapabilityVar, Choice,
         IntroduceConstraints, PcgArena, PositiveCapability, SymbolicCapability,
         SymbolicCapabilityCtxt,
-        place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{PlaceCapabilitiesReader}
     },
     rustc_interface::middle::{mir, ty},
     utils::{
@@ -102,126 +100,6 @@ impl<'a, 'tcx: 'a> HasTyCtxt<'tcx> for AnalysisCtxt<'a, 'tcx> {
 }
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
-    #[allow(dead_code)]
-    pub(crate) fn create_place_capability_inference_vars(
-        self,
-        places: impl Iterator<Item = Place<'tcx>>,
-        location: SnapshotLocation,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-    ) -> HashMap<Place<'tcx>, CapabilityVar> {
-        places
-            .into_iter()
-            .map(|place| {
-                let var = self.symbolic_capability_ctxt.introduce_var(place, location);
-                capabilities.insert(place, var, self);
-                (place, var)
-            })
-            .collect()
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn get_or_create_place_capability_inference_vars(
-        self,
-        places: impl Iterator<Item = Place<'tcx>>,
-        location: SnapshotLocation,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-    ) -> HashMap<Place<'tcx>, SymbolicCapability> {
-        places
-            .into_iter()
-            .map(|place| {
-                (
-                    place,
-                    self.get_or_create_place_capability_inference_var(
-                        place,
-                        location,
-                        capabilities,
-                    ),
-                )
-            })
-            .collect()
-    }
-
-    pub(crate) fn get_or_create_place_capability_inference_var(
-        self,
-        place: Place<'tcx>,
-        location: SnapshotLocation,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-    ) -> SymbolicCapability {
-        if let Some(cap) = capabilities.get(place, self) {
-            cap
-        } else {
-            let var = self.symbolic_capability_ctxt.introduce_var(place, location);
-            capabilities.insert(place, var, self);
-            SymbolicCapability::Variable(var)
-        }
-    }
-
-    #[allow(dead_code)]
-    fn get_application_rules(
-        self,
-        constraints: &IntroduceConstraints<'tcx>,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-    ) -> CapabilityRules<'a, 'tcx> {
-        match constraints {
-            IntroduceConstraints::ExpandForSharedBorrow {
-                base_place,
-                expansion_places,
-                ..
-            } => {
-                let base_cap = capabilities.get(*base_place, self).unwrap();
-                let expand_read = CapabilityRule::new(
-                    base_cap.gte(PositiveCapability::Read),
-                    expansion_places
-                        .iter()
-                        .map(|p| (*p, PositiveCapability::Read))
-                        .collect(),
-                );
-                let expand_exclusive = CapabilityRule::new(
-                    CapabilityConstraint::eq(base_cap, PositiveCapability::Exclusive),
-                    expansion_places
-                        .iter()
-                        .map(|p| (*p, PositiveCapability::Exclusive))
-                        .collect(),
-                );
-                CapabilityRules::one_of(vec![expand_read, expand_exclusive])
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    fn apply_capability_rules(
-        self,
-        constraints: &IntroduceConstraints<'tcx>,
-        rule: CapabilityRules<'a, 'tcx>,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
-    ) {
-        match rule {
-            CapabilityRules::OneOf(rules) => {
-                let choice = self
-                    .symbolic_capability_ctxt
-                    .add_choice(Choice::new(rules.len()));
-                let affected_places = constraints.affected_places();
-                let new_place_vars = self.create_place_capability_inference_vars(
-                    affected_places,
-                    constraints.before_location(),
-                    capabilities,
-                );
-                for (decision, rule) in rules.into_iter_enumerated() {
-                    let decision = CapabilityConstraint::Decision { choice, decision };
-                    self.require(decision.implies(rule.pre, self.arena));
-                    for (place, cap) in rule.post {
-                        let var = new_place_vars[&place];
-                        self.require(CapabilityConstraint::eq(var, cap));
-                    }
-                }
-            }
-        }
-    }
-
-    pub(crate) fn require(&self, constraint: CapabilityConstraint<'a>) {
-        self.symbolic_capability_ctxt.require(constraint);
-    }
-
     pub(crate) fn should_join_from(&self, other: mir::BasicBlock) -> bool {
         effective_successors(other, self.body()).contains(&self.block)
             && !self.ctxt.is_back_edge(other, self.block)
