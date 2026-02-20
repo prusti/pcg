@@ -461,7 +461,7 @@ impl<'tcx> PcgDataTypes<'tcx> for DebugDataTypes {
 }
 
 pub trait RepackOpDataTypes<'tcx>: PcgDataTypes<'tcx> {
-    type ExpandCapability = PositiveCapability;
+    type ExpandCapability: std::fmt::Debug + serde::Serialize = PositiveCapability;
 }
 
 impl<'tcx> RepackOpDataTypes<'tcx> for DebugDataTypes {}

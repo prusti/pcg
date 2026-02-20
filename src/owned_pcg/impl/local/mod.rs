@@ -15,9 +15,9 @@ use std::{
 use crate::{
     borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, graph::BorrowsGraph},
     error::PcgUnsupportedError,
-    owned_pcg::{RepackCollapse, RepackExpand, RepackGuide},
+    owned_pcg::{PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide},
     pcg::{OwnedCapability, PositiveCapability},
-    rustc_interface::middle::mir,
+    rustc_interface::{ast::Mutability, middle::mir},
     utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
@@ -127,7 +127,7 @@ impl<'tcx> OwnedPcgLeafNode<'tcx> {
     }
 }
 
-pub trait InternalData<'tcx> {
+pub trait InternalData<'tcx>: Sized {
     type Data: Clone + Eq + Debug;
 }
 
@@ -141,8 +141,24 @@ impl<'tcx> InternalData<'tcx> for Deep {
     type Data = OwnedPcgNode<'tcx>;
 }
 
+pub(crate) trait FromDeep<'tcx>: InternalData<'tcx> {
+    fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self>;
+}
+
 impl<'tcx, T: Clone + Eq + Debug> InternalData<'tcx> for Shallow<T> {
     type Data = T;
+}
+
+impl<'tcx> FromDeep<'tcx> for Shallow<()> {
+    fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self> {
+        OwnedPcgInternalNode {
+            expansions: deep
+                .expansions
+                .iter()
+                .map(|e| OwnedExpansion::new(e.expansion.without_data()))
+                .collect(),
+        }
+    }
 }
 
 pub(crate) type ShallowOwnedNode<'tcx> = OwnedPcgNode<'tcx, Shallow>;
@@ -198,7 +214,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> HashSet<Place<'tcx>> {
         self.root
-            .traverse(
+            .traverse_shallow(
                 local.into(),
                 &|place, _expansion| place,
                 TraverseOrder::Postorder,
@@ -257,7 +273,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         &mut self,
         local: mir::Local,
         other: &mut Self,
-        is_borrowed: impl Fn(Place<'tcx>) -> bool,
+        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
@@ -309,7 +325,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         let Some(tree) = self.root.subtree(place.projection) else {
             return vec![];
         };
-        tree.traverse(
+        tree.traverse_shallow(
             place,
             &|place, node| if !node.is_leaf() { vec![place] } else { vec![] },
             TraverseOrder::Postorder,
@@ -405,10 +421,23 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         }
     }
 
-    pub(crate) fn traverse<'a, T>(
+    pub(crate) fn traverse_shallow<'a, T>(
         &self,
         place: Place<'tcx>,
         f: &impl Fn(Place<'tcx>, OwnedPcgNode<'tcx, Shallow>) -> T,
+        order: TraverseOrder,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Vec<T>
+    where
+        'tcx: 'a,
+    {
+        self.traverse(place, f, order, ctxt)
+    }
+
+    pub(crate) fn traverse<'a, T, Depth: FromDeep<'tcx> + InternalData<'tcx>>(
+        &self,
+        place: Place<'tcx>,
+        f: &impl Fn(Place<'tcx>, OwnedPcgNode<'tcx, Depth>) -> T,
         order: TraverseOrder,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<T>
@@ -435,11 +464,8 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                             .collect::<Vec<_>>()
                     })
                     .collect();
-                let mut this_expansion = internal
-                    .expansions
-                    .iter()
-                    .map(|e| f(place, OwnedPcgNode::internal(e.expansion.without_data())))
-                    .collect::<Vec<_>>();
+                let mut this_expansion =
+                    vec![f(place, OwnedPcgNode::Internal(Depth::from_deep(internal)))];
                 match order {
                     TraverseOrder::Postorder => {
                         descendants.extend(this_expansion);
@@ -611,6 +637,9 @@ impl<'tcx> OwnedExpansion<'tcx> {
     }
 }
 
+type RepackDataTypesWithoutExpandCapability<'tcx> = PcgRepackOpDataTypes<'tcx, Place<'tcx>, ()>;
+type OwnedRepackOp<'tcx> = RepackOp<'tcx, RepackDataTypesWithoutExpandCapability<'tcx>>;
+
 pub(crate) struct CollapseResult<'tcx> {
     result_capability: OwnedCapability,
     pub(crate) ops: Vec<RepackOp<'tcx>>,
@@ -652,7 +681,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &mut self,
         base_place: Place<'tcx>,
         other: &mut OwnedPcgNode<'tcx>,
-        is_borrowed: impl Fn(Place<'tcx>) -> bool,
+        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
@@ -666,7 +695,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 if leaf.inherent_capability < other_leaf.inherent_capability {
                     let mut result = vec![];
                     leaf.inherent_capability = other_leaf.inherent_capability;
-                    if !is_borrowed(base_place) {
+                    if is_borrowed(base_place).is_none() {
                         result.push(RepackOp::weaken(
                             base_place,
                             leaf.inherent_capability.into(),
@@ -685,9 +714,12 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Leaf(other_leaf)) => {
                 vec![]
             }
-            (OwnedPcgNode::Leaf(leaf), other) => {
-                other.repack_ops_to_expand_from(base_place, leaf.inherent_capability, ctxt)
-            }
+            (OwnedPcgNode::Leaf(leaf), other) => other.repack_ops_to_expand_from(
+                base_place,
+                leaf.inherent_capability,
+                is_borrowed,
+                ctxt,
+            ),
         }
     }
 
@@ -695,6 +727,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &self,
         base_place: Place<'tcx>,
         base_inherent_capability: OwnedCapability,
+        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where

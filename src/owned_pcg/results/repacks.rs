@@ -401,33 +401,35 @@ impl<'tcx> RepackCollapse<'tcx> {
 }
 
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>>(PhantomData<&'tcx P>);
+pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>, ExpandCapability = PositiveCapability>(
+    PhantomData<&'tcx (P, ExpandCapability)>,
+);
 
-impl<'tcx, P> Eq for PcgRepackOpDataTypes<'tcx, P> {}
+impl<'tcx, P, E> Eq for PcgRepackOpDataTypes<'tcx, P, E> {}
 
-impl<'tcx, P> PartialEq for PcgRepackOpDataTypes<'tcx, P> {
+impl<'tcx, P, E> PartialEq for PcgRepackOpDataTypes<'tcx, P, E> {
     fn eq(&self, other: &Self) -> bool {
         true
     }
 }
 
-impl<'tcx, P> Clone for PcgRepackOpDataTypes<'tcx, P> {
+impl<'tcx, P, E> Clone for PcgRepackOpDataTypes<'tcx, P, E> {
     fn clone(&self) -> Self {
         Self(PhantomData)
     }
 }
 
-impl<P> std::fmt::Debug for PcgRepackOpDataTypes<'_, P> {
+impl<P, E> std::fmt::Debug for PcgRepackOpDataTypes<'_, P, E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "PcgRepackOpDataTypes")
     }
 }
 
-impl<'tcx, P: std::fmt::Debug> PcgDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P> {
+impl<'tcx, P: std::fmt::Debug, E> PcgDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {
     type Place = P;
 }
 
-impl<'tcx, P: std::fmt::Debug> RepackOpDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P> {}
+impl<'tcx, P: std::fmt::Debug, E> RepackOpDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
@@ -466,7 +468,7 @@ pub enum RepackOp<'tcx, D: RepackOpDataTypes<'tcx> = PcgRepackOpDataTypes<'tcx>>
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places (except as noted in the documentation for that fn) which will be obtained by unpacking.
-    Expand(RepackExpand<'tcx, D::Place, D::RepackGuide>),
+    Expand(RepackExpand<'tcx, D::Place, D::RepackGuide, D::ExpandCapability>),
     /// Instructs that one should pack up `place` with the given capability.
     /// `guide` denotes e.g. the enum variant to pack from. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
@@ -559,18 +561,11 @@ where
     }
 }
 
-impl<'tcx> RepackOp<'tcx> {
-    pub(crate) fn weaken(
-        place: Place<'tcx>,
-        from: PositiveCapability,
-        to: PositiveCapability,
-    ) -> Self {
-        Self::Weaken(Weaken::new(place, from, to))
-    }
+impl<'tcx, D: RepackOpDataTypes<'tcx>> RepackOp<'tcx, D> {
     pub(crate) fn expand<'a>(
-        from: Place<'tcx>,
-        guide: Option<RepackGuide>,
-        for_cap: PositiveCapability,
+        from: D::Place,
+        guide: Option<D::RepackGuide>,
+        for_cap: D::ExpandCapability,
         _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {
         // Note that we might generate expand annotations with `Write` capability for
@@ -581,6 +576,16 @@ impl<'tcx> RepackOp<'tcx> {
             capability: for_cap,
             _marker: PhantomData,
         })
+    }
+}
+
+impl<'tcx> RepackOp<'tcx> {
+    pub(crate) fn weaken(
+        place: Place<'tcx>,
+        from: PositiveCapability,
+        to: PositiveCapability,
+    ) -> Self {
+        Self::Weaken(Weaken::new(place, from, to))
     }
 
     #[must_use]
