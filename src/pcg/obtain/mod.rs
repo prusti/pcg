@@ -20,8 +20,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, OwnedPcgNode, RepackCollapse, RepackOp},
     pcg::{
-        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability, ctxt::AnalysisCtxt,
-        place_capabilities::PlaceCapabilitiesReader,
+        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability, ctxt::AnalysisCtxt, edge::EdgeMutability, place_capabilities::PlaceCapabilitiesReader
     },
     rustc_interface::middle::mir,
     utils::{
@@ -92,35 +91,7 @@ pub(crate) enum ObtainType {
 }
 
 impl ObtainType {
-    /// The capability to use when generating expand annotations.
-    ///
-    /// If the expansion is for a place e.g. `x.f` where `x` currently has
-    /// Exclusive capability, and the obtain is for Write capability, then
-    /// expansion will have Exclusive capability (subsequently a Weaken
-    /// annotation will be generated for the target place to downgrade it from
-    /// Exclusive to Write). This ensures that other fields of `x` retain their
-    /// Exclusive capability.
-    ///
-    /// Otherwise, the capability for the expansion is the same as the
-    /// capability for the [`ObtainType`].
-    pub(crate) fn capability_for_expand<'a, 'tcx>(
-        self,
-        place: Place<'tcx>,
-        current_cap: PositiveCapability,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> PositiveCapability
-    where
-        'tcx: 'a,
-    {
-        if let ObtainType::Capability(PositiveCapability::Write) = self
-            && current_cap.is_exclusive()
-        {
-            PositiveCapability::Exclusive
-        } else {
-            self.capability(place, ctxt)
-        }
-    }
-    pub(crate) fn capability<'a, 'tcx>(
+    pub(crate) fn min_required_capability_to_obtain<'a, 'tcx>(
         self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -130,8 +101,35 @@ impl ObtainType {
     {
         match self {
             ObtainType::ForStorageDead => PositiveCapability::Write,
-            ObtainType::Capability(cap) => cap,
+            ObtainType::Capability(capability_kind) => capability_kind,
             ObtainType::TwoPhaseExpand => PositiveCapability::Read,
+            ObtainType::LoopInvariant { usage_type, .. } => if usage_type == PlaceUsageType::Read
+                    || place.is_shared_ref(ctxt)
+                    || place.projects_shared_ref(ctxt)
+                {
+                    PositiveCapability::Read
+                } else {
+                    PositiveCapability::Exclusive
+                },
+        }
+    }
+
+    pub(crate) fn mutability<'a, 'tcx>(
+        self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> EdgeMutability
+    where
+        'tcx: 'a,
+    {
+        match self {
+            ObtainType::ForStorageDead => EdgeMutability::Mutable,
+            ObtainType::Capability(cap) => if !cap.is_read() {
+                EdgeMutability::Mutable
+            } else {
+                EdgeMutability::Immutable
+            },
+            ObtainType::TwoPhaseExpand => EdgeMutability::Immutable,
             ObtainType::LoopInvariant {
                 is_blocked: _,
                 usage_type,
@@ -140,9 +138,9 @@ impl ObtainType {
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)
                 {
-                    PositiveCapability::Read
+                    EdgeMutability::Immutable
                 } else {
-                    PositiveCapability::Exclusive
+                    EdgeMutability::Mutable
                 }
             }
         }

@@ -20,6 +20,7 @@ use crate::{
     owned_pcg::{ExpandedPlace, RepackOp},
     pcg::{
         PcgNodeLike, PositiveCapability,
+        edge::EdgeMutability,
         obtain::{
             ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, ObtainType,
             RenderDebugGraph,
@@ -37,19 +38,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     HasSnapshotLocation + ActionApplier<'tcx> + RenderDebugGraph
 {
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool;
-
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
-        expansion: &BorrowPcgPlaceExpansion<'tcx>,
-        block_type: BlockType,
-    ) -> Result<bool, PcgError<'tcx>>;
-
-    fn update_capabilities_for_deref(
-        &mut self,
-        ref_place: Place<'tcx>,
-        capability: PositiveCapability,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>>;
 
     #[tracing::instrument(skip(self, obtain_type, ctxt))]
     fn expand_to(
@@ -113,7 +101,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
-    ) -> PositiveCapability;
+    ) -> EdgeMutability;
 
     #[tracing::instrument(skip(self, ctxt), level = "warn")]
     fn expand_owned_place_one_level(
@@ -135,7 +123,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.ctxt())
         );
         if expansion.kind.is_deref_box()
-            && obtain_type.capability(base, ctxt).is_shallow_exclusive()
+            && obtain_type.mutability(base, ctxt) == EdgeMutability::Mutable
         {
             self.apply_action(
                 OwnedPcgAction::new(
@@ -192,15 +180,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             );
             self.apply_action(action.into())?;
             self.render_debug_graph(None, "expand_place_one_level: after apply action");
-            self.update_capabilities_for_deref(
-                base,
-                obtain_type.capability(base, ctxt),
-                ctxt.bc_ctxt(),
-            )?;
-            self.render_debug_graph(
-                None,
-                "expand_place_one_level: after update_capabilities_for_deref",
-            );
             if deref.blocked_lifetime_projection.label().is_some() {
                 self.apply_action(
                     BorrowPcgAction::label_lifetime_projection(
@@ -268,18 +247,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             ctxt,
         )?;
 
-        self.render_debug_graph(
-            None,
-            &format!(
-                "add_borrow_pcg_expansion: before update_capabilities_for_borrow_expansion {}",
-                expansion.display_string(ctxt.bc_ctxt())
-            ),
-        );
-        self.update_capabilities_for_borrow_expansion(&expansion, block_type)?;
-        self.render_debug_graph(
-            None,
-            "add_borrow_pcg_expansion: after update_capabilities_for_borrow_expansion",
-        );
         let action = BorrowPcgAction::add_edge(
             BorrowPcgEdge::new(
                 BorrowPcgEdgeKind::BorrowPcgExpansion(expansion.into()),

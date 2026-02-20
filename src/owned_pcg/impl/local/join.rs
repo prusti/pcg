@@ -29,7 +29,7 @@ impl<'tcx> JoinDifferentExpansionsResult<'tcx> {
     fn actions(self) -> Vec<RepackOp<'tcx>> {
         match self {
             JoinDifferentExpansionsResult::ExpandedForRead(action) => {
-                vec![RepackOp::Expand(action)]
+                vec![]
             }
             JoinDifferentExpansionsResult::ExpandedForNoCapability => vec![],
             JoinDifferentExpansionsResult::Collapsed(actions) => actions,

@@ -23,7 +23,7 @@ impl serde::Serialize for BasicBlock {
 }
 
 #[derive(From, Deref, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct Local(mir::Local);
+pub struct Local(mir::Local);
 
 #[cfg(feature = "type-export")]
 impl ts_rs::TS for Local {

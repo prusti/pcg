@@ -426,13 +426,11 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    owned_pcg::RepackGuide,
-    pcg::CapabilityKind,
-    utils::{
+    borrow_pcg::edge_data::LabelEdgeLifetimeProjections, owned_pcg::RepackGuide, pcg::{CapabilityKind, edge::EdgeMutability}, utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
-    },
+    }
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {
@@ -460,8 +458,8 @@ impl<'tcx> PcgDataTypes<'tcx> for DebugDataTypes {
     type RepackGuide = String;
 }
 
-pub trait RepackOpDataTypes<'tcx>: PcgDataTypes<'tcx> {
-    type ExpandCapability: std::fmt::Debug + serde::Serialize = PositiveCapability;
+pub trait RepackDataTypes<'tcx>: PcgDataTypes<'tcx> {
+    type ExpandCapability: std::fmt::Debug + serde::Serialize = EdgeMutability;
 }
 
-impl<'tcx> RepackOpDataTypes<'tcx> for DebugDataTypes {}
+impl<'tcx> RepackDataTypes<'tcx> for DebugDataTypes {}

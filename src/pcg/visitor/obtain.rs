@@ -14,16 +14,12 @@ use crate::{
         graph::Conditioned,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
-    owned_pcg::{OwnedExpansionKind, RepackOp},
+    owned_pcg::RepackOp,
     pcg::{
-        CapabilityKind, CapabilityLike, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
-        PositiveCapability, SymbolicCapability,
-        obtain::{
+        CapabilityKind, CapabilityLike, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike, PositiveCapability, SymbolicCapability, edge::EdgeMutability, obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
             RenderDebugGraph, expand::PlaceExpander,
-        },
-        place_capabilities::{BlockType, PlaceCapabilitiesReader},
-        visitor::upgrade::AdjustCapabilityReason,
+        }, place_capabilities::{BlockType, PlaceCapabilitiesReader}, visitor::upgrade::AdjustCapabilityReason
     },
     pcg_validity_assert,
     rustc_interface::middle::mir,
@@ -392,7 +388,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
                     let capability_projections = self.pcg.owned[from.local].get_allocated_mut();
                     capability_projections.insert_expansion(
-                        OwnedExpansionKind::Mutate,
                         from.projection,
                         PlaceExpansion::from_places(target_places.clone(), self.ctxt),
                     );
@@ -466,7 +461,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         place: Place<'tcx>,
         obtain_type: ObtainType,
     ) -> Result<(), PcgError<'tcx>> {
-        let obtain_cap = obtain_type.capability(place, self.ctxt);
+        let obtain_cap = obtain_type.min_required_capability_to_obtain(place, self.ctxt);
 
         if obtain_cap.is_write() {
             tracing::debug!(
@@ -615,25 +610,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg.borrow.validity_conditions.clone()
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
-        expansion: &BorrowPcgPlaceExpansion<'tcx>,
-        block_type: BlockType,
-    ) -> Result<bool, PcgError<'tcx>> {
-        Ok(true)
-    }
-
     fn location(&self) -> mir::Location {
         self.location
-    }
-
-    fn update_capabilities_for_deref(
-        &mut self,
-        ref_place: Place<'tcx>,
-        capability: PositiveCapability,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>> {
-        Ok(true)
     }
 
     #[tracing::instrument(skip(self, base_place, obtain_type, ctxt), level = "warn", fields(location = ?self.location))]
@@ -642,10 +620,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
-    ) -> PositiveCapability {
-        obtain_type.capability_for_expand(
+    ) -> EdgeMutability {
+        obtain_type.mutability(
             base_place,
-            self.pcg.expect_positive_capability(base_place, ctxt),
             ctxt,
         )
     }

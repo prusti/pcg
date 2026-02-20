@@ -23,12 +23,10 @@ use crate::{
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability,
-        ctxt::AnalysisCtxt,
-        obtain::{
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability, ctxt::AnalysisCtxt, edge::EdgeMutability, obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
-        },
+        }
     },
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
@@ -571,22 +569,6 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         true
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
-        _expansion: &BorrowPcgPlaceExpansion<'tcx>,
-        _block_type: crate::pcg::place_capabilities::BlockType,
-    ) -> Result<bool, crate::error::PcgError<'tcx>> {
-        Ok(true)
-    }
-    fn update_capabilities_for_deref(
-        &mut self,
-        _ref_place: Place<'tcx>,
-        _capability: PositiveCapability,
-        _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, crate::error::PcgError<'tcx>> {
-        Ok(true)
-    }
-
     fn location(&self) -> mir::Location {
         self.loop_head_location()
     }
@@ -596,8 +578,8 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl crate::utils::HasCompilerCtxt<'mir, 'tcx>,
-    ) -> PositiveCapability {
-        obtain_type.capability(base_place, ctxt)
+    ) -> EdgeMutability {
+        obtain_type.mutability(base_place, ctxt)
     }
 }
 

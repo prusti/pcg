@@ -7,9 +7,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    DebugDataTypes, PcgDataTypes, RepackOpDataTypes, Weaken,
-    rustc_interface::middle::mir::{self, PlaceElem},
-    utils::PlaceLike,
+    DebugDataTypes, PcgDataTypes, RepackDataTypes, Weaken, pcg::edge::EdgeMutability, rustc_interface::middle::mir::{self, PlaceElem}, utils::PlaceLike
 };
 
 use crate::{
@@ -271,11 +269,11 @@ pub struct RepackExpand<
     'tcx,
     Place = crate::utils::Place<'tcx>,
     Guide = RepackGuide,
-    Capability = PositiveCapability,
+    Capability = EdgeMutability,
 > {
     pub(crate) from: Place,
     pub(crate) guide: Option<Guide>,
-    pub(crate) capability: Capability,
+    pub(crate) mutability: Capability,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
@@ -286,7 +284,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
         RepackExpand {
             from: self.from.display_string(ctxt),
             guide: self.guide.map(|g| g.display_string(ctxt)),
-            capability: self.capability,
+            mutability: self.mutability,
             _marker: PhantomData,
         }
     }
@@ -296,19 +294,19 @@ impl<'tcx> RepackExpand<'tcx> {
     pub(crate) fn new(
         from: Place<'tcx>,
         guide: Option<RepackGuide>,
-        capability: PositiveCapability,
+        edge_mutability: EdgeMutability,
     ) -> Self {
         Self {
             from,
             guide,
-            capability,
+            mutability: edge_mutability,
             _marker: PhantomData,
         }
     }
 
     #[must_use]
-    pub fn capability(&self) -> PositiveCapability {
-        self.capability
+    pub fn mutability(&self) -> EdgeMutability {
+        self.mutability
     }
 
     #[must_use]
@@ -401,7 +399,7 @@ impl<'tcx> RepackCollapse<'tcx> {
 }
 
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>, ExpandCapability = PositiveCapability>(
+pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>, ExpandCapability = EdgeMutability>(
     PhantomData<&'tcx (P, ExpandCapability)>,
 );
 
@@ -429,13 +427,13 @@ impl<'tcx, P: std::fmt::Debug, E> PcgDataTypes<'tcx> for PcgRepackOpDataTypes<'t
     type Place = P;
 }
 
-impl<'tcx, P: std::fmt::Debug, E> RepackOpDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {}
+impl<'tcx, P: std::fmt::Debug, E> RepackDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "data")]
 #[cfg_attr(feature = "type-export", ts(concrete(D=PcgRepackOpDataTypes<'tcx>)))]
-pub enum RepackOp<'tcx, D: RepackOpDataTypes<'tcx> = PcgRepackOpDataTypes<'tcx>> {
+pub enum RepackOp<'tcx, D: RepackDataTypes<'tcx> = PcgRepackOpDataTypes<'tcx>> {
     /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
     /// edge from where it was live.
@@ -535,7 +533,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     }
 }
 
-impl<'tcx, Ctxt, D: RepackOpDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
+impl<'tcx, Ctxt, D: RepackDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
 where
     D::Place: DisplayWithCtxt<Ctxt>,
 {
@@ -552,7 +550,7 @@ where
                 RepackOp::Expand(expand) => format!(
                     "unpack {} with capability {:?}",
                     expand.from.display_string(ctxt),
-                    expand.capability
+                    expand.mutability
                 ),
                 _ => format!("{self:?}"),
             }
@@ -561,7 +559,7 @@ where
     }
 }
 
-impl<'tcx, D: RepackOpDataTypes<'tcx>> RepackOp<'tcx, D> {
+impl<'tcx, D: RepackDataTypes<'tcx>> RepackOp<'tcx, D> {
     pub(crate) fn expand<'a>(
         from: D::Place,
         guide: Option<D::RepackGuide>,
@@ -573,7 +571,7 @@ impl<'tcx, D: RepackOpDataTypes<'tcx>> RepackOp<'tcx, D> {
         Self::Expand(RepackExpand {
             from,
             guide,
-            capability: for_cap,
+            mutability: for_cap,
             _marker: PhantomData,
         })
     }

@@ -13,7 +13,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{
         ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
-        join::data::JoinOwnedData,
+        join::data::JoinOwnedData, traverse::GetExpansions,
     },
     pcg::{
         CapabilityKind, CapabilityLike, PositiveCapability,
@@ -46,7 +46,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tc
         Ok(self.owned.join(
             local,
             other.owned,
-            |place| self.borrows.graph.capability(place, ctxt).is_some(),
+            |place| self.borrows.graph.is_borrowed(place, ctxt),
             ctxt,
         ))
     }
@@ -135,20 +135,10 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
-        self.postorder(
-            base_place,
-            &|place, node| match node {
-                OwnedPcgNode::Leaf(_) => vec![],
-                OwnedPcgNode::Internal(internal) => internal
-                    .iter()
-                    .map(|e| ExpandedPlace::new(place, e.expansion.without_data()))
-                    .collect(),
-            },
-            ctxt,
-        )
-        .into_iter()
-        .flatten()
-        .collect()
+        self.traverse(base_place, &mut GetExpansions, ctxt)
+            .into_iter()
+            .sorted_by_key(|e| e.place.projection.len())
+            .collect()
     }
 
     pub(crate) fn all_children_of<'a>(

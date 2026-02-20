@@ -21,6 +21,7 @@ use crate::{
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
+        ast::Mutability,
         data_structures::fx::FxHashSet,
         middle::mir::{self},
     },
@@ -146,6 +147,31 @@ pub(crate) fn borrows_imgcat_debug(
 }
 
 impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+    pub(crate) fn descendant_edges<'slf, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
+        &'slf self,
+        node: BlockedNode<'tcx, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>>
+    where
+        EdgeKind: EdgeData<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: Eq + std::hash::Hash,
+    {
+        let mut seen: HashSet<BlockedNode<'tcx, P>> = HashSet::default();
+        let mut result: HashSet<BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>> = HashSet::default();
+        let mut stack = vec![node];
+        while let Some(node) = stack.pop() {
+            if seen.insert(node) {
+                for edge in self.edges_blocking(node, ctxt) {
+                    result.insert(edge);
+                    for node in edge.kind.blocked_by_nodes(ctxt) {
+                        stack.push(node.into());
+                    }
+                }
+            }
+        }
+        result
+    }
+
     pub(crate) fn nodes<Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
         &self,
         ctxt: Ctxt,
@@ -267,6 +293,27 @@ pub(crate) enum BorrowedCapability {
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub(crate) fn is_borrowed<'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: Ctxt,
+    ) -> Option<Mutability>
+    where
+        'tcx: 'a,
+    {
+        let mut result = None;
+        for edge in self.descendant_edges(place.into(), ctxt) {
+            if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind {
+                if borrow.is_mut() {
+                    return Some(Mutability::Mut);
+                } else {
+                    result = Some(Mutability::Not);
+                }
+            }
+        }
+        result
+    }
+
     pub(crate) fn capability<'a>(
         &self,
         place: Place<'tcx>,

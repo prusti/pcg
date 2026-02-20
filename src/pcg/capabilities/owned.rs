@@ -10,6 +10,12 @@ pub(crate) enum OwnedCapability {
     ShallowExclusive,
 }
 
+impl OwnedCapability {
+    pub(crate) fn is_deep(&self) -> bool {
+        matches!(self, OwnedCapability::Exclusive)
+    }
+}
+
 impl<N: PartialEq> PartialEq<CapabilityKind<N>> for OwnedCapability {
     fn eq(&self, other: &CapabilityKind<N>) -> bool {
         let as_capability_kind: CapabilityKind<N> = (*self).into();
