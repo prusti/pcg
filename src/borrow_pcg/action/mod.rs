@@ -6,7 +6,7 @@ use serde_derive::Serialize;
 
 use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
-    RestoreCapability, Weaken,
+    Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
@@ -18,7 +18,7 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
         validity_conditions::ValidityConditions,
     },
-    pcg::{CapabilityKind, PcgNodeType, PositiveCapability},
+    pcg::{CapabilityKind, PcgNodeType, PositiveCapability, annotations::RestoreCapability},
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,

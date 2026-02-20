@@ -7,7 +7,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Weaken,
+    DebugDataTypes, PcgDataTypes, RepackOpDataTypes, Weaken,
     rustc_interface::middle::mir::{self, PlaceElem},
     utils::PlaceLike,
 };
@@ -33,6 +33,30 @@ pub enum RepackGuide<Local = mir::Local, D = ()> {
         from_end: bool,
         data: D,
     },
+}
+
+#[cfg(feature = "type-export")]
+impl ts_rs::TS for RepackGuide {
+    type WithoutGenerics = RepackGuide;
+
+    type OptionInnerType = RepackGuide;
+
+    fn name(cfg: &ts_rs::Config) -> String {
+        todo!()
+    }
+
+    fn inline(cfg: &ts_rs::Config) -> String {
+        todo!()
+    }
+}
+
+impl serde::Serialize for RepackGuide {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(format!("{self:?}").as_str())
+    }
 }
 
 impl<'tcx, D> RepackGuide<mir::Local, D> {
@@ -243,10 +267,15 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(concrete(Place=String,Guide=String)))]
-pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+pub struct RepackExpand<
+    'tcx,
+    Place = crate::utils::Place<'tcx>,
+    Guide = RepackGuide,
+    Capability = PositiveCapability,
+> {
     pub(crate) from: Place,
     pub(crate) guide: Option<Guide>,
-    pub(crate) capability: PositiveCapability,
+    pub(crate) capability: Capability,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
@@ -371,12 +400,40 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 }
 
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>>(PhantomData<&'tcx P>);
+
+impl<'tcx, P> Eq for PcgRepackOpDataTypes<'tcx, P> {}
+
+impl<'tcx, P> PartialEq for PcgRepackOpDataTypes<'tcx, P> {
+    fn eq(&self, other: &Self) -> bool {
+        true
+    }
+}
+
+impl<'tcx, P> Clone for PcgRepackOpDataTypes<'tcx, P> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<P> std::fmt::Debug for PcgRepackOpDataTypes<'_, P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PcgRepackOpDataTypes")
+    }
+}
+
+impl<'tcx, P: std::fmt::Debug> PcgDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P> {
+    type Place = P;
+}
+
+impl<'tcx, P: std::fmt::Debug> RepackOpDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P> {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "data")]
-#[cfg_attr(feature = "type-export", ts(concrete(Local=String, Place=String, Guide=String)))]
-pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
-{
+#[cfg_attr(feature = "type-export", ts(concrete(D=PcgRepackOpDataTypes<'tcx>)))]
+pub enum RepackOp<'tcx, D: RepackOpDataTypes<'tcx> = PcgRepackOpDataTypes<'tcx>> {
     /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
     /// edge from where it was live.
@@ -390,38 +447,38 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// This Op only appears for edges between basic blocks. It is often emitted for edges to panic
     /// handling blocks, but can also appear in regular code for example in the MIR of
     /// [this function](https://github.com/dtolnay/syn/blob/3da56a712abf7933b91954dbfb5708b452f88504/src/attr.rs#L623-L628).
-    StorageDead(Local),
+    StorageDead(D::Local),
     /// This Op only appears within a `BasicBlock` and is attached to a
     /// [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
     /// statement. We emit it for any such statement where the local may already be dead. We
     /// guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
     /// safely ignore the statement this is attached to.
-    IgnoreStorageDead(Local),
+    IgnoreStorageDead(D::Local),
     /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
     /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
     ///
     /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
     /// the same capability. It can also appear at basic block join points, where one branch has
     /// a weaker capability than the other.
-    Weaken(Weaken<'tcx, Place, PositiveCapability, PositiveCapability>),
+    Weaken(Weaken<'tcx, D::Place, PositiveCapability, PositiveCapability>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places (except as noted in the documentation for that fn) which will be obtained by unpacking.
-    Expand(RepackExpand<'tcx, Place, Guide>),
+    Expand(RepackExpand<'tcx, D::Place, D::RepackGuide>),
     /// Instructs that one should pack up `place` with the given capability.
     /// `guide` denotes e.g. the enum variant to pack from. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places which should be packed up. We guarantee that the current state holds exactly the
     /// given capability for all places in this set.
-    Collapse(RepackCollapse<'tcx, Place, Guide>),
+    Collapse(RepackCollapse<'tcx, D::Place, D::RepackGuide>),
     /// TODO
-    DerefShallowInit(Place, Place),
+    DerefShallowInit(D::Place, D::Place),
     /// This place should have its capability changed from `Lent` (for mutably
     /// borrowed places) or `Read` (for shared borrow places), to the given
     /// capability, because it is no longer lent out.
-    RegainLoanedCapability(RegainedCapability<Place>),
+    RegainLoanedCapability(RegainedCapability<D::Place>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -456,7 +513,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp<'tcx> {
-    type Repr = RepackOp<'static, String, String, String>;
+    type Repr = RepackOp<'static, DebugDataTypes>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         match self {
             RepackOp::StorageDead(local) => RepackOp::StorageDead(local.display_string(ctxt)),
@@ -476,8 +533,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     }
 }
 
-impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
-    for RepackOp<'_, mir::Local, P>
+impl<'tcx, Ctxt, D: RepackOpDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
+where
+    D::Place: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(

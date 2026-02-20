@@ -89,7 +89,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     .collapse(local.into(), ctxt)
                     .map(|r| r.ops)
                     .unwrap_or_default();
-                repacks.push(RepackOp::StorageDead(local));
+                repacks.push(RepackOp::StorageDead(local.into()));
                 *self.owned = OwnedPcgLocal::Unallocated;
                 Ok(repacks)
             }

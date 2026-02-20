@@ -592,7 +592,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::edge_data::{LabelNodePredicate, NodeReplacement};
             use $crate::utils::data_structures::HashSet;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::utils::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgePlaces<'tcx, Ctxt, P>,
             )+ {
                 fn label_blocked_places(
@@ -634,7 +634,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
             use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::utils::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
             )+ {
                 fn label_lifetime_projections(
@@ -654,7 +654,7 @@ macro_rules! edgedata_enum {
 
             use $crate::HasValidityCheck;
 
-            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: Copy + $crate::utils::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> where $(
                 $inner_type: HasValidityCheck<Ctxt>,
             )+ {
                 fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {

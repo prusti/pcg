@@ -5,6 +5,7 @@ use derive_more::{Deref, DerefMut, From};
 use serde_derive::Serialize;
 
 use crate::{
+    DebugDataTypes,
     borrow_pcg::{
         action::{
             ApplyActionResult, BorrowPcgActionKind, BorrowPcgActionKindDebugRepr,
@@ -14,7 +15,7 @@ use crate::{
         unblock_graph::BorrowPcgUnblockAction,
         validity_conditions::ValidityConditions,
     },
-    owned_pcg::{RegainedCapability, RepackOp},
+    owned_pcg::{PcgRepackOpDataTypes, RegainedCapability, RepackOp},
     pcg::capabilities::PositiveCapability,
     rustc_interface::middle::mir,
     utils::{
@@ -223,7 +224,7 @@ impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDeb
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
 pub type OwnedPcgAction<'tcx, P = Place<'tcx>> =
-    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>>;
+    ActionKindWithDebugInfo<RepackOp<'tcx, PcgRepackOpDataTypes<'tcx, P>>>;
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
@@ -251,7 +252,7 @@ mod private {
     }
 }
 
-impl<'tcx, EdgeKind, P, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
+impl<'tcx, EdgeKind, P: std::fmt::Debug, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
     for PcgAction<'tcx, EdgeKind, P, VC>
 {
     fn from(action: BorrowPcgAction<'tcx, EdgeKind, P, VC>) -> PcgAction<'tcx, EdgeKind, P, VC> {
@@ -259,7 +260,9 @@ impl<'tcx, EdgeKind, P, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
     }
 }
 
-impl<'tcx, EdgeKind, P, VC> From<OwnedPcgAction<'tcx, P>> for PcgAction<'tcx, EdgeKind, P, VC> {
+impl<'tcx, EdgeKind, P: std::fmt::Debug, VC> From<OwnedPcgAction<'tcx, P>>
+    for PcgAction<'tcx, EdgeKind, P, VC>
+{
     fn from(action: OwnedPcgAction<'tcx, P>) -> Self {
         PcgAction::<'tcx, EdgeKind, P, VC>::Owned(action)
     }
@@ -275,7 +278,7 @@ pub type PcgAction<
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
     ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
-    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, Option<String>>,
+    ActionKindWithDebugInfo<RepackOp<'static, DebugDataTypes>, Option<String>>,
 >;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {

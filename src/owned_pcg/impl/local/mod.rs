@@ -246,8 +246,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                     .from
                     .expansion(expand.guide, ctxt)
                     .map_data(|_| OwnedPcgNode::Leaf(*leaf));
-                let owned_expansion: OwnedExpansion<'tcx, Deep> =
-                    OwnedExpansion::new(expansion_kind, expansion);
+                let owned_expansion: OwnedExpansion<'tcx, Deep> = OwnedExpansion::new(expansion);
                 *subtree = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(owned_expansion));
             }
             OwnedPcgNode::Internal(_) => todo!(),
@@ -348,7 +347,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         match tree {
             OwnedPcgNode::Leaf(leaf) => {
                 *self = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
-                    kind,
                     expansion.map_data(|_| OwnedPcgNode::Leaf(*leaf)),
                 )));
             }
@@ -440,12 +438,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 let mut this_expansion = internal
                     .expansions
                     .iter()
-                    .map(|e| {
-                        f(
-                            place,
-                            OwnedPcgNode::internal(e.kind, e.expansion.without_data()),
-                        )
-                    })
+                    .map(|e| f(place, OwnedPcgNode::internal(e.expansion.without_data())))
                     .collect::<Vec<_>>();
                 match order {
                     TraverseOrder::Postorder => {
@@ -469,12 +462,8 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
     pub(crate) fn leaf(inherent_capability: OwnedCapability) -> Self {
         Self::Leaf(OwnedPcgLeafNode::new(inherent_capability))
     }
-    pub(crate) fn internal(
-        kind: OwnedExpansionKind,
-        place_expansion: PlaceExpansion<'tcx, IData::Data>,
-    ) -> Self {
+    pub(crate) fn internal(place_expansion: PlaceExpansion<'tcx, IData::Data>) -> Self {
         Self::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
-            kind,
             place_expansion,
         )))
     }
@@ -488,7 +477,6 @@ pub(crate) enum OwnedExpansionKind {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OwnedExpansion<'tcx, IData: InternalData<'tcx> = Deep> {
-    kind: OwnedExpansionKind,
     pub(crate) expansion: PlaceExpansion<'tcx, IData::Data>,
 }
 
@@ -510,15 +498,12 @@ impl<'tcx> LeafOwnedExpansion<'tcx> {
 }
 
 impl<'tcx, IData: InternalData<'tcx>> OwnedExpansion<'tcx, IData> {
-    pub(crate) fn new(
-        kind: OwnedExpansionKind,
-        expansion: PlaceExpansion<'tcx, IData::Data>,
-    ) -> Self {
-        Self { kind, expansion }
+    pub(crate) fn new(expansion: PlaceExpansion<'tcx, IData::Data>) -> Self {
+        Self { expansion }
     }
 
     pub(crate) fn without_data(&self) -> OwnedExpansion<'tcx, Shallow> {
-        OwnedExpansion::new(self.kind, self.expansion.without_data())
+        OwnedExpansion::new(self.expansion.without_data())
     }
 }
 
@@ -556,7 +541,6 @@ impl<'tcx> OwnedExpansion<'tcx> {
         base_place: Place<'tcx>,
     ) -> Option<LeafOwnedExpansion<'tcx>> {
         let expansion = OwnedExpansion::new(
-            self.kind,
             self.expansion
                 .try_map_data(|d| d.as_leaf_node().map(|l| l.inherent_capability))?,
         );

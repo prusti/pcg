@@ -1,4 +1,5 @@
-use derive_more::From;
+use derive_more::{Deref, From};
+use pcg_macros::DisplayWithCtxt;
 
 use crate::rustc_interface::middle::mir;
 
@@ -18,5 +19,22 @@ impl serde::Serialize for BasicBlock {
         S: serde::Serializer,
     {
         format!("{:?}", self.0).serialize(serializer)
+    }
+}
+
+#[derive(From, Deref, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct Local(mir::Local);
+
+#[cfg(feature = "type-export")]
+impl ts_rs::TS for Local {
+    type WithoutGenerics = Local;
+    type OptionInnerType = Local;
+
+    fn name(cfg: &ts_rs::Config) -> String {
+        todo!()
+    }
+
+    fn inline(cfg: &ts_rs::Config) -> String {
+        todo!()
     }
 }

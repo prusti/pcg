@@ -11,6 +11,7 @@ mod engine;
 mod node;
 mod successor;
 
+pub(crate) mod annotations;
 pub(crate) mod capabilities;
 pub(crate) mod ctxt;
 pub(crate) mod obtain;

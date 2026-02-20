@@ -35,10 +35,11 @@ pub mod action;
 pub mod borrow_checker;
 pub mod borrow_pcg;
 pub mod coupling;
+pub(crate) mod ctxt;
 pub mod error;
 pub mod r#loop;
 pub mod owned_pcg;
-use std::{borrow::Cow, cell::RefCell, marker::PhantomData};
+use std::{borrow::Cow, marker::PhantomData};
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
@@ -49,18 +50,12 @@ pub mod utils;
 #[cfg(feature = "visualization")]
 pub mod visualization;
 
-use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::borrows_imgcat_debug;
 use pcg::{PcgEngine, PositiveCapability};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
-    middle::{
-        mir::{self, Body},
-        ty::{self, TyCtxt},
-    },
-    mir_dataflow::move_paths::MoveData,
-    span::def_id::LocalDefId,
+    middle::mir::{self, Body},
 };
 use serde_derive::Serialize;
 use serde_json::json;
@@ -70,6 +65,7 @@ use utils::{
     validity::HasValidityCheck,
 };
 
+pub use ctxt::PcgCtxt;
 pub use pcg::ctxt::HasSettings;
 
 #[cfg(feature = "visualization")]
@@ -163,63 +159,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
     }
 }
 
-/// Instructs that the capability to the place should be restored to the
-/// given capability, e.g. after a borrow expires, the borrowed place should be
-/// restored to exclusive capability.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct RestoreCapability<'tcx, P = Place<'tcx>> {
-    place: P,
-    capability: PositiveCapability,
-    _marker: PhantomData<&'tcx ()>,
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
-    for RestoreCapability<'tcx>
-{
-    fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
-        json!({
-            "place": self.place.to_json(ctxt.ctxt()),
-            "capability": format!("{:?}", self.capability),
-        })
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
-    for RestoreCapability<'tcx>
-{
-    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::join(
-            vec![
-                "Restore".into(),
-                self.place.display_output(ctxt, mode),
-                "to".into(),
-                self.capability.display_output(ctxt, mode),
-            ],
-            &DisplayOutput::SPACE,
-        )
-    }
-}
-
-impl<P: Copy> RestoreCapability<'_, P> {
-    pub(crate) fn new(place: P, capability: PositiveCapability) -> Self {
-        Self {
-            place,
-            capability,
-            _marker: PhantomData,
-        }
-    }
-
-    pub fn place(&self) -> P {
-        self.place
-    }
-
-    pub fn capability(&self) -> PositiveCapability {
-        self.capability
-    }
-}
-
-impl RestoreCapability<'_> {}
-
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Weaken<'tcx> {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         json!({
@@ -240,21 +179,6 @@ impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowPcgActions<'tcx> {
 }
 
 use borrow_pcg::action::actions::BorrowPcgActions;
-use utils::eval_stmt_data::EvalStmtData;
-
-#[cfg(feature = "visualization")]
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-struct PcgStmtVisualizationData {
-    actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
-    graphs: visualization::stmt_graphs::StmtGraphs,
-}
-
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-struct PcgSuccessorVisualizationData {
-    actions: Vec<PcgActionDebugRepr>,
-}
 
 /// Exposes accessors to the body and borrow-checker data for a MIR function.
 /// Types that implement this trait are used as inputs to the PCG.
@@ -288,179 +212,6 @@ impl<'tcx> BodyAndBorrows<'tcx> for borrowck::BodyWithBorrowckFacts<'tcx> {
     }
 }
 
-pub struct PcgCtxtCreator<'tcx> {
-    pub tcx: TyCtxt<'tcx>,
-    arena: bumpalo::Bump,
-    settings: PcgSettings,
-    #[cfg(feature = "visualization")]
-    debug_function_metadata: RefCell<crate::visualization::FunctionsMetadata>,
-}
-
-impl<'tcx> PcgCtxtCreator<'tcx> {
-    pub fn settings(&self) -> &PcgSettings {
-        &self.settings
-    }
-
-    #[must_use]
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-        Self::with_settings(tcx, PcgSettings::new())
-    }
-
-    #[must_use]
-    pub fn with_settings(tcx: TyCtxt<'tcx>, settings: PcgSettings) -> Self {
-        Self {
-            tcx,
-            arena: bumpalo::Bump::new(),
-            settings,
-            #[cfg(feature = "visualization")]
-            debug_function_metadata: RefCell::new(visualization::FunctionsMetadata::new()),
-        }
-    }
-
-    fn alloc<'a, T: 'a>(&'a self, val: T) -> &'a T {
-        self.arena.alloc(val)
-    }
-
-    pub fn new_ctxt<'slf: 'a, 'a>(
-        &'slf self,
-        body: &'a impl BodyAndBorrows<'tcx>,
-        bc: &'a impl BorrowCheckerInterface<'tcx>,
-    ) -> &'a PcgCtxt<'a, 'tcx> {
-        let pcg_ctxt: PcgCtxt<'a, 'tcx> =
-            PcgCtxt::with_settings(body.body(), self.tcx, bc, Cow::Borrowed(&self.settings));
-        #[cfg(feature = "visualization")]
-        if let Some(identifier) = pcg_ctxt.visualization_function_metadata() {
-            self.debug_function_metadata
-                .borrow_mut()
-                .insert(pcg_ctxt.compiler_ctxt.function_metadata_slug(), identifier);
-        }
-        self.alloc(pcg_ctxt)
-    }
-
-    pub fn new_nll_ctxt<'slf: 'a, 'a>(
-        &'slf self,
-        body: &'a impl BodyAndBorrows<'tcx>,
-    ) -> &'a PcgCtxt<'a, 'tcx> {
-        let bc = self.arena.alloc(NllBorrowCheckerImpl::new(self.tcx, body));
-        self.new_ctxt(body, bc)
-    }
-}
-
-pub struct PcgCtxt<'a, 'tcx> {
-    pub(crate) compiler_ctxt: CompilerCtxt<'a, 'tcx>,
-    move_data: MoveData<'tcx>,
-    settings: Cow<'a, PcgSettings>,
-    pub(crate) arena: bumpalo::Bump,
-}
-
-impl<'a, 'mir: 'a, 'tcx: 'mir> OverrideRegionDebugString for &'a PcgCtxt<'mir, 'tcx> {
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.compiler_ctxt
-            .borrow_checker
-            .override_region_debug_string(region)
-    }
-}
-
-impl<'a, 'mir: 'a, 'tcx: 'mir>
-    HasBorrowCheckerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>>
-    for &'a PcgCtxt<'mir, 'tcx>
-{
-    fn bc_ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &'a dyn BorrowCheckerInterface<'tcx>> {
-        self.compiler_ctxt.as_dyn()
-    }
-
-    fn bc(&self) -> &'a dyn BorrowCheckerInterface<'tcx> {
-        self.compiler_ctxt.borrow_checker()
-    }
-}
-
-impl DebugCtxt for &PcgCtxt<'_, '_> {
-    fn func_name(&self) -> String {
-        self.compiler_ctxt.func_name()
-    }
-    fn num_basic_blocks(&self) -> usize {
-        self.compiler_ctxt.num_basic_blocks()
-    }
-}
-
-impl<'mir, 'tcx> HasCompilerCtxt<'mir, 'tcx> for &PcgCtxt<'mir, 'tcx> {
-    fn ctxt(self) -> CompilerCtxt<'mir, 'tcx, ()> {
-        CompilerCtxt::new(self.compiler_ctxt.mir, self.compiler_ctxt.tcx, ())
-    }
-}
-
-impl<'tcx> HasTyCtxt<'tcx> for &PcgCtxt<'_, 'tcx> {
-    fn tcx(&self) -> TyCtxt<'tcx> {
-        self.compiler_ctxt.tcx
-    }
-}
-
-impl<'a> HasSettings<'a> for &'a PcgCtxt<'_, '_> {
-    fn settings(&self) -> &'a PcgSettings {
-        &self.settings
-    }
-}
-
-fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
-    MoveData::gather_moves(body, tcx, |_| true)
-}
-
-impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
-    pub fn new<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
-        body: &'a Body<'tcx>,
-        tcx: TyCtxt<'tcx>,
-        bc: &'a BC,
-    ) -> Self {
-        Self::with_settings(body, tcx, bc, Cow::Owned(PcgSettings::new()))
-    }
-
-    pub fn with_settings<BC: BorrowCheckerInterface<'tcx> + ?Sized>(
-        body: &'a Body<'tcx>,
-        tcx: TyCtxt<'tcx>,
-        bc: &'a BC,
-        settings: Cow<'a, PcgSettings>,
-    ) -> Self {
-        let ctxt = CompilerCtxt::new(body, tcx, bc.as_dyn());
-        Self {
-            compiler_ctxt: ctxt,
-            move_data: gather_moves(ctxt.body(), ctxt.tcx()),
-            settings,
-            arena: bumpalo::Bump::new(),
-        }
-    }
-
-    pub fn body_def_id(&self) -> LocalDefId {
-        self.compiler_ctxt.def_id()
-    }
-}
-
-#[cfg(feature = "visualization")]
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(export))]
-struct PcgBlockVisualizationData {
-    statements: Vec<PcgStmtVisualizationData>,
-    successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
-    loop_data: Option<PcgLoopDebugData>,
-}
-
-#[cfg(feature = "visualization")]
-#[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(export))]
-struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
-
-#[cfg(feature = "visualization")]
-impl PcgVisualizationData {
-    fn new() -> Self {
-        Self(std::collections::HashMap::new())
-    }
-
-    fn insert(&mut self, block: BasicBlock, data: PcgBlockVisualizationData) {
-        self.0.insert(block, data);
-    }
-}
-
 /// The main entrypoint for running the PCG.
 ///
 /// # Arguments
@@ -486,57 +237,12 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
 
     #[cfg(feature = "visualization")]
     if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
+        use crate::visualization::data::PcgVisualizationData;
+
         generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
             .expect("Failed to generate JSON from MIR");
-        let mut visualization_data = PcgVisualizationData::new();
-        for block in body.basic_blocks.indices() {
-            let Ok(Some(pcg_block)) = analysis_results.get_all_for_bb(block) else {
-                continue;
-            };
-            let ctxt = analysis_results.analysis().analysis_ctxt(block);
-            let (loop_data, debug_graphs) = if let Some(data) = ctxt.visualization_data {
-                let block_data = data.block_data.borrow();
-                (block_data.loop_data.clone(), block_data.graphs.clone())
-            } else {
-                (None, Vec::new())
-            };
-
-            let statements = pcg_block
-                .statements()
-                .map(|stmt| {
-                    let actions: EvalStmtData<Vec<AppliedActionDebugRepr>> =
-                        stmt.actions.debug_repr(pcg_ctxt.compiler_ctxt);
-                    PcgStmtVisualizationData {
-                        actions,
-                        graphs: debug_graphs
-                            .get(stmt.location.statement_index)
-                            .cloned()
-                            .unwrap_or_default(),
-                    }
-                })
-                .collect();
-
-            let successors = pcg_block
-                .successors()
-                .map(|succ| {
-                    (
-                        succ.block().into(),
-                        PcgSuccessorVisualizationData {
-                            actions: succ.actions().debug_repr(pcg_ctxt.compiler_ctxt),
-                        },
-                    )
-                })
-                .collect();
-
-            visualization_data.insert(
-                block.into(),
-                PcgBlockVisualizationData {
-                    statements,
-                    successors,
-                    loop_data,
-                },
-            );
-        }
+        let visualization_data =
+            PcgVisualizationData::from_analysis_results(&mut analysis_results, pcg_ctxt);
 
         let pcg_data_file_path = dir_path.join("pcg_data.json");
         let pcg_data_json = serde_json::to_string(&visualization_data).unwrap();
@@ -719,18 +425,13 @@ pub(crate) use pcg_validity_assert;
 pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
-#[cfg(feature = "visualization")]
-use crate::visualization::stmt_graphs::PcgLoopDebugData;
 use crate::{
-    action::{AppliedActionDebugRepr, PcgActionDebugRepr},
-    borrow_checker::r#impl::NllBorrowCheckerImpl,
-    borrow_pcg::region_projection::OverrideRegionDebugString,
+    owned_pcg::RepackGuide,
     pcg::CapabilityKind,
     utils::{
-        DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+        DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
-        mir::BasicBlock,
     },
 };
 
@@ -743,3 +444,24 @@ pub(crate) fn validity_checks_warn_only() -> bool {
 }
 
 pub(crate) trait Sealed {}
+
+pub trait PcgDataTypes<'tcx>: std::fmt::Debug + Clone {
+    type Local: std::fmt::Debug = crate::utils::mir::Local;
+    type Place: std::fmt::Debug = crate::utils::Place<'tcx>;
+    type RepackGuide: std::fmt::Debug + serde::Serialize = RepackGuide;
+}
+
+#[derive(Debug, Clone)]
+struct DebugDataTypes;
+
+impl<'tcx> PcgDataTypes<'tcx> for DebugDataTypes {
+    type Local = String;
+    type Place = String;
+    type RepackGuide = String;
+}
+
+pub trait RepackOpDataTypes<'tcx>: PcgDataTypes<'tcx> {
+    type ExpandCapability = PositiveCapability;
+}
+
+impl<'tcx> RepackOpDataTypes<'tcx> for DebugDataTypes {}

@@ -70,6 +70,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<
     }
 }
 
+impl<'tcx> From<crate::utils::mir::Local> for Place<'tcx> {
+    fn from(local: crate::utils::mir::Local) -> Self {
+        (*local).into()
+    }
+}
+
 impl<'tcx> From<Place<'tcx>> for PlaceRef<'tcx> {
     fn from(place: Place<'tcx>) -> Self {
         *place

@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    PcgCtxt, PcgCtxtCreator,
+    PcgCtxt,
+    ctxt::PcgCtxtCreator,
     utils::CompilerCtxt,
     visualization::{
         functions_metadata::{FunctionMetadata, FunctionSlug},

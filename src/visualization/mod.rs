@@ -7,6 +7,7 @@
 
 pub mod bc_facts_graph;
 pub(crate) mod ctxt;
+pub(crate) mod data;
 pub mod dot_graph;
 pub mod drawer;
 pub(crate) mod functions_metadata;
