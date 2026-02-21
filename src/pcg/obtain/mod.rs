@@ -207,7 +207,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let local_expansions = self.get_local_expansions(place.local);
-        let place = place.nearest_owned_place(ctxt);
+        let place = place.nearest_owned_place(ctxt).with_inherent_region(ctxt);
         let Some(subtree) = local_expansions
             .find_subtree(place.projection)
             .subtree()
