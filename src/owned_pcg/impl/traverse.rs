@@ -173,7 +173,8 @@ impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
     }
 }
 
-pub(crate) trait Traversable<'tcx, SourceData: InternalData<'tcx>> {
+pub(crate) trait Traversable<'tcx> {
+    type SourceData<'src>: InternalData<'tcx>;
     fn traverse_result<'src, 'a: 'src, T: TraverseComputation<'tcx> + 'src>(
         &'src self,
         place: Place<'tcx>,
@@ -182,7 +183,7 @@ pub(crate) trait Traversable<'tcx, SourceData: InternalData<'tcx>> {
     ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
-        T::Depth<'src>: FromData<'src, 'tcx, SourceData>;
+        T::Depth<'src>: FromData<'src, 'tcx, Self::SourceData<'src>>;
 
     fn traverse<'a, 'src, T: TraverseComputation<'tcx> + 'src>(
         &'src self,
@@ -193,7 +194,7 @@ pub(crate) trait Traversable<'tcx, SourceData: InternalData<'tcx>> {
     where
         'tcx: 'a,
         'a: 'src,
-        T::Depth<'src>: FromData<'src, 'tcx, SourceData>,
+        T::Depth<'src>: FromData<'src, 'tcx, Self::SourceData<'src>>,
     {
         self.traverse_result(place, computation, ctxt).result()
     }
@@ -262,10 +263,38 @@ impl<T, E, S> Try for TraverseResult<T, E, S> {
         }
     }
 }
+// impl<'data,
+//     'tcx,
+//     IData: InternalData<'tcx, Data = &'data OwnedPcgNode<'tcx, IData>>,
+// > Traversable<'tcx, IData> for OwnedPcgInternalNode<'tcx, IData>
+// {
+//     fn traverse_result<'src, 'a: 'src, T: TraverseComputation<'tcx> + 'src>(
+//         &'src self,
+//         place: Place<'tcx>,
+//         computation: &mut T,
+//         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+//     ) -> TraverseResult<T::AggregateResult, T::Err>
+//     where
+//         'tcx: 'a,
+//         T::Depth<'src>: FromData<'src, 'tcx, IData>,
+//     {
+//         let root_result = computation.compute_internal(place, T::Depth::from_data(self));
+//         let mut result = T::lift_result(root_result)?;
+//         for expansion in self.expansions() {
+//             for (place, node) in expansion.child_nodes(place, ctxt) {
+//                 let child_result = node.traverse_result(place, computation, ctxt)?;
+//                 result = computation.fold(result, child_result)?;
+//             }
+//         }
+//         TraverseResult::Continue(result)
+//     }
+// }
 
-impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversable<'tcx, IData>
+impl<'tcx, IData: InternalData<'tcx>> Traversable<'tcx>
     for OwnedPcgInternalNode<'tcx, IData>
 {
+    type SourceData<'src> = IData;
+
     fn traverse_result<'src, 'a: 'src, T: TraverseComputation<'tcx> + 'src>(
         &'src self,
         place: Place<'tcx>,
@@ -276,7 +305,8 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         'tcx: 'a,
         T::Depth<'src>: FromData<'src, 'tcx, IData>,
     {
-        let root_result = computation.compute_internal(place, T::Depth::from_data(self));
+        let node: OwnedPcgInternalNode<'tcx, T::Depth<'src>> = self.map_data();
+        let root_result = computation.compute_internal(place, node);
         let mut result = T::lift_result(root_result)?;
         for expansion in self.expansions() {
             for (place, node) in expansion.child_nodes(place, ctxt) {
@@ -287,10 +317,33 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         TraverseResult::Continue(result)
     }
 }
-
-impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversable<'tcx, IData>
+impl<'tcx, Data: Traversable<'tcx>, IData: InternalData<'tcx, Data = Data>> Traversable<'tcx>
     for OwnedPcgNode<'tcx, IData>
 {
+    type SourceData<'src> = IData;
+    fn traverse_result<'src, 'a: 'src, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
+        place: Place<'tcx>,
+        computation: &mut T,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> TraverseResult<T::AggregateResult, T::Err>
+    where
+        'tcx: 'a,
+        T::Depth<'src>: FromData<'src, 'tcx, IData>,
+    {
+        match self {
+            OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
+                T::lift_result(computation.compute_leaf(place, owned_pcg_leaf_node))
+            }
+            OwnedPcgNode::Internal(internal) => internal.traverse_result(place, computation, ctxt),
+        }
+    }
+}
+
+impl<'node, 'tcx, IData: InternalData<'tcx>> Traversable<'tcx>
+    for &'node OwnedPcgNode<'tcx, IData>
+{
+    type SourceData<'src> = IData;
     fn traverse_result<'src, 'a: 'src, T: TraverseComputation<'tcx> + 'src>(
         &'src self,
         place: Place<'tcx>,
@@ -362,6 +415,7 @@ impl<'comp, 'a, 'tcx> TraverseComputation<'tcx> for RepackOpsToExpandFrom<'a, 't
     ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
     where
         'tcx: 'src,
+        OwnedPcgInternalNode<'tcx, Self::Depth<'src>>: Traversable<'tcx>,
     {
         let edge_mutability = if !node
             .check_initialization(place, self.ctxt)

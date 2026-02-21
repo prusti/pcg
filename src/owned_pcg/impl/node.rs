@@ -1,5 +1,5 @@
 use crate::{
-    owned_pcg::{RepackGuide, traverse::Traversable},
+    owned_pcg::{RepackGuide, node_data::FromData, traverse::Traversable},
     utils::data_structures::HashSet,
 };
 use std::{collections::HashMap, marker::PhantomData};
@@ -7,12 +7,12 @@ use std::{collections::HashMap, marker::PhantomData};
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    utils::place::PlaceExpansion,
     owned_pcg::{
         ExpandedPlace, OwnedExpansion,
         node_data::{Deep, InternalData, Shallow},
     },
     pcg::OwnedCapability,
+    utils::place::PlaceExpansion,
     utils::{HasCompilerCtxt, Place},
 };
 
@@ -43,6 +43,17 @@ pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
 }
 
 impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
+    pub(crate) fn map_data<'slf, IData2: FromData<'slf, 'tcx, IData>>(
+        &'slf self,
+    ) -> OwnedPcgInternalNode<'tcx, IData2> {
+        OwnedPcgInternalNode {
+            expansions: self
+                .expansions
+                .iter()
+                .map(|(g, e)| (*g, OwnedExpansion::new(e.map_data(IData2::lower))))
+                .collect(),
+        }
+    }
     pub(crate) fn from_expansions(expansions: Vec<OwnedExpansion<'tcx, IData>>) -> Self {
         Self {
             expansions: HashMap::from_iter(expansions.into_iter().map(|e| (e.guide(), e))),
@@ -61,7 +72,10 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
         self.expansions.get(&guide)
     }
 
-    pub(crate) fn expansion_mut(&mut self, guide: RepackGuide) -> Option<&mut OwnedExpansion<'tcx, IData>> {
+    pub(crate) fn expansion_mut(
+        &mut self,
+        guide: RepackGuide,
+    ) -> Option<&mut OwnedExpansion<'tcx, IData>> {
         self.expansions.get_mut(&guide)
     }
 
