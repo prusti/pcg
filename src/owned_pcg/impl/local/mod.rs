@@ -16,7 +16,7 @@ use std::{
 
 use crate::{
     borrow_pcg::graph::BorrowsGraph,
-    error::PcgUnsupportedError,
+    error::{PcgInternalError, PcgUnsupportedError},
     owned_pcg::{
         PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
         node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode},
@@ -28,14 +28,17 @@ use crate::{
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet, place::PlaceExpansion},
+    utils::{
+        DebugCtxt, HasCompilerCtxt, Place, PlaceLike, data_structures::HashSet,
+        place::PlaceExpansion,
+    },
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
 use crate::{
     owned_pcg::RepackOp,
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, display::DisplayWithCompilerCtxt},
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -136,6 +139,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     ) -> HashSet<Place<'tcx>> {
         self.root
             .traverse(Place::from(local), &mut GetAllPlaces, ctxt)
+            .unwrap()
     }
 
     pub(crate) fn new(root: OwnedPcgNode<'tcx>) -> Self {
@@ -199,6 +203,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         'tcx: 'a,
     {
         self.traverse(Place::from(local), &mut GetExpansions, ctxt)
+            .unwrap()
             .into_iter()
             .sorted_by_key(|e| Reverse(e.place.projection.len()))
             .collect()
@@ -217,7 +222,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         }
         let Some(tree) = self
             .root
-            .subtree(place.with_inherent_region(ctxt).projection())
+            .find_subtree(place.with_inherent_region(ctxt).projection())
             .subtree()
         else {
             tracing::warn!(
@@ -346,7 +351,7 @@ impl<'tcx> OwnedExpansion<'tcx> {
         }
         let mut result = vec![];
         for (elem, data) in self.expansion.data() {
-            let place = base_place.project_deeper(elem, ctxt).unwrap();
+            let place = base_place.project_elem(elem, ctxt).unwrap();
             result.extend(data.leaf_expansions(place, ctxt));
         }
         result
@@ -369,12 +374,14 @@ impl<'tcx, D> PlaceExpansion<'tcx, D> {
         &self,
         base_place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> impl Iterator<Item = (Place<'tcx>, &D)>
+    ) -> impl Iterator<Item = (std::result::Result<Place<'tcx>, PcgInternalError>, &D)>
     where
         'tcx: 'a,
     {
         self.data().into_iter().map(move |(elem, data)| {
-            let place = base_place.project_deeper(elem, ctxt).unwrap();
+            let place = base_place
+                .project_elem(elem, ctxt)
+                .map_err(|err| PcgInternalError::new(format!("{:?}", err)));
             (place, data)
         })
     }
@@ -396,7 +403,7 @@ impl<'tcx> OwnedExpansion<'tcx> {
         for (elem, elem_data) in self.expansion.elems_data_mut() {
             match elem_data {
                 Some(data) => {
-                    let place = base_place.project_deeper(elem, ctxt).unwrap();
+                    let place = base_place.project_elem(elem, ctxt).unwrap();
                     if let Some(collapse_result) = data.collapse(place, ctxt) {
                         result.join(collapse_result);
                     }
@@ -517,7 +524,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 ctxt.ctxt(),
             ),
             ctxt,
-        )
+        ).unwrap()
     }
 
     pub(crate) fn leaf_expansions<'a>(
@@ -580,7 +587,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         None
     }
 
-    pub(crate) fn subtree<'slf>(
+    pub(crate) fn find_subtree<'slf>(
         &'slf self,
         projection: &[mir::PlaceElem<'tcx>],
     ) -> FindSubtreeResult<'slf, 'tcx> {
@@ -607,7 +614,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     }
 
     pub(crate) fn contains_projection_to(&self, projection: &[mir::PlaceElem<'tcx>]) -> bool {
-        self.subtree(projection).subtree().is_some()
+        self.find_subtree(projection).subtree().is_some()
     }
 
     pub(crate) fn leaf_places<'a>(
@@ -618,7 +625,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
-        self.traverse(base_place, &mut GetLeafPlaces, ctxt)
+        self.traverse(base_place, &mut GetLeafPlaces, ctxt).unwrap()
     }
     pub(crate) fn check_validity(
         &self,

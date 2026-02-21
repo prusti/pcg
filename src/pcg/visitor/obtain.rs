@@ -2,16 +2,11 @@ use crate::{
     Weaken,
     action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
-        action::{ApplyActionResult, LabelPlaceReason},
-        borrow_pcg_edge::BorrowPcgEdge,
-        edge::{
+        action::{ApplyActionResult, LabelPlaceReason}, borrow_pcg_edge::BorrowPcgEdge, edge::{
             borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-        },
-        edge_data::{EdgeData, LabelNodePredicate},
-        graph::Conditioned,
-        state::{BorrowStateMutRef, BorrowsStateLike},
+        }, edge_data::{EdgeData, LabelNodePredicate}, graph::Conditioned, region_projection::HasRegions, state::{BorrowStateMutRef, BorrowsStateLike}
     },
     owned_pcg::RepackOp,
     pcg::{
@@ -29,7 +24,8 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
-        data_structures::HashSet, display::DisplayWithCtxt, maybe_old::MaybeLabelledPlace, place::PlaceExpansion,
+        data_structures::HashSet, display::DisplayWithCtxt, maybe_old::MaybeLabelledPlace,
+        place::PlaceExpansion,
     },
 };
 use std::cmp::Ordering;

@@ -333,13 +333,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         self.place().ty(ctxt)
     }
 
-    pub(crate) fn project_deref<BC: Copy>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> MaybeLabelledPlace<'tcx> {
-        MaybeLabelledPlace::new(self.place().project_deref(ctxt), self.location())
-    }
-
     #[must_use]
     pub fn is_current(&self) -> bool {
         matches!(self, MaybeLabelledPlace::Current { .. })

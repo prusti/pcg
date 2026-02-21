@@ -739,6 +739,23 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
             .map(|region| LifetimeProjection::new(self, region, None, ctxt).unwrap())
             .collect()
     }
+
+    fn lifetime_projection(self, idx: RegionIdx, ctxt: Ctxt) -> LifetimeProjection<'tcx, Self>
+    where
+        Self: Sized + Copy + std::fmt::Debug,
+    {
+        self.lifetime_projections(ctxt)[idx]
+    }
+
+    fn region_idx(&self, region: PcgRegion<'tcx>, ctxt: Ctxt) -> Option<RegionIdx>
+    where
+        Self: Sized + Copy + std::fmt::Debug,
+    {
+        self.regions(ctxt)
+            .into_iter_enumerated()
+            .find(|(_, r)| *r == region)
+            .map(|(idx, _)| idx)
+    }
 }
 
 impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt> + Sealed> HasRegions<'tcx, Ctxt> for T {
@@ -758,9 +775,18 @@ pub trait HasTy<'tcx, Ctxt> {
     fn is_raw_ptr(&self, ctxt: Ctxt) -> bool {
         self.rust_ty(ctxt).is_raw_ptr()
     }
+
     fn is_ref(&self, ctxt: Ctxt) -> bool {
         self.rust_ty(ctxt).is_ref()
     }
+
+    fn ty_region(&self, ctxt: Ctxt) -> Option<PcgRegion<'tcx>> {
+        match self.rust_ty(ctxt).kind() {
+            TyKind::Ref(region, _, _) => Some((*region).into()),
+            _ => None,
+        }
+    }
+
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
@@ -1039,7 +1065,7 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     #[must_use]
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
         if self.base.ty_region(ctxt) == Some(self.region(ctxt)) {
-            Some(self.base.project_deref(ctxt))
+            Some(self.base.project_deref(ctxt).unwrap())
         } else {
             None
         }

@@ -9,16 +9,13 @@ use std::{
     mem::discriminant,
 };
 
-use derive_more::{Deref, DerefMut};
 use crate::{
     Sealed,
     borrow_pcg::region_projection::HasTy,
-    error::{PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
-    owned_pcg::RepackGuide,
+    error::PlaceContainingPtrWithNestedLifetime,
     rustc_interface::{
         VariantIdx,
         ast::Mutability,
-        index::IndexVec,
         middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
@@ -26,6 +23,7 @@ use crate::{
     },
     utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
 };
+use derive_more::{Deref, DerefMut};
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::borrow_pcg::{
@@ -35,19 +33,19 @@ use crate::borrow_pcg::{
 
 pub mod corrected;
 pub(crate) mod display;
+pub(crate) mod expansion;
 pub mod maybe_old;
 pub mod maybe_remote;
-pub(crate) mod expansion;
 pub(crate) mod ordering;
 pub(crate) mod pcg_place;
 pub(crate) mod place_like;
 pub(crate) mod place_projectable;
 pub mod remote;
+pub use expansion::PlaceExpansion;
+pub use ordering::PrefixRelation;
 pub use pcg_place::PcgPlace;
 pub use place_like::PlaceLike;
 pub use place_projectable::PlaceProjectable;
-pub use ordering::PrefixRelation;
-pub use expansion::PlaceExpansion;
 #[derive(Clone, Copy, Deref, DerefMut)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(as = "String"))]
@@ -83,7 +81,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Pla
     }
 }
 
-
 pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
 
 /// A trait for PCG nodes that contain a single place.
@@ -94,7 +91,6 @@ pub trait HasPlace<'tcx, P = Place<'tcx>>: Sized {
 
     fn place_mut(&mut self) -> &mut P;
 }
-
 
 impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
     fn place(&self) -> Place<'tcx> {
@@ -110,60 +106,6 @@ impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
 }
 
 impl<'tcx> Place<'tcx> {
-    /// Projects the place deeper by one element.
-    ///
-    /// __IMPORTANT__: This method also attempts to "normalize" the type of the resulting
-    /// place by inheriting from the type of the current place when possible. For example,
-    /// in the following code:
-    /// ```ignore
-    /// struct F<'a>(&'a mut i32);
-    /// let x: F<'x> = F(&mut 1);
-    /// let y: 'y mut i32 = x.0
-    /// ```
-    /// we want the type of `x.0` to be 'x mut i32 and NOT 'y mut i32. However, in the
-    /// MIR the `ProjectionElem::Field` for `.0` may have the type `'y mut i32`.
-    ///
-    /// To correct this, when projecting, we detect when the LHS is an ADT, and
-    /// extract from the ADT type the expected type of the projection and
-    /// replace the type.
-    ///
-    /// Returns an error if the projection would be illegal
-    ///
-    /// ```
-    pub(crate) fn project_deeper<'a>(
-        self,
-        elem: PlaceElem<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgUnsupportedError<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        let base_ty = self.ty(ctxt);
-        if matches!(
-            elem,
-            ProjectionElem::Index(_) | ProjectionElem::ConstantIndex { .. }
-        ) && base_ty.ty.builtin_index().is_none()
-        {
-            return Err(PcgUnsupportedError::IndexingNonIndexableType);
-        }
-        let corrected_elem = if let ProjectionElem::Field(field_idx, proj_ty) = elem {
-            let expected_ty = match base_ty.ty.kind() {
-                ty::TyKind::Adt(def, substs) => {
-                    let variant = match base_ty.variant_index {
-                        Some(v) => def.variant(v),
-                        None => def.non_enum_variant(),
-                    };
-                    variant.fields[field_idx].ty(ctxt.tcx(), substs)
-                }
-                ty::TyKind::Tuple(tys) => tys[field_idx.as_usize()],
-                _ => proj_ty,
-            };
-            ProjectionElem::Field(field_idx, expected_ty)
-        } else {
-            elem
-        };
-        Ok(self.0.project_deeper(&[corrected_elem], ctxt.tcx()).into())
-    }
 
     #[rustversion::since(2025-03-01)]
     pub(crate) fn is_raw_ptr<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
@@ -191,45 +133,6 @@ impl<'tcx> Place<'tcx> {
     #[must_use]
     pub fn new(local: Local, projection: &'tcx [PlaceElem<'tcx>]) -> Self {
         Self(PlaceRef { local, projection })
-    }
-
-    pub(crate) fn expansion<'a>(
-        self,
-        guide: RepackGuide,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> PlaceExpansion<'tcx>
-    where
-        'tcx: 'a,
-    {
-        if let Some(guide) = guide.as_non_default() {
-            guide.into()
-        } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::deref()
-        } else {
-            match self.ty(ctxt).ty.kind() {
-                ty::TyKind::Adt(adt_def, substs) => {
-                    let variant = match self.ty(ctxt).variant_index {
-                        Some(v) => adt_def.variant(v),
-                        None => adt_def.non_enum_variant(),
-                    };
-                    PlaceExpansion::fields(
-                        variant
-                            .fields
-                            .iter()
-                            .enumerate()
-                            .map(|(i, field)| (i.into(), field.ty(ctxt.tcx(), substs)))
-                            .collect(),
-                    )
-                }
-                ty::TyKind::Tuple(tys) => PlaceExpansion::fields(
-                    tys.iter()
-                        .enumerate()
-                        .map(|(i, ty)| (i.into(), ty))
-                        .collect(),
-                ),
-                _ => unreachable!("Unexpected type: {:?}", self.ty(ctxt).ty),
-            }
-        }
     }
 
     pub(crate) fn base_lifetime_projection<'a>(
@@ -329,19 +232,6 @@ impl<'tcx> Place<'tcx> {
             })
     }
 
-    pub(crate) fn ty_region<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Option<PcgRegion<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        match self.rust_ty(ctxt).kind() {
-            TyKind::Ref(region, _, _) => Some((*region).into()),
-            _ => None,
-        }
-    }
-
     #[must_use]
     pub fn prefix_place(&self) -> Option<Place<'tcx>> {
         let (prefix, _) = self.last_projection()?;
@@ -380,51 +270,6 @@ impl<'tcx> Place<'tcx> {
         place
     }
 
-    #[must_use]
-    pub fn region_projection(
-        &self,
-        idx: RegionIdx,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> LifetimeProjection<'tcx, Self> {
-        self.lifetime_projections(ctxt)[idx]
-    }
-
-    pub fn regions<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, PcgRegion<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        extract_regions(self.rust_ty(ctxt))
-    }
-
-    pub(crate) fn lifetime_projections<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
-    where
-        'tcx: 'a,
-    {
-        let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty)
-            .iter()
-            .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
-            .collect()
-    }
-
-    #[must_use]
-    pub fn projection_index(
-        &self,
-        region: PcgRegion<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Option<RegionIdx> {
-        extract_regions(self.rust_ty(ctxt))
-            .into_iter_enumerated()
-            .find(|(_, r)| *r == region)
-            .map(|(idx, _)| idx)
-    }
-
     pub fn is_mut_ref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
     where
         'tcx: 'a,
@@ -454,24 +299,6 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty.ref_mutability()
-    }
-
-    #[must_use]
-    pub fn project_deref<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
-    where
-        'tcx: 'a,
-    {
-        assert!(
-            self.rust_ty(ctxt).is_ref() || self.rust_ty(ctxt).is_box(),
-            "Expected ref or box, got {:?}",
-            self.rust_ty(ctxt)
-        );
-        Place::new(
-            self.0.local,
-            self.0
-                .project_deeper(&[PlaceElem::Deref], ctxt.tcx())
-                .projection,
-        )
     }
 
     #[must_use]
@@ -570,7 +397,10 @@ impl<'tcx> Place<'tcx> {
     }
 
     #[must_use]
-    pub fn nearest_owned_place(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Self {
+    pub fn nearest_owned_place<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
+    where
+        'tcx: 'a,
+    {
         if self.is_owned(ctxt) {
             return self;
         }

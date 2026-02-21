@@ -262,3 +262,44 @@ impl<'tcx, D> PlaceExpansion<'tcx, D> {
         }
     }
 }
+
+impl<'tcx> Place<'tcx> {
+    pub(crate) fn expansion<'a>(
+        self,
+        guide: RepackGuide,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> PlaceExpansion<'tcx>
+    where
+        'tcx: 'a,
+    {
+        if let Some(guide) = guide.as_non_default() {
+            guide.into()
+        } else if self.ty(ctxt).ty.is_box() {
+            PlaceExpansion::deref()
+        } else {
+            match self.ty(ctxt).ty.kind() {
+                ty::TyKind::Adt(adt_def, substs) => {
+                    let variant = match self.ty(ctxt).variant_index {
+                        Some(v) => adt_def.variant(v),
+                        None => adt_def.non_enum_variant(),
+                    };
+                    PlaceExpansion::fields(
+                        variant
+                            .fields
+                            .iter()
+                            .enumerate()
+                            .map(|(i, field)| (i.into(), field.ty(ctxt.tcx(), substs)))
+                            .collect(),
+                    )
+                }
+                ty::TyKind::Tuple(tys) => PlaceExpansion::fields(
+                    tys.iter()
+                        .enumerate()
+                        .map(|(i, ty)| (i.into(), ty))
+                        .collect(),
+                ),
+                _ => unreachable!("Unexpected type: {:?}", self.ty(ctxt).ty),
+            }
+        }
+    }
+}

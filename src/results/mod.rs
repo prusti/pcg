@@ -12,7 +12,7 @@ use crate::{
     action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::PlaceOrConst,
+        region_projection::{HasRegions, PlaceOrConst},
     },
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
@@ -32,8 +32,7 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
-        domain_data::DomainDataStates, validity::HasValidityCheck,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceProjectable, display::DebugLines, domain_data::DomainDataStates, validity::HasValidityCheck
     },
 };
 
@@ -421,7 +420,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
                     PlaceOrConst::Place(p) => {
                         let assoc_place = p.related_local_place();
                         if assoc_place.is_ref(ctxt) {
-                            Some(assoc_place.project_deref(ctxt))
+                            Some(assoc_place.project_deref(ctxt).unwrap())
                         } else {
                             None
                         }

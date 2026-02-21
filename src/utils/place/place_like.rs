@@ -37,7 +37,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
     ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
         let mut places = Vec::new();
         for (elem, _) in expansion.elems_data() {
-            let place = self.project_deeper(elem, ctxt)?;
+            let place = self.project_elem(elem, ctxt)?;
             places.push(place);
         }
         Ok(places)

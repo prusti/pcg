@@ -428,7 +428,7 @@ impl<'tcx> RepackCollapse<'tcx> {
     #[must_use]
     pub fn box_deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<Place<'tcx>> {
         if self.to.ty(ctxt).ty.is_box() {
-            self.to.project_deeper(PlaceElem::Deref, ctxt).ok()
+            self.to.project_elem(PlaceElem::Deref, ctxt).ok()
         } else {
             None
         }

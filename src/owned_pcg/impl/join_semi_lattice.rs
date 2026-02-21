@@ -7,7 +7,7 @@
 use crate::{
     HasSettings,
     borrow_pcg::{action::LabelPlaceReason, has_pcs_elem::SetLabel, state::BorrowsStateLike},
-    error::PcgError,
+    error::{PcgError, PcgInternalError},
     owned_pcg::{
         ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
         RequiredGuide,
@@ -130,14 +130,14 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &self,
         base_place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Vec<ExpandedPlace<'tcx>>
+    ) -> Result<Vec<ExpandedPlace<'tcx>>, PcgInternalError>
     where
         'tcx: 'a,
     {
-        self.traverse(base_place, &mut GetExpansions, ctxt)
+        Ok(self.traverse(base_place, &mut GetExpansions, ctxt)?
             .into_iter()
             .sorted_by_key(|e| e.place.projection.len())
-            .collect()
+            .collect())
     }
 
     pub(crate) fn all_children_of<'a>(
@@ -148,7 +148,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
-        match self.subtree(&place.projection).subtree() {
+        match self.find_subtree(&place.projection).subtree() {
             Some(subtree) => subtree.leaf_places(place, ctxt),
             None => HashSet::default(),
         }

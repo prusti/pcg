@@ -260,7 +260,7 @@ impl<'tcx> BorrowEdge<'tcx> {
     /// `let x = &mut y;`, then the deref place is `*x`.
     #[must_use]
     pub fn deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> MaybeLabelledPlace<'tcx> {
-        self.assigned_ref.project_deref(ctxt)
+        self.assigned_ref.project_deref(ctxt).unwrap()
     }
 }
 impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {

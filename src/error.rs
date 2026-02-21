@@ -2,7 +2,7 @@ use derive_more::From;
 
 use crate::{
     coupling::CoupleInputError,
-    rustc_interface::{middle::ty, span::Span},
+    rustc_interface::{middle::{mir::PlaceElem, ty}, span::Span},
     utils::{
         self, PANIC_ON_ERROR,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -123,6 +123,26 @@ pub struct CallWithUnsafePtrWithNestedLifetime<'tcx> {
     pub(crate) place: PlaceContainingPtrWithNestedLifetime<'tcx>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IllegalProjection<'tcx> {
+    base_ty: ty::Ty<'tcx>,
+    elem: PlaceElem<'tcx>,
+}
+
+impl<'tcx> IllegalProjection<'tcx> {
+    pub(crate) fn check(base_ty: ty::Ty<'tcx>, elem: PlaceElem<'tcx>) -> Result<(), Self> {
+        match elem {
+            PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. } if base_ty.builtin_index().is_none() => {
+                return Err(Self { base_ty, elem });
+            }
+            PlaceElem::Deref if !base_ty.is_box() && !base_ty.is_ref()  && !base_ty.is_raw_ptr() => {
+                return Err(Self { base_ty, elem });
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum PcgUnsupportedError<'tcx> {
     AssignBorrowToNonReferenceType,
@@ -130,7 +150,7 @@ pub enum PcgUnsupportedError<'tcx> {
     MoveUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
     ExpansionOfAliasType,
     CallWithUnsafePtrWithNestedLifetime(CallWithUnsafePtrWithNestedLifetime<'tcx>),
-    IndexingNonIndexableType,
+    IllegalProjection(IllegalProjection<'tcx>),
     InlineAssembly,
     MaxNodesExceeded,
     Coupling(CoupleInputError),

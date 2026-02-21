@@ -13,7 +13,7 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{HasRegions, LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
     },
     error::PcgError,
@@ -207,43 +207,33 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let local_expansions = self.get_local_expansions(place.local);
-        let to_collapse = local_expansions.places_to_collapse_to_for_obtain_of(place, ctxt);
-        tracing::warn!(
-            "To obtain {} at {:?} from {:?}, will collapse {}",
-            place.display_string(ctxt.ctxt()),
-            capability,
-            local_expansions,
-            to_collapse.display_string(ctxt.ctxt())
-        );
-        for place in to_collapse {
-            let expansions = self
-                .get_local_expansions(place.local)
-                .subtree(&place.projection)
-                .subtree()
-                .unwrap()
-                .expansions_longest_first(place, ctxt);
-            assert!(!expansions.is_empty());
-            for pe in expansions {
-                self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                    RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
-                    Some(context.clone().into()),
-                )))?;
-                for rp in place.lifetime_projections(ctxt) {
-                    let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
-                        .expansion_places(&pe.expansion, ctxt)
-                        .unwrap()
-                        .into_iter()
-                        .flat_map(|ep| {
-                            ep.lifetime_projections(ctxt)
-                                .into_iter()
-                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
-                                .map(std::convert::Into::into)
-                                .collect::<Vec<_>>()
-                        })
-                        .collect::<Vec<_>>();
-                    if rp_expansion.len() > 1 && capability.is_exclusive() {
-                        self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
-                    }
+        let place = place.nearest_owned_place(ctxt);
+        let Some(subtree) = local_expansions
+            .find_subtree(place.projection)
+            .subtree()
+        else {
+            return Ok(());
+        };
+        for pe in subtree.expansions_longest_first(place, ctxt).unwrap() {
+            self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
+                RepackOp::Collapse(RepackCollapse::new(pe.place, capability, pe.guide())),
+                Some(context.clone().into()),
+            )))?;
+            for rp in pe.place.lifetime_projections(ctxt) {
+                let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
+                    .expansion_places(&pe.expansion, ctxt)
+                    .unwrap()
+                    .into_iter()
+                    .flat_map(|ep| {
+                        ep.lifetime_projections(ctxt)
+                            .into_iter()
+                            .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
+                            .map(std::convert::Into::into)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                if rp_expansion.len() > 1 && capability.is_exclusive() {
+                    self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
                 }
             }
         }

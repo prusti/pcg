@@ -4,7 +4,7 @@ use crate::{
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::{ConstructAbstractionGraphResult, MaybeRemoteCurrentPlace},
-        region_projection::LifetimeProjectionLabel,
+        region_projection::{HasRegions, LifetimeProjectionLabel},
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},

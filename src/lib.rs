@@ -30,6 +30,7 @@ may already be stabilized */
 #![feature(stmt_expr_attributes)]
 #![feature(allocator_api)]
 #![feature(let_chains)]
+#![feature(try_trait_v2)]
 
 pub mod action;
 pub mod borrow_checker;

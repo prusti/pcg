@@ -1,9 +1,7 @@
 use crate::{
     HasSettings, Sealed,
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
-    borrow_pcg::{
-        region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
-    },
+    borrow_pcg::region_projection::{HasRegions, OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::{RepackGuide, RequiredGuide},
     pcg::ctxt::AnalysisCtxt,
@@ -430,7 +428,7 @@ impl ConstantIndex {
     {
         self.other_elems()
             .into_iter()
-            .map(|e| from.project_deeper(e, ctxt).unwrap())
+            .map(|e| from.project_elem(e, ctxt).unwrap())
             .collect()
     }
 

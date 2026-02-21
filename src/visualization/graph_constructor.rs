@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{LifetimeProjection, PlaceOrConst},
+        region_projection::{HasRegions, LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},

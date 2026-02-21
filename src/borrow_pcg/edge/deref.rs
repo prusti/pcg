@@ -16,11 +16,7 @@ use crate::{
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
-        data_structures::HashSet,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, PlaceProjectable, SnapshotLocation, data_structures::HashSet, display::{DisplayOutput, DisplayWithCtxt, OutputMode}, maybe_old::MaybeLabelledPlace, validity::HasValidityCheck
     },
 };
 
@@ -66,7 +62,7 @@ impl<'tcx> DerefEdge<'tcx> {
         let blocked_place_label: Option<SnapshotLocation> = None;
         DerefEdge {
             blocked_place: MaybeLabelledPlace::new(place, blocked_place_label),
-            deref_place: place.project_deref(ctxt).into(),
+            deref_place: place.project_deref(ctxt).unwrap().into(),
             blocked_lifetime_projection,
         }
     }

@@ -13,7 +13,7 @@ use crate::{
         },
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{HasRegions, LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
     },
     error::PcgError,
@@ -29,8 +29,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        place::PlaceExpansion, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
-        ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, PlaceProjectable, ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt, place::PlaceExpansion
     },
 };
 
@@ -46,7 +45,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
-        for (base, _) in place.iter_projections() {
+        for (base, _) in place.iter_projections(ctxt) {
             let base: crate::utils::Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
@@ -160,7 +159,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
             if self
                 .borrows_graph()
-                .contains_deref_edge_to(base.project_deref(ctxt))
+                .contains_deref_edge_to(base.project_deref(ctxt).unwrap())
             {
                 return Ok(false);
             }

@@ -3,7 +3,7 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
+        action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind, region_projection::HasRegions,
     },
     pcg::{
         CapabilityKind, PcgRefLike, PositiveCapability, place_capabilities::PlaceCapabilitiesReader,

@@ -1,39 +1,53 @@
-use std::{marker::PhantomData, ops::ControlFlow};
+use std::{
+    marker::PhantomData,
+    ops::{ControlFlow, FromResidual, Try},
+};
 
 use crate::{
+    error::PcgInternalError,
     owned_pcg::{
         ExpandedPlace, OwnedPcgInternalNode, OwnedPcgLeafNode, RepackOp,
         node::OwnedPcgNode,
         node_data::{Deep, DeepRef, FromData, InternalData, Shallow},
     },
-    pcg::{OwnedCapability, edge::EdgeMutability},
+    pcg::{OwnedCapability, Pcg, edge::EdgeMutability},
     rustc_interface::ast::Mutability,
     utils::{CompilerCtxt, HasCompilerCtxt, Place, data_structures::HashSet},
 };
 
 pub(crate) trait TraverseComputation<'tcx> {
     type Depth: InternalData<'tcx> = Shallow;
-    type AggregateResult;
+    type Err: std::fmt::Debug = PcgInternalError;
     type NodeResult;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult;
+    type AggregateResult;
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult;
+
+    fn lift_result(
+        result: TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>,
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
+        match result {
+            TraverseResult::Continue(result) => TraverseResult::Continue(Self::lift(result)),
+            TraverseResult::Break(residual) => TraverseResult::Break(residual),
+        }
+    }
 
     fn compute_leaf<'src>(
         &mut self,
         place: Place<'tcx>,
         node: &'src OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult>;
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>;
 
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
         node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult>;
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>;
 
     fn fold(
         &mut self,
         acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult>;
+    ) -> TraverseResult<Self::AggregateResult, Self::Err>;
 }
 
 pub(crate) struct GetAllPlaces;
@@ -41,7 +55,7 @@ pub(crate) struct GetAllPlaces;
 impl<'tcx> TraverseComputation<'tcx> for GetAllPlaces {
     type AggregateResult = HashSet<Place<'tcx>>;
     type NodeResult = Place<'tcx>;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
         std::iter::once(node_result).collect()
     }
 
@@ -49,25 +63,25 @@ impl<'tcx> TraverseComputation<'tcx> for GetAllPlaces {
         &mut self,
         place: Place<'tcx>,
         _node: &OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(place)
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(place)
     }
 
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
         _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(place)
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(place)
     }
 
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult> {
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
         acc.extend(rhs);
-        ControlFlow::Continue(acc)
+        TraverseResult::Continue(acc)
     }
 }
 
@@ -76,7 +90,7 @@ pub(crate) struct GetLeafPlaces;
 impl<'tcx> TraverseComputation<'tcx> for GetLeafPlaces {
     type AggregateResult = HashSet<Place<'tcx>>;
     type NodeResult = Option<Place<'tcx>>;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
         if let Some(place) = node_result {
             std::iter::once(place).collect()
         } else {
@@ -88,25 +102,25 @@ impl<'tcx> TraverseComputation<'tcx> for GetLeafPlaces {
         &mut self,
         place: Place<'tcx>,
         node: &OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(Some(place))
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(Some(place))
     }
 
     fn compute_internal(
         &mut self,
         _place: Place<'tcx>,
         _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(None)
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(None)
     }
 
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult> {
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
         acc.extend(rhs);
-        ControlFlow::Continue(acc)
+        TraverseResult::Continue(acc)
     }
 }
 
@@ -115,7 +129,7 @@ pub(crate) struct GetExpansions;
 impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
     type AggregateResult = HashSet<ExpandedPlace<'tcx>>;
     type NodeResult = HashSet<ExpandedPlace<'tcx>>;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
         node_result
     }
 
@@ -123,25 +137,25 @@ impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
         &mut self,
         _place: Place<'tcx>,
         _node: &OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(HashSet::default())
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(HashSet::default())
     }
 
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
         node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(node.expanded_places(place))
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(node.expanded_places(place))
     }
 
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult> {
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
         acc.extend(rhs);
-        ControlFlow::Continue(acc)
+        TraverseResult::Continue(acc)
     }
 }
 
@@ -151,7 +165,7 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
+    ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
         T::Depth: FromData<'src, 'tcx, IData>;
@@ -161,15 +175,12 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> T::AggregateResult
+    ) -> Result<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
         T::Depth: FromData<'src, 'tcx, IData>,
     {
-        match self.traverse_result(place, computation, ctxt) {
-            ControlFlow::Continue(result) => result,
-            ControlFlow::Break(result) => result,
-        }
+        self.traverse_result(place, computation, ctxt).result()
     }
 
     fn is_fully_initialized<'a>(
@@ -185,6 +196,47 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
             &mut All(Box::new(|leaf| leaf.inherent_capability.is_deep())),
             ctxt,
         )
+        .unwrap()
+    }
+}
+
+pub(crate) enum TraverseBreak<T, E> {
+    Error(E),
+    ShortCircuit(T),
+}
+
+pub(crate) enum TraverseResult<T, E, S = T> {
+    Continue(T),
+    Break(TraverseBreak<S, E>),
+}
+
+impl<T, E> TraverseResult<T, E> {
+    pub(crate) fn result(self) -> Result<T, E> {
+        match self {
+            TraverseResult::Continue(result)
+            | TraverseResult::Break(TraverseBreak::ShortCircuit(result)) => Ok(result),
+            TraverseResult::Break(TraverseBreak::Error(error)) => Err(error),
+        }
+    }
+}
+impl<T, E, S> FromResidual<TraverseBreak<S, E>> for TraverseResult<T, E, S> {
+    fn from_residual(residual: TraverseBreak<S, E>) -> Self {
+        TraverseResult::Break(residual)
+    }
+}
+
+impl<T, E, S> Try for TraverseResult<T, E, S> {
+    type Output = T;
+    type Residual = TraverseBreak<S, E>;
+    fn from_output(output: Self::Output) -> Self {
+        TraverseResult::Continue(output)
+    }
+
+    fn branch(self) -> ControlFlow<Self::Residual, Self::Output> {
+        match self {
+            TraverseResult::Continue(output) => ControlFlow::Continue(output),
+            TraverseResult::Break(residual) => ControlFlow::Break(residual),
+        }
     }
 }
 
@@ -196,20 +248,20 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
+    ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
         T::Depth: FromData<'src, 'tcx, IData>,
     {
-        let root_result = computation.compute_internal(place, T::Depth::from_data(self))?;
-        let mut result = computation.lift(root_result);
+        let root_result = computation.compute_internal(place, T::Depth::from_data(self));
+        let mut result = T::lift_result(root_result)?;
         for expansion in self.expansions() {
             for (place, node) in expansion.child_nodes(place, ctxt) {
-                let child_result = node.traverse_result(place, computation, ctxt)?;
+                let child_result = node.traverse_result(place.unwrap(), computation, ctxt)?;
                 result = computation.fold(result, child_result)?;
             }
         }
-        ControlFlow::Continue(result)
+        TraverseResult::Continue(result)
     }
 }
 
@@ -221,17 +273,18 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
+    ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
         T::Depth: FromData<'src, 'tcx, IData>,
     {
         match self {
             OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
-                let result = computation.compute_leaf(place, owned_pcg_leaf_node)?;
-                ControlFlow::Continue(computation.lift(result))
+                T::lift_result(computation.compute_leaf(place, owned_pcg_leaf_node))
             }
-            OwnedPcgNode::Internal(internal) => internal.traverse_result(place, computation, ctxt),
+            OwnedPcgNode::Internal(internal) => {
+                internal.traverse_result(place, computation, ctxt)
+            }
         }
     }
 }
@@ -262,7 +315,7 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
     type Depth = DeepRef<'comp>;
     type AggregateResult = Vec<RepackOp<'tcx>>;
     type NodeResult = Vec<RepackOp<'tcx>>;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
         node_result
     }
 
@@ -270,7 +323,7 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
         &mut self,
         place: Place<'tcx>,
         node: &OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         let result = if node.inherent_capability < self.base_inherent_capability {
             vec![RepackOp::weaken(
                 place,
@@ -280,20 +333,21 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
         } else {
             vec![]
         };
-        ControlFlow::Continue(result)
+        TraverseResult::Continue(result)
     }
 
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
         node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         let result = node
             .expansions()
             .flat_map(|e| {
                 e.expansion
                     .child_nodes(place, self.ctxt)
                     .map(|(place, node)| {
+                        let place = place.unwrap();
                         let edge_mutability = if !node.is_fully_initialized(place, self.ctxt)
                             || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
                         {
@@ -305,16 +359,16 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
                     })
             })
             .collect::<Vec<_>>();
-        ControlFlow::Continue(result)
+        TraverseResult::Continue(result)
     }
 
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult> {
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
         acc.extend(rhs);
-        ControlFlow::Continue(acc)
+        TraverseResult::Continue(acc)
     }
 }
 
@@ -323,7 +377,7 @@ pub(crate) struct All<'tcx>(pub Box<dyn Fn(&OwnedPcgLeafNode<'tcx>) -> bool>);
 impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
     type AggregateResult = bool;
     type NodeResult = bool;
-    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+    fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
         node_result
     }
 
@@ -331,11 +385,11 @@ impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
         &mut self,
         _place: Place<'tcx>,
         node: &OwnedPcgLeafNode<'tcx>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         if self.0(node) {
-            ControlFlow::Continue(true)
+            TraverseResult::Continue(true)
         } else {
-            ControlFlow::Break(false)
+            TraverseResult::Break(TraverseBreak::ShortCircuit(false))
         }
     }
 
@@ -343,19 +397,19 @@ impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
         &mut self,
         _place: Place<'tcx>,
         node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        ControlFlow::Continue(true)
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
+        TraverseResult::Continue(true)
     }
 
     fn fold(
         &mut self,
         acc: Self::AggregateResult,
         rhs: Self::AggregateResult,
-    ) -> ControlFlow<Self::AggregateResult, Self::AggregateResult> {
+    ) -> TraverseResult<Self::AggregateResult, Self::Err> {
         if acc && rhs {
-            ControlFlow::Continue(true)
+            TraverseResult::Continue(true)
         } else {
-            ControlFlow::Break(false)
+            TraverseResult::Break(TraverseBreak::ShortCircuit(false))
         }
     }
 }

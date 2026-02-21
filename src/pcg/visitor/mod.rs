@@ -5,7 +5,7 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
         region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+            HasRegions, LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst
         },
     },
     error::CallWithUnsafePtrWithNestedLifetime,

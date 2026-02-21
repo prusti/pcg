@@ -8,7 +8,7 @@ use crate::{
         borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, OverrideRegionDebugString, PcgLifetimeProjectionBase},
         validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },

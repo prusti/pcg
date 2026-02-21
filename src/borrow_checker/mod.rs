@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
+    borrow_pcg::region_projection::{HasRegions, OverrideRegionDebugString, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{

@@ -25,6 +25,7 @@ use crate::{
         DebugCtxt, HasCompilerCtxt, HasLocals, Place, PlaceLike,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        place::PlaceProjectable,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -179,7 +180,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         assert!(place.is_owned(ctxt));
         let owned_local = &self.0[place.local];
         if let OwnedPcgLocal::Allocated(expansions) = owned_local {
-            expansions.subtree(&place.with_inherent_region(ctxt).projection)
+            expansions.find_subtree(&place.with_inherent_region(ctxt).projection)
         } else {
             FindSubtreeResult::none()
         }

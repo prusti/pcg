@@ -9,7 +9,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::LifetimeProjection,
+        region_projection::{HasRegions, LifetimeProjection},
         state::BorrowsStateLike,
     },
     error::PcgError,
@@ -19,8 +19,7 @@ use crate::{
         place_capabilities::BlockType,
     },
     utils::{
-        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, PlaceProjectable, data_structures::HashSet, display::DisplayWithCompilerCtxt
     },
 };
 
@@ -115,6 +114,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 if current.is_ref(self.ctxt)
                     && !current
                         .project_deref(self.ctxt)
+                        .unwrap()
                         .regions(self.ctxt)
                         .iter()
                         .contains(r)
