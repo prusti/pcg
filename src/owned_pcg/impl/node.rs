@@ -61,10 +61,20 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
         self.expansions.get(&guide)
     }
 
+    pub(crate) fn expansion_mut(&mut self, guide: RepackGuide) -> Option<&mut OwnedExpansion<'tcx, IData>> {
+        self.expansions.get_mut(&guide)
+    }
+
     pub(crate) fn expansions_mut(
         &mut self,
     ) -> impl Iterator<Item = &mut OwnedExpansion<'tcx, IData>> {
         self.expansions.iter_mut().map(|(_, e)| e)
+    }
+
+    pub(crate) fn expansions_mut_with_guides(
+        &mut self,
+    ) -> impl Iterator<Item = (RepackGuide, &mut OwnedExpansion<'tcx, IData>)> {
+        self.expansions.iter_mut().map(|(g, e)| (*g, e))
     }
 
     pub(crate) fn expanded_places(&self, place: Place<'tcx>) -> HashSet<ExpandedPlace<'tcx>> {

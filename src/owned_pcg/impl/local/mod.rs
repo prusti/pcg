@@ -18,15 +18,19 @@ use crate::{
     borrow_pcg::graph::BorrowsGraph,
     error::{PcgInternalError, PcgUnsupportedError},
     owned_pcg::{
-        DisplayNodeCtxt, PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide, node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode}, node_data::{self, InternalData}, traverse::{
+        DisplayNodeCtxt, PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
+        node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode},
+        node_data::{self, InternalData},
+        traverse::{
             FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom,
             Traversable,
-        }
+        },
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place, PlaceLike, data_structures::HashSet, display::DisplayWithCtxt, place::PlaceExpansion
+        DebugCtxt, HasCompilerCtxt, Place, PlaceLike, data_structures::HashSet,
+        display::DisplayWithCtxt, place::PlaceExpansion,
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -180,14 +184,12 @@ impl<'tcx> LocalExpansions<'tcx> {
         &mut self,
         local: mir::Local,
         other: &mut Self,
-        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
         'tcx: 'a,
     {
-        self.root
-            .join(local.into(), &mut other.root, is_borrowed, ctxt)
+        self.root.join(local.into(), &mut other.root, ctxt)
     }
 
     pub(crate) fn expansions_shortest_first<'a>(
@@ -276,7 +278,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deref)]
+#[derive(Clone, PartialEq, Eq, Debug, Deref, DerefMut)]
 pub struct OwnedExpansion<'tcx, IData: InternalData<'tcx> = node_data::Deep> {
     pub(crate) expansion: PlaceExpansion<'tcx, IData::Data>,
 }
@@ -370,17 +372,43 @@ impl<'tcx, D> PlaceExpansion<'tcx, D> {
         &self,
         base_place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> impl Iterator<Item = (std::result::Result<Place<'tcx>, PcgInternalError>, &D)>
+    ) -> impl Iterator<Item = (Place<'tcx>, &D)>
     where
         'tcx: 'a,
     {
         self.data().into_iter().map(move |(elem, data)| {
-            let place = base_place
-                .project_elem(elem, ctxt)
-                .map_err(|err| PcgInternalError::new(format!("{:?}", err)));
+            let place = base_place.project_elem(elem, ctxt).unwrap();
             (place, data)
         })
     }
+
+    pub(crate) fn child_mut<'a>(&mut self, elem: mir::PlaceElem<'tcx>) -> Option<&mut D>
+    where
+        'tcx: 'a,
+    {
+        self.elems_data_mut()
+            .into_iter()
+            .find(|(e, _)| *e == elem)
+            .map(|(_, data)| data)
+            .flatten()
+    }
+
+    pub(crate) fn child_nodes_mut<'a>(
+        &mut self,
+        base_place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> impl Iterator<Item = (Place<'tcx>, &mut D)>
+    where
+        'tcx: 'a,
+    {
+        self.elems_data_mut()
+            .into_iter()
+            .flat_map(move |(elem, data)| {
+                let place = base_place.project_elem(elem, ctxt).unwrap();
+                data.map(|data| (place, data))
+            })
+    }
+
     pub(crate) fn data<'slf>(&'slf self) -> Vec<(mir::PlaceElem<'tcx>, &'slf D)> {
         self.map_elems_data(|d| d, &|d| d)
     }
@@ -460,7 +488,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &mut self,
         base_place: Place<'tcx>,
         other: &mut OwnedPcgNode<'tcx>,
-        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
@@ -474,13 +501,11 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 if leaf.inherent_capability < other_leaf.inherent_capability {
                     let mut result = vec![];
                     leaf.inherent_capability = other_leaf.inherent_capability;
-                    if is_borrowed(base_place).is_none() {
-                        result.push(RepackOp::weaken(
-                            base_place,
-                            leaf.inherent_capability.into(),
-                            other_leaf.inherent_capability.into(),
-                        ))
-                    };
+                    result.push(RepackOp::weaken(
+                        base_place,
+                        leaf.inherent_capability.into(),
+                        other_leaf.inherent_capability.into(),
+                    ));
                     return result;
                 } else if leaf.inherent_capability > other_leaf.inherent_capability {
                     other_leaf.inherent_capability = leaf.inherent_capability;
@@ -490,13 +515,28 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Leaf(other_leaf)) => {
                 vec![]
             }
-            (OwnedPcgNode::Leaf(leaf), other) => other.repack_ops_to_expand_from(
-                base_place,
-                leaf.inherent_capability,
-                is_borrowed,
-                ctxt,
-            ),
+            (OwnedPcgNode::Leaf(leaf), other) => {
+                other.repack_ops_to_expand_from(base_place, leaf.inherent_capability, ctxt)
+            }
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other)) => {
+                let mut result = vec![];
+                for (guide, expansion) in internal.expansions_mut_with_guides() {
+                    if let Some(other_expansion) = other.expansion_mut(guide) {
+                        for (child_proj, child_data) in expansion.elems_data_mut() {
+                            let Some(child_data) = child_data else {
+                                continue;
+                            };
+                            if let Some(other_child_data) = other_expansion.child_mut(child_proj) {
+                                result.extend(child_data.join(
+                                    base_place.project_elem(child_proj, ctxt).unwrap(),
+                                    other_child_data,
+                                    ctxt,
+                                ));
+                            }
+                        }
+                    }
+                }
+                result
             }
         }
     }
@@ -505,7 +545,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         &self,
         base_place: Place<'tcx>,
         base_inherent_capability: OwnedCapability,
-        is_borrowed: impl Fn(Place<'tcx>) -> Option<Mutability>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<RepackOp<'tcx>>
     where
@@ -513,11 +552,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     {
         self.traverse(
             base_place,
-            &mut RepackOpsToExpandFrom::new(
-                base_inherent_capability,
-                Box::new(is_borrowed),
-                ctxt.ctxt(),
-            ),
+            &mut RepackOpsToExpandFrom::new(base_inherent_capability, ctxt.ctxt()),
             ctxt,
         )
         .unwrap()

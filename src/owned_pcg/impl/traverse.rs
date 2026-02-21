@@ -270,7 +270,7 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         for expansion in self.expansions() {
             for (place, node) in expansion.child_nodes(place, ctxt) {
                 let child_result =
-                    node.traverse_result(TraverseResult::from_result(place)?, computation, ctxt)?;
+                    node.traverse_result(place, computation, ctxt)?;
                 result = computation.fold(result, child_result)?;
             }
         }
@@ -302,7 +302,6 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
 
 pub(crate) struct RepackOpsToExpandFrom<'src, 'a, 'tcx> {
     pub(crate) base_inherent_capability: OwnedCapability,
-    pub(crate) is_borrowed: Box<dyn Fn(Place<'tcx>) -> Option<Mutability> + 'a>,
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx, ()>,
     _marker: PhantomData<&'src ()>,
 }
@@ -310,12 +309,10 @@ pub(crate) struct RepackOpsToExpandFrom<'src, 'a, 'tcx> {
 impl<'src, 'a, 'tcx> RepackOpsToExpandFrom<'src, 'a, 'tcx> {
     pub(crate) fn new(
         base_inherent_capability: OwnedCapability,
-        is_borrowed: Box<dyn Fn(Place<'tcx>) -> Option<Mutability> + 'a>,
         ctxt: CompilerCtxt<'a, 'tcx, ()>,
     ) -> Self {
         Self {
             base_inherent_capability,
-            is_borrowed,
             ctxt,
             _marker: PhantomData,
         }
@@ -358,10 +355,8 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
                 e.expansion
                     .child_nodes(place, self.ctxt)
                     .map(|(place, node)| {
-                        let place = place.unwrap();
                         let edge_mutability =
                             if !node.check_initialization(place, self.ctxt).unwrap().is_fully_initialized()
-                                || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
                             {
                                 EdgeMutability::Mutable
                             } else {

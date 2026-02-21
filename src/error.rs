@@ -138,6 +138,9 @@ impl<'tcx> IllegalProjection<'tcx> {
             PlaceElem::Deref if !base_ty.is_box() && !base_ty.is_ref()  && !base_ty.is_raw_ptr() => {
                 return Err(Self { base_ty, elem });
             }
+            PlaceElem::Field(_, _) if !base_ty.is_adt() && !matches!(base_ty.kind(), ty::TyKind::Tuple(_)) => {
+                return Err(Self { base_ty, elem });
+            }
             _ => Ok(()),
         }
     }

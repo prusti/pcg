@@ -42,12 +42,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tc
     where
         'tcx: 'a,
     {
-        Ok(self.owned.join(
-            local,
-            other.owned,
-            |place| self.borrows.graph.is_borrowed(place, ctxt),
-            ctxt,
-        ))
+        Ok(self.owned.join(local, other.owned, ctxt))
     }
 }
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
