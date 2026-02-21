@@ -2,7 +2,6 @@ use crate::{
     HasSettings, Sealed,
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
     borrow_pcg::{
-        borrow_pcg_expansion::PlaceExpansion,
         region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
     },
     error::{PcgError, PcgUnsupportedError},
@@ -22,7 +21,7 @@ use crate::{
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
+    utils::{PlaceLike, place::{Place, PlaceExpansion}, validity::HasValidityCheck},
     validity_checks_enabled,
 };
 

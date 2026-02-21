@@ -7,7 +7,7 @@ use std::{collections::HashMap, marker::PhantomData};
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    utils::place::PlaceExpansion,
     owned_pcg::{
         ExpandedPlace, OwnedExpansion,
         node_data::{Deep, InternalData, Shallow},

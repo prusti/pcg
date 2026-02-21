@@ -4,7 +4,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{
-            BorrowPcgExpansion, BorrowPcgPlaceExpansion, ExpansionMutability, PlaceExpansion,
+            BorrowPcgExpansion, BorrowPcgPlaceExpansion, ExpansionMutability,
         },
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
@@ -29,7 +29,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
+        place::PlaceExpansion, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike,
         ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };

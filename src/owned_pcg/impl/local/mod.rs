@@ -15,7 +15,7 @@ use std::{
 };
 
 use crate::{
-    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, graph::BorrowsGraph},
+    borrow_pcg::graph::BorrowsGraph,
     error::PcgUnsupportedError,
     owned_pcg::{
         PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
@@ -28,7 +28,7 @@ use crate::{
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
+    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet, place::PlaceExpansion},
 };
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;

@@ -6,10 +6,7 @@
 
 use crate::{
     HasSettings,
-    borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
-        state::BorrowsStateLike,
-    },
+    borrow_pcg::{action::LabelPlaceReason, has_pcs_elem::SetLabel, state::BorrowsStateLike},
     error::PcgError,
     owned_pcg::{
         ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,

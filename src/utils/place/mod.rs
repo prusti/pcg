@@ -5,55 +5,49 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::{
-    cmp::Ordering,
-    fmt::{Debug, Formatter, Result},
     hash::{Hash, Hasher},
     mem::discriminant,
 };
 
 use derive_more::{Deref, DerefMut};
-
 use crate::{
     Sealed,
-    borrow_pcg::{
-        borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy},
-    },
-    error::{PcgError, PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
+    borrow_pcg::region_projection::HasTy,
+    error::{PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
     owned_pcg::RepackGuide,
-    pcg::PcgNodeWithPlace,
     rustc_interface::{
         VariantIdx,
         ast::Mutability,
-        data_structures::fx::FxHasher,
         index::IndexVec,
         middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
         },
     },
-    utils::{
-        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
-        maybe_old::MaybeLabelledPlace,
-    },
+    utils::{HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt},
 };
 
 use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
-use crate::{
-    borrow_pcg::{
-        borrow_pcg_edge::LocalNode,
-        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
-        visitor::extract_regions,
-    },
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
+use crate::borrow_pcg::{
+    region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
+    visitor::extract_regions,
 };
 
 pub mod corrected;
+pub(crate) mod display;
 pub mod maybe_old;
 pub mod maybe_remote;
+pub(crate) mod expansion;
 pub(crate) mod ordering;
+pub(crate) mod pcg_place;
+pub(crate) mod place_like;
+pub(crate) mod place_projectable;
 pub mod remote;
-
+pub use pcg_place::PcgPlace;
+pub use place_like::PlaceLike;
+pub use place_projectable::PlaceProjectable;
+pub use ordering::PrefixRelation;
+pub use expansion::PlaceExpansion;
 #[derive(Clone, Copy, Deref, DerefMut)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(as = "String"))]
@@ -83,134 +77,14 @@ impl<'tcx> From<Place<'tcx>> for PlaceRef<'tcx> {
     }
 }
 
-impl PartialOrd for Place<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Place<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        if self == other {
-            Ordering::Equal
-        } else {
-            let mut h1 = FxHasher::default();
-            let mut h2 = FxHasher::default();
-            self.hash(&mut h1);
-            other.hash(&mut h2);
-            match h1.finish().cmp(&h2.finish()) {
-                Ordering::Equal => {
-                    panic!("Places have same hash, but they aren't equal!")
-                }
-                other => other,
-            }
-        }
-    }
-}
-
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for Place<'tcx> {
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         serde_json::Value::String(self.display_string(ctxt))
     }
 }
 
-#[allow(clippy::wrong_self_convention)]
-pub trait PrefixRelation {
-    fn is_prefix_of(self, other: Self) -> bool;
-    fn is_strict_prefix_of(self, other: Self) -> bool;
-}
-
-impl PrefixRelation for Place<'_> {
-    fn is_prefix_of(self, other: Self) -> bool {
-        self.is_prefix_of(other)
-    }
-    fn is_strict_prefix_of(self, other: Self) -> bool {
-        self.is_strict_prefix_of(other)
-    }
-}
-
-pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
-    fn project_deeper(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>>;
-
-    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
-}
 
 pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
-
-pub trait PcgPlace<'tcx, Ctxt: Copy> = PlaceProjectable<'tcx, Ctxt>
-    + PcgNodeComponent
-    + HasRegions<'tcx, Ctxt>
-    + HasTy<'tcx, Ctxt>
-    + PrefixRelation
-    + Ord
-    + 'tcx;
-
-impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P> for P {
-    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
-        LocalNode::Place(self.into())
-    }
-}
-
-impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LocalNodeLike<'tcx, Ctxt, P>
-    for MaybeLabelledPlace<'tcx, P>
-{
-    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx, P> {
-        LocalNode::Place(self)
-    }
-}
-
-impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> PcgNodeLike<'tcx, Ctxt, P> for P {
-    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNodeWithPlace<'tcx, P> {
-        PcgNode::Place(self.into())
-    }
-}
-
-pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
-    fn local(self) -> Local;
-    fn is_owned(self, ctxt: Ctxt) -> bool;
-    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;
-    fn expansion_places(
-        self,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>>;
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
-    fn local(self) -> Local {
-        self.0.local
-    }
-    fn is_owned(self, ctxt: Ctxt) -> bool {
-        !self
-            .iter_projections(ctxt.ctxt())
-            .into_iter()
-            .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
-    }
-
-    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool {
-        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
-            return false;
-        };
-        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
-    }
-
-    fn expansion_places(
-        self,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
-        let mut places = Vec::new();
-        for (elem, _) in expansion.elems_data() {
-            let place = self.project_deeper(elem, ctxt)?;
-            places.push(place);
-        }
-        Ok(places)
-    }
-}
 
 /// A trait for PCG nodes that contain a single place.
 pub trait HasPlace<'tcx, P = Place<'tcx>>: Sized {
@@ -221,21 +95,6 @@ pub trait HasPlace<'tcx, P = Place<'tcx>>: Sized {
     fn place_mut(&mut self) -> &mut P;
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt> for Place<'tcx> {
-    fn project_deeper(
-        &self,
-        elem: PlaceElem<'tcx>,
-        ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>> {
-        Place::project_deeper(*self, elem, ctxt).map_err(PcgError::unsupported)
-    }
-    fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
-        self.0
-            .iter_projections()
-            .map(|(place, elem)| (place.into(), elem))
-            .collect()
-    }
-}
 
 impl<'tcx> HasPlace<'tcx> for Place<'tcx> {
     fn place(&self) -> Place<'tcx> {
@@ -320,15 +179,6 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.rust_ty(ctxt).is_unsafe_ptr()
-    }
-
-    pub(crate) fn compare_projections(
-        self,
-        other: Self,
-    ) -> impl Iterator<Item = (bool, PlaceElem<'tcx>, PlaceElem<'tcx>)> {
-        let left = self.projection.iter().copied();
-        let right = other.projection.iter().copied();
-        left.zip(right).map(|(e1, e2)| (elem_eq((e1, e2)), e1, e2))
     }
 
     pub(crate) fn parent_place(self) -> Option<Self> {
@@ -462,19 +312,6 @@ impl<'tcx> Place<'tcx> {
                 | TyKind::Param(_)
                 | TyKind::Bound(_, _)
                 | TyKind::CoroutineWitness(_, _) => vec![],
-                TyKind::Bool => todo!(),
-                TyKind::Int(_) => todo!(),
-                TyKind::Uint(_) => todo!(),
-                TyKind::Float(_) => todo!(),
-                TyKind::Foreign(_) => todo!(),
-                TyKind::Str => todo!(),
-                TyKind::Pat(_, _) => todo!(),
-                TyKind::RawPtr(_, _) => todo!(),
-                TyKind::FnPtr(_, _) => todo!(),
-                TyKind::Never => todo!(),
-                TyKind::Placeholder(_) => todo!(),
-                TyKind::Infer(_) => todo!(),
-                TyKind::Error(_) => todo!(),
                 _ => todo!(),
             };
             for ty in field_tys {
@@ -637,40 +474,6 @@ impl<'tcx> Place<'tcx> {
         )
     }
 
-    /// Check if the place `self` is a prefix of `place`. For example:
-    ///
-    /// +   `is_prefix(x.f, x.f) == true`
-    /// +   `is_prefix(x.f, x.f.g) == true`
-    /// +   `is_prefix(x.f.g, x.f) == false`
-    pub(crate) fn is_prefix_of(self, place: Self) -> bool {
-        Self::partial_cmp(self, place)
-            .is_some_and(|o| o == PlaceOrdering::Equal || o == PlaceOrdering::Prefix)
-    }
-
-    pub(crate) fn is_strict_prefix_of(self, place: Self) -> bool {
-        self != place && self.is_prefix_of(place)
-    }
-
-    /// Check if the place `self` is an exact prefix of `place`. For example:
-    ///
-    /// +   `is_prefix(x.f, x.f) == false`
-    /// +   `is_prefix(x.f, x.f.g) == true`
-    /// +   `is_prefix(x.f, x.f.g.h) == false`
-    #[must_use]
-    pub fn is_prefix_exact(self, place: Self) -> bool {
-        self.0.projection.len() + 1 == place.0.projection.len()
-            && Self::partial_cmp(self, place).is_some_and(|o| o == PlaceOrdering::Prefix)
-    }
-
-    /// Returns `true` if either of the places can reach the other
-    /// with a series of expand/collapse operations. Note that
-    /// both operations are allowed and so e.g.
-    /// `related_to`(`_1[_4]`, `_1[_3]`) == true
-    #[must_use]
-    pub fn related_to(self, right: Self) -> bool {
-        self.partial_cmp(right).is_some()
-    }
-
     #[must_use]
     pub fn common_prefix(self, other: Self) -> Self {
         assert_eq!(self.local, other.local);
@@ -783,114 +586,6 @@ impl<'tcx> Place<'tcx> {
         self.is_prefix_of(other) || other.is_prefix_of(self)
     }
 }
-
-impl Debug for Place<'_> {
-    fn fmt(&self, fmt: &mut Formatter) -> Result {
-        for elem in self.projection.iter().rev() {
-            match elem {
-                ProjectionElem::OpaqueCast(_) | ProjectionElem::Downcast(_, _) => {
-                    write!(fmt, "(").unwrap();
-                }
-                ProjectionElem::Deref => {
-                    write!(fmt, "(*").unwrap();
-                }
-                ProjectionElem::Field(_, _)
-                | ProjectionElem::Index(_)
-                | ProjectionElem::ConstantIndex { .. }
-                | ProjectionElem::Subslice { .. } => {}
-                _ => todo!(),
-            }
-        }
-
-        write!(fmt, "{:?}", self.local)?;
-
-        for &elem in self.projection {
-            match elem {
-                ProjectionElem::OpaqueCast(ty) => {
-                    write!(fmt, "@{ty})")?;
-                }
-                ProjectionElem::Downcast(Some(name), _index) => {
-                    write!(fmt, "@{name})")?;
-                }
-                ProjectionElem::Downcast(None, index) => {
-                    write!(fmt, "@variant#{index:?})")?;
-                }
-                ProjectionElem::Deref => {
-                    write!(fmt, ")")?;
-                }
-                ProjectionElem::Field(field, _ty) => {
-                    write!(fmt, ".{:?}", field.index())?;
-                }
-                ProjectionElem::Index(ref index) => {
-                    write!(fmt, "[{index:?}]")?;
-                }
-                ProjectionElem::ConstantIndex {
-                    offset,
-                    min_length,
-                    from_end: false,
-                } => {
-                    write!(fmt, "[{offset:?} of {min_length:?}]")?;
-                }
-                ProjectionElem::ConstantIndex {
-                    offset,
-                    min_length,
-                    from_end: true,
-                } => {
-                    write!(fmt, "[-{offset:?} of {min_length:?}]")?;
-                }
-                ProjectionElem::Subslice {
-                    from,
-                    to: 0,
-                    from_end: true,
-                } => {
-                    write!(fmt, "[{from:?}:]")?;
-                }
-                ProjectionElem::Subslice {
-                    from: 0,
-                    to,
-                    from_end: true,
-                } => {
-                    write!(fmt, "[:-{to:?}]")?;
-                }
-                ProjectionElem::Subslice {
-                    from,
-                    to,
-                    from_end: true,
-                } => {
-                    write!(fmt, "[{from:?}:-{to:?}]")?;
-                }
-                ProjectionElem::Subslice {
-                    from,
-                    to,
-                    from_end: false,
-                } => {
-                    write!(fmt, "[{from:?}..{to:?}]")?;
-                }
-                _ => todo!(),
-            }
-        }
-
-        Ok(())
-    }
-}
-
-fn elem_eq<'tcx>(to_cmp: (PlaceElem<'tcx>, PlaceElem<'tcx>)) -> bool {
-    use ProjectionElem::{Downcast, Field};
-    match to_cmp {
-        (Field(left, _), Field(right, _)) => left == right,
-        (Downcast(_, left), Downcast(_, right)) => left == right,
-        (left, right) => left == right,
-    }
-}
-
-impl PartialEq for Place<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.local == other.local
-            && self.projection.len() == other.projection.len()
-            && self.compare_projections(*other).all(|(eq, _, _)| eq)
-    }
-}
-impl Eq for Place<'_> {}
 
 impl Hash for Place<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {

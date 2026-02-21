@@ -4,7 +4,6 @@ use crate::{
     borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
-        borrow_pcg_expansion::{BorrowPcgPlaceExpansion, PlaceExpansion},
         edge::{
             borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
@@ -30,7 +29,7 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace,
-        data_structures::HashSet, display::DisplayWithCtxt, maybe_old::MaybeLabelledPlace,
+        data_structures::HashSet, display::DisplayWithCtxt, maybe_old::MaybeLabelledPlace, place::PlaceExpansion,
     },
 };
 use std::cmp::Ordering;
