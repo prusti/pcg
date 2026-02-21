@@ -194,44 +194,82 @@ impl<'tcx> OwnedPcg<'tcx> {
     where
         'tcx: 'a,
     {
+        self.get_capability_and_reason(place, borrows, ctxt).0
+    }
+
+    pub(crate) fn get_capability_and_reason<'a>(
+        &self,
+        place: Place<'tcx>,
+        borrows: &BorrowsGraph<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> (
+        CapabilityKind,
+        AssignedCapabilityReason<'tcx>,
+    )
+    where
+        'tcx: 'a,
+    {
         if place.is_owned(ctxt) {
             let find_subtree_result = self.owned_subtree(place, ctxt);
             let Some(owned_subtree) = find_subtree_result.subtree() else {
-                return CapabilityKind::None(());
+                return (CapabilityKind::None(()), AssignedCapabilityReason::Other);
             };
-            let is_fully_initialized = owned_subtree.is_fully_initialized(place, ctxt).unwrap_or_else(|err| {
+            let is_fully_initialized = owned_subtree.check_initialization(place, ctxt).unwrap_or_else(|err| {
                 panic!("Failed to check if owned subtree is fully initialized for place {place:?}: {err:?}");
             });
-            if !is_fully_initialized {
-                return owned_subtree
-                    .owned_capability()
-                    .map(|c| c.into())
-                    .unwrap_or(CapabilityKind::None(()));
+            if !is_fully_initialized.is_fully_initialized() {
+                return match owned_subtree {
+                    OwnedPcgNode::Leaf(leaf) => (
+                        leaf.inherent_capability.into(),
+                        AssignedCapabilityReason::UninitializedLeaf(place),
+                    ),
+                    OwnedPcgNode::Internal(_) => {
+                        (CapabilityKind::None(()), AssignedCapabilityReason::Other)
+                    }
+                };
             }
             for lifetime_projection in place.lifetime_projections(ctxt) {
                 if !borrows.contains(lifetime_projection, ctxt) {
-                    return CapabilityKind::ShallowExclusive;
+                    return (
+                        CapabilityKind::ShallowExclusive,
+                        AssignedCapabilityReason::Other,
+                    );
                 }
             }
             match borrows.is_borrowed(place, ctxt) {
-                Some(Mutability::Mut) => return CapabilityKind::None(()),
-                Some(Mutability::Not) => return CapabilityKind::Read,
+                Some(Mutability::Mut) => {
+                    return (
+                        CapabilityKind::None(()),
+                        AssignedCapabilityReason::Borrowed(Mutability::Mut),
+                    );
+                }
+                Some(Mutability::Not) => {
+                    return (
+                        CapabilityKind::Read,
+                        AssignedCapabilityReason::Borrowed(Mutability::Not),
+                    );
+                }
                 None => {}
             }
             if let Some(parent) = find_subtree_result.parent_node()
-                && parent
-                    .is_fully_initialized(place.parent_place().unwrap(), ctxt)
+                && let Some(init) = parent
+                    .check_initialization(place.parent_place().unwrap(), ctxt)
                     .unwrap()
+                    .as_all_initialized()
             {
-                return CapabilityKind::Read;
+                return (
+                    CapabilityKind::Read,
+                    AssignedCapabilityReason::ParentFullyInitialized(init.clone()),
+                );
             } else {
-                CapabilityKind::Exclusive
+                return (CapabilityKind::Exclusive, AssignedCapabilityReason::Other);
             }
         } else {
-            borrows
+            let borrowed_capability = borrows
                 .capability(place, ctxt)
                 .map(|c| c.into())
-                .unwrap_or(CapabilityKind::None(()))
+                .unwrap_or(CapabilityKind::None(()));
+            return (borrowed_capability, AssignedCapabilityReason::Other);
         }
     }
     pub(crate) fn start_block<Ctxt: HasLocals>(ctxt: Ctxt) -> Self {
@@ -313,4 +351,12 @@ impl<'tcx> OwnedPcg<'tcx> {
             .filter_map(|(i, c)| if c.is_unallocated() { Some(i) } else { None })
             .collect()
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum AssignedCapabilityReason<'tcx> {
+    Borrowed(Mutability),
+    ParentFullyInitialized(HashSet<Place<'tcx>>),
+    UninitializedLeaf(Place<'tcx>),
+    Other,
 }

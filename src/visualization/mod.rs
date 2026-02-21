@@ -28,17 +28,13 @@ use crate::{
     borrow_pcg::{
         edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph,
         validity_conditions::ValidityConditions,
-    },
-    pcg::{
+    }, owned_pcg::AssignedCapabilityReason, pcg::{
         PcgRef, PositiveCapability, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
-    },
-    rustc_interface::middle::mir::Location,
-    utils::{
+    }, rustc_interface::middle::mir::Location, utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCtxt, OutputMode},
         html::Html,
-    },
-    visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
+    }, visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer}
 };
 use std::{
     collections::HashSet,
@@ -90,6 +86,7 @@ impl GraphNode {
                 location,
                 label,
                 ty,
+                capability_reason,
             } => {
                 let location_html: Html = match location {
                     Some(l) => Html::Seq(vec![
@@ -135,7 +132,7 @@ impl GraphNode {
                     shape: DotStringAttr("rect".into()),
                     style,
                     penwidth,
-                    tooltip: Some(DotStringAttr(ty.clone().into())),
+                    tooltip: Some(DotStringAttr(format!("{ty} - {capability_reason}").into())),
                 }
             }
             NodeType::RegionProjectionNode {
@@ -164,6 +161,7 @@ enum NodeType {
         capability: Option<PositiveCapability>,
         location: Option<SnapshotLocation>,
         ty: String,
+        capability_reason: String,
     },
     RegionProjectionNode {
         label: Html,

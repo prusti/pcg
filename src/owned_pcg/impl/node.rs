@@ -11,7 +11,6 @@ use crate::{
     owned_pcg::{
         ExpandedPlace, OwnedExpansion,
         node_data::{Deep, InternalData, Shallow},
-        traverse::All,
     },
     pcg::OwnedCapability,
     utils::{HasCompilerCtxt, Place},

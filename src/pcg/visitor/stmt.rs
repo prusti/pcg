@@ -80,11 +80,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
                 let target_cap_sym = self.pcg.get(target, self.ctxt);
                 let target_cap = target_cap_sym.into_positive().unwrap();
-                pcg_validity_assert!(
-                    target_cap >= PositiveCapability::Write,
-                    "target_cap: {:?}",
-                    target_cap
-                );
                 if target_cap != PositiveCapability::Write {
                     self.record_and_apply_action(
                         BorrowPcgAction::weaken(

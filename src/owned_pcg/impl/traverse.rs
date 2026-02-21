@@ -183,19 +183,21 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
         self.traverse_result(place, computation, ctxt).result()
     }
 
-    fn is_fully_initialized<'a>(
+    fn check_initialization<'a>(
         &self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<bool, PcgInternalError>
+    ) -> Result<CheckInitializationState<'tcx>, PcgInternalError>
     where
         'tcx: 'a,
     {
+        let mut state = CheckInitializationState::new();
         self.traverse(
             place,
-            &mut All(Box::new(|leaf| leaf.inherent_capability.is_deep())),
+            &mut state,
             ctxt,
-        )
+        )?;
+        Ok(state)
     }
 }
 
@@ -210,6 +212,9 @@ pub(crate) enum TraverseResult<T, E, S = T> {
 }
 
 impl<T, E, S> TraverseResult<T, E, S> {
+    pub(crate) fn short_circuit(result: S) -> Self {
+        TraverseResult::Break(TraverseBreak::ShortCircuit(result))
+    }
     pub(crate) fn from_result<EE: Into<E>>(result: Result<T, EE>) -> Self {
         match result {
             Ok(result) => TraverseResult::Continue(result),
@@ -354,13 +359,14 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
                     .child_nodes(place, self.ctxt)
                     .map(|(place, node)| {
                         let place = place.unwrap();
-                        let edge_mutability = if !node.is_fully_initialized(place, self.ctxt).unwrap()
-                            || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
-                        {
-                            EdgeMutability::Mutable
-                        } else {
-                            EdgeMutability::Immutable
-                        };
+                        let edge_mutability =
+                            if !node.check_initialization(place, self.ctxt).unwrap().is_fully_initialized()
+                                || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
+                            {
+                                EdgeMutability::Mutable
+                            } else {
+                                EdgeMutability::Immutable
+                            };
                         RepackOp::expand(place, e.expansion.guide(), edge_mutability, self.ctxt)
                     })
             })
@@ -378,9 +384,42 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
     }
 }
 
-pub(crate) struct All<'tcx>(pub Box<dyn Fn(&OwnedPcgLeafNode<'tcx>) -> bool>);
+pub(crate) enum CheckInitializationState<'tcx> {
+    AllInitialized(HashSet<Place<'tcx>>),
+    Uninitialized(Place<'tcx>),
+}
 
-impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
+impl<'tcx> CheckInitializationState<'tcx> {
+    pub(crate) fn new() -> Self {
+        Self::AllInitialized(HashSet::default())
+    }
+
+    pub(crate) fn is_fully_initialized(&self) -> bool {
+        matches!(self, Self::AllInitialized(_))
+    }
+
+    pub(crate) fn as_all_initialized(&self) -> Option<&HashSet<Place<'tcx>>> {
+        match self {
+            Self::AllInitialized(places) => Some(places),
+            Self::Uninitialized(_) => None,
+        }
+    }
+
+    pub(crate) fn mark_initialized(&mut self, place: Place<'tcx>) {
+        match self {
+            Self::AllInitialized(places) => {
+                places.insert(place);
+            }
+            Self::Uninitialized(_) => unreachable!(),
+        }
+    }
+
+    pub(crate) fn mark_uninitialized(&mut self, place: Place<'tcx>) {
+        *self = Self::Uninitialized(place);
+    }
+}
+
+impl<'tcx> TraverseComputation<'tcx> for CheckInitializationState<'tcx> {
     type AggregateResult = bool;
     type NodeResult = bool;
     fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
@@ -389,13 +428,15 @@ impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
 
     fn compute_leaf(
         &mut self,
-        _place: Place<'tcx>,
+        place: Place<'tcx>,
         node: &OwnedPcgLeafNode<'tcx>,
     ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
-        if self.0(node) {
+        if node.inherent_capability.is_deep() {
+            self.mark_initialized(place);
             TraverseResult::Continue(true)
         } else {
-            TraverseResult::Break(TraverseBreak::ShortCircuit(false))
+            self.mark_uninitialized(place);
+            TraverseResult::short_circuit(false)
         }
     }
 

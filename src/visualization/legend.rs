@@ -1,6 +1,5 @@
 use crate::{
-    pcg::PositiveCapability,
-    visualization::{GraphNode, NodeId, NodeType},
+    owned_pcg::AssignedCapabilityReason, pcg::PositiveCapability, visualization::{GraphNode, NodeId, NodeType}
 };
 
 use super::dot_graph::{DotEdge, DotLabel, DotNode, DotStringAttr, EdgeDirection, EdgeOptions};
@@ -108,6 +107,7 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
             capability: Some(PositiveCapability::Write),
             location: None,
             ty: "&'a mut i32".to_owned(),
+            capability_reason: "Other".to_owned(),
         },
     };
 
@@ -128,6 +128,7 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
             location: None,
             capability: None,
             ty: "i32".to_owned(),
+            capability_reason: "Other".to_owned(),
         },
     };
 

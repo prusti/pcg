@@ -4,7 +4,7 @@ use crate::{
         region_projection::{HasRegions, LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
-    owned_pcg::{OwnedPcg, OwnedPcgLocal},
+    owned_pcg::{AssignedCapabilityReason, OwnedPcg, OwnedPcgLocal},
     pcg::{
         CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
@@ -31,6 +31,9 @@ pub(super) struct GraphConstructor<'a, 'tcx> {
     location: Option<mir::Location>,
 }
 
+pub(crate) trait GraphCapabilityReader<'tcx> =
+    PlaceCapabilitiesReader<'tcx, (), (CapabilityKind, String)> + Copy;
+
 impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn new(ctxt: CompilerCtxt<'a, 'tcx>, location: Option<mir::Location>) -> Self {
         Self {
@@ -46,7 +49,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn insert_maybe_labelled_place(
         &mut self,
         place: MaybeLabelledPlace<'tcx>,
-        capabilities: impl PlaceCapabilitiesReader<'tcx, ()>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         self.insert_place_node(place.place(), place.location(), capabilities)
     }
@@ -54,7 +57,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn insert_pcg_node(
         &mut self,
         node: PcgNode<'tcx>,
-        capabilities: impl PlaceCapabilitiesReader<'tcx, ()>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         match node {
             PcgNode::Place(place) => self.insert_maybe_labelled_place(place, capabilities),
@@ -149,7 +152,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     pub(super) fn insert_abstraction(
         &mut self,
         abstraction: &AbstractionEdge<'tcx>,
-        capabilities: impl PlaceCapabilitiesReader<'tcx, ()> + Clone,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) {
         let input = self.insert_pcg_node(
             abstraction.input(self.ctxt).to_pcg_node(self.ctxt),
@@ -176,12 +179,12 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         &mut self,
         place: Place<'tcx>,
         location: Option<SnapshotLocation>,
-        capabilities: impl PlaceCapabilitiesReader<'tcx, ()>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         if let Some(node_id) = self.place_nodes.existing_id(&(place, location)) {
             return node_id;
         }
-        let capability = capabilities.get(place, ());
+        let (capability, reason) = capabilities.get(place, ());
         let id = self.place_node_id(place, location);
         let label = place.to_short_string(self.ctxt);
         let place_ty = place.ty(self.ctxt);
@@ -191,6 +194,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             capability: capability.into_positive(),
             location,
             ty: format!("{:?}", place_ty.ty),
+            capability_reason: reason,
         };
         let node = GraphNode { id, node_type };
         self.insert_node(node);
@@ -231,10 +235,18 @@ impl<'a, 'tcx: 'a> GraphCapabilities<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> PlaceCapabilitiesReader<'tcx, ()> for GraphCapabilities<'a, 'tcx> {
-    fn get(&self, place: Place<'tcx>, _ctxt: ()) -> CapabilityKind {
-        self.summary
-            .capability(place, self.borrows_domain.graph, self.ctxt)
+impl<'a, 'tcx: 'a>
+    PlaceCapabilitiesReader<'tcx, (), (CapabilityKind, String)>
+    for GraphCapabilities<'a, 'tcx>
+{
+    fn get(
+        &self,
+        place: Place<'tcx>,
+        _ctxt: (),
+    ) -> (CapabilityKind, String) {
+        let (capability, reason) = self.summary
+            .get_capability_and_reason(place, self.borrows_domain.graph, self.ctxt);
+        (capability, format!("{:?}", reason))
     }
 }
 
@@ -281,7 +293,7 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
         &mut self,
         place: Place<'tcx>,
         location: Option<SnapshotLocation>,
-        capabilities: impl PlaceCapabilitiesReader<'tcx, ()> + Copy,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         let node = self
             .constructor

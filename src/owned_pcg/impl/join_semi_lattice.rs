@@ -134,7 +134,8 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
-        Ok(self.traverse(base_place, &mut GetExpansions, ctxt)?
+        Ok(self
+            .traverse(base_place, &mut GetExpansions, ctxt)?
             .into_iter()
             .sorted_by_key(|e| e.place.projection.len())
             .collect())
