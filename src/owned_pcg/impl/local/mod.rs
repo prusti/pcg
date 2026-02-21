@@ -18,19 +18,15 @@ use crate::{
     borrow_pcg::graph::BorrowsGraph,
     error::{PcgInternalError, PcgUnsupportedError},
     owned_pcg::{
-        PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
-        node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode},
-        node_data::{self, InternalData},
-        traverse::{
+        DisplayNodeCtxt, PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide, node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode}, node_data::{self, InternalData}, traverse::{
             FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom,
             Traversable,
-        },
+        }
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place, PlaceLike, data_structures::HashSet,
-        place::PlaceExpansion,
+        DebugCtxt, HasCompilerCtxt, Place, PlaceLike, data_structures::HashSet, display::DisplayWithCtxt, place::PlaceExpansion
     },
 };
 use derive_more::{Deref, DerefMut};
@@ -491,9 +487,6 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 }
                 vec![]
             }
-            (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other_internal)) => {
-                todo!("Join {:?} and {:?}", internal, other_internal);
-            }
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Leaf(other_leaf)) => {
                 vec![]
             }
@@ -503,6 +496,8 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 is_borrowed,
                 ctxt,
             ),
+            (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other)) => {
+            }
         }
     }
 
@@ -524,7 +519,8 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 ctxt.ctxt(),
             ),
             ctxt,
-        ).unwrap()
+        )
+        .unwrap()
     }
 
     pub(crate) fn leaf_expansions<'a>(

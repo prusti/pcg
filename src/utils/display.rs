@@ -84,6 +84,8 @@ impl DisplayOutput {
     pub(crate) const EMPTY: DisplayOutput = DisplayOutput::Text(Cow::Borrowed(""));
     pub(crate) const SPACE: DisplayOutput = DisplayOutput::Text(Cow::Borrowed(" "));
     pub(crate) const DOWN_ARROW: DisplayOutput = DisplayOutput::Text(Cow::Borrowed("↓"));
+    pub(crate) const NEWLINE: DisplayOutput = DisplayOutput::Text(Cow::Borrowed("\n"));
+
     pub(crate) fn into_html(self) -> Html {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,

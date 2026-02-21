@@ -7,7 +7,7 @@ struct S<'a> {
 }
 
 fn f<'a>(s: S<'a>) {
-    let x = s.x; // PCG: bb0[1] pre_operands: s.y: E
+    let x = s.x; // PCG: bb0[1] post_operands: s.y: E
     let y = s.y.a;
 
 }

@@ -113,6 +113,63 @@ fn push_subtree_lines<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
     }
 }
 
+pub(crate) struct DisplayNodeCtxt<'tcx> {
+    place: Place<'tcx>,
+    prefix: String,
+    is_last: bool,
+}
+
+impl<'tcx> DisplayNodeCtxt<'tcx> {
+    pub(crate) fn new(place: Place<'tcx>) -> Self {
+        Self { place, prefix: "".to_owned(), is_last: true }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>
+    DisplayWithCtxt<(Ctxt, DisplayNodeCtxt<'tcx>)> for OwnedPcgNode<'tcx>
+{
+    fn display_output(
+        &self,
+        ctxt: (Ctxt, DisplayNodeCtxt<'tcx>),
+        mode: OutputMode,
+    ) -> DisplayOutput {
+        let mut lines: Vec<DisplayOutput> = vec![];
+        let d_ctxt = ctxt.1;
+        let connector = if d_ctxt.is_last { "`-- " } else { "|-- " };
+        lines.push(
+            format!(
+                "{}{connector}{} ({:?})",
+                d_ctxt.prefix,
+                d_ctxt.place.display_string(ctxt.0),
+                self.owned_capability()
+            )
+            .into(),
+        );
+
+        let child_prefix = format!(
+            "{}{}",
+            d_ctxt.prefix,
+            if d_ctxt.is_last { "    " } else { "|   " }
+        );
+        let children = child_nodes(self, d_ctxt.place, ctxt.0);
+        let children_len = children.len();
+        for (index, (child_place, child_node)) in children.into_iter().enumerate() {
+            lines.push(child_node.display_output(
+                (
+                    ctxt.0,
+                    DisplayNodeCtxt {
+                        place: child_place,
+                        prefix: child_prefix.clone(),
+                        is_last: index + 1 == children_len,
+                    },
+                ),
+                mode,
+            ))
+        }
+        DisplayOutput::join(lines, &DisplayOutput::NEWLINE)
+    }
+}
+
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy> DisplayWithCtxt<Ctxt>
     for OwnedPcg<'tcx>
 {
@@ -202,10 +259,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         place: Place<'tcx>,
         borrows: &BorrowsGraph<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
-    ) -> (
-        CapabilityKind,
-        AssignedCapabilityReason<'tcx>,
-    )
+    ) -> (CapabilityKind, AssignedCapabilityReason<'tcx>)
     where
         'tcx: 'a,
     {
