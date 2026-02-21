@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::owned_pcg::{OwnedExpansion, OwnedPcgInternalNode, node::OwnedPcgNode};
 
-pub trait InternalData<'tcx>: Sized {
+pub trait InternalData<'tcx>: Sized  {
     type Data: Clone + Eq + std::fmt::Debug;
 }
 
