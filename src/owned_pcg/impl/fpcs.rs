@@ -8,12 +8,13 @@ use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
     borrow_pcg::{graph::BorrowsGraph, region_projection::HasRegions},
-    owned_pcg::OwnedPcgNode,
+    owned_pcg::{OwnedPcgNode, traverse::FindSubtreeResult},
     pcg::{
         CapabilityKind, CapabilityLike, OwnedCapability, PositiveCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{
+        ast::Mutability,
         index::{Idx, IndexVec},
         middle::mir::{self, Local, RETURN_PLACE},
     },
@@ -90,7 +91,7 @@ fn push_subtree_lines<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
     lines.push(format!(
         "{prefix}{connector}{} ({:?})",
         place.display_string(ctxt),
-        node.inherent_capability()
+        node.owned_capability()
     ));
 
     let child_prefix = format!("{prefix}{}", if is_last { "    " } else { "|   " });
@@ -168,7 +169,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         &self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Option<&OwnedPcgNode<'tcx>>
+    ) -> FindSubtreeResult<'_, 'tcx>
     where
         'tcx: 'a,
     {
@@ -177,7 +178,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         if let OwnedPcgLocal::Allocated(expansions) = owned_local {
             expansions.subtree(&place.with_inherent_region(ctxt).projection)
         } else {
-            None
+            FindSubtreeResult::none()
         }
     }
     pub(crate) fn capability<'a>(
@@ -190,7 +191,8 @@ impl<'tcx> OwnedPcg<'tcx> {
         'tcx: 'a,
     {
         if place.is_owned(ctxt) {
-            let Some(owned_subtree) = self.owned_subtree(place, ctxt) else {
+            let find_subtree_result = self.owned_subtree(place, ctxt);
+            let Some(owned_subtree) = find_subtree_result.subtree() else {
                 return CapabilityKind::None(());
             };
             if !owned_subtree.is_fully_initialized(place, ctxt) {
@@ -204,13 +206,18 @@ impl<'tcx> OwnedPcg<'tcx> {
                     return CapabilityKind::ShallowExclusive;
                 }
             }
-            for borrow_place in borrows.places(ctxt) {
-                if place.is_prefix_of(borrow_place) {
-                    let borrow_capability = borrows.capability(borrow_place, ctxt).unwrap();
-                    capability = capability.minimum(borrow_capability.into(), ctxt);
-                }
+            match borrows.is_borrowed(place, ctxt) {
+                Some(Mutability::Mut) => return CapabilityKind::None(()),
+                Some(Mutability::Not) => return CapabilityKind::Read,
+                None => {}
             }
-            capability
+            if let Some(parent) = find_subtree_result.parent_node()
+                && parent.is_fully_initialized(place, ctxt)
+            {
+                return CapabilityKind::Read;
+            } else {
+                CapabilityKind::Exclusive
+            }
         } else {
             borrows
                 .capability(place, ctxt)

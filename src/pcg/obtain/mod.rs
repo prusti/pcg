@@ -20,7 +20,8 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, OwnedPcgNode, RepackCollapse, RepackOp},
     pcg::{
-        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability, ctxt::AnalysisCtxt, edge::EdgeMutability, place_capabilities::PlaceCapabilitiesReader
+        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability, ctxt::AnalysisCtxt,
+        edge::EdgeMutability, place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir,
     utils::{
@@ -103,14 +104,16 @@ impl ObtainType {
             ObtainType::ForStorageDead => PositiveCapability::Write,
             ObtainType::Capability(capability_kind) => capability_kind,
             ObtainType::TwoPhaseExpand => PositiveCapability::Read,
-            ObtainType::LoopInvariant { usage_type, .. } => if usage_type == PlaceUsageType::Read
+            ObtainType::LoopInvariant { usage_type, .. } => {
+                if usage_type == PlaceUsageType::Read
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)
                 {
                     PositiveCapability::Read
                 } else {
                     PositiveCapability::Exclusive
-                },
+                }
+            }
         }
     }
 
@@ -124,11 +127,13 @@ impl ObtainType {
     {
         match self {
             ObtainType::ForStorageDead => EdgeMutability::Mutable,
-            ObtainType::Capability(cap) => if !cap.is_read() {
-                EdgeMutability::Mutable
-            } else {
-                EdgeMutability::Immutable
-            },
+            ObtainType::Capability(cap) => {
+                if !cap.is_read() {
+                    EdgeMutability::Mutable
+                } else {
+                    EdgeMutability::Immutable
+                }
+            }
             ObtainType::TwoPhaseExpand => EdgeMutability::Immutable,
             ObtainType::LoopInvariant {
                 is_blocked: _,
@@ -214,6 +219,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             let expansions = self
                 .get_local_expansions(place.local)
                 .subtree(&place.projection)
+                .subtree()
                 .unwrap()
                 .expansions_longest_first(place, ctxt);
             assert!(!expansions.is_empty());

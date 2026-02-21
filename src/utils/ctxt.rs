@@ -276,14 +276,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
     }
 
     pub(crate) fn guide(&self) -> RepackGuide {
-        let required_guide: Option<RequiredGuide> = self
-            .target_place
-            .last_projection()
-            .unwrap()
-            .1
-            .try_into()
-            .ok();
-        required_guide.map(RepackGuide::from).unwrap_or_default()
+        self.target_place.last_projection().unwrap().1.into()
     }
 
     #[must_use]

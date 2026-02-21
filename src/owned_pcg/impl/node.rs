@@ -41,10 +41,10 @@ pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
 }
 
 impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
-    pub(crate) fn from_expansions(
-        expansions: Vec<OwnedExpansion<'tcx, IData>>,
-    ) -> Self {
-        Self { expansions: HashMap::from_iter(expansions.into_iter().map(|e| (e.guide(), e))) }
+    pub(crate) fn from_expansions(expansions: Vec<OwnedExpansion<'tcx, IData>>) -> Self {
+        Self {
+            expansions: HashMap::from_iter(expansions.into_iter().map(|e| (e.guide(), e))),
+        }
     }
 
     pub(crate) fn new(expansion: OwnedExpansion<'tcx, IData>) -> Self {
@@ -94,7 +94,6 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
 }
 
 impl<'tcx> OwnedPcgNode<'tcx> {
-
     pub(crate) fn owned_capability(&self) -> Option<OwnedCapability> {
         self.as_leaf_node().map(|leaf| leaf.inherent_capability)
     }
@@ -114,3 +113,5 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         )
     }
 }
+
+trait OwnedPcgNodeLike<'tcx> {}

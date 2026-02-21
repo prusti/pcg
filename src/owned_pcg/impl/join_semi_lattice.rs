@@ -12,7 +12,8 @@ use crate::{
     },
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp, RequiredGuide, join::data::JoinOwnedData, traverse::GetExpansions
+        ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
+        RequiredGuide, join::data::JoinOwnedData, traverse::GetExpansions,
     },
     pcg::{
         CapabilityKind, CapabilityLike, PositiveCapability,
@@ -148,7 +149,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     where
         'tcx: 'a,
     {
-        match self.subtree(&place.projection) {
+        match self.subtree(&place.projection).subtree() {
             Some(subtree) => subtree.leaf_places(place, ctxt),
             None => HashSet::default(),
         }
@@ -164,17 +165,16 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         'tcx: 'a,
     {
         let children = self.all_children_of(place, ctxt);
-        let mut collapses_by_guide: HashMap<Option<RequiredGuide>, PositiveCapability> =
-            HashMap::default();
+        let mut collapses_by_guide: HashMap<RepackGuide, PositiveCapability> = HashMap::default();
         for child in children {
-            let guide: Option<RequiredGuide> = child.last_projection().unwrap().1.try_into().ok();
+            let guide: RepackGuide = child.last_projection().unwrap().1.into();
             let child_cap = capabilities.get(child, ctxt).into_positive().unwrap();
             let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
             *entry = entry.minimum(child_cap, ctxt).unwrap();
         }
         collapses_by_guide
             .into_iter()
-            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide.map(|g| g.into()).unwrap_or_default()))
+            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
             .collect()
     }
 }

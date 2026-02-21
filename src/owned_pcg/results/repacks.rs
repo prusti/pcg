@@ -283,8 +283,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
     }
 }
 
-impl From<RepackGuide> for PlaceElem<'_> {
-    fn from(val: RepackGuide) -> Self {
+impl From<RequiredGuide> for PlaceElem<'_> {
+    fn from(val: RequiredGuide) -> Self {
         match val {
             RepackGuide::Index(local, _) => PlaceElem::Index(local),
             RepackGuide::Downcast(downcast, _) => {
@@ -298,28 +298,22 @@ impl From<RepackGuide> for PlaceElem<'_> {
             RepackGuide::Subslice {
                 from, to, from_end, ..
             } => PlaceElem::Subslice { from, to, from_end },
-            RepackGuide::Default(_) => todo!(),
         }
     }
 }
 
-impl TryFrom<PlaceElem<'_>> for RequiredGuide {
-    type Error = ();
-    fn try_from(elem: PlaceElem<'_>) -> Result<Self, Self::Error> {
+impl From<PlaceElem<'_>> for RepackGuide {
+    fn from(elem: PlaceElem<'_>) -> Self {
         match elem {
-            PlaceElem::Index(local) => Ok(RepackGuide::Index(local, ())),
-            PlaceElem::Downcast(symbol, variant_idx) => {
-                Ok(RepackGuide::downcast(symbol, variant_idx))
-            }
+            PlaceElem::Index(local) => RepackGuide::Index(local, ()),
+            PlaceElem::Downcast(symbol, variant_idx) => RepackGuide::downcast(symbol, variant_idx),
             PlaceElem::ConstantIndex {
                 offset,
                 min_length,
                 from_end,
-            } => Ok(RepackGuide::constant_index(offset, min_length, from_end)),
-            PlaceElem::Subslice { from, to, from_end } => {
-                Ok(RepackGuide::subslice(from, to, from_end))
-            }
-            _ => Err(()),
+            } => RepackGuide::constant_index(offset, min_length, from_end),
+            PlaceElem::Subslice { from, to, from_end } => RepackGuide::subslice(from, to, from_end),
+            _ => RepackGuide::Default(()),
         }
     }
 }

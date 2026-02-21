@@ -1,5 +1,5 @@
 //! Definition of expansion edges in the Borrow PCG.
-use std::{collections::BTreeMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash, ops::Index};
 
 use derive_more::{From, TryFrom};
 use itertools::Itertools;
@@ -81,6 +81,19 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceExpansion<'tcx>
     }
 }
 
+impl<'tcx, D> Index<PlaceElem<'tcx>> for PlaceExpansion<'tcx, D> {
+    type Output = D;
+
+    fn index(&self, index: PlaceElem<'tcx>) -> &Self::Output {
+        self.elems_data()
+            .iter()
+            .find(|(elem, _)| *elem == index)
+            .unwrap()
+            .1
+            .unwrap()
+    }
+}
+
 impl<'tcx> PlaceExpansion<'tcx> {
     pub(crate) fn elems(&self) -> Vec<PlaceElem<'tcx>> {
         self.map_elems_data(|_| (), &|_| ())
@@ -157,10 +170,8 @@ impl<'tcx> PlaceExpansion<'tcx> {
                     }
                     PlaceElem::Deref => return PlaceExpansion::deref(),
                     other => {
-                        let repack_guide: RequiredGuide = other
-                            .try_into()
-                            .unwrap_or_else(|()| todo!("unsupported place elem: {:?}", other));
-                        return PlaceExpansion::Guided(repack_guide);
+                        let repack_guide: RepackGuide = other.into();
+                        return PlaceExpansion::Guided(repack_guide.as_non_default().unwrap());
                     }
                 }
             }
@@ -176,18 +187,11 @@ impl<'tcx> PlaceExpansion<'tcx> {
 
 impl<'tcx, D> PlaceExpansion<'tcx, D> {
     pub(crate) fn without_data(&self) -> PlaceExpansion<'tcx, ()> {
-        match self {
-            PlaceExpansion::Fields(btree_map) => PlaceExpansion::Fields(
-                btree_map
-                    .into_iter()
-                    .map(|(idx, (ty, _))| (*idx, (*ty, ())))
-                    .collect(),
-            ),
-            PlaceExpansion::Deref(_) => PlaceExpansion::Deref(()),
-            PlaceExpansion::Guided(repack_guide) => {
-                PlaceExpansion::Guided(repack_guide.without_data())
-            }
-        }
+        self.map_data(|_| ())
+    }
+
+    pub(crate) fn as_ref<'slf>(&'slf self) -> PlaceExpansion<'tcx, &'slf D> {
+        self.map_data(|d| d)
     }
 
     pub(crate) fn guide(&self) -> RepackGuide {

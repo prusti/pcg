@@ -426,11 +426,14 @@ pub(crate) use pcg_validity_expect_ok;
 pub(crate) use pcg_validity_expect_some;
 
 use crate::{
-    borrow_pcg::edge_data::LabelEdgeLifetimeProjections, owned_pcg::RepackGuide, pcg::{CapabilityKind, edge::EdgeMutability}, utils::{
+    borrow_pcg::edge_data::LabelEdgeLifetimeProjections,
+    owned_pcg::RepackGuide,
+    pcg::{CapabilityKind, edge::EdgeMutability},
+    utils::{
         DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
-    }
+    },
 };
 
 pub(crate) fn validity_checks_enabled() -> bool {

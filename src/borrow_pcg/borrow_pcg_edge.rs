@@ -318,7 +318,7 @@ impl<P: PcgNodeComponent> LocalNode<'_, P> {
 pub type BlockedNode<'tcx, P = Place<'tcx>> =
     PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
 
-impl <'tcx, P> From<P> for BlockedNode<'tcx, P> {
+impl<'tcx, P> From<P> for BlockedNode<'tcx, P> {
     fn from(place: P) -> Self {
         BlockedNode::Place(place.into())
     }

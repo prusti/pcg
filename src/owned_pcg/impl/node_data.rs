@@ -10,32 +10,48 @@ pub trait InternalData<'tcx>: Sized {
 pub struct Deep;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub struct DeepRef<'src>(PhantomData<&'src ()>);
+
+impl<'src, 'tcx: 'src> InternalData<'tcx> for DeepRef<'src> {
+    type Data = &'src OwnedPcgNode<'tcx>;
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Shallow<T = ()>(PhantomData<T>);
 
 impl<'tcx> InternalData<'tcx> for Deep {
     type Data = OwnedPcgNode<'tcx>;
 }
 
-pub(crate) trait FromDeep<'tcx>: InternalData<'tcx> {
-    fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self>;
+pub(crate) trait FromData<'src, 'tcx, IData: InternalData<'tcx>>:
+    InternalData<'tcx>
+{
+    fn from_data(data: &'src OwnedPcgInternalNode<'tcx, IData>)
+    -> OwnedPcgInternalNode<'tcx, Self>;
 }
 
 impl<'tcx, T: Clone + Eq + std::fmt::Debug> InternalData<'tcx> for Shallow<T> {
     type Data = T;
 }
 
-impl<'tcx> FromDeep<'tcx> for Shallow<()> {
-    fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self> {
+impl<'src, 'tcx, IData: InternalData<'tcx>> FromData<'src, 'tcx, IData> for Shallow<()> {
+    fn from_data(
+        data: &'src OwnedPcgInternalNode<'tcx, IData>,
+    ) -> OwnedPcgInternalNode<'tcx, Self> {
         OwnedPcgInternalNode::from_expansions(
-            deep.expansions()
+            data.expansions()
                 .map(|e| OwnedExpansion::new(e.expansion.without_data()))
                 .collect(),
         )
     }
 }
 
-impl<'tcx> FromDeep<'tcx> for Deep {
-    fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self> {
-        deep.clone()
+impl<'src, 'tcx: 'src> FromData<'src, 'tcx, Deep> for DeepRef<'src> {
+    fn from_data(data: &'src OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self> {
+        OwnedPcgInternalNode::from_expansions(
+            data.expansions()
+                .map(|e| OwnedExpansion::new(e.expansion.as_ref()))
+                .collect(),
+        )
     }
 }

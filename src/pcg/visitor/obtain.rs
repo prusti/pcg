@@ -16,10 +16,15 @@ use crate::{
     },
     owned_pcg::RepackOp,
     pcg::{
-        CapabilityKind, CapabilityLike, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike, PositiveCapability, SymbolicCapability, edge::EdgeMutability, obtain::{
+        CapabilityKind, CapabilityLike, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        PositiveCapability, SymbolicCapability,
+        edge::EdgeMutability,
+        obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
             RenderDebugGraph, expand::PlaceExpander,
-        }, place_capabilities::{BlockType, PlaceCapabilitiesReader}, visitor::upgrade::AdjustCapabilityReason
+        },
+        place_capabilities::{BlockType, PlaceCapabilitiesReader},
+        visitor::upgrade::AdjustCapabilityReason,
     },
     pcg_validity_assert,
     rustc_interface::middle::mir,
@@ -621,9 +626,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> EdgeMutability {
-        obtain_type.mutability(
-            base_place,
-            ctxt,
-        )
+        obtain_type.mutability(base_place, ctxt)
     }
 }

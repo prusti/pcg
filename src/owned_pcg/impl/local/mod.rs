@@ -21,7 +21,9 @@ use crate::{
         PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
         node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode},
         node_data::{self, InternalData},
-        traverse::{FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom},
+        traverse::{
+            FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom,
+        },
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
@@ -214,7 +216,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         if !place.is_owned(ctxt.ctxt()) {
             return vec![];
         }
-        let Some(tree) = self.root.subtree(place.projection) else {
+        let Some(tree) = self.root.subtree(place.projection).subtree() else {
             return vec![];
         };
         tree.leaf_places(place, ctxt)
@@ -367,16 +369,12 @@ impl<'tcx> OwnedExpansion<'tcx> {
     }
 }
 
-impl<'tcx> PlaceExpansion<'tcx, OwnedPcgNode<'tcx>> {
-    pub(crate) fn data<'slf>(&'slf self) -> Vec<(mir::PlaceElem<'tcx>, &'slf OwnedPcgNode<'tcx>)> {
-        self.map_elems_data(|d| d, &|d| d)
-    }
-
+impl<'tcx, D> PlaceExpansion<'tcx, D> {
     pub(crate) fn child_nodes<'a>(
         &self,
         base_place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> impl Iterator<Item = (Place<'tcx>, &OwnedPcgNode<'tcx>)>
+    ) -> impl Iterator<Item = (Place<'tcx>, &D)>
     where
         'tcx: 'a,
     {
@@ -384,6 +382,9 @@ impl<'tcx> PlaceExpansion<'tcx, OwnedPcgNode<'tcx>> {
             let place = base_place.project_deeper(elem, ctxt).unwrap();
             (place, data)
         })
+    }
+    pub(crate) fn data<'slf>(&'slf self) -> Vec<(mir::PlaceElem<'tcx>, &'slf D)> {
+        self.map_elems_data(|d| d, &|d| d)
     }
 }
 
@@ -411,7 +412,7 @@ impl<'tcx> OwnedExpansion<'tcx> {
         result.ops.push(RepackOp::Collapse(RepackCollapse::new(
             base_place,
             result.result_capability.into(),
-            self.expansion.guide()
+            self.expansion.guide(),
         )));
         result
     }
@@ -515,11 +516,11 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     {
         self.traverse(
             base_place,
-            &mut RepackOpsToExpandFrom {
+            &mut RepackOpsToExpandFrom::new(
                 base_inherent_capability,
-                is_borrowed: Box::new(is_borrowed),
-                ctxt: ctxt.ctxt(),
-            },
+                Box::new(is_borrowed),
+                ctxt.ctxt(),
+            ),
             ctxt,
         )
     }
@@ -593,25 +594,25 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             result.set_subtree(self);
             return result;
         }
-        let OwnedPcgNode::Internal(internal) = self else {
-            return result;
-        };
-        for e in internal.expansions() {
-            for (elem, elem_data) in e.expansion.data() {
-                if projection[0] != elem {
-                    continue;
-                }
-                let remaining_projection = &projection[1..];
-                if let Some(subtree) = elem_data.subtree(remaining_projection) {
-                    return Some(subtree);
-                }
+        let mut current = self;
+        for proj in projection {
+            let OwnedPcgNode::Internal(internal) = current else {
+                return result;
+            };
+            result.push_to_path(internal);
+            let guide = RepackGuide::from(*proj);
+            if let Some(subtree) = internal.expansion(guide) {
+                current = &subtree[*proj];
+            } else {
+                return FindSubtreeResult::none();
             }
         }
-        None
+        result.set_subtree(current);
+        result
     }
 
     pub(crate) fn contains_projection_to(&self, projection: &[mir::PlaceElem<'tcx>]) -> bool {
-        self.subtree(projection).is_some()
+        self.subtree(projection).subtree().is_some()
     }
 
     pub(crate) fn leaf_places<'a>(

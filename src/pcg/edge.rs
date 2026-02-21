@@ -9,7 +9,7 @@ pub enum EdgeMutability {
     Immutable,
 }
 
-impl <Ctxt> DisplayWithCtxt<Ctxt> for EdgeMutability {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for EdgeMutability {
     fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         if mode.is_test() {
             return DisplayOutput::Text(match self {

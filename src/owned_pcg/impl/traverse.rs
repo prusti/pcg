@@ -1,10 +1,10 @@
-use std::ops::ControlFlow;
+use std::{marker::PhantomData, ops::ControlFlow};
 
 use crate::{
     owned_pcg::{
         ExpandedPlace, OwnedPcgInternalNode, OwnedPcgLeafNode, RepackOp,
         node::OwnedPcgNode,
-        node_data::{Deep, FromDeep, InternalData, Shallow},
+        node_data::{Deep, DeepRef, FromData, InternalData, Shallow},
     },
     pcg::{OwnedCapability, edge::EdgeMutability},
     rustc_interface::ast::Mutability,
@@ -12,15 +12,23 @@ use crate::{
 };
 
 pub(crate) trait TraverseComputation<'tcx> {
-    type Depth: FromDeep<'tcx> + InternalData<'tcx> = Shallow;
+    type Depth: InternalData<'tcx> = Shallow;
     type AggregateResult;
     type NodeResult;
     fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult;
-    fn compute(
+
+    fn compute_leaf<'src>(
         &mut self,
         place: Place<'tcx>,
-        node: &OwnedPcgNode<'tcx, Self::Depth>,
+        node: &'src OwnedPcgLeafNode<'tcx>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult>;
+
+    fn compute_internal(
+        &mut self,
+        place: Place<'tcx>,
+        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult>;
+
     fn fold(
         &mut self,
         acc: Self::AggregateResult,
@@ -37,10 +45,18 @@ impl<'tcx> TraverseComputation<'tcx> for GetAllPlaces {
         std::iter::once(node_result).collect()
     }
 
-    fn compute(
+    fn compute_leaf(
         &mut self,
         place: Place<'tcx>,
-        _node: &OwnedPcgNode<'tcx, Self::Depth>,
+        _node: &OwnedPcgLeafNode<'tcx>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+        ControlFlow::Continue(place)
+    }
+
+    fn compute_internal(
+        &mut self,
+        place: Place<'tcx>,
+        _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
         ControlFlow::Continue(place)
     }
@@ -64,17 +80,22 @@ impl<'tcx> TraverseComputation<'tcx> for GetLeafPlaces {
         HashSet::default()
     }
 
-    fn compute(
+    fn compute_leaf(
         &mut self,
         place: Place<'tcx>,
-        node: &OwnedPcgNode<'tcx, Self::Depth>,
+        node: &OwnedPcgLeafNode<'tcx>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        if node.is_leaf() {
-            ControlFlow::Continue(Some(place))
-        } else {
-            ControlFlow::Continue(None)
-        }
+        ControlFlow::Continue(Some(place))
     }
+
+    fn compute_internal(
+        &mut self,
+        _place: Place<'tcx>,
+        _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+        ControlFlow::Continue(None)
+    }
+
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
@@ -94,17 +115,22 @@ impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
         node_result
     }
 
-    fn compute(
+    fn compute_leaf(
+        &mut self,
+        _place: Place<'tcx>,
+        _node: &OwnedPcgLeafNode<'tcx>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+        ControlFlow::Continue(HashSet::default())
+    }
+
+    fn compute_internal(
         &mut self,
         place: Place<'tcx>,
-        node: &OwnedPcgNode<'tcx, Self::Depth>,
+        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        if let Some(internal) = node.as_internal() {
-            ControlFlow::Continue(internal.expanded_places(place))
-        } else {
-            ControlFlow::Continue(HashSet::default())
-        }
+        ControlFlow::Continue(node.expanded_places(place))
     }
+
     fn fold(
         &mut self,
         mut acc: Self::AggregateResult,
@@ -115,27 +141,27 @@ impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
     }
 }
 
-impl<'tcx> OwnedPcgNode<'tcx> {
-    fn traverse_result<'a, T: TraverseComputation<'tcx>>(
-        &self,
+impl<'src, 'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>>
+    OwnedPcgNode<'tcx, IData>
+{
+    fn traverse_result<'a, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
     where
         'tcx: 'a,
+        T::Depth: FromData<'src, 'tcx, IData>,
     {
         match self {
             OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
-                let result =
-                    computation.compute(place, &OwnedPcgNode::Leaf(*owned_pcg_leaf_node))?;
+                let result = computation.compute_leaf(place, owned_pcg_leaf_node)?;
                 ControlFlow::Continue(computation.lift(result))
             }
             OwnedPcgNode::Internal(internal) => {
-                let root_result = computation.compute(
-                    place,
-                    &OwnedPcgNode::Internal(T::Depth::from_deep(internal)),
-                )?;
+                let root_result =
+                    computation.compute_internal(place, T::Depth::from_data(internal))?;
                 let mut result = computation.lift(root_result);
                 for expansion in internal.expansions() {
                     for (place, node) in expansion.child_nodes(place, ctxt) {
@@ -147,14 +173,15 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             }
         }
     }
-    pub(crate) fn traverse<'a, T: TraverseComputation<'tcx>>(
-        &self,
+    pub(crate) fn traverse<'a, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
         place: Place<'tcx>,
         computation: &mut T,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> T::AggregateResult
     where
         'tcx: 'a,
+        T::Depth: FromData<'src, 'tcx, IData>,
     {
         match self.traverse_result(place, computation, ctxt) {
             ControlFlow::Continue(result) => result,
@@ -163,54 +190,75 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     }
 }
 
-pub(crate) struct RepackOpsToExpandFrom<'a, 'tcx> {
+pub(crate) struct RepackOpsToExpandFrom<'src, 'a, 'tcx> {
     pub(crate) base_inherent_capability: OwnedCapability,
     pub(crate) is_borrowed: Box<dyn Fn(Place<'tcx>) -> Option<Mutability> + 'a>,
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx, ()>,
+    _marker: PhantomData<&'src ()>,
 }
 
-impl<'a, 'tcx> TraverseComputation<'tcx> for RepackOpsToExpandFrom<'a, 'tcx> {
-    type Depth = Deep;
+impl<'src, 'a, 'tcx> RepackOpsToExpandFrom<'src, 'a, 'tcx> {
+    pub(crate) fn new(
+        base_inherent_capability: OwnedCapability,
+        is_borrowed: Box<dyn Fn(Place<'tcx>) -> Option<Mutability> + 'a>,
+        ctxt: CompilerCtxt<'a, 'tcx, ()>,
+    ) -> Self {
+        Self {
+            base_inherent_capability,
+            is_borrowed,
+            ctxt,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom<'comp, 'a, 'tcx> {
+    type Depth = DeepRef<'comp>;
     type AggregateResult = Vec<RepackOp<'tcx>>;
     type NodeResult = Vec<RepackOp<'tcx>>;
     fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
         node_result
     }
-    fn compute(
+
+    fn compute_leaf(
         &mut self,
         place: Place<'tcx>,
-        node: &OwnedPcgNode<'tcx, Self::Depth>,
+        node: &OwnedPcgLeafNode<'tcx>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        let result = match node {
-            OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
-                if owned_pcg_leaf_node.inherent_capability < self.base_inherent_capability {
-                    vec![RepackOp::weaken(
-                        place,
-                        owned_pcg_leaf_node.inherent_capability.into(),
-                        self.base_inherent_capability.into(),
-                    )]
-                } else {
-                    vec![]
-                }
-            }
-            OwnedPcgNode::Internal(expansions) => expansions
-                .iter()
-                .flat_map(|(_, e)| {
-                    e.expansion
-                        .child_nodes(place, self.ctxt)
-                        .map(|(place, node)| {
-                            let edge_mutability = if !node.is_fully_initialized(place, self.ctxt)
-                                || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
-                            {
-                                EdgeMutability::Mutable
-                            } else {
-                                EdgeMutability::Immutable
-                            };
-                            RepackOp::expand(place, e.expansion.guide(), edge_mutability, self.ctxt)
-                        })
-                })
-                .collect::<Vec<_>>(),
+        let result = if node.inherent_capability < self.base_inherent_capability {
+            vec![RepackOp::weaken(
+                place,
+                node.inherent_capability.into(),
+                self.base_inherent_capability.into(),
+            )]
+        } else {
+            vec![]
         };
+        ControlFlow::Continue(result)
+    }
+
+    fn compute_internal(
+        &mut self,
+        place: Place<'tcx>,
+        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+        let result = node
+            .expansions()
+            .flat_map(|e| {
+                e.expansion
+                    .child_nodes(place, self.ctxt)
+                    .map(|(place, node)| {
+                        let edge_mutability = if !node.is_fully_initialized(place, self.ctxt)
+                            || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
+                        {
+                            EdgeMutability::Mutable
+                        } else {
+                            EdgeMutability::Immutable
+                        };
+                        RepackOp::expand(place, e.expansion.guide(), edge_mutability, self.ctxt)
+                    })
+            })
+            .collect::<Vec<_>>();
         ControlFlow::Continue(result)
     }
 
@@ -232,19 +280,27 @@ impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
     fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
         node_result
     }
-    fn compute(
+
+    fn compute_leaf(
         &mut self,
         _place: Place<'tcx>,
-        node: &OwnedPcgNode<'tcx, Self::Depth>,
+        node: &OwnedPcgLeafNode<'tcx>,
     ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
-        if let OwnedPcgNode::Leaf(owned_pcg_leaf_node) = node
-            && !self.0(owned_pcg_leaf_node)
-        {
-            ControlFlow::Break(false)
-        } else {
+        if self.0(node) {
             ControlFlow::Continue(true)
+        } else {
+            ControlFlow::Break(false)
         }
     }
+
+    fn compute_internal(
+        &mut self,
+        _place: Place<'tcx>,
+        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
+    ) -> ControlFlow<Self::AggregateResult, Self::NodeResult> {
+        ControlFlow::Continue(true)
+    }
+
     fn fold(
         &mut self,
         acc: Self::AggregateResult,
@@ -271,6 +327,13 @@ impl<'pcg, 'tcx> FindSubtreeResult<'pcg, 'tcx> {
         }
     }
 
+    pub(crate) fn none() -> Self {
+        Self {
+            path_from_root: vec![],
+            subtree: None,
+        }
+    }
+
     pub(crate) fn root_subtree(node: &'pcg OwnedPcgNode<'tcx, Deep>) -> Self {
         Self {
             path_from_root: vec![],
@@ -284,5 +347,16 @@ impl<'pcg, 'tcx> FindSubtreeResult<'pcg, 'tcx> {
 
     pub(crate) fn set_subtree(&mut self, subtree: &'pcg OwnedPcgNode<'tcx, Deep>) {
         self.subtree = Some(subtree);
+    }
+
+    pub(crate) fn subtree(&self) -> Option<&'pcg OwnedPcgNode<'tcx, Deep>> {
+        self.subtree
+    }
+
+    pub(crate) fn parent_node(&self) -> Option<&'pcg OwnedPcgInternalNode<'tcx>> {
+        if self.subtree.is_none() {
+            return None;
+        }
+        self.path_from_root.last().copied()
     }
 }

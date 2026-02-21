@@ -23,10 +23,13 @@ use crate::{
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability, ctxt::AnalysisCtxt, edge::EdgeMutability, obtain::{
+        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike, PositiveCapability,
+        ctxt::AnalysisCtxt,
+        edge::EdgeMutability,
+        obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
-        }
+        },
     },
     pcg_validity_assert,
     rustc_interface::middle::{mir, ty},
