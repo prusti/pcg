@@ -17,7 +17,7 @@ use crate::{
 
 pub(crate) trait TraverseComputation<'tcx> {
     type Depth: InternalData<'tcx> = Shallow;
-    type Err: std::fmt::Debug = PcgInternalError;
+    type Err: std::fmt::Debug + From<PcgInternalError> = PcgInternalError;
     type NodeResult;
     type AggregateResult;
     fn lift(node_result: Self::NodeResult) -> Self::AggregateResult;
@@ -210,6 +210,14 @@ pub(crate) enum TraverseResult<T, E, S = T> {
     Break(TraverseBreak<S, E>),
 }
 
+impl<T, E, S> TraverseResult<T, E, S> {
+    pub(crate) fn from_result<EE: Into<E>>(result: Result<T, EE>) -> Self {
+        match result {
+            Ok(result) => TraverseResult::Continue(result),
+            Err(error) => TraverseResult::Break(TraverseBreak::Error(error.into())),
+        }
+    }
+}
 impl<T, E> TraverseResult<T, E> {
     pub(crate) fn result(self) -> Result<T, E> {
         match self {
@@ -257,7 +265,8 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
         let mut result = T::lift_result(root_result)?;
         for expansion in self.expansions() {
             for (place, node) in expansion.child_nodes(place, ctxt) {
-                let child_result = node.traverse_result(place.unwrap(), computation, ctxt)?;
+                let child_result =
+                    node.traverse_result(TraverseResult::from_result(place)?, computation, ctxt)?;
                 result = computation.fold(result, child_result)?;
             }
         }
@@ -282,9 +291,7 @@ impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversa
             OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
                 T::lift_result(computation.compute_leaf(place, owned_pcg_leaf_node))
             }
-            OwnedPcgNode::Internal(internal) => {
-                internal.traverse_result(place, computation, ctxt)
-            }
+            OwnedPcgNode::Internal(internal) => internal.traverse_result(place, computation, ctxt),
         }
     }
 }
