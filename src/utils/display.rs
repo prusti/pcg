@@ -134,6 +134,12 @@ pub enum OutputMode {
     Test,
 }
 
+impl OutputMode {
+    pub(crate) fn is_test(&self) -> bool {
+        matches!(self, OutputMode::Test)
+    }
+}
+
 pub trait DisplayWithCtxt<Ctxt> {
     fn display_output(&self, data_ctxt: Ctxt, mode: OutputMode) -> DisplayOutput;
 

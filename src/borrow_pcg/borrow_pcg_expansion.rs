@@ -26,7 +26,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsageType,
-    owned_pcg::RepackGuide,
+    owned_pcg::{RepackGuide, RequiredGuide},
     pcg::{
         LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, PositiveCapability,
         SymbolicCapability,
@@ -72,7 +72,7 @@ pub enum PlaceExpansion<'tcx, D = ()> {
     Fields(BTreeMap<FieldIdx, (ty::Ty<'tcx>, D)>),
     /// See [`PlaceElem::Deref`]
     Deref(D),
-    Guided(RepackGuide<mir::Local, D>),
+    Guided(RepackGuide<mir::Local, D, !>),
 }
 
 impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceExpansion<'tcx> {
@@ -157,7 +157,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
                     }
                     PlaceElem::Deref => return PlaceExpansion::deref(),
                     other => {
-                        let repack_guide: RepackGuide = other
+                        let repack_guide: RequiredGuide = other
                             .try_into()
                             .unwrap_or_else(|()| todo!("unsupported place elem: {:?}", other));
                         return PlaceExpansion::Guided(repack_guide);
@@ -190,7 +190,14 @@ impl<'tcx, D> PlaceExpansion<'tcx, D> {
         }
     }
 
-    pub(crate) fn guide(&self) -> Option<&RepackGuide<mir::Local, D>> {
+    pub(crate) fn guide(&self) -> RepackGuide {
+        match self.required_guide() {
+            Some(guide) => guide.without_data().into(),
+            None => RepackGuide::Default(()),
+        }
+    }
+
+    pub(crate) fn required_guide(&self) -> Option<&RepackGuide<mir::Local, D, !>> {
         match self {
             PlaceExpansion::Guided(guide) => Some(guide),
             _ => None,
@@ -292,7 +299,7 @@ pub(crate) mod internal {
     pub struct BorrowPcgExpansionData<Node> {
         pub(crate) base: Node,
         pub(crate) expansion: Vec<Node>,
-        pub(crate) guide: Option<RepackGuide>,
+        pub(crate) guide: RepackGuide,
         pub(crate) mutability: ExpansionMutability,
     }
 }
@@ -462,7 +469,7 @@ where
 
 impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgExpansionData<P> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        let guide_part = if let Some(guide) = self.guide
+        let guide_part = if let Some(guide) = self.guide.as_non_default()
             && matches!(mode, OutputMode::Test)
         {
             DisplayOutput::Text(format!(" (guide={guide:?})").into())
@@ -565,7 +572,7 @@ impl<
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
     #[must_use]
-    pub fn guide(&self) -> Option<RepackGuide> {
+    pub fn guide(&self) -> RepackGuide {
         match self {
             BorrowPcgExpansion::Place(place_expansion) => place_expansion.guide,
             BorrowPcgExpansion::LifetimeProjection(lifetime_projection_expansion) => {
@@ -633,7 +640,7 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
         );
         let result = Self {
             base,
-            guide: expansion.guide().copied(),
+            guide: expansion.guide(),
             expansion: expansion
                 .elems()
                 .into_iter()

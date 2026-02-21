@@ -6,7 +6,7 @@ use crate::{
         region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
     },
     error::{PcgError, PcgUnsupportedError},
-    owned_pcg::RepackGuide,
+    owned_pcg::{RepackGuide, RequiredGuide},
     pcg::ctxt::AnalysisCtxt,
     pcg_validity_assert,
     rustc_interface::{
@@ -275,13 +275,15 @@ impl<'tcx> ShallowExpansion<'tcx> {
         self.target_place.last_projection().unwrap().0
     }
 
-    pub(crate) fn guide(&self) -> Option<RepackGuide> {
-        self.target_place
+    pub(crate) fn guide(&self) -> RepackGuide {
+        let required_guide: Option<RequiredGuide> = self
+            .target_place
             .last_projection()
             .unwrap()
             .1
             .try_into()
-            .ok()
+            .ok();
+        required_guide.map(RepackGuide::from).unwrap_or_default()
     }
 
     #[must_use]

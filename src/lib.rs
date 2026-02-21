@@ -65,7 +65,7 @@ use utils::{
     validity::HasValidityCheck,
 };
 
-pub use ctxt::PcgCtxt;
+pub use ctxt::{PcgCtxt, PcgCtxtCreator};
 pub use pcg::ctxt::HasSettings;
 
 #[cfg(feature = "visualization")]

@@ -21,7 +21,7 @@ use crate::{
         PcgRepackOpDataTypes, RepackCollapse, RepackExpand, RepackGuide,
         node::{OwnedPcgInternalNode, OwnedPcgLeafNode, OwnedPcgNode},
         node_data::{self, InternalData},
-        traverse::{GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom},
+        traverse::{FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom},
     },
     pcg::{OwnedCapability, PositiveCapability},
     rustc_interface::{ast::Mutability, middle::mir},
@@ -99,8 +99,8 @@ impl ExpandedPlace<'_> {
     pub(crate) fn is_enum_expansion(&self) -> bool {
         self.expansion.is_enum_expansion()
     }
-    pub(crate) fn guide(&self) -> Option<RepackGuide> {
-        self.expansion.guide().copied()
+    pub(crate) fn guide(&self) -> RepackGuide {
+        self.expansion.guide()
     }
 }
 
@@ -164,16 +164,14 @@ impl<'tcx> LocalExpansions<'tcx> {
         'tcx: 'a,
     {
         let subtree = self.subtree_mut(&expand.from.projection).unwrap();
+        let expansion = OwnedExpansion::from_repack_expand(expand, ctxt);
         match subtree {
             OwnedPcgNode::Leaf(leaf) => {
-                let expansion: PlaceExpansion<'tcx, OwnedPcgNode<'tcx>> = expand
-                    .from
-                    .expansion(expand.guide, ctxt)
-                    .map_data(|_| OwnedPcgNode::Leaf(*leaf));
-                let owned_expansion: OwnedExpansion<'tcx> = OwnedExpansion::new(expansion);
-                *subtree = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(vec![owned_expansion]));
+                *subtree = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(expansion));
             }
-            OwnedPcgNode::Internal(_) => todo!(),
+            OwnedPcgNode::Internal(internal) => {
+                internal.insert_expansion(expansion);
+            }
         }
     }
 
@@ -227,14 +225,6 @@ impl<'tcx> LocalExpansions<'tcx> {
 }
 
 impl<'tcx> OwnedPcgNode<'tcx> {
-    pub(crate) fn inherent_capability(&self) -> OwnedCapability {
-        self.fold(
-            OwnedCapability::Exclusive,
-            &|leaf| leaf.inherent_capability,
-            &|a, b| if a < b { a } else { b },
-        )
-    }
-
     pub(crate) fn as_leaf_node(&self) -> Option<&OwnedPcgLeafNode<'tcx>> {
         match self {
             Self::Leaf(leaf) => Some(leaf),
@@ -250,19 +240,20 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         let tree = self.subtree_mut(projection).unwrap();
         match tree {
             OwnedPcgNode::Leaf(leaf) => {
-                *self =
-                    OwnedPcgNode::Internal(OwnedPcgInternalNode::new(vec![OwnedExpansion::new(
-                        expansion.map_data(|_| OwnedPcgNode::Leaf(*leaf)),
-                    )]));
+                *self = OwnedPcgNode::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
+                    expansion.map_data(|_| OwnedPcgNode::Leaf(*leaf)),
+                )));
             }
             OwnedPcgNode::Internal(_) => todo!(),
         }
     }
 
-    pub(crate) fn expansions_mut(&mut self) -> Vec<&mut OwnedExpansion<'tcx>> {
+    pub(crate) fn expansions_mut<'slf>(
+        &'slf mut self,
+    ) -> Box<dyn Iterator<Item = &mut OwnedExpansion<'tcx>> + 'slf> {
         match self {
-            Self::Leaf(_) => vec![],
-            Self::Internal(internal) => internal.expansions.iter_mut().map(|e| &mut *e).collect(),
+            Self::Leaf(_) => Box::new(std::iter::empty()),
+            Self::Internal(internal) => Box::new(internal.expansions_mut()),
         }
     }
 
@@ -276,7 +267,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             OwnedPcgNode::Leaf(owned_pcg_leaf_node) => f(owned_pcg_leaf_node),
             OwnedPcgNode::Internal(internal) => {
                 let mut result = base;
-                for e in internal.expansions.iter() {
+                for e in internal.expansions() {
                     for (_, elem_data) in e.expansion.data() {
                         result = elem_data.fold(result, f, fold)
                     }
@@ -290,6 +281,22 @@ impl<'tcx> OwnedPcgNode<'tcx> {
 #[derive(Clone, PartialEq, Eq, Debug, Deref)]
 pub struct OwnedExpansion<'tcx, IData: InternalData<'tcx> = node_data::Deep> {
     pub(crate) expansion: PlaceExpansion<'tcx, IData::Data>,
+}
+
+impl<'tcx> OwnedExpansion<'tcx> {
+    pub(crate) fn from_repack_expand<'a>(
+        expand: RepackExpand<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Self
+    where
+        'tcx: 'a,
+    {
+        let expansion = expand
+            .from
+            .expansion(expand.guide, ctxt)
+            .map_data(|_| OwnedPcgNode::Leaf(OwnedPcgLeafNode::new(OwnedCapability::Exclusive)));
+        Self::new(expansion)
+    }
 }
 
 pub(crate) struct LeafOwnedExpansion<'tcx> {
@@ -404,7 +411,7 @@ impl<'tcx> OwnedExpansion<'tcx> {
         result.ops.push(RepackOp::Collapse(RepackCollapse::new(
             base_place,
             result.result_capability.into(),
-            self.expansion.guide().map(|g| g.without_data()),
+            self.expansion.guide()
         )));
         result
     }
@@ -529,8 +536,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             return vec![];
         };
         internal
-            .expansions
-            .iter()
+            .expansions()
             .flat_map(|e| e.leaf_expansions(base_place, ctxt))
             .collect()
     }
@@ -547,8 +553,8 @@ impl<'tcx> OwnedPcgNode<'tcx> {
             OwnedPcgNode::Leaf(_) => None,
             OwnedPcgNode::Internal(internal) => {
                 let ops = internal
-                    .expansions
-                    .iter_mut()
+                    .expansions_mut()
+                    .into_iter()
                     .map(|e| e.collapse(base_place, ctxt))
                     .collect::<Vec<_>>();
                 let result = CollapseResult::join_all(ops);
@@ -581,14 +587,16 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     pub(crate) fn subtree<'slf>(
         &'slf self,
         projection: &[mir::PlaceElem<'tcx>],
-    ) -> Option<&'slf Self> {
+    ) -> FindSubtreeResult<'slf, 'tcx> {
+        let mut result = FindSubtreeResult::new();
         if projection.len() == 0 {
-            return Some(self);
+            result.set_subtree(self);
+            return result;
         }
         let OwnedPcgNode::Internal(internal) = self else {
-            return None;
+            return result;
         };
-        for e in internal.expansions.iter() {
+        for e in internal.expansions() {
             for (elem, elem_data) in e.expansion.data() {
                 if projection[0] != elem {
                     continue;

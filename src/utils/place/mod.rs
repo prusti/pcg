@@ -344,13 +344,13 @@ impl<'tcx> Place<'tcx> {
 
     pub(crate) fn expansion<'a>(
         self,
-        guide: Option<RepackGuide>,
+        guide: RepackGuide,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> PlaceExpansion<'tcx>
     where
         'tcx: 'a,
     {
-        if let Some(guide) = guide {
+        if let Some(guide) = guide.as_non_default() {
             guide.into()
         } else if self.ty(ctxt).ty.is_box() {
             PlaceExpansion::deref()

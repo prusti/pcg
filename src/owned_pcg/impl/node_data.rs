@@ -26,13 +26,11 @@ impl<'tcx, T: Clone + Eq + std::fmt::Debug> InternalData<'tcx> for Shallow<T> {
 
 impl<'tcx> FromDeep<'tcx> for Shallow<()> {
     fn from_deep(deep: &OwnedPcgInternalNode<'tcx>) -> OwnedPcgInternalNode<'tcx, Self> {
-        OwnedPcgInternalNode {
-            expansions: deep
-                .expansions
-                .iter()
+        OwnedPcgInternalNode::from_expansions(
+            deep.expansions()
                 .map(|e| OwnedExpansion::new(e.expansion.without_data()))
                 .collect(),
-        }
+        )
     }
 }
 

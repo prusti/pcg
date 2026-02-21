@@ -7,7 +7,10 @@
 use std::marker::PhantomData;
 
 use crate::{
-    DebugDataTypes, PcgDataTypes, RepackDataTypes, Weaken, pcg::edge::EdgeMutability, rustc_interface::middle::mir::{self, PlaceElem}, utils::PlaceLike
+    DebugDataTypes, PcgDataTypes, RepackDataTypes, Weaken,
+    pcg::edge::EdgeMutability,
+    rustc_interface::middle::mir::{self, PlaceElem},
+    utils::PlaceLike,
 };
 
 use crate::{
@@ -20,8 +23,41 @@ use crate::{
 };
 use serde_derive::Serialize;
 
+pub(crate) type RequiredGuide = RepackGuide<mir::Local, (), !>;
+
+impl From<RequiredGuide> for RepackGuide {
+    fn from(val: RequiredGuide) -> Self {
+        match val {
+            RepackGuide::Default(_) => RepackGuide::Default(()),
+            RepackGuide::Downcast(downcast, _) => RepackGuide::Downcast(downcast, ()),
+            RepackGuide::ConstantIndex(constant_index, _) => {
+                RepackGuide::ConstantIndex(constant_index, ())
+            }
+            RepackGuide::Index(local, _) => RepackGuide::Index(local, ()),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data: (),
+            },
+        }
+    }
+}
+
+impl Default for RepackGuide {
+    fn default() -> Self {
+        RepackGuide::Default(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum RepackGuide<Local = mir::Local, D = ()> {
+pub enum RepackGuide<Local = mir::Local, D = (), Default = ()> {
+    Default(Default),
     Downcast(Downcast, D),
     ConstantIndex(ConstantIndex, D),
     Index(Local, D),
@@ -57,11 +93,11 @@ impl serde::Serialize for RepackGuide {
     }
 }
 
-impl<'tcx, D> RepackGuide<mir::Local, D> {
+impl<'tcx, D, Default: Copy> RepackGuide<mir::Local, D, Default> {
     pub(crate) fn try_map_data<'slf, R>(
         &'slf self,
         f: impl Fn(&'slf D) -> Option<R>,
-    ) -> Option<RepackGuide<mir::Local, R>> {
+    ) -> Option<RepackGuide<mir::Local, R, Default>> {
         match self {
             RepackGuide::Index(local, data) => Some(RepackGuide::Index(*local, f(data)?)),
             RepackGuide::Downcast(downcast, data) => {
@@ -81,13 +117,33 @@ impl<'tcx, D> RepackGuide<mir::Local, D> {
                 from_end: *from_end,
                 data: f(data)?,
             }),
+            RepackGuide::Default(other) => Some(RepackGuide::Default(*other)),
+        }
+    }
+
+    pub(crate) fn as_non_default(&self) -> Option<RequiredGuide> {
+        match self {
+            RepackGuide::Default(_) => None,
+            RepackGuide::Index(local, _) => Some(RepackGuide::Index(*local, ())),
+            RepackGuide::Downcast(downcast, _) => Some(RepackGuide::Downcast(*downcast, ())),
+            RepackGuide::ConstantIndex(constant_index, _) => {
+                Some(RepackGuide::ConstantIndex(*constant_index, ()))
+            }
+            RepackGuide::Subslice {
+                from, to, from_end, ..
+            } => Some(RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: (),
+            }),
         }
     }
 
     pub(crate) fn map_data<'slf, R>(
         &'slf self,
         f: impl Fn(&'slf D) -> R,
-    ) -> RepackGuide<mir::Local, R> {
+    ) -> RepackGuide<mir::Local, R, Default> {
         match self {
             RepackGuide::Index(local, data) => RepackGuide::Index(*local, f(data)),
             RepackGuide::Downcast(downcast, data) => RepackGuide::Downcast(*downcast, f(data)),
@@ -105,8 +161,10 @@ impl<'tcx, D> RepackGuide<mir::Local, D> {
                 from_end: *from_end,
                 data: f(data),
             },
+            RepackGuide::Default(other) => RepackGuide::Default(*other),
         }
     }
+
     pub(crate) fn elem_data_mut(&mut self) -> (PlaceElem<'tcx>, &mut D) {
         match self {
             RepackGuide::Index(local, data) => (PlaceElem::Index(*local), data),
@@ -135,9 +193,10 @@ impl<'tcx, D> RepackGuide<mir::Local, D> {
                 },
                 data,
             ),
+            RepackGuide::Default(_) => todo!(),
         }
     }
-    pub(crate) fn without_data(&self) -> RepackGuide<mir::Local, ()> {
+    pub(crate) fn without_data(&self) -> RepackGuide<mir::Local, (), Default> {
         self.map_data(|_| ())
     }
     pub(crate) fn elem_data(&self) -> (PlaceElem<'tcx>, &D) {
@@ -168,11 +227,12 @@ impl<'tcx, D> RepackGuide<mir::Local, D> {
                 },
                 data,
             ),
+            RepackGuide::Default(_) => todo!(),
         }
     }
 }
 
-impl RepackGuide {
+impl<Default: Clone + Eq + std::fmt::Debug> RepackGuide<mir::Local, (), Default> {
     fn downcast(symbol: Option<Symbol>, variant_idx: VariantIdx) -> Self {
         Self::Downcast(
             Downcast {
@@ -238,11 +298,12 @@ impl From<RepackGuide> for PlaceElem<'_> {
             RepackGuide::Subslice {
                 from, to, from_end, ..
             } => PlaceElem::Subslice { from, to, from_end },
+            RepackGuide::Default(_) => todo!(),
         }
     }
 }
 
-impl TryFrom<PlaceElem<'_>> for RepackGuide {
+impl TryFrom<PlaceElem<'_>> for RequiredGuide {
     type Error = ();
     fn try_from(elem: PlaceElem<'_>) -> Result<Self, Self::Error> {
         match elem {
@@ -272,7 +333,7 @@ pub struct RepackExpand<
     Capability = EdgeMutability,
 > {
     pub(crate) from: Place,
-    pub(crate) guide: Option<Guide>,
+    pub(crate) guide: Guide,
     pub(crate) mutability: Capability,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
@@ -283,7 +344,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         RepackExpand {
             from: self.from.display_string(ctxt),
-            guide: self.guide.map(|g| g.display_string(ctxt)),
+            guide: self.guide.display_string(ctxt),
             mutability: self.mutability,
             _marker: PhantomData,
         }
@@ -293,7 +354,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
 impl<'tcx> RepackExpand<'tcx> {
     pub(crate) fn new(
         from: Place<'tcx>,
-        guide: Option<RepackGuide>,
+        guide: RepackGuide,
         edge_mutability: EdgeMutability,
     ) -> Self {
         Self {
@@ -315,7 +376,7 @@ impl<'tcx> RepackExpand<'tcx> {
     }
 
     #[must_use]
-    pub fn guide(&self) -> Option<RepackGuide> {
+    pub fn guide(&self) -> RepackGuide {
         self.guide
     }
 
@@ -338,7 +399,7 @@ impl<'tcx> RepackExpand<'tcx> {
 pub struct RepackCollapse<'tcx, P = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) to: P,
     pub(crate) capability: PositiveCapability,
-    pub(crate) guide: Option<Guide>,
+    pub(crate) guide: Guide,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
@@ -349,18 +410,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackCo
         RepackCollapse {
             to: self.to.display_string(ctxt),
             capability: self.capability,
-            guide: self.guide.map(|g| g.display_string(ctxt)),
+            guide: self.guide.display_string(ctxt),
             _marker: PhantomData,
         }
     }
 }
 
 impl<'tcx> RepackCollapse<'tcx> {
-    pub(crate) fn new(
-        to: Place<'tcx>,
-        capability: PositiveCapability,
-        guide: Option<RepackGuide>,
-    ) -> Self {
+    pub(crate) fn new(to: Place<'tcx>, capability: PositiveCapability, guide: RepackGuide) -> Self {
         Self {
             to,
             capability,
@@ -370,7 +427,7 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 
     #[must_use]
-    pub fn guide(self) -> Option<RepackGuide> {
+    pub fn guide(self) -> RepackGuide {
         self.guide
     }
 
@@ -533,11 +590,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     }
 }
 
-impl<'tcx, Ctxt, D: RepackDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
+impl<'tcx, Ctxt: Copy, D: RepackDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
 where
     D::Place: DisplayWithCtxt<Ctxt>,
+    D::ExpandCapability: DisplayWithCtxt<Ctxt>,
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -548,9 +606,9 @@ where
                     )
                 }
                 RepackOp::Expand(expand) => format!(
-                    "unpack {} with capability {:?}",
+                    "unpack {} with capability {}",
                     expand.from.display_string(ctxt),
-                    expand.mutability
+                    expand.mutability.display_output(ctxt, mode).into_text()
                 ),
                 _ => format!("{self:?}"),
             }
@@ -562,7 +620,7 @@ where
 impl<'tcx, D: RepackDataTypes<'tcx>> RepackOp<'tcx, D> {
     pub(crate) fn expand<'a>(
         from: D::Place,
-        guide: Option<D::RepackGuide>,
+        guide: D::RepackGuide,
         for_cap: D::ExpandCapability,
         _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {

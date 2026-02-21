@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
-use crate::utils::data_structures::HashSet;
+use crate::{owned_pcg::RepackGuide, utils::data_structures::HashSet};
+use std::{collections::HashMap, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut};
 
@@ -35,27 +35,46 @@ impl<'tcx> OwnedPcgLeafNode<'tcx> {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Deref, DerefMut)]
+#[derive(Clone, PartialEq, Eq, Debug, Deref)]
 pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
-    pub(crate) expansions: Vec<OwnedExpansion<'tcx, IData>>,
+    expansions: HashMap<RepackGuide, OwnedExpansion<'tcx, IData>>,
 }
 
 impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
-    pub(crate) fn new(expansions: Vec<OwnedExpansion<'tcx, IData>>) -> Self {
-        Self { expansions }
+    pub(crate) fn from_expansions(
+        expansions: Vec<OwnedExpansion<'tcx, IData>>,
+    ) -> Self {
+        Self { expansions: HashMap::from_iter(expansions.into_iter().map(|e| (e.guide(), e))) }
     }
 
-    pub(crate) fn expansions(&self) -> &Vec<OwnedExpansion<'tcx, IData>> {
-        &self.expansions
+    pub(crate) fn new(expansion: OwnedExpansion<'tcx, IData>) -> Self {
+        Self::from_expansions(vec![expansion])
+    }
+
+    pub(crate) fn expansions(&self) -> impl Iterator<Item = &OwnedExpansion<'tcx, IData>> {
+        self.expansions.iter().map(|(_, e)| e)
+    }
+
+    pub(crate) fn expansion(&self, guide: RepackGuide) -> Option<&OwnedExpansion<'tcx, IData>> {
+        self.expansions.get(&guide)
+    }
+
+    pub(crate) fn expansions_mut(
+        &mut self,
+    ) -> impl Iterator<Item = &mut OwnedExpansion<'tcx, IData>> {
+        self.expansions.iter_mut().map(|(_, e)| e)
     }
 
     pub(crate) fn expanded_places(&self, place: Place<'tcx>) -> HashSet<ExpandedPlace<'tcx>> {
         self.expansions
             .iter()
-            .map(|e| ExpandedPlace::new(place, e.expansion.without_data()))
+            .map(|(_, e)| ExpandedPlace::new(place, e.expansion.without_data()))
             .collect()
     }
 
+    pub(crate) fn insert_expansion(&mut self, expansion: OwnedExpansion<'tcx, IData>) {
+        self.expansions.insert(expansion.guide(), expansion);
+    }
 }
 
 pub(crate) type ShallowOwnedNode<'tcx> = OwnedPcgNode<'tcx, Shallow>;
@@ -68,13 +87,18 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
         Self::Leaf(OwnedPcgLeafNode::new(inherent_capability))
     }
     pub(crate) fn internal(place_expansion: PlaceExpansion<'tcx, IData::Data>) -> Self {
-        Self::Internal(OwnedPcgInternalNode::new(vec![OwnedExpansion::new(
+        Self::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
             place_expansion,
-        )]))
+        )))
     }
 }
 
 impl<'tcx> OwnedPcgNode<'tcx> {
+
+    pub(crate) fn owned_capability(&self) -> Option<OwnedCapability> {
+        self.as_leaf_node().map(|leaf| leaf.inherent_capability)
+    }
+
     pub(crate) fn is_fully_initialized<'a>(
         &self,
         place: Place<'tcx>,

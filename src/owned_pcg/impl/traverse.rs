@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::{
     owned_pcg::{
-        ExpandedPlace, OwnedPcgLeafNode, RepackOp,
+        ExpandedPlace, OwnedPcgInternalNode, OwnedPcgLeafNode, RepackOp,
         node::OwnedPcgNode,
         node_data::{Deep, FromDeep, InternalData, Shallow},
     },
@@ -137,7 +137,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                     &OwnedPcgNode::Internal(T::Depth::from_deep(internal)),
                 )?;
                 let mut result = computation.lift(root_result);
-                for expansion in internal.expansions.iter() {
+                for expansion in internal.expansions() {
                     for (place, node) in expansion.child_nodes(place, ctxt) {
                         let child_result = node.traverse_result(place, computation, ctxt)?;
                         result = computation.fold(result, child_result)?;
@@ -195,7 +195,7 @@ impl<'a, 'tcx> TraverseComputation<'tcx> for RepackOpsToExpandFrom<'a, 'tcx> {
             }
             OwnedPcgNode::Internal(expansions) => expansions
                 .iter()
-                .flat_map(|e| {
+                .flat_map(|(_, e)| {
                     e.expansion
                         .child_nodes(place, self.ctxt)
                         .map(|(place, node)| {
@@ -206,12 +206,7 @@ impl<'a, 'tcx> TraverseComputation<'tcx> for RepackOpsToExpandFrom<'a, 'tcx> {
                             } else {
                                 EdgeMutability::Immutable
                             };
-                            RepackOp::expand(
-                                place,
-                                e.expansion.guide().map(|g| g.without_data()),
-                                edge_mutability,
-                                self.ctxt,
-                            )
+                            RepackOp::expand(place, e.expansion.guide(), edge_mutability, self.ctxt)
                         })
                 })
                 .collect::<Vec<_>>(),
@@ -260,5 +255,34 @@ impl<'tcx> TraverseComputation<'tcx> for All<'tcx> {
         } else {
             ControlFlow::Break(false)
         }
+    }
+}
+
+pub(crate) struct FindSubtreeResult<'pcg, 'tcx> {
+    path_from_root: Vec<&'pcg OwnedPcgInternalNode<'tcx>>,
+    subtree: Option<&'pcg OwnedPcgNode<'tcx, Deep>>,
+}
+
+impl<'pcg, 'tcx> FindSubtreeResult<'pcg, 'tcx> {
+    pub(crate) fn new() -> Self {
+        Self {
+            path_from_root: vec![],
+            subtree: None,
+        }
+    }
+
+    pub(crate) fn root_subtree(node: &'pcg OwnedPcgNode<'tcx, Deep>) -> Self {
+        Self {
+            path_from_root: vec![],
+            subtree: Some(node),
+        }
+    }
+
+    pub(crate) fn push_to_path(&mut self, node: &'pcg OwnedPcgInternalNode<'tcx>) {
+        self.path_from_root.push(node);
+    }
+
+    pub(crate) fn set_subtree(&mut self, subtree: &'pcg OwnedPcgNode<'tcx, Deep>) {
+        self.subtree = Some(subtree);
     }
 }

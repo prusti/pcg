@@ -193,7 +193,12 @@ impl<'tcx> OwnedPcg<'tcx> {
             let Some(owned_subtree) = self.owned_subtree(place, ctxt) else {
                 return CapabilityKind::None(());
             };
-            let mut capability: CapabilityKind = owned_subtree.inherent_capability().into();
+            if !owned_subtree.is_fully_initialized(place, ctxt) {
+                return owned_subtree
+                    .owned_capability()
+                    .map(|c| c.into())
+                    .unwrap_or(CapabilityKind::None(()));
+            }
             for lifetime_projection in place.lifetime_projections(ctxt) {
                 if !borrows.contains(lifetime_projection, ctxt) {
                     return CapabilityKind::ShallowExclusive;

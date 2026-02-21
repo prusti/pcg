@@ -315,7 +315,7 @@ impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, 
 }
 
 impl<'tcx, EdgeKind, P: PcgNodeComponent, VC> PcgAction<'tcx, EdgeKind, P, VC> {
-    pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
+    pub(crate) fn debug_line<Ctxt: Copy>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
         BorrowPcgActionKind<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
         OwnedPcgAction<'tcx, P>: DisplayWithCtxt<Ctxt>,
