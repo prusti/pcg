@@ -604,7 +604,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool {
         self.pcg.owned[target.local]
             .get_allocated()
-            .contains_projection_to(&target.projection)
+            .contains_projection_to(&target.with_inherent_region(self.ctxt).projection())
     }
 
     fn borrows_graph(&self) -> &crate::borrow_pcg::graph::BorrowsGraph<'tcx> {

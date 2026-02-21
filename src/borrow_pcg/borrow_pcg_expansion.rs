@@ -81,14 +81,14 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceExpansion<'tcx>
     }
 }
 
-impl<'tcx, D> Index<PlaceElem<'tcx>> for PlaceExpansion<'tcx, D> {
+impl<'tcx, D: std::fmt::Debug> Index<PlaceElem<'tcx>> for PlaceExpansion<'tcx, D> {
     type Output = D;
 
     fn index(&self, index: PlaceElem<'tcx>) -> &Self::Output {
         self.elems_data()
             .iter()
             .find(|(elem, _)| *elem == index)
-            .unwrap()
+            .unwrap_or_else(|| panic!("Index {:?} not found in PlaceExpansion {:?}", index, self))
             .1
             .unwrap()
     }

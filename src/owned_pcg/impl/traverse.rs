@@ -76,8 +76,12 @@ pub(crate) struct GetLeafPlaces;
 impl<'tcx> TraverseComputation<'tcx> for GetLeafPlaces {
     type AggregateResult = HashSet<Place<'tcx>>;
     type NodeResult = Option<Place<'tcx>>;
-    fn lift(&mut self, _node_result: Self::NodeResult) -> Self::AggregateResult {
-        HashSet::default()
+    fn lift(&mut self, node_result: Self::NodeResult) -> Self::AggregateResult {
+        if let Some(place) = node_result {
+            std::iter::once(place).collect()
+        } else {
+            HashSet::default()
+        }
     }
 
     fn compute_leaf(

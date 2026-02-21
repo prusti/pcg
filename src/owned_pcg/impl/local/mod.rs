@@ -123,8 +123,6 @@ impl<'tcx, P> ExpandedPlace<'tcx, P> {
     }
 }
 
-type LeafExpansion<'tcx> = PlaceExpansion<'tcx, OwnedPcgLeafNode<'tcx>>;
-
 #[derive(Deref, DerefMut, Clone, PartialEq, Eq, Debug)]
 pub struct LocalExpansions<'tcx> {
     root: OwnedPcgNode<'tcx>,
@@ -217,13 +215,29 @@ impl<'tcx> LocalExpansions<'tcx> {
         if !place.is_owned(ctxt.ctxt()) {
             return vec![];
         }
-        let Some(tree) = self.root.subtree(place.projection).subtree() else {
+        let Some(tree) = self
+            .root
+            .subtree(place.with_inherent_region(ctxt).projection())
+            .subtree()
+        else {
+            tracing::warn!(
+                "No subtree at projection {:?}",
+                place.with_inherent_region(ctxt).projection()
+            );
             return vec![];
         };
-        tree.leaf_places(place, ctxt)
+        tracing::warn!(
+            "Found subtree {:?} at projection {:?}",
+            tree,
+            place.with_inherent_region(ctxt).projection()
+        );
+        let leaf_places = tree
+            .leaf_places(place, ctxt)
             .into_iter()
             .sorted_by_key(|p| p.projection.len())
-            .collect()
+            .collect();
+        tracing::warn!("Leaf places {:?}", leaf_places);
+        leaf_places
     }
 }
 
@@ -251,32 +265,12 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         }
     }
 
-    pub(crate) fn expansions_mut<'slf>(
-        &'slf mut self,
-    ) -> Box<dyn Iterator<Item = &mut OwnedExpansion<'tcx>> + 'slf> {
+    pub(crate) fn expansions_mut(
+        &mut self,
+    ) -> Box<dyn Iterator<Item = &mut OwnedExpansion<'tcx>> + '_> {
         match self {
             Self::Leaf(_) => Box::new(std::iter::empty()),
             Self::Internal(internal) => Box::new(internal.expansions_mut()),
-        }
-    }
-
-    pub(crate) fn fold<'a, T>(
-        &self,
-        base: T,
-        f: &impl Fn(&OwnedPcgLeafNode<'tcx>) -> T,
-        fold: &impl Fn(T, T) -> T,
-    ) -> T {
-        match self {
-            OwnedPcgNode::Leaf(owned_pcg_leaf_node) => f(owned_pcg_leaf_node),
-            OwnedPcgNode::Internal(internal) => {
-                let mut result = base;
-                for e in internal.expansions() {
-                    for (_, elem_data) in e.expansion.data() {
-                        result = elem_data.fold(result, f, fold)
-                    }
-                }
-                result
-            }
         }
     }
 }
