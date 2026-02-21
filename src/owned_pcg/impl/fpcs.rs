@@ -199,7 +199,10 @@ impl<'tcx> OwnedPcg<'tcx> {
             let Some(owned_subtree) = find_subtree_result.subtree() else {
                 return CapabilityKind::None(());
             };
-            if !owned_subtree.is_fully_initialized(place, ctxt) {
+            let is_fully_initialized = owned_subtree.is_fully_initialized(place, ctxt).unwrap_or_else(|err| {
+                panic!("Failed to check if owned subtree is fully initialized for place {place:?}: {err:?}");
+            });
+            if !is_fully_initialized {
                 return owned_subtree
                     .owned_capability()
                     .map(|c| c.into())
@@ -216,7 +219,9 @@ impl<'tcx> OwnedPcg<'tcx> {
                 None => {}
             }
             if let Some(parent) = find_subtree_result.parent_node()
-                && parent.is_fully_initialized(place, ctxt)
+                && parent
+                    .is_fully_initialized(place.parent_place().unwrap(), ctxt)
+                    .unwrap()
             {
                 return CapabilityKind::Read;
             } else {

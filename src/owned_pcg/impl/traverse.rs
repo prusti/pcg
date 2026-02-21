@@ -187,7 +187,7 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
         &self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
+    ) -> Result<bool, PcgInternalError>
     where
         'tcx: 'a,
     {
@@ -196,7 +196,6 @@ pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
             &mut All(Box::new(|leaf| leaf.inherent_capability.is_deep())),
             ctxt,
         )
-        .unwrap()
     }
 }
 
@@ -355,7 +354,7 @@ impl<'comp, 'a, 'tcx: 'comp> TraverseComputation<'tcx> for RepackOpsToExpandFrom
                     .child_nodes(place, self.ctxt)
                     .map(|(place, node)| {
                         let place = place.unwrap();
-                        let edge_mutability = if !node.is_fully_initialized(place, self.ctxt)
+                        let edge_mutability = if !node.is_fully_initialized(place, self.ctxt).unwrap()
                             || matches!((self.is_borrowed)(place), Some(Mutability::Mut))
                         {
                             EdgeMutability::Mutable
