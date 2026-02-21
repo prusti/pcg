@@ -8,7 +8,10 @@ use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
     borrow_pcg::{graph::BorrowsGraph, region_projection::HasRegions},
-    owned_pcg::{OwnedPcgNode, traverse::FindSubtreeResult},
+    owned_pcg::{
+        OwnedPcgNode,
+        traverse::{FindSubtreeResult, Traversable},
+    },
     pcg::{
         CapabilityKind, CapabilityLike, OwnedCapability, PositiveCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},

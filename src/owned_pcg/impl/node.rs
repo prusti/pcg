@@ -1,4 +1,7 @@
-use crate::{owned_pcg::RepackGuide, utils::data_structures::HashSet};
+use crate::{
+    owned_pcg::{RepackGuide, traverse::Traversable},
+    utils::data_structures::HashSet,
+};
 use std::{collections::HashMap, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut};
@@ -96,21 +99,6 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
 impl<'tcx> OwnedPcgNode<'tcx> {
     pub(crate) fn owned_capability(&self) -> Option<OwnedCapability> {
         self.as_leaf_node().map(|leaf| leaf.inherent_capability)
-    }
-
-    pub(crate) fn is_fully_initialized<'a>(
-        &self,
-        place: Place<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.traverse(
-            place,
-            &mut All(Box::new(|leaf| leaf.inherent_capability.is_deep())),
-            ctxt,
-        )
     }
 }
 

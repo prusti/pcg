@@ -13,7 +13,9 @@ use crate::{
     error::PcgError,
     owned_pcg::{
         ExpandedPlace, LocalExpansions, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
-        RequiredGuide, join::data::JoinOwnedData, traverse::GetExpansions,
+        RequiredGuide,
+        join::data::JoinOwnedData,
+        traverse::{GetExpansions, Traversable},
     },
     pcg::{
         CapabilityKind, CapabilityLike, PositiveCapability,

@@ -141,10 +141,78 @@ impl<'tcx> TraverseComputation<'tcx> for GetExpansions {
     }
 }
 
-impl<'src, 'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>>
-    OwnedPcgNode<'tcx, IData>
+pub(crate) trait Traversable<'tcx, IData: InternalData<'tcx>> {
+    fn traverse_result<'a, 'src, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
+        place: Place<'tcx>,
+        computation: &mut T,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
+    where
+        'tcx: 'a,
+        T::Depth: FromData<'src, 'tcx, IData>;
+
+    fn traverse<'a, 'src, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
+        place: Place<'tcx>,
+        computation: &mut T,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> T::AggregateResult
+    where
+        'tcx: 'a,
+        T::Depth: FromData<'src, 'tcx, IData>,
+    {
+        match self.traverse_result(place, computation, ctxt) {
+            ControlFlow::Continue(result) => result,
+            ControlFlow::Break(result) => result,
+        }
+    }
+
+    fn is_fully_initialized<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        self.traverse(
+            place,
+            &mut All(Box::new(|leaf| leaf.inherent_capability.is_deep())),
+            ctxt,
+        )
+    }
+}
+
+impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversable<'tcx, IData>
+    for OwnedPcgInternalNode<'tcx, IData>
 {
-    fn traverse_result<'a, T: TraverseComputation<'tcx> + 'src>(
+    fn traverse_result<'a, 'src, T: TraverseComputation<'tcx> + 'src>(
+        &'src self,
+        place: Place<'tcx>,
+        computation: &mut T,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> ControlFlow<T::AggregateResult, T::AggregateResult>
+    where
+        'tcx: 'a,
+        T::Depth: FromData<'src, 'tcx, IData>,
+    {
+        let root_result = computation.compute_internal(place, T::Depth::from_data(self))?;
+        let mut result = computation.lift(root_result);
+        for expansion in self.expansions() {
+            for (place, node) in expansion.child_nodes(place, ctxt) {
+                let child_result = node.traverse_result(place, computation, ctxt)?;
+                result = computation.fold(result, child_result)?;
+            }
+        }
+        ControlFlow::Continue(result)
+    }
+}
+
+impl<'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>> Traversable<'tcx, IData>
+    for OwnedPcgNode<'tcx, IData>
+{
+    fn traverse_result<'a, 'src, T: TraverseComputation<'tcx> + 'src>(
         &'src self,
         place: Place<'tcx>,
         computation: &mut T,
@@ -159,33 +227,7 @@ impl<'src, 'tcx, IData: InternalData<'tcx, Data = OwnedPcgNode<'tcx, IData>>>
                 let result = computation.compute_leaf(place, owned_pcg_leaf_node)?;
                 ControlFlow::Continue(computation.lift(result))
             }
-            OwnedPcgNode::Internal(internal) => {
-                let root_result =
-                    computation.compute_internal(place, T::Depth::from_data(internal))?;
-                let mut result = computation.lift(root_result);
-                for expansion in internal.expansions() {
-                    for (place, node) in expansion.child_nodes(place, ctxt) {
-                        let child_result = node.traverse_result(place, computation, ctxt)?;
-                        result = computation.fold(result, child_result)?;
-                    }
-                }
-                ControlFlow::Continue(result)
-            }
-        }
-    }
-    pub(crate) fn traverse<'a, T: TraverseComputation<'tcx> + 'src>(
-        &'src self,
-        place: Place<'tcx>,
-        computation: &mut T,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> T::AggregateResult
-    where
-        'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, IData>,
-    {
-        match self.traverse_result(place, computation, ctxt) {
-            ControlFlow::Continue(result) => result,
-            ControlFlow::Break(result) => result,
+            OwnedPcgNode::Internal(internal) => internal.traverse_result(place, computation, ctxt),
         }
     }
 }

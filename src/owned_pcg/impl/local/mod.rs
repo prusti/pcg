@@ -23,6 +23,7 @@ use crate::{
         node_data::{self, InternalData},
         traverse::{
             FindSubtreeResult, GetAllPlaces, GetExpansions, GetLeafPlaces, RepackOpsToExpandFrom,
+            Traversable,
         },
     },
     pcg::{OwnedCapability, PositiveCapability},
