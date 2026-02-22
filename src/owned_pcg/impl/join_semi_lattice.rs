@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::cmp::Reverse;
+
 use crate::{
     HasSettings,
     borrow_pcg::{action::LabelPlaceReason, has_pcs_elem::SetLabel, state::BorrowsStateLike},
@@ -132,7 +134,7 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         Ok(self
             .traverse(base_place, &mut GetExpansions, ctxt)?
             .into_iter()
-            .sorted_by_key(|e| e.place.projection.len())
+            .sorted_by_key(|e| Reverse(e.place.projection.len()))
             .collect())
     }
 

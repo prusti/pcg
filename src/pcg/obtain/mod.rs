@@ -208,17 +208,16 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     ) -> Result<(), PcgError<'tcx>> {
         let local_expansions = self.get_local_expansions(place.local);
         let place = place.nearest_owned_place(ctxt).with_inherent_region(ctxt);
-        let Some(subtree) = local_expansions
-            .find_subtree(place.projection)
-            .subtree()
-        else {
+        let Some(subtree) = local_expansions.find_subtree(place.projection).subtree() else {
             return Ok(());
         };
-        for pe in subtree.expansions_longest_first(place, ctxt).unwrap() {
+        let expansions = subtree.expansions_longest_first(place, ctxt).unwrap();
+        for pe in expansions.iter() {
             self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                 RepackOp::Collapse(RepackCollapse::new(pe.place, capability, pe.guide())),
                 Some(context.clone().into()),
-            )))?;
+            )))
+            .map_err(|e| e.add_context(format!("Collapsing expansions {:?}", expansions)))?;
             for rp in pe.place.lifetime_projections(ctxt) {
                 let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
                     .expansion_places(&pe.expansion, ctxt)

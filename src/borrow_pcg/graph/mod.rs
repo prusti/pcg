@@ -10,7 +10,7 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_expansion::{BorrowPcgExpansion, ExpansionMutability},
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion, ExpansionMutability},
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
@@ -293,7 +293,7 @@ pub(crate) enum BorrowedCapability {
 }
 
 impl<'tcx> BorrowsGraph<'tcx> {
-    pub(crate) fn is_borrowed<'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>>(
+    pub(crate) fn is_transitively_blocked<'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>>(
         &self,
         place: Place<'tcx>,
         ctxt: Ctxt,
@@ -303,12 +303,29 @@ impl<'tcx> BorrowsGraph<'tcx> {
     {
         let mut result = None;
         for edge in self.descendant_edges(place.into(), ctxt) {
-            if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind {
-                if borrow.is_mut() {
-                    return Some(Mutability::Mut);
-                } else {
-                    result = Some(Mutability::Not);
+            match edge.kind {
+                BorrowPcgEdgeKind::Borrow(borrow) => {
+                    if borrow.effective_mutability().is_mut() {
+                        return Some(Mutability::Mut);
+                    } else {
+                        result = Some(Mutability::Not);
+                    }
                 }
+                BorrowPcgEdgeKind::Abstraction(_) => {
+                    for blocked in edge.blocked_by_nodes(ctxt) {
+                        match blocked {
+                            PcgNode::Place(_) => todo!(),
+                            PcgNode::LifetimeProjection(lifetime_projection) => {
+                                if lifetime_projection.could_contain_mutable_borrows(ctxt) {
+                                    return Some(Mutability::Mut);
+                                } else {
+                                    result = Some(Mutability::Not);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         result
@@ -328,22 +345,27 @@ impl<'tcx> BorrowsGraph<'tcx> {
         if place.projects_shared_ref(ctxt) {
             return Some(BorrowedCapability::Read);
         }
-        for edge in self.edges_blocking(place.into(), ctxt) {
-            match &edge.kind {
-                BorrowPcgEdgeKind::Borrow(borrow_edge) => {
-                    if borrow_edge.is_mut() {
-                        return Some(BorrowedCapability::None);
-                    } else {
-                        return Some(BorrowedCapability::Read);
-                    }
+        match self.is_transitively_blocked(place, ctxt) {
+            Some(Mutability::Mut) => return Some(BorrowedCapability::None),
+            Some(Mutability::Not) => return Some(BorrowedCapability::Read),
+            None => {}
+        }
+        if self.edges_blocking(place.into(), ctxt).next().is_some() {
+            return Some(BorrowedCapability::Read);
+        }
+        let blocked_by_edges = self.edges_blocked_by(place.into(), ctxt);
+        for edge in blocked_by_edges {
+            if let BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(
+                place_expansion,
+            )) = edge.kind
+            {
+                if place_expansion
+                    .expansion
+                    .iter()
+                    .all(|place| self.is_transitively_blocked(place.place(), ctxt).is_none())
+                {
+                    return Some(BorrowedCapability::Read);
                 }
-                BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(
-                    place_expansion,
-                )) => match place_expansion.mutability {
-                    ExpansionMutability::Read => return Some(BorrowedCapability::Read),
-                    ExpansionMutability::Mut => return Some(BorrowedCapability::None),
-                },
-                _ => {}
             }
         }
         Some(BorrowedCapability::Exclusive)
@@ -458,15 +480,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
-        for edge in self.edges() {
-            if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind
-                && borrow.reserve_location() == location
-            {
-                return Some(borrow);
-            }
-        }
-        None
+    pub(crate) fn take_borrow_created_at(
+        &mut self,
+        location: mir::Location,
+    ) -> Option<Conditioned<BorrowEdge<'tcx>>> {
+        self.edges
+            .extract_if(|edge, _| {
+                if let BorrowPcgEdgeKind::Borrow(borrow) = edge {
+                    borrow.reserve_location() == location
+                } else {
+                    false
+                }
+            })
+            .map(|(edge, conditions)| {
+                let BorrowPcgEdgeKind::Borrow(borrow) = edge else {
+                    unreachable!();
+                };
+                Conditioned::new(borrow, conditions)
+            })
+            .next()
     }
 
     pub(crate) fn into_edges(self) -> impl Iterator<Item = BorrowPcgEdge<'tcx>> {

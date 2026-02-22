@@ -131,6 +131,11 @@ pub struct LocalExpansions<'tcx> {
     root: OwnedPcgNode<'tcx>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ApplyCollapseError {
+    NoSubtree,
+}
+
 impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn places(
         &self,
@@ -145,20 +150,20 @@ impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn new(root: OwnedPcgNode<'tcx>) -> Self {
         Self { root }
     }
-    pub(crate) fn perform_collapse_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
+
+    pub(crate) fn apply_collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &mut self,
         collapse: RepackCollapse<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> std::result::Result<(), ApplyCollapseError>
+    where
         'tcx: 'a,
     {
-        let Some(subtree) = self.subtree_mut(&collapse.to.projection) else {
-            panic!(
-                "Expected subtree at projection {:?}",
-                collapse.to.projection
-            );
-        };
+        let subtree = self
+            .subtree_mut(&collapse.to.projection)
+            .ok_or(ApplyCollapseError::NoSubtree)?;
         subtree.collapse(collapse.to, ctxt);
+        Ok(())
     }
 
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(

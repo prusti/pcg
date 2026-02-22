@@ -57,7 +57,6 @@ pub(crate) mod internal {
         pub(crate) base: Node,
         pub(crate) expansion: Vec<Node>,
         pub(crate) guide: RepackGuide,
-        pub(crate) mutability: ExpansionMutability,
     }
 }
 
@@ -403,7 +402,6 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
                 .into_iter()
                 .map(|elem| base.project_deeper(elem, ctxt))
                 .collect::<Result<Vec<_>, _>>()?,
-            mutability,
         };
         result.assert_validity(ctxt);
         Ok(result)

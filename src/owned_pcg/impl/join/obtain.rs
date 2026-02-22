@@ -29,7 +29,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
             }
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::Collapse(collapse) => {
-                    self.data.owned.perform_collapse_action(collapse, self.ctxt);
+                    self.data.owned.apply_collapse(collapse, self.ctxt);
                     self.actions.push(action.kind);
                 }
                 RepackOp::RegainLoanedCapability(regained_capability) => {

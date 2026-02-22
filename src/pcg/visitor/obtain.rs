@@ -2,11 +2,17 @@ use crate::{
     Weaken,
     action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
-        action::{ApplyActionResult, LabelPlaceReason}, borrow_pcg_edge::BorrowPcgEdge, edge::{
+        action::{ApplyActionResult, LabelPlaceReason},
+        borrow_pcg_edge::BorrowPcgEdge,
+        edge::{
             borrow_flow::private::FutureEdgeKind,
             deref::DerefEdge,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
-        }, edge_data::{EdgeData, LabelNodePredicate}, graph::Conditioned, region_projection::HasRegions, state::{BorrowStateMutRef, BorrowsStateLike}
+        },
+        edge_data::{EdgeData, LabelNodePredicate},
+        graph::Conditioned,
+        region_projection::HasRegions,
+        state::{BorrowStateMutRef, BorrowsStateLike},
     },
     owned_pcg::RepackOp,
     pcg::{
@@ -396,7 +402,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 RepackOp::Collapse(collapse) => {
                     let capability_projections =
                         self.pcg.owned[collapse.local()].get_allocated_mut();
-                    capability_projections.perform_collapse_action(collapse, analysis_ctxt);
+                    capability_projections
+                        .apply_collapse(collapse, analysis_ctxt)
+                        .map_err(|e| {
+                            PcgError::internal(format!("Failed to apply collapse: {:?}", e))
+                        })?;
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {

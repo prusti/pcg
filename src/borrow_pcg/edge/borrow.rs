@@ -55,6 +55,8 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     borrow_index: Option<BorrowIndex>,
 
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
+
+    pub(crate) activated: bool,
 }
 
 impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>>
@@ -242,6 +244,7 @@ impl<'tcx> BorrowEdge<'tcx> {
             region,
             assigned_lifetime_projection_label: None,
             borrow_index: ctxt.bc().region_to_borrow_index(region.into()),
+            activated: !kind.is_two_phase_borrow(),
         };
         borrow.assert_validity(ctxt.bc_ctxt());
         borrow
@@ -251,9 +254,12 @@ impl<'tcx> BorrowEdge<'tcx> {
         self.reserve_location
     }
 
-    #[must_use]
-    pub fn is_mut(&self) -> bool {
-        self.kind.mutability() == Mutability::Mut
+    pub(crate) fn effective_mutability(&self) -> Mutability {
+        if self.activated {
+            self.kind.mutability()
+        } else {
+            Mutability::Not
+        }
     }
 
     /// The deref of the assigned place of the borrow. For example, if the borrow is
@@ -274,14 +280,17 @@ impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
     where
         P: PcgPlace<'tcx, Ctxt>,
     {
-        match self.assigned_ref.place().rust_ty(ctxt).kind() {
+        let assigned_ref_ty = self.assigned_ref.place().rust_ty(ctxt);
+        match assigned_ref_ty.kind() {
             ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
                 self.assigned_ref,
                 (*region).into(),
                 self.assigned_lifetime_projection_label,
                 ctxt,
             )
-            .unwrap(),
+            .unwrap_or_else(|| {
+                panic!("No region idx for {:?} in {:?}", region, assigned_ref_ty,);
+            }),
             other => unreachable!("{:?}", other),
         }
     }

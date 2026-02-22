@@ -48,6 +48,11 @@ impl<'tcx> PcgError<'tcx> {
         );
         Self { kind, context }
     }
+
+    pub(crate) fn add_context(mut self, context: String) -> Self {
+        self.context.push(context);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

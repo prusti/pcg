@@ -3,9 +3,13 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            kind::BorrowPcgEdgeKind,
+        },
+        graph::Conditioned,
         region_projection::{
-            HasRegions, LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst
+            HasRegions, LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
     },
     error::CallWithUnsafePtrWithNestedLifetime,
@@ -428,15 +432,26 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         created_location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        let Some(borrow) = self.pcg.borrow_created_at(created_location) else {
+        let Some(Conditioned {
+            value: mut borrow,
+            conditions,
+        }) = self.pcg.take_borrow_created_at(created_location)
+        else {
             return Ok(());
         };
+        borrow.activated = true;
         tracing::info!(
             "{:?} activate twophase borrow: {}",
             self.location(),
             borrow.display_string(self.ctxt.bc_ctxt())
         );
         let blocked_place = borrow.blocked_place.place();
+        let borrow: BorrowPcgEdgeKind<'tcx> = borrow.into();
+        self.pcg
+            .borrow
+            .graph
+            .insert(Conditioned::new(borrow, conditions), self.ctxt.bc_ctxt());
+
         self.place_obtainer()
             .remove_read_permission_upwards_and_label_rps(
                 blocked_place,

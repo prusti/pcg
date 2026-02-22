@@ -4,7 +4,7 @@ use crate::{
     DebugLines, Weaken,
     borrow_pcg::{
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
-        graph::{BorrowsGraph, join::JoinBorrowsArgs},
+        graph::{BorrowsGraph, Conditioned, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
     borrows_imgcat_debug,
@@ -301,8 +301,11 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         &self.owned
     }
 
-    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
-        self.borrow.graph().borrow_created_at(location)
+    pub(crate) fn take_borrow_created_at(
+        &mut self,
+        location: mir::Location,
+    ) -> Option<Conditioned<BorrowEdge<'tcx>>> {
+        self.borrow.graph_mut().take_borrow_created_at(location)
     }
 
     #[must_use]

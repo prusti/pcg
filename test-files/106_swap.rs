@@ -7,8 +7,6 @@ fn f<'a>(x: &'a mut S<'a>, y: &'a mut S<'a>){
 
 fn client<'a>(x: &'a mut S<'a>, y: &'a mut S<'a>){
     // Activation of two-phase borrow:
-    // PCG: bb0[5] pre_operands: Weaken *x from R to ∅
-    // PCG: bb0[5] pre_operands: Weaken *y from R to ∅
     f(x,y);
 }
 

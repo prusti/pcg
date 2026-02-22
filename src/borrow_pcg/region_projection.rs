@@ -11,6 +11,7 @@ use crate::{
     borrow_pcg::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
+        visitor::region_mutability,
     },
     error::PcgError,
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
@@ -490,6 +491,18 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LifetimeProjection<'tcx> {
     }
 }
 
+impl<'tcx> LocalLifetimeProjection<'tcx> {
+    pub(crate) fn could_contain_mutable_borrows<'a>(
+        &self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
+        region_mutability(self.base.rust_ty(ctxt), self.region(ctxt), ctxt.tcx()).is_mut()
+    }
+}
+
 impl<'tcx, Ctxt, P> LabelPlace<'tcx, Ctxt, P>
     for LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>
 where
@@ -786,7 +799,6 @@ pub trait HasTy<'tcx, Ctxt> {
             _ => None,
         }
     }
-
 }
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].

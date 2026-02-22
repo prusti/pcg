@@ -290,7 +290,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     );
                 }
             }
-            match borrows.is_borrowed(place, ctxt) {
+            match borrows.is_transitively_blocked(place, ctxt) {
                 Some(Mutability::Mut) => {
                     return (
                         CapabilityKind::None(()),
