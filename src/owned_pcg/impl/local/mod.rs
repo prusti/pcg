@@ -672,6 +672,18 @@ impl<'tcx> OwnedPcgNode<'tcx> {
     {
         self.traverse(base_place, &mut GetLeafPlaces, ctxt).unwrap()
     }
+
+    pub(crate) fn all_places<'a>(
+        &self,
+        base_place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> HashSet<Place<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        self.traverse(base_place, &mut GetAllPlaces, ctxt).unwrap()
+    }
+
     pub(crate) fn check_validity(
         &self,
         borrows: &BorrowsGraph<'tcx>,

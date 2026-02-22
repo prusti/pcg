@@ -121,7 +121,11 @@ pub(crate) struct DisplayNodeCtxt<'tcx> {
 
 impl<'tcx> DisplayNodeCtxt<'tcx> {
     pub(crate) fn new(place: Place<'tcx>) -> Self {
-        Self { place, prefix: "".to_owned(), is_last: true }
+        Self {
+            place,
+            prefix: "".to_owned(),
+            is_last: true,
+        }
     }
 }
 
@@ -290,20 +294,26 @@ impl<'tcx> OwnedPcg<'tcx> {
                     );
                 }
             }
-            match borrows.is_transitively_blocked(place, ctxt) {
-                Some(Mutability::Mut) => {
-                    return (
-                        CapabilityKind::None(()),
-                        AssignedCapabilityReason::Borrowed(Mutability::Mut),
-                    );
+            let mut has_immut_borrow = false;
+            for place in owned_subtree.all_places(place, ctxt) {
+                match borrows.is_transitively_blocked(place, ctxt) {
+                    Some(Mutability::Mut) => {
+                        return (
+                            CapabilityKind::None(()),
+                            AssignedCapabilityReason::Borrowed(Mutability::Mut),
+                        );
+                    }
+                    Some(Mutability::Not) => {
+                        has_immut_borrow = true;
+                    }
+                    None => {}
                 }
-                Some(Mutability::Not) => {
-                    return (
-                        CapabilityKind::Read,
-                        AssignedCapabilityReason::Borrowed(Mutability::Not),
-                    );
-                }
-                None => {}
+            }
+            if has_immut_borrow {
+                return (
+                    CapabilityKind::Read,
+                    AssignedCapabilityReason::Borrowed(Mutability::Not),
+                );
             }
             if let Some(parent) = find_subtree_result.parent_node()
                 && let Some(init) = parent
