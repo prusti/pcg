@@ -16,7 +16,6 @@ use crate::{
 };
 
 pub(crate) trait TraverseComputation<'src, 'tcx> {
-    type Depth: InternalData<'tcx> = Shallow;
     type Err: std::fmt::Debug + From<PcgInternalError> = PcgInternalError;
     type NodeResult;
     type AggregateResult;
@@ -40,7 +39,7 @@ pub(crate) trait TraverseComputation<'src, 'tcx> {
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
-        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
+        node: &OwnedPcgInternalNode<'tcx>,
     ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>;
 
     fn fold(
@@ -70,9 +69,8 @@ impl<'src, 'tcx> TraverseComputation<'src, 'tcx> for GetAllPlaces {
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
-        _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
-    {
+        _node: &OwnedPcgInternalNode<'tcx>,
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         TraverseResult::Continue(place)
     }
 
@@ -110,9 +108,8 @@ impl<'src, 'tcx> TraverseComputation<'src, 'tcx> for GetLeafPlaces {
     fn compute_internal(
         &mut self,
         _place: Place<'tcx>,
-        _node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
-    {
+        _node: &OwnedPcgInternalNode<'tcx>,
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         TraverseResult::Continue(None)
     }
 
@@ -146,9 +143,8 @@ impl<'src, 'tcx> TraverseComputation<'src, 'tcx> for GetExpansions {
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
-        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
-    {
+        node: &OwnedPcgInternalNode<'tcx>,
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         TraverseResult::Continue(node.expanded_places(place))
     }
 
@@ -163,7 +159,6 @@ impl<'src, 'tcx> TraverseComputation<'src, 'tcx> for GetExpansions {
 }
 
 pub(crate) trait Traversable<'src, 'tcx: 'src> {
-    type SourceData: InternalData<'tcx>;
     fn traverse_result<'a, T: TraverseComputation<'src, 'tcx>>(
         &self,
         place: Place<'tcx>,
@@ -171,8 +166,7 @@ pub(crate) trait Traversable<'src, 'tcx: 'src> {
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> TraverseResult<T::AggregateResult, T::Err>
     where
-        'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, Self::SourceData>;
+        'tcx: 'a;
 
     fn traverse<'a: 'src, T: TraverseComputation<'src, 'tcx> + 'src>(
         &self,
@@ -182,7 +176,6 @@ pub(crate) trait Traversable<'src, 'tcx: 'src> {
     ) -> Result<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, Self::SourceData>,
     {
         self.traverse_result(place, computation, ctxt).result()
     }
@@ -251,9 +244,7 @@ impl<T, E, S> Try for TraverseResult<T, E, S> {
         }
     }
 }
-impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgInternalNode<'tcx, DeepRef<'src>> {
-    type SourceData = DeepRef<'src>;
-
+impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgInternalNode<'tcx> {
     fn traverse_result<'a, T: TraverseComputation<'src, 'tcx>>(
         &self,
         place: Place<'tcx>,
@@ -262,10 +253,8 @@ impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgInternalNode<'tcx, De
     ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, DeepRef<'src>>,
     {
-        let node: OwnedPcgInternalNode<'tcx, T::Depth> = self.map_data();
-        let root_result = computation.compute_internal(place, node);
+        let root_result = computation.compute_internal(place, self);
         let mut result = T::lift_result(root_result)?;
         for expansion in self.expansions() {
             for (place, node) in expansion.child_nodes(place, ctxt) {
@@ -277,33 +266,7 @@ impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgInternalNode<'tcx, De
     }
 }
 
-impl <'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgInternalNode<'tcx> {
-    type SourceData = Deep;
-
-    fn traverse_result<'a, T: TraverseComputation<'src, 'tcx>>(
-        &self,
-        place: Place<'tcx>,
-        computation: &mut T,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> TraverseResult<T::AggregateResult, T::Err>
-    where
-        'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, Deep>,
-    {
-        let node: OwnedPcgInternalNode<'tcx, T::Depth> = self.map_data();
-        let root_result = computation.compute_internal(place, node);
-        let mut result = T::lift_result(root_result)?;
-        for expansion in self.expansions() {
-            for (place, node) in expansion.child_nodes(place, ctxt) {
-                let child_result = node.traverse_result(place, computation, ctxt)?;
-                result = computation.fold(result, child_result)?;
-            }
-        }
-        TraverseResult::Continue(result)
-    }
-}
 impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgNode<'tcx> {
-    type SourceData = Deep;
     fn traverse_result<'a, T: TraverseComputation<'src, 'tcx>>(
         &self,
         place: Place<'tcx>,
@@ -312,7 +275,6 @@ impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgNode<'tcx> {
     ) -> TraverseResult<T::AggregateResult, T::Err>
     where
         'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, Deep>,
     {
         match self {
             OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
@@ -322,27 +284,6 @@ impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgNode<'tcx> {
         }
     }
 }
-impl<'src, 'tcx: 'src> Traversable<'src, 'tcx> for OwnedPcgNode<'tcx, DeepRef<'src>> {
-    type SourceData = DeepRef<'src>;
-    fn traverse_result<'a, T: TraverseComputation<'src, 'tcx>>(
-        &self,
-        place: Place<'tcx>,
-        computation: &mut T,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> TraverseResult<T::AggregateResult, T::Err>
-    where
-        'tcx: 'a,
-        T::Depth: FromData<'src, 'tcx, DeepRef<'src>>,
-    {
-        match self {
-            OwnedPcgNode::Leaf(owned_pcg_leaf_node) => {
-                T::lift_result(computation.compute_leaf(place, owned_pcg_leaf_node))
-            }
-            OwnedPcgNode::Internal(internal) => internal.traverse_result(place, computation, ctxt),
-        }
-    }
-}
-
 pub(crate) struct RepackOpsToExpandFrom<'src, 'a, 'tcx> {
     pub(crate) base_inherent_capability: OwnedCapability,
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx, ()>,
@@ -362,8 +303,9 @@ impl<'src, 'a, 'tcx> RepackOpsToExpandFrom<'src, 'a, 'tcx> {
     }
 }
 
-impl<'src, 'a: 'src, 'tcx: 'a> TraverseComputation<'src, 'tcx> for RepackOpsToExpandFrom<'src, 'a, 'tcx> {
-    type Depth = DeepRef<'src>;
+impl<'src, 'a: 'src, 'tcx: 'a> TraverseComputation<'src, 'tcx>
+    for RepackOpsToExpandFrom<'src, 'a, 'tcx>
+{
     type AggregateResult = Vec<RepackOp<'tcx>>;
     type NodeResult = Vec<RepackOp<'tcx>>;
     fn lift(node_result: Self::NodeResult) -> Self::AggregateResult {
@@ -390,9 +332,8 @@ impl<'src, 'a: 'src, 'tcx: 'a> TraverseComputation<'src, 'tcx> for RepackOpsToEx
     fn compute_internal(
         &mut self,
         place: Place<'tcx>,
-        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
-    {
+        node: &OwnedPcgInternalNode<'tcx>,
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         let edge_mutability = if !node
             .check_initialization(place, self.ctxt)
             .unwrap()
@@ -484,9 +425,8 @@ impl<'src, 'tcx> TraverseComputation<'src, 'tcx> for CheckInitializationState<'t
     fn compute_internal(
         &mut self,
         _place: Place<'tcx>,
-        node: OwnedPcgInternalNode<'tcx, Self::Depth>,
-    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult>
-    {
+        node: &OwnedPcgInternalNode<'tcx>,
+    ) -> TraverseResult<Self::NodeResult, Self::Err, Self::AggregateResult> {
         TraverseResult::Continue(true)
     }
 
