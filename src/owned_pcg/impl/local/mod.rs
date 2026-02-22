@@ -496,15 +496,15 @@ impl<'tcx> OwnedPcgNode<'tcx> {
         if self == other {
             return vec![];
         }
-        match (self, other) {
+        match (&mut *self, other) {
             (OwnedPcgNode::Leaf(leaf), OwnedPcgNode::Leaf(other_leaf)) => {
                 if leaf.inherent_capability < other_leaf.inherent_capability {
                     let mut result = vec![];
                     leaf.inherent_capability = other_leaf.inherent_capability;
                     result.push(RepackOp::weaken(
                         base_place,
-                        leaf.inherent_capability.into(),
                         other_leaf.inherent_capability.into(),
+                        leaf.inherent_capability.into(),
                     ));
                     return result;
                 } else if leaf.inherent_capability > other_leaf.inherent_capability {
@@ -516,7 +516,16 @@ impl<'tcx> OwnedPcgNode<'tcx> {
                 vec![]
             }
             (OwnedPcgNode::Leaf(leaf), other) => {
-                other.repack_ops_to_expand_from(base_place, leaf.inherent_capability, ctxt)
+                eprintln!(
+                    "joining leaf {:?}\n\n with other {}\n\n",
+                    leaf,
+                    other.display_string((ctxt, DisplayNodeCtxt::new(base_place))),
+                );
+                let ops =
+                    other.repack_ops_to_expand_from(base_place, leaf.inherent_capability, ctxt);
+                *self = other.clone();
+                eprintln!("ops: {}", ops.display_string(ctxt));
+                ops
             }
             (OwnedPcgNode::Internal(internal), OwnedPcgNode::Internal(other)) => {
                 let mut result = vec![];

@@ -72,6 +72,10 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
         self.expansions.iter().map(|(_, e)| e)
     }
 
+    pub(crate) fn expansions_with_guides(&self) -> impl Iterator<Item = (RepackGuide, &OwnedExpansion<'tcx, IData>)> {
+        self.expansions.iter().map(|(g, e)| (*g, e))
+    }
+
     pub(crate) fn expansion(&self, guide: RepackGuide) -> Option<&OwnedExpansion<'tcx, IData>> {
         self.expansions.get(&guide)
     }

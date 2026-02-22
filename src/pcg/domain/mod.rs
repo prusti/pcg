@@ -23,12 +23,7 @@ use crate::{
         mir_dataflow::{JoinSemiLattice, fmt::DebugWithContext, move_paths::MoveData},
     },
     utils::{
-        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
-        arena::PcgArenaRef,
-        domain_data::{DomainData, DomainDataIndex},
-        eval_stmt_data::EvalStmtData,
-        initialized::DefinitelyInitialized,
-        liveness::PlaceLiveness,
+        CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place, arena::PcgArenaRef, display::DisplayWithCtxt, domain_data::{DomainData, DomainDataIndex}, eval_stmt_data::EvalStmtData, initialized::DefinitelyInitialized, liveness::PlaceLiveness
     },
 };
 
@@ -280,12 +275,15 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
         }
         for other in rest {
             if ctxt.should_join_from(other.ctxt.block) {
+                tracing::warn!("joining {:?} into {:?}", other.ctxt.block, ctxt.block);
+                tracing::warn!("before: {}", curr.owned_pcg().display_string(result.ctxt));
                 curr.join(
                     &other.data.pcg.states.0.post_main,
                     ctxt.block,
                     other.ctxt.block,
                     result.ctxt,
                 )?;
+                tracing::warn!("after: {}", curr.owned_pcg().display_string(result.ctxt));
             }
         }
         Ok(result)

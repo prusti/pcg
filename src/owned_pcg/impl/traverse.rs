@@ -320,8 +320,8 @@ impl<'src, 'a: 'src, 'tcx: 'a> TraverseComputation<'src, 'tcx>
         let result = if node.inherent_capability < self.base_inherent_capability {
             vec![RepackOp::weaken(
                 place,
-                node.inherent_capability.into(),
                 self.base_inherent_capability.into(),
+                node.inherent_capability.into(),
             )]
         } else {
             vec![]
@@ -344,13 +344,9 @@ impl<'src, 'a: 'src, 'tcx: 'a> TraverseComputation<'src, 'tcx>
             EdgeMutability::Immutable
         };
         let result = node
-            .expansions()
-            .flat_map(|e| {
-                e.expansion
-                    .child_nodes(place, self.ctxt)
-                    .map(|(place, node)| {
-                        RepackOp::expand(place, e.expansion.guide(), edge_mutability, self.ctxt)
-                    })
+            .expansions_with_guides()
+            .map(|(guide, e)| {
+                RepackOp::expand(place, guide, edge_mutability, self.ctxt)
             })
             .collect::<Vec<_>>();
         TraverseResult::Continue(result)

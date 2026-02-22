@@ -329,6 +329,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         }
     }
 
+    #[tracing::instrument(skip(self, other, ctxt), fields(self.block = ?self_block, other.block = ?other_block), level = "warn")]
     pub(crate) fn bridge(
         &self,
         other: &Self,
@@ -344,7 +345,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             borrows: &mut other.borrow,
             block: other_block,
         };
-        let mut repacks = slf_owned_data.join(other_owned_data, ctxt)?;
+        let repacks = slf_owned_data.join(other_owned_data, ctxt)?;
+        tracing::warn!("self: {}", self.owned_pcg().display_string(ctxt));
+        tracing::warn!("other: {}", other.owned_pcg().display_string(ctxt));
+        tracing::warn!("repacks: {}", repacks.display_string(ctxt));
         Ok(repacks)
     }
 

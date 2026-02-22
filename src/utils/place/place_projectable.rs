@@ -62,11 +62,6 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         let base_ty = self.ty(ctxt);
-        tracing::warn!(
-            "Checking illegal projection for {} and {:?}",
-            self.display_string(ctxt),
-            elem
-        );
         IllegalProjection::check(base_ty.ty, elem)?;
         let corrected_elem = if let ProjectionElem::Field(field_idx, proj_ty) = elem {
             let expected_ty = match base_ty.ty.kind() {
