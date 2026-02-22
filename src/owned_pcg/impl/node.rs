@@ -1,5 +1,5 @@
 use crate::{
-    owned_pcg::{OwnedExpansionS, RepackGuide, node_data::FromData, traverse::Traversable},
+    owned_pcg::{RepackGuide, node_data::FromData, traverse::Traversable},
     utils::data_structures::HashSet,
 };
 use std::{collections::HashMap, marker::PhantomData};
@@ -38,29 +38,22 @@ impl<'tcx> OwnedPcgLeafNode<'tcx> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deref)]
-pub struct OwnedPcgInternalNodeS<'src, 'tcx: 'src, IData: InternalData<'tcx> = Deep> {
-    expansions: HashMap<RepackGuide, OwnedExpansionS<'src, 'tcx, IData>>,
-}
-
-pub type OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> =
-    OwnedPcgInternalNodeS<'tcx, 'tcx, IData>;
-
-impl<'src, 'tcx: 'src, IData: InternalData<'tcx>> OwnedPcgInternalNodeS<'src, 'tcx, IData> {
-    pub(crate) fn lower_data<IData2: FromData<'src, 'tcx, IData>>(
-        &'src self,
-    ) -> OwnedPcgInternalNodeS<'src, 'tcx, IData2> {
-        OwnedPcgInternalNodeS {
-            expansions: self
-                .expansions
-                .iter()
-                .map(|(g, e)| (*g, OwnedExpansionS::new(e.map_data(IData2::lower))))
-                .collect(),
-        }
-    }
+pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
+    expansions: HashMap<RepackGuide, OwnedExpansion<'tcx, IData>>,
 }
 
 impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
-
+    pub(crate) fn map_data<'slf, IData2: FromData<'slf, 'tcx, IData>>(
+        &'slf self,
+    ) -> OwnedPcgInternalNode<'tcx, IData2> {
+        OwnedPcgInternalNode {
+            expansions: self
+                .expansions
+                .iter()
+                .map(|(g, e)| (*g, OwnedExpansion::new(e.map_data(IData2::lower))))
+                .collect(),
+        }
+    }
     pub(crate) fn from_expansions(expansions: Vec<OwnedExpansion<'tcx, IData>>) -> Self {
         Self {
             expansions: HashMap::from_iter(expansions.into_iter().map(|e| (e.guide(), e))),
@@ -119,7 +112,7 @@ impl<'tcx, IData: InternalData<'tcx>> OwnedPcgNode<'tcx, IData> {
     pub(crate) fn leaf(inherent_capability: OwnedCapability) -> Self {
         Self::Leaf(OwnedPcgLeafNode::new(inherent_capability))
     }
-    pub(crate) fn internal(place_expansion: PlaceExpansion<'tcx, IData::Data<'tcx>>) -> Self {
+    pub(crate) fn internal(place_expansion: PlaceExpansion<'tcx, IData::Data>) -> Self {
         Self::Internal(OwnedPcgInternalNode::new(OwnedExpansion::new(
             place_expansion,
         )))
