@@ -45,7 +45,11 @@ pub struct OwnedPcgInternalNode<'tcx, IData: InternalData<'tcx> = Deep> {
 impl<'tcx, IData: InternalData<'tcx>> OwnedPcgInternalNode<'tcx, IData> {
     pub(crate) fn map_data<'slf, IData2: FromData<'slf, 'tcx, IData>>(
         &'slf self,
-    ) -> OwnedPcgInternalNode<'tcx, IData2> {
+    ) -> OwnedPcgInternalNode<'tcx, IData2>
+    where
+        IData: 'slf,
+        'tcx: 'slf,
+    {
         OwnedPcgInternalNode {
             expansions: self
                 .expansions

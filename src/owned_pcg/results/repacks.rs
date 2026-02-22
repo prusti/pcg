@@ -143,7 +143,11 @@ impl<'tcx, D, Default: Copy> RepackGuide<mir::Local, D, Default> {
     pub(crate) fn map_data<'slf, R>(
         &'slf self,
         f: impl Fn(&'slf D) -> R,
-    ) -> RepackGuide<mir::Local, R, Default> {
+    ) -> RepackGuide<mir::Local, R, Default>
+    where
+        D: 'slf,
+        'tcx: 'slf,
+    {
         match self {
             RepackGuide::Index(local, data) => RepackGuide::Index(*local, f(data)),
             RepackGuide::Downcast(downcast, data) => RepackGuide::Downcast(*downcast, f(data)),

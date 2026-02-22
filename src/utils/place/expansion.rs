@@ -204,10 +204,11 @@ impl<'tcx, D> PlaceExpansion<'tcx, D> {
         }
     }
 
-    pub(crate) fn map_data<'slf, R>(
-        &'slf self,
-        f: impl Fn(&'slf D) -> R,
-    ) -> PlaceExpansion<'tcx, R> {
+    pub(crate) fn map_data<'slf, R>(&'slf self, f: impl Fn(&'slf D) -> R) -> PlaceExpansion<'tcx, R>
+    where
+        D: 'slf,
+        'tcx: 'slf,
+    {
         match self {
             PlaceExpansion::Fields(fields) => PlaceExpansion::Fields(
                 fields
