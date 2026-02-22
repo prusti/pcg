@@ -279,9 +279,12 @@ impl<'tcx> OwnedPcgNode<'tcx> {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Deref, DerefMut)]
-pub struct OwnedExpansion<'tcx, IData: InternalData<'tcx> = node_data::Deep> {
-    pub(crate) expansion: PlaceExpansion<'tcx, IData::Data>,
+pub struct OwnedExpansionS<'src, 'tcx: 'src, IData: InternalData<'tcx> = node_data::Deep> {
+    pub(crate) expansion: PlaceExpansion<'tcx, IData::Data<'src>>,
 }
+
+pub type OwnedExpansion<'tcx, IData: InternalData<'tcx> = node_data::Deep> =
+    OwnedExpansionS<'tcx, 'tcx, IData>;
 
 impl<'tcx> OwnedExpansion<'tcx> {
     pub(crate) fn from_repack_expand<'a>(
@@ -316,11 +319,13 @@ impl<'tcx> LeafOwnedExpansion<'tcx> {
     }
 }
 
-impl<'tcx, IData: InternalData<'tcx>> OwnedExpansion<'tcx, IData> {
-    pub(crate) fn new(expansion: PlaceExpansion<'tcx, IData::Data>) -> Self {
+impl<'src, 'tcx: 'src, IData: InternalData<'tcx>> OwnedExpansionS<'src, 'tcx, IData> {
+    pub(crate) fn new(expansion: PlaceExpansion<'tcx, IData::Data<'src>>) -> Self {
         Self { expansion }
     }
+}
 
+impl<'tcx, IData: InternalData<'tcx>> OwnedExpansion<'tcx, IData> {
     pub(crate) fn without_data(&self) -> OwnedExpansion<'tcx, node_data::Shallow> {
         OwnedExpansion::new(self.expansion.without_data())
     }
