@@ -332,6 +332,12 @@ impl<'tcx> FunctionData<'tcx> {
         self.def_id
     }
 
+    pub fn context_def_id(self) -> DefId {
+        self.caller_def_id
+            .map(|local_def_id| local_def_id.to_def_id())
+            .unwrap_or(self.def_id)
+    }
+
     pub(crate) fn shape_data_source(
         self,
         caller_substs: Option<GenericArgsRef<'tcx>>,
