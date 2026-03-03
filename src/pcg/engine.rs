@@ -28,7 +28,6 @@ use crate::{
                 self, BasicBlock, Body, Location, Promoted, START_BLOCK, Statement, Terminator,
                 TerminatorEdges,
             },
-            ty::{self, GenericArgsRef},
         },
         mir_dataflow::{Forward, move_paths::MoveData},
     },
@@ -66,20 +65,6 @@ impl<'tcx> BodyAndBorrows<'tcx> for BodyWithBorrowckFacts<'tcx> {
 
     fn input_facts(&self) -> &PoloniusInput {
         self.input_facts.as_ref().unwrap()
-    }
-}
-
-type MonomorphizeEnv<'tcx> = ty::TypingEnv<'tcx>;
-
-impl<'tcx> BodyWithBorrowckFacts<'tcx> {
-    #[rustversion::since(2025-12-01)]
-    fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
-        tcx.erase_and_anonymize_regions(body)
-    }
-
-    #[rustversion::before(2025-12-01)]
-    fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
-        tcx.erase_regions(body)
     }
 }
 

@@ -89,8 +89,8 @@ pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<Capabi
     pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
     pub(crate) to: ToCap,
-    /// Temporary flag indicating this Weaken was emitted due to a StorageDead.
-    /// Required until https://github.com/prusti/pcg/issues/137 is resolved.
+    /// Temporary flag indicating this Weaken was emitted due to a `StorageDead`.
+    /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub(crate) for_storage_dead: bool,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
@@ -122,8 +122,8 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         }
     }
 
-    /// Create a Weaken that is due to a StorageDead.
-    /// Temporary workaround until https://github.com/prusti/pcg/issues/137 is resolved.
+    /// Create a Weaken that is due to a `StorageDead`.
+    /// Temporary workaround until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub(crate) fn new_for_storage_dead(place: Place, from: CapabilityKind, to: ToCap) -> Self {
         Self {
             place,
@@ -152,8 +152,8 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         self.to
     }
 
-    /// Returns true if this Weaken was emitted due to a StorageDead.
-    /// Temporary workaround until https://github.com/prusti/pcg/issues/137 is resolved.
+    /// Returns true if this Weaken was emitted due to a `StorageDead`.
+    /// Temporary workaround until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub fn is_for_storage_dead(&self) -> bool {
         self.for_storage_dead
     }

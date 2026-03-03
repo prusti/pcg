@@ -338,11 +338,8 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> RepackOp<'tcx> {
-    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
-        Self::Weaken(Weaken::new(place, from, to))
-    }
-    /// Temporary: create a Weaken for StorageDead.
-    /// Required until https://github.com/prusti/pcg/issues/137 is resolved.
+    /// Temporary: create a Weaken for `StorageDead`.
+    /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub(crate) fn weaken_for_storage_dead(
         place: Place<'tcx>,
         from: CapabilityKind,
