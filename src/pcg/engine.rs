@@ -28,7 +28,7 @@ use crate::{
                 self, BasicBlock, Body, Location, Promoted, START_BLOCK, Statement, Terminator,
                 TerminatorEdges,
             },
-            ty,
+            ty::{self, GenericArgsRef},
         },
         mir_dataflow::{Forward, move_paths::MoveData},
     },
@@ -69,20 +69,40 @@ impl<'tcx> BodyAndBorrows<'tcx> for BodyWithBorrowckFacts<'tcx> {
     }
 }
 
-#[allow(dead_code)]
 type MonomorphizeEnv<'tcx> = ty::TypingEnv<'tcx>;
 
 impl<'tcx> BodyWithBorrowckFacts<'tcx> {
-    #[allow(dead_code)]
     #[rustversion::since(2025-12-01)]
     fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
         tcx.erase_and_anonymize_regions(body)
     }
 
-    #[allow(dead_code)]
     #[rustversion::before(2025-12-01)]
     fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
         tcx.erase_regions(body)
+    }
+
+    #[must_use]
+    pub fn monomorphize(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+        substs: GenericArgsRef<'tcx>,
+        param_env: MonomorphizeEnv<'tcx>,
+    ) -> Self {
+        let body = Self::erase_regions(tcx, self.body.clone());
+        let monomorphized_body = tcx.instantiate_and_normalize_erasing_regions(
+            substs,
+            param_env,
+            ty::EarlyBinder::bind(body),
+        );
+        Self {
+            body: monomorphized_body,
+            promoted: self.promoted,
+            borrow_set: self.borrow_set,
+            region_inference_context: self.region_inference_context,
+            input_facts: self.input_facts,
+            location_table: self.location_table,
+        }
     }
 }
 
