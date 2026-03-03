@@ -185,4 +185,9 @@ export type ValidityConditionsDebugRepr = { branch_choices: BranchChoicesDebugRe
  * be weakened to the second given capability. We guarantee that `_.1 > _.2`.
  * If `_.2` is `None`, the capability is removed.
  */
-export type Weaken<Place, ToCap> = { place: Place; from: CapabilityKind; to: ToCap };
+export type Weaken<Place, ToCap> = { place: Place; from: CapabilityKind; to: ToCap; 
+/**
+ * Temporary flag indicating this Weaken was emitted due to a `StorageDead`.
+ * Required until <https://github.com/prusti/pcg/issues/137> is resolved.
+ */
+for_storage_dead: boolean };
