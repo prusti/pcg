@@ -713,8 +713,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 .pcg
                 .place_capability_equals(place, CapabilityKind::Exclusive)
         {
+            // Temporary: mark as for_storage_dead until
+            // https://github.com/prusti/pcg/issues/137 is resolved.
             self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                RepackOp::Weaken(Weaken::new(
+                RepackOp::Weaken(Weaken::new_for_storage_dead(
                     place,
                     CapabilityKind::Exclusive,
                     CapabilityKind::Write,

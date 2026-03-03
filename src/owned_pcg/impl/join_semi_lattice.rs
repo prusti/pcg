@@ -65,7 +65,9 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 let mut repacks = vec![];
                 for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
                     if k.expect_concrete() > CapabilityKind::Write {
-                        repacks.push(RepackOp::weaken(
+                        // Temporary: mark as for_storage_dead until
+                        // https://github.com/prusti/pcg/issues/137 is resolved.
+                        repacks.push(RepackOp::weaken_for_storage_dead(
                             place,
                             k.expect_concrete(),
                             CapabilityKind::Write,

@@ -81,29 +81,6 @@ impl<'tcx> BodyWithBorrowckFacts<'tcx> {
     fn erase_regions(tcx: ty::TyCtxt<'tcx>, body: Body<'tcx>) -> Body<'tcx> {
         tcx.erase_regions(body)
     }
-
-    #[must_use]
-    pub fn monomorphize(
-        self,
-        tcx: ty::TyCtxt<'tcx>,
-        substs: GenericArgsRef<'tcx>,
-        param_env: MonomorphizeEnv<'tcx>,
-    ) -> Self {
-        let body = Self::erase_regions(tcx, self.body.clone());
-        let monomorphized_body = tcx.instantiate_and_normalize_erasing_regions(
-            substs,
-            param_env,
-            ty::EarlyBinder::bind(body),
-        );
-        Self {
-            body: monomorphized_body,
-            promoted: self.promoted,
-            borrow_set: self.borrow_set,
-            region_inference_context: self.region_inference_context,
-            input_facts: self.input_facts,
-            location_table: self.location_table,
-        }
-    }
 }
 
 impl<'tcx> From<borrowck::BodyWithBorrowckFacts<'tcx>> for BodyWithBorrowckFacts<'tcx> {
