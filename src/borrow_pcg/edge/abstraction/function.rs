@@ -28,7 +28,12 @@ use crate::{
             ty::{self, GenericArgsRef, TypeVisitableExt},
         },
         span::{Span, def_id::LocalDefId},
-        trait_selection::infer::outlives::env::OutlivesEnvironment,
+        trait_selection::{
+            infer::outlives::env::OutlivesEnvironment,
+            traits::{
+                NormalizeExt, ObligationCause, ScrubbedTraitError, TraitEngine, TraitEngineExt,
+            },
+        },
     },
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
@@ -59,6 +64,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     }
 
     #[rustversion::since(2025-05-24)]
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         data: FunctionData<'tcx>,
         caller_substs: Option<GenericArgsRef<'tcx>>,
@@ -66,10 +72,18 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let sig = data.identity_fn_sig(tcx);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
-        let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
-        if sig.has_aliases() {
-            return Err(MakeFunctionShapeError::ContainsAliasType);
-        }
+        let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
+        let sig = if sig.has_aliases() {
+            let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
+                ScrubbedTraitError,
+            >>::new(&infcx);
+            infcx
+                .at(&ObligationCause::dummy(), param_env)
+                .deeply_normalize(sig, &mut *fulfill_cx)
+                .unwrap_or(sig)
+        } else {
+            sig
+        };
         let outlives = OutlivesEnvironment::from_normalized_bounds(
             param_env,
             vec![],
