@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
+    borrow_pcg::region_projection::{HasRegions, OverrideRegionDebugString, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -23,16 +23,6 @@ use crate::{
 };
 
 pub mod r#impl;
-
-pub(crate) trait BorrowLike<'tcx> {
-    fn get_borrowed_place(&self) -> Place<'tcx>;
-}
-
-impl<'tcx> BorrowLike<'tcx> for BorrowData<'tcx> {
-    fn get_borrowed_place(&self) -> Place<'tcx> {
-        self.borrowed_place().into()
-    }
-}
 
 trait HasPcgRegion<'tcx> {
     fn pcg_region(&self) -> PcgRegion<'tcx>;
@@ -114,7 +104,8 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
             self.borrow_set(),
             |borrow_index| self.borrow_in_scope_at(borrow_index, location),
             |_this, _borrow_index, borrow| {
-                if borrow.get_borrowed_place() == blocked_place {
+                let borrowed_place = Place::from_mir_place(borrow.borrowed_place(), ctxt);
+                if borrowed_place == blocked_place {
                     conflict = true;
                     ControlFlow::Break(())
                 } else {
@@ -431,7 +422,7 @@ pub(super) fn each_borrow_involving_path<'tcx, F, I, S>(
         if places_conflict(
             ctxt.tcx(),
             ctxt.body(),
-            borrowed.get_borrowed_place().to_rust_place(ctxt),
+            borrowed.borrowed_place(),
             borrowed_place.to_rust_place(ctxt),
             PlaceConflictBias::Overlap,
         ) {

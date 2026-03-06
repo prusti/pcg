@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
-        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
+        borrow_pcg_expansion::{BorrowPcgExpansion, BorrowPcgPlaceExpansion},
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
@@ -11,23 +11,23 @@ use crate::{
         },
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{HasRegions, LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
     },
     error::PcgError,
     owned_pcg::{ExpandedPlace, RepackOp},
     pcg::{
-        CapabilityKind, PcgNodeLike,
+        OwnedCapability, PcgNodeLike, PositiveCapability,
+        edge::EdgeMutability,
         obtain::{
-            ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, ObtainType,
-            RenderDebugGraph,
+            ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, RenderDebugGraph,
         },
-        place_capabilities::BlockType,
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
-        ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, PlaceProjectable,
+        ProjectionKind, ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        place::PlaceExpansion,
     },
 };
 
@@ -36,37 +36,22 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 {
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool;
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
-        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
-        block_type: BlockType,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>>;
-
-    fn update_capabilities_for_deref(
-        &mut self,
-        ref_place: Place<'tcx>,
-        capability: CapabilityKind,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>>;
-
-    #[tracing::instrument(skip(self, obtain_type, ctxt))]
+    #[tracing::instrument(skip(self, obtain_cap, ctxt))]
     fn expand_to(
         &mut self,
         place: Place<'tcx>,
-        obtain_type: ObtainType,
+        obtain_cap: PositiveCapability,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
-        for (base, _) in place.iter_projections() {
-            let base: crate::utils::Place = base.into();
-            let base = base.with_inherent_region(ctxt);
+        for (base, _) in place.iter_projections(ctxt) {
             let expansion = base.expand_one_level(place, ctxt)?;
-            if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
-                tracing::debug!(
-                    "expand region projections for {} one level",
-                    base.display_string(ctxt.ctxt())
-                );
-                self.expand_lifetime_projections_one_level(base, &expansion, obtain_type, ctxt)?;
+            if self.expand_place_one_level(base, &expansion, obtain_cap, ctxt)? {
+                let mutability = if obtain_cap.is_read() {
+                    EdgeMutability::Immutable
+                } else {
+                    EdgeMutability::Mutable
+                };
+                self.expand_lifetime_projections_one_level(base, &expansion, mutability, ctxt)?;
             }
         }
         Ok(())
@@ -75,13 +60,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     fn label_for_rp(
         &self,
         rp: LifetimeProjection<'tcx, Place<'tcx>>,
-        obtain_type: ObtainType,
+        mutability: EdgeMutability,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> LabelForLifetimeProjection {
         use LabelForLifetimeProjection::{
             ExistingLabelOfTwoPhaseReservation, NewLabelAtCurrentLocation, NoLabel,
         };
-        if obtain_type.should_label_rp(rp.rebase(), ctxt) {
+        if mutability == EdgeMutability::Mutable {
             NewLabelAtCurrentLocation(self.prev_snapshot_location())
         } else {
             match self.label_for_shared_expansion_of_rp(rp, ctxt) {
@@ -107,19 +92,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             })
     }
 
-    fn capability_for_expand(
-        &self,
-        base_place: Place<'tcx>,
-        obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind;
-
+    #[tracing::instrument(skip(self, ctxt), level = "warn")]
     fn expand_owned_place_one_level(
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
-        obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        capability: OwnedCapability,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     ) -> Result<bool, PcgError<'tcx>> {
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(
@@ -132,9 +111,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             "New owned expansion from {}",
             base.display_string(ctxt.ctxt())
         );
-        if expansion.kind.is_deref_box()
-            && obtain_type.capability(base, ctxt).is_shallow_exclusive()
-        {
+        if expansion.kind.is_deref_box() && capability.uninitialized() {
             self.apply_action(
                 OwnedPcgAction::new(
                     RepackOp::DerefShallowInit(expansion.base_place(), expansion.target_place),
@@ -143,15 +120,23 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 .into(),
             )?;
         } else {
+            let base_is_materialized =
+                !base.projection().is_empty() && !self.contains_owned_expansion_to(base);
+            let repack_type = match expansion.guide() {
+                crate::owned_pcg::RepackGuide::ConstantIndex(..)
+                | crate::owned_pcg::RepackGuide::Index(..)
+                | crate::owned_pcg::RepackGuide::Subslice { .. } => {
+                    crate::RepackType::Materialized(crate::pcg::edge::EdgeMutability::Immutable)
+                }
+                _ if base_is_materialized => {
+                    crate::RepackType::Materialized(crate::pcg::edge::EdgeMutability::Immutable)
+                }
+                _ => crate::RepackType::Real,
+            };
             self.apply_action(
                 OwnedPcgAction::new(
-                    RepackOp::expand(
-                        expansion.base_place(),
-                        expansion.guide(),
-                        self.capability_for_expand(expansion.base_place(), obtain_type, ctxt),
-                        ctxt,
-                    ),
-                    Some(format!("Expand owned place one level ({obtain_type:?})").into()),
+                    RepackOp::expand(expansion.base_place(), expansion.guide(), repack_type, ctxt),
+                    Some("Expand owned place one level".to_owned().into()),
                 )
                 .into(),
             )?;
@@ -163,14 +148,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
-        obtain_type: ObtainType,
+        obtain_cap: PositiveCapability,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>> {
         let place_expansion = PlaceExpansion::from_places(expansion.expansion(), ctxt);
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
             if self
                 .borrows_graph()
-                .contains_deref_edge_to(base.project_deref(ctxt))
+                .contains_deref_edge_to(base.project_deref(ctxt).unwrap())
             {
                 return Ok(false);
             }
@@ -190,15 +175,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             );
             self.apply_action(action.into())?;
             self.render_debug_graph(None, "expand_place_one_level: after apply action");
-            self.update_capabilities_for_deref(
-                base,
-                obtain_type.capability(base, ctxt),
-                ctxt.bc_ctxt(),
-            )?;
-            self.render_debug_graph(
-                None,
-                "expand_place_one_level: after update_capabilities_for_deref",
-            );
             if deref.blocked_lifetime_projection.label().is_some() {
                 self.apply_action(
                     BorrowPcgAction::label_lifetime_projection(
@@ -213,9 +189,12 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             }
             Ok(true)
         } else if base.is_owned(ctxt) {
-            self.expand_owned_place_one_level(base, expansion, obtain_type, ctxt)
+            let cap = obtain_cap
+                .into_owned_capability()
+                .unwrap_or(OwnedCapability::Deep);
+            self.expand_owned_place_one_level(base, expansion, cap, ctxt)
         } else {
-            self.add_borrow_pcg_expansion(base, place_expansion, obtain_type, ctxt)
+            self.add_borrow_pcg_expansion(base, place_expansion, obtain_cap, ctxt)
         }
     }
 
@@ -229,7 +208,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         base: Place<'tcx>,
         place_expansion: PlaceExpansion<'tcx>,
-        obtain_type: ObtainType,
+        obtain_cap: PositiveCapability,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<bool, PcgError<'tcx>>
     where
@@ -249,30 +228,18 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             "Create expansion from {}",
             base.display_string(ctxt.bc_ctxt())
         );
-        let block_type = expanded_place.expansion.block_type(base, obtain_type, ctxt);
+        let block_type = expanded_place.expansion.block_type(base, obtain_cap, ctxt);
         tracing::debug!(
             "Block type for {} is {:?}",
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
-        let expansion: BorrowPcgExpansion<'tcx> =
-            BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
+        let expansion: BorrowPcgPlaceExpansion<'tcx> =
+            BorrowPcgPlaceExpansion::new(base.into(), &expanded_place.expansion, ctxt)?;
 
-        self.render_debug_graph(
-            None,
-            &format!(
-                "add_borrow_pcg_expansion: before update_capabilities_for_borrow_expansion {}",
-                expansion.display_string(ctxt.bc_ctxt())
-            ),
-        );
-        self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt())?;
-        self.render_debug_graph(
-            None,
-            "add_borrow_pcg_expansion: after update_capabilities_for_borrow_expansion",
-        );
         let action = BorrowPcgAction::add_edge(
             BorrowPcgEdge::new(
-                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion),
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion.into()),
                 self.path_conditions(),
             ),
             "add_borrow_pcg_expansion",
@@ -286,7 +253,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
-        obtain_type: ObtainType,
+        mutability: EdgeMutability,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         for base_rp in base.lifetime_projections(ctxt) {
@@ -299,7 +266,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     &place_expansion,
                     ctxt,
                 )?;
-                let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
+                let expansion_label = self.label_for_rp(base_rp, mutability, ctxt);
                 if let Some(label) = expansion_label.label() {
                     expansion.label_lifetime_projections(
                         &LabelNodePredicate::equals_lifetime_projection(base_rp.into()),

@@ -52,7 +52,7 @@ impl PlaceDisplay<'_> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub enum DisplayOutput {
     Html(Html),
     Text(Cow<'static, str>),
@@ -84,6 +84,8 @@ impl DisplayOutput {
     pub(crate) const EMPTY: DisplayOutput = DisplayOutput::Text(Cow::Borrowed(""));
     pub(crate) const SPACE: DisplayOutput = DisplayOutput::Text(Cow::Borrowed(" "));
     pub(crate) const DOWN_ARROW: DisplayOutput = DisplayOutput::Text(Cow::Borrowed("↓"));
+    pub(crate) const NEWLINE: DisplayOutput = DisplayOutput::Text(Cow::Borrowed("\n"));
+
     pub(crate) fn into_html(self) -> Html {
         match self {
             DisplayOutput::Html(html) | DisplayOutput::Both(html, _) => html,
@@ -132,6 +134,15 @@ pub enum OutputMode {
     Short,
     /// For comparison during tests only, not intended for displaying to the user.
     Test,
+}
+
+impl OutputMode {
+    pub(crate) fn is_test(self) -> bool {
+        matches!(self, OutputMode::Test)
+    }
+    pub(crate) fn is_short(self) -> bool {
+        matches!(self, OutputMode::Short)
+    }
 }
 
 pub trait DisplayWithCtxt<Ctxt> {
@@ -222,6 +233,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Pl
             PlaceDisplay::Temporary(p) => format!("{p:?}"),
             PlaceDisplay::User(_p, s) => s,
         }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for crate::utils::BorrowedPlace<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.place().display_output(ctxt, mode)
     }
 }
 

@@ -6,7 +6,6 @@ use crate::{
         region_projection::{
             HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
         },
-        visitor::extract_regions,
     },
     error::PcgError,
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
@@ -96,8 +95,8 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeLabelledPlace<'tcx>
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
-    for MaybeLabelledPlace<'tcx>
+impl<'tcx, P: HasValidityCheck<Ctxt>, Ctxt: DebugCtxt + Copy> HasValidityCheck<Ctxt>
+    for MaybeLabelledPlace<'tcx, P>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         match self {
@@ -145,12 +144,6 @@ impl<'tcx> TryFrom<MaybeRemotePlace<'tcx>> for MaybeLabelledPlace<'tcx> {
 impl From<mir::Local> for MaybeLabelledPlace<'_> {
     fn from(local: mir::Local) -> Self {
         Self::Current(local.into())
-    }
-}
-
-impl<'tcx> From<mir::Place<'tcx>> for MaybeLabelledPlace<'tcx> {
-    fn from(place: mir::Place<'tcx>) -> Self {
-        Self::Current(place.into())
     }
 }
 
@@ -291,33 +284,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         }
     }
 
-    pub(crate) fn with_inherent_region<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> MaybeLabelledPlace<'tcx>
-    where
-        'tcx: 'a,
-    {
-        match self {
-            MaybeLabelledPlace::Current(place) => place.with_inherent_region(ctxt).into(),
-            MaybeLabelledPlace::Labelled(snapshot) => snapshot.with_inherent_region(ctxt).into(),
-        }
-    }
-
-    pub(crate) fn lifetime_projections<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Vec<LifetimeProjection<'tcx, Self>>
-    where
-        'tcx: 'a,
-    {
-        let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty)
-            .iter()
-            .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
-            .collect()
-    }
-
     pub fn new<T: Into<SnapshotLocation>>(place: Place<'tcx>, at: Option<T>) -> Self {
         if let Some(at) = at {
             Self::Labelled(LabelledPlace::new(place, at))
@@ -331,13 +297,6 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         'tcx: 'a,
     {
         self.place().ty(ctxt)
-    }
-
-    pub(crate) fn project_deref<BC: Copy>(
-        &self,
-        ctxt: CompilerCtxt<'_, 'tcx, BC>,
-    ) -> MaybeLabelledPlace<'tcx> {
-        MaybeLabelledPlace::new(self.place().project_deref(ctxt), self.location())
     }
 
     #[must_use]
@@ -355,6 +314,49 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
 
 impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeLabelledPlace<'tcx> {
     fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
+        match self {
+            MaybeLabelledPlace::Current(place) => {
+                let label = labeller.place_label(*place, ctxt);
+                *self = MaybeLabelledPlace::Labelled(LabelledPlace::new(*place, label));
+                true
+            }
+            MaybeLabelledPlace::Labelled(_) => false,
+        }
+    }
+}
+
+impl<'tcx> MaybeLabelledPlace<'tcx, crate::utils::BorrowedPlace<'tcx>> {
+    pub(crate) fn to_place_labelled(self) -> MaybeLabelledPlace<'tcx> {
+        match self {
+            MaybeLabelledPlace::Current(bp) => MaybeLabelledPlace::Current(bp.place()),
+            MaybeLabelledPlace::Labelled(lp) => {
+                MaybeLabelledPlace::Labelled(LabelledPlace::new(lp.place.place(), lp.at))
+            }
+        }
+    }
+
+    pub fn is_current(&self) -> bool {
+        matches!(self, MaybeLabelledPlace::Current { .. })
+    }
+}
+
+impl<'tcx> From<MaybeLabelledPlace<'tcx, crate::utils::BorrowedPlace<'tcx>>>
+    for MaybeLabelledPlace<'tcx>
+{
+    fn from(mlp: MaybeLabelledPlace<'tcx, crate::utils::BorrowedPlace<'tcx>>) -> Self {
+        mlp.to_place_labelled()
+    }
+}
+
+impl<'tcx, Ctxt>
+    LabelPlace<'tcx, Ctxt, crate::utils::BorrowedPlace<'tcx>>
+    for MaybeLabelledPlace<'tcx, crate::utils::BorrowedPlace<'tcx>>
+{
+    fn label_place(
+        &mut self,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt, crate::utils::BorrowedPlace<'tcx>>,
+        ctxt: Ctxt,
+    ) -> bool {
         match self {
             MaybeLabelledPlace::Current(place) => {
                 let label = labeller.place_label(*place, ctxt);

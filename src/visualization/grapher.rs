@@ -1,28 +1,20 @@
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeRef,
-        edge::kind::BorrowPcgEdgeKind,
+        edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind},
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
-    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
-    utils::{CompilerCtxt, DebugRepr, Place, maybe_old::MaybeLabelledPlace},
+    utils::{CompilerCtxt, DebugRepr, maybe_old::MaybeLabelledPlace},
 };
 
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
 
-pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
-    fn get(&self, node: Place<'tcx>) -> Option<SymbolicCapability>;
-}
-
 pub(super) trait Grapher<'a, 'tcx: 'a> {
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a;
-    fn insert_maybe_labelled_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId {
-        let capability_getter = self.capability_getter();
-        let constructor = self.constructor();
-        constructor.insert_place_node(place.place(), place.location(), &capability_getter)
-    }
+    fn insert_maybe_labelled_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId;
+    fn insert_abstraction(&mut self, abstraction: &AbstractionEdge<'tcx>);
     fn insert_pcg_node(&mut self, node: PcgNode<'tcx>) -> NodeId {
         match node {
             PcgNode::Place(place) => self.insert_maybe_labelled_place(place),
@@ -35,7 +27,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
     fn draw_materialized_edge(&mut self, edge: MaterializedEdge<'tcx, 'a>) {
         match edge {
             MaterializedEdge::Real(edge) => {
-                self.draw_borrow_pcg_edge(edge, &self.capability_getter());
+                self.draw_borrow_pcg_edge(edge);
             }
             MaterializedEdge::Synthetic(edge) => self.draw_synthetic_edge(edge),
         }
@@ -52,15 +44,11 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
             }
         }
     }
-    fn draw_borrow_pcg_edge(
-        &mut self,
-        edge: BorrowPcgEdgeRef<'tcx, 'a>,
-        capabilities: &impl CapabilityGetter<'a, 'tcx>,
-    ) {
+    fn draw_borrow_pcg_edge(&mut self, edge: BorrowPcgEdgeRef<'tcx, 'a>) {
         let validity_conditions = edge.conditions;
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref_edge) => {
-                let deref_place = self.insert_pcg_node(deref_edge.deref_place.into());
+                let deref_place = self.insert_pcg_node(deref_edge.deref_place.to_place_labelled().into());
                 for blocked in deref_edge.blocked_nodes(self.ctxt()) {
                     let blocked = self.insert_pcg_node(blocked);
                     self.constructor().edges.insert(GraphEdge::DerefExpansion {
@@ -107,8 +95,7 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                 });
             }
             BorrowPcgEdgeKind::Abstraction(abstraction) => {
-                self.constructor()
-                    .insert_abstraction(abstraction, capabilities);
+                self.insert_abstraction(abstraction);
             }
             BorrowPcgEdgeKind::BorrowFlow(member) => {
                 let input_node = self.insert_pcg_node(member.long().to_pcg_node(self.ctxt()));

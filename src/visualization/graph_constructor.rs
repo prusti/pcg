@@ -1,13 +1,12 @@
 use crate::{
     borrow_pcg::{
-        graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{LifetimeProjection, PlaceOrConst},
+        region_projection::{HasRegions, LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef,
+        place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
     utils::{
@@ -16,11 +15,7 @@ use crate::{
     },
 };
 
-use super::{
-    Graph, GraphEdge, GraphNode, NodeId, NodeType,
-    grapher::{CapabilityGetter, Grapher},
-    node::IdLookup,
-};
+use super::{Graph, GraphEdge, GraphNode, NodeId, NodeType, grapher::Grapher, node::IdLookup};
 use crate::{
     borrow_pcg::edge::abstraction::AbstractionEdge, utils::place::maybe_old::MaybeLabelledPlace,
 };
@@ -34,6 +29,9 @@ pub(super) struct GraphConstructor<'a, 'tcx> {
     ctxt: CompilerCtxt<'a, 'tcx>,
     location: Option<mir::Location>,
 }
+
+pub(crate) trait GraphCapabilityReader<'tcx> =
+    PlaceCapabilitiesReader<'tcx, (), (CapabilityKind, String)> + Copy;
 
 impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn new(ctxt: CompilerCtxt<'a, 'tcx>, location: Option<mir::Location>) -> Self {
@@ -50,18 +48,18 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     fn insert_maybe_labelled_place(
         &mut self,
         place: MaybeLabelledPlace<'tcx>,
-        capability_getter: &impl CapabilityGetter<'a, 'tcx>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
-        self.insert_place_node(place.place(), place.location(), capability_getter)
+        self.insert_place_node(place.place(), place.location(), capabilities)
     }
 
     fn insert_pcg_node(
         &mut self,
         node: PcgNode<'tcx>,
-        capability_getter: &impl CapabilityGetter<'a, 'tcx>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         match node {
-            PcgNode::Place(place) => self.insert_maybe_labelled_place(place, capability_getter),
+            PcgNode::Place(place) => self.insert_maybe_labelled_place(place, capabilities),
             PcgNode::LifetimeProjection(rp) => self.insert_region_projection_node(rp),
         }
     }
@@ -153,7 +151,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     pub(super) fn insert_abstraction(
         &mut self,
         abstraction: &AbstractionEdge<'tcx>,
-        capabilities: &impl CapabilityGetter<'a, 'tcx>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) {
         let input = self.insert_pcg_node(
             abstraction.input(self.ctxt).to_pcg_node(self.ctxt),
@@ -180,34 +178,26 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         &mut self,
         place: Place<'tcx>,
         location: Option<SnapshotLocation>,
-        capability_getter: &impl CapabilityGetter<'a, 'tcx>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         if let Some(node_id) = self.place_nodes.existing_id(&(place, location)) {
             return node_id;
         }
-        let capability = capability_getter.get(place);
+        let (capability, reason) = capabilities.get(place, ());
         let id = self.place_node_id(place, location);
         let label = place.to_short_string(self.ctxt);
         let place_ty = place.ty(self.ctxt);
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),
             label,
-            capability: capability.and_then(|c| match c {
-                SymbolicCapability::Concrete(cap) => Some(cap),
-                _ => None,
-            }),
+            capability: capability.into_positive(),
             location,
             ty: format!("{:?}", place_ty.ty),
+            capability_reason: reason,
         };
         let node = GraphNode { id, node_type };
         self.insert_node(node);
-        if matches!(
-            capability.and_then(|c| match c {
-                SymbolicCapability::Concrete(cap) => Some(cap),
-                _ => None,
-            }),
-            Some(CapabilityKind::Read | CapabilityKind::Exclusive)
-        ) {
+        if capability.is_read() || capability.is_exclusive() {
             for rp in place.lifetime_projections(self.ctxt) {
                 self.insert_region_projection_node(rp.into());
             }
@@ -216,59 +206,42 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
     }
 }
 
-pub struct BorrowsGraphConstructor<'a, 'tcx, C> {
-    borrows_graph: &'a BorrowsGraph<'tcx>,
-    capabilities: &'a C,
-    constructor: GraphConstructor<'a, 'tcx>,
-    ctxt: CompilerCtxt<'a, 'tcx>,
-}
-
-impl<'a, 'tcx: 'a, C> BorrowsGraphConstructor<'a, 'tcx, C>
-where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-{
-    pub fn new(
-        borrows_graph: &'a BorrowsGraph<'tcx>,
-        capabilities: &'a C,
-        ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> Self {
-        Self {
-            borrows_graph,
-            capabilities,
-            constructor: GraphConstructor::new(ctxt, None),
-            ctxt,
-        }
-    }
-
-    pub(crate) fn construct_graph(mut self) -> Graph<'a> {
-        let edges: Vec<MaterializedEdge<'tcx, 'a>> =
-            self.borrows_graph.materialized_edges(self.ctxt);
-        for edge in edges {
-            self.draw_materialized_edge(edge);
-        }
-        self.constructor.into_graph()
-    }
-}
-
 pub struct PcgGraphConstructor<'a, 'tcx> {
     summary: &'a OwnedPcg<'tcx>,
     borrows_domain: BorrowStateRef<'a, 'tcx>,
-    capabilities: &'a PlaceCapabilities<'tcx, SymbolicCapability>,
     constructor: GraphConstructor<'a, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 }
 
-struct PCGCapabilityGetter<'r, 'a, 'tcx, C> {
-    capabilities: &'r C,
+#[derive(Clone, Copy)]
+struct GraphCapabilities<'a, 'tcx> {
+    summary: &'a OwnedPcg<'tcx>,
+    borrows_domain: BorrowStateRef<'a, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 }
 
-impl<'a, 'tcx, C> CapabilityGetter<'a, 'tcx> for PCGCapabilityGetter<'_, 'a, 'tcx, C>
-where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+impl<'a, 'tcx: 'a> GraphCapabilities<'a, 'tcx> {
+    fn new(
+        summary: &'a OwnedPcg<'tcx>,
+        borrows_domain: BorrowStateRef<'a, 'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> Self {
+        Self {
+            summary,
+            borrows_domain,
+            ctxt,
+        }
+    }
+}
+
+impl<'a, 'tcx: 'a> PlaceCapabilitiesReader<'tcx, (), (CapabilityKind, String)>
+    for GraphCapabilities<'a, 'tcx>
 {
-    fn get(&self, place: Place<'tcx>) -> Option<SymbolicCapability> {
-        self.capabilities.get(place, self.ctxt)
+    fn get(&self, place: Place<'tcx>, _ctxt: ()) -> (CapabilityKind, String) {
+        let (capability, reason) =
+            self.summary
+                .get_capability_and_reason(place, self.borrows_domain.graph, self.ctxt);
+        (capability, format!("{reason:?}"))
     }
 }
 
@@ -281,31 +254,18 @@ impl<'a, 'tcx: 'a> Grapher<'a, 'tcx> for PcgGraphConstructor<'a, 'tcx> {
         &mut self.constructor
     }
 
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a {
-        PCGCapabilityGetter::<'a, 'a, 'tcx, _> {
-            capabilities: self.capabilities,
-            ctxt: self.ctxt,
-        }
-    }
-}
-
-impl<'a, 'tcx: 'a, C> Grapher<'a, 'tcx> for BorrowsGraphConstructor<'a, 'tcx, C>
-where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-{
-    fn ctxt(&self) -> CompilerCtxt<'a, 'tcx> {
-        self.ctxt
+    fn insert_maybe_labelled_place(&mut self, place: MaybeLabelledPlace<'tcx>) -> NodeId {
+        self.constructor.insert_maybe_labelled_place(
+            place,
+            GraphCapabilities::new(self.summary, self.borrows_domain, self.ctxt),
+        )
     }
 
-    fn constructor(&mut self) -> &mut GraphConstructor<'a, 'tcx> {
-        &mut self.constructor
-    }
-
-    fn capability_getter(&self) -> impl CapabilityGetter<'a, 'tcx> + 'a {
-        PCGCapabilityGetter::<'a, 'a, 'tcx, C> {
-            capabilities: self.capabilities,
-            ctxt: self.ctxt,
-        }
+    fn insert_abstraction(&mut self, abstraction: &AbstractionEdge<'tcx>) {
+        self.constructor.insert_abstraction(
+            abstraction,
+            GraphCapabilities::new(self.summary, self.borrows_domain, self.ctxt),
+        );
     }
 }
 
@@ -314,13 +274,12 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
     pub fn new(
         pcg: PcgRef<'a, 'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-        location: mir::Location,
+        location: Option<mir::Location>,
     ) -> Self {
         Self {
             summary: pcg.owned,
             borrows_domain: pcg.borrow,
-            capabilities: pcg.capabilities,
-            constructor: GraphConstructor::new(ctxt, Some(location)),
+            constructor: GraphConstructor::new(ctxt, location),
             ctxt,
         }
     }
@@ -329,7 +288,7 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
         &mut self,
         place: Place<'tcx>,
         location: Option<SnapshotLocation>,
-        capabilities: &impl CapabilityGetter<'a, 'tcx>,
+        capabilities: impl GraphCapabilityReader<'tcx>,
     ) -> NodeId {
         let node = self
             .constructor
@@ -341,7 +300,7 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
         let mut last_node = node;
         while !projection.is_empty() {
             projection = &projection[..projection.len() - 1];
-            let place = Place::new(place.local, projection);
+            let place = Place::new_unchecked(place.local, projection);
             let node = self
                 .constructor
                 .insert_place_node(place, None, capabilities);
@@ -356,30 +315,19 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
 
     #[must_use]
     pub fn construct_graph(mut self) -> Graph<'a> {
-        let capability_getter = &PCGCapabilityGetter::<'a, 'a, 'tcx, _> {
-            capabilities: self.capabilities,
-            ctxt: self.ctxt,
-        };
+        let capabilities = GraphCapabilities::new(self.summary, self.borrows_domain, self.ctxt);
         for (local, capability) in self.summary.iter_enumerated() {
             match capability {
                 OwnedPcgLocal::Unallocated => {}
                 OwnedPcgLocal::Allocated(projections) => {
-                    self.insert_place_and_previous_projections(
-                        local.into(),
-                        None,
-                        capability_getter,
-                    );
-                    for pe in projections.expansions() {
-                        self.insert_place_and_previous_projections(
-                            pe.place,
-                            None,
-                            capability_getter,
-                        );
+                    self.insert_place_and_previous_projections(local.into(), None, capabilities);
+                    for pe in projections.expansions_shortest_first(local, self.ctxt) {
+                        self.insert_place_and_previous_projections(pe.place, None, capabilities);
                         for child_place in pe.expansion_places(self.ctxt).unwrap() {
                             self.insert_place_and_previous_projections(
                                 child_place,
                                 None,
-                                capability_getter,
+                                capabilities,
                             );
                         }
                     }

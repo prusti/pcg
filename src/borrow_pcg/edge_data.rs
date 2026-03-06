@@ -311,8 +311,7 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
         label_context: LabelNodeContext,
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
-        let related_place = related_maybe_labelled_place
-            .map(super::super::utils::place::maybe_old::MaybeLabelledPlace::place);
+        let related_place = related_maybe_labelled_place.map(MaybeLabelledPlace::place);
         match self {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {
@@ -592,7 +591,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::edge_data::{LabelNodePredicate, NodeReplacement};
             use $crate::utils::data_structures::HashSet;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::utils::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgePlaces<'tcx, Ctxt, P>,
             )+ {
                 fn label_blocked_places(
@@ -634,7 +633,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
             use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::utils::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
             )+ {
                 fn label_lifetime_projections(
@@ -654,7 +653,7 @@ macro_rules! edgedata_enum {
 
             use $crate::HasValidityCheck;
 
-            impl<'tcx, Ctxt: Copy + $crate::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: Copy + $crate::utils::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> HasValidityCheck<Ctxt> for $enum_name<'tcx, P> where $(
                 $inner_type: HasValidityCheck<Ctxt>,
             )+ {
                 fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {

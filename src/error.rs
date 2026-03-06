@@ -2,7 +2,13 @@ use derive_more::From;
 
 use crate::{
     coupling::CoupleInputError,
-    rustc_interface::middle::ty,
+    rustc_interface::{
+        middle::{
+            mir::{PlaceElem, PlaceTy},
+            ty,
+        },
+        span::Span,
+    },
     utils::{
         self, PANIC_ON_ERROR,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -47,6 +53,11 @@ impl<'tcx> PcgError<'tcx> {
             context.join(", ")
         );
         Self { kind, context }
+    }
+
+    pub(crate) fn add_context(mut self, context: String) -> Self {
+        self.context.push(context);
+        self
     }
 }
 
@@ -117,13 +128,65 @@ pub struct PlaceContainingPtrWithNestedLifetime<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallWithUnsafePtrWithNestedLifetime<'tcx> {
+    pub(crate) function: String,
+    pub(crate) span: Span,
+    pub(crate) place: PlaceContainingPtrWithNestedLifetime<'tcx>,
+}
+
+#[derive(Debug, Clone)]
+pub struct IllegalProjection<'tcx> {
+    base_ty: PlaceTy<'tcx>,
+    elem: PlaceElem<'tcx>,
+}
+
+impl PartialEq for IllegalProjection<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.base_ty.ty == other.base_ty.ty
+            && self.base_ty.variant_index == other.base_ty.variant_index
+            && self.elem == other.elem
+    }
+}
+
+impl Eq for IllegalProjection<'_> {}
+
+impl<'tcx> IllegalProjection<'tcx> {
+    pub(crate) fn check(base_ty: PlaceTy<'tcx>, elem: PlaceElem<'tcx>) -> Result<(), Self> {
+        match elem {
+            PlaceElem::Index(_) | PlaceElem::ConstantIndex { .. }
+                if base_ty.ty.builtin_index().is_none() =>
+            {
+                Err(Self { base_ty, elem })
+            }
+            PlaceElem::Deref
+                if !base_ty.ty.is_box() && !base_ty.ty.is_ref() && !base_ty.ty.is_raw_ptr() =>
+            {
+                Err(Self { base_ty, elem })
+            }
+            PlaceElem::Field(_, _) => match base_ty.ty.kind() {
+                ty::TyKind::Adt(def, _substs) => {
+                    if base_ty.variant_index.is_none() && !def.is_struct() && !def.is_union() {
+                        Err(Self { base_ty, elem })
+                    } else {
+                        Ok(())
+                    }
+                }
+                ty::TyKind::Tuple(_) => Ok(()),
+                _ => Err(Self { base_ty, elem }),
+            },
+            _ => Ok(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum PcgUnsupportedError<'tcx> {
     AssignBorrowToNonReferenceType,
     DerefUnsafePtr,
     MoveUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
     ExpansionOfAliasType,
-    CallWithUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
-    IndexingNonIndexableType,
+    CallWithUnsafePtrWithNestedLifetime(CallWithUnsafePtrWithNestedLifetime<'tcx>),
+    IllegalProjection(IllegalProjection<'tcx>),
     InlineAssembly,
     MaxNodesExceeded,
     Coupling(CoupleInputError),

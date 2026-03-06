@@ -11,6 +11,8 @@ use super::Place;
 use crate::rustc_interface::middle::mir::Mutability;
 
 pub(crate) trait FallableVisitor<'tcx> {
+    fn to_place(&self, place: mir::Place<'tcx>) -> Place<'tcx>;
+
     fn visit_statement_fallable(
         &mut self,
         statement: &mir::Statement<'tcx>,
@@ -36,14 +38,14 @@ pub(crate) trait FallableVisitor<'tcx> {
         match operand {
             mir::Operand::Copy(place) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Copy),
                     location,
                 )?;
             }
             mir::Operand::Move(place) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Move),
                     location,
                 )?;
@@ -63,7 +65,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         match &statement.kind {
             mir::StatementKind::Assign(box (place, rvalue)) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Store),
                     location,
                 )?;
@@ -71,14 +73,14 @@ pub(crate) trait FallableVisitor<'tcx> {
             }
             mir::StatementKind::FakeRead(box (_, place)) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
                     location,
                 )?;
             }
             mir::StatementKind::SetDiscriminant { place, .. } => {
                 self.visit_place_fallable(
-                    (**place).into(),
+                    self.to_place(**place),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::SetDiscriminant),
                     location,
                 )?;
@@ -90,21 +92,21 @@ pub(crate) trait FallableVisitor<'tcx> {
             | mir::StatementKind::Nop => {}
             mir::StatementKind::Retag(_, place) => {
                 self.visit_place_fallable(
-                    (**place).into(),
+                    self.to_place(**place),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Retag),
                     location,
                 )?;
             }
             mir::StatementKind::PlaceMention(place) => {
                 self.visit_place_fallable(
-                    (**place).into(),
+                    self.to_place(**place),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::PlaceMention),
                     location,
                 )?;
             }
             mir::StatementKind::AscribeUserType(box (place, _), variance) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::NonUse(visit::NonUseContext::AscribeUserTy(*variance)),
                     location,
                 )?;
@@ -174,11 +176,12 @@ pub(crate) trait FallableVisitor<'tcx> {
                         visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Borrow)
                     }
                 };
-                self.visit_place_fallable((*path).into(), ctx, location)?;
+                let place = self.to_place(*path);
+                self.visit_place_fallable(place, ctx, location)?;
             }
             mir::Rvalue::CopyForDeref(place) | mir::Rvalue::Discriminant(place) => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
                     location,
                 )?;
@@ -224,7 +227,8 @@ pub(crate) trait FallableVisitor<'tcx> {
                         visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::RawBorrow)
                     }
                 };
-                self.visit_place_fallable((*place).into(), context, location)?;
+                let place = self.to_place(*place);
+                self.visit_place_fallable(place, context, location)?;
             }
             _ => {}
         }
@@ -258,7 +262,7 @@ pub(crate) trait FallableVisitor<'tcx> {
             }
             mir::TerminatorKind::Drop { place, .. } => {
                 self.visit_place_fallable(
-                    (*place).into(),
+                    self.to_place(*place),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Drop),
                     location,
                 )?;
@@ -274,8 +278,9 @@ pub(crate) trait FallableVisitor<'tcx> {
                 for arg in args {
                     self.visit_operand_fallable(&arg.node, location)?;
                 }
+                let destination = self.to_place(*destination);
                 self.visit_place_fallable(
-                    (*destination).into(),
+                    destination,
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Call),
                     location,
                 )?;
@@ -289,8 +294,9 @@ pub(crate) trait FallableVisitor<'tcx> {
                 value, resume_arg, ..
             } => {
                 self.visit_operand_fallable(value, location)?;
+                let resume_arg = self.to_place(*resume_arg);
                 self.visit_place_fallable(
-                    (*resume_arg).into(),
+                    resume_arg,
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Yield),
                     location,
                 )?;
@@ -305,8 +311,9 @@ pub(crate) trait FallableVisitor<'tcx> {
                         mir::InlineAsmOperand::Out {
                             place: Some(place), ..
                         } => {
+                            let place = self.to_place(*place);
                             self.visit_place_fallable(
-                                (*place).into(),
+                                place,
                                 visit::PlaceContext::MutatingUse(
                                     visit::MutatingUseContext::AsmOutput,
                                 ),
@@ -320,8 +327,9 @@ pub(crate) trait FallableVisitor<'tcx> {
                         } => {
                             self.visit_operand_fallable(in_value, location)?;
                             if let Some(out_place) = out_place {
+                                let out_place = self.to_place(*out_place);
                                 self.visit_place_fallable(
-                                    (*out_place).into(),
+                                    out_place,
                                     visit::PlaceContext::MutatingUse(
                                         visit::MutatingUseContext::AsmOutput,
                                     ),

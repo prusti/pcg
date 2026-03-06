@@ -7,7 +7,8 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { CurrentPoint } from "../types";
-import { MirNode, MirEdge } from "../generated/types";
+import { MirNode } from "../generated_types/MirNode";
+import { MirEdge } from "../generated_types/MirEdge";
 import {
   toReactFlowNodes,
   toReactFlowEdges,

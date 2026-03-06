@@ -1,7 +1,7 @@
 //! Definition of expansion edges in the Borrow PCG.
-use std::{collections::BTreeMap, hash::Hash};
+use std::hash::Hash;
 
-use derive_more::{From, TryFrom};
+use derive_more::TryFrom;
 use itertools::Itertools;
 
 use super::{
@@ -25,156 +25,22 @@ use crate::{
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
     error::{PcgError, PcgUnsupportedError},
-    r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
-        obtain::ObtainType,
-        place_capabilities::{BlockType, PlaceCapabilitiesReader},
+        LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike,
+        place_capabilities::PlaceCapabilitiesReader,
     },
     pcg_validity_assert,
-    rustc_interface::{
-        FieldIdx,
-        middle::{mir::PlaceElem, ty},
-    },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent,
-        PcgPlace, Place, PlaceLike, PlaceProjectable,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent, PcgPlace,
+        Place, PlaceLike, PlaceProjectable,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
+        expansion::PlaceExpansion,
+        place::maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
-
-/// The projections resulting from an expansion of a place.
-///
-/// This representation is preferred to a `Vec<PlaceElem>` because it ensures
-/// it enables a more reasonable notion of equality between expansions. Directly
-/// storing the place elements in a `Vec` could lead to different representations
-/// for the same expansion, e.g. `{*x.f.a, *x.f.b}` and `{*x.f.b, *x.f.a}`.
-#[derive(PartialEq, Eq, Clone, Debug, Hash, From)]
-pub enum PlaceExpansion<'tcx> {
-    /// Fields from e.g. a struct or tuple, e.g. `{*x.f} -> {*x.f.a, *x.f.b}`
-    /// Note that for region projections, not every field of the base type may
-    /// be included. For example consider the following:
-    /// ```ignore
-    /// struct S<'a, 'b> { x: &'a mut i32, y: &'b mut i32 }
-    ///
-    /// let s: S<'a, 'b> = S { x: &mut 1, y: &mut 2 };
-    /// ```
-    /// The projection of `s↓'a` contains only `{s.x↓'a}` because nothing under
-    /// `'a` is accessible via `s.y`.
-    Fields(BTreeMap<FieldIdx, ty::Ty<'tcx>>),
-    /// See [`PlaceElem::Deref`]
-    Deref,
-    Guided(RepackGuide),
-}
-
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceExpansion<'tcx> {
-    fn check_validity(&self, _ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
-        Ok(())
-    }
-}
-
-impl<'tcx> PlaceExpansion<'tcx> {
-    pub(crate) fn is_enum_expansion(&self) -> bool {
-        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(_, _)))
-    }
-    pub(crate) fn block_type<'a>(
-        &self,
-        base_place: Place<'tcx>,
-        obtain_type: ObtainType,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> BlockType
-    where
-        'tcx: 'a,
-    {
-        if matches!(
-            obtain_type,
-            ObtainType::Capability(CapabilityKind::Read)
-                | ObtainType::TwoPhaseExpand
-                | ObtainType::LoopInvariant {
-                    usage_type: PlaceUsageType::Read,
-                    ..
-                }
-        ) {
-            BlockType::Read
-        } else if matches!(self, PlaceExpansion::Deref) {
-            if base_place.is_shared_ref(ctxt) {
-                BlockType::DerefSharedRef
-            } else if base_place.is_mut_ref(ctxt) {
-                if base_place.projects_shared_ref(ctxt) {
-                    BlockType::DerefMutRefUnderSharedRef
-                } else {
-                    BlockType::DerefMutRefForExclusive
-                }
-            } else {
-                BlockType::Other
-            }
-        } else {
-            BlockType::Other
-        }
-    }
-    pub(crate) fn guide(&self) -> Option<RepackGuide> {
-        match self {
-            PlaceExpansion::Guided(guide) => Some(*guide),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn from_places<'a>(
-        places: Vec<Place<'tcx>>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Self
-    where
-        'tcx: 'a,
-    {
-        let mut fields = BTreeMap::new();
-
-        for place in places {
-            let corrected_place = CorrectedPlace::new(place, ctxt);
-            let last_projection = corrected_place.last_projection();
-            if let Some(elem) = last_projection {
-                match *elem {
-                    PlaceElem::Field(field_idx, ty) => {
-                        fields.insert(field_idx, ty);
-                    }
-                    PlaceElem::Deref => return PlaceExpansion::Deref,
-                    other => {
-                        let repack_guide: RepackGuide = other
-                            .try_into()
-                            .unwrap_or_else(|()| todo!("unsupported place elem: {:?}", other));
-                        return PlaceExpansion::Guided(repack_guide);
-                    }
-                }
-            }
-        }
-
-        if fields.is_empty() {
-            unreachable!()
-        } else {
-            PlaceExpansion::Fields(fields)
-        }
-    }
-
-    pub(crate) fn elems(&self) -> Vec<PlaceElem<'tcx>> {
-        match self {
-            PlaceExpansion::Fields(fields) => fields
-                .iter()
-                .sorted_by_key(|(idx, _)| *idx)
-                .map(|(idx, ty)| PlaceElem::Field(*idx, *ty))
-                .collect(),
-            PlaceExpansion::Deref => vec![PlaceElem::Deref],
-            PlaceExpansion::Guided(RepackGuide::ConstantIndex(c)) => {
-                let mut elems = vec![(*c).into()];
-                elems.extend(c.other_elems());
-                elems
-            }
-            PlaceExpansion::Guided(guided) => vec![(*guided).into()],
-        }
-    }
-}
 
 pub(crate) mod internal {
     use crate::owned_pcg::RepackGuide;
@@ -186,7 +52,7 @@ pub(crate) mod internal {
     pub struct BorrowPcgExpansionData<Node> {
         pub(crate) base: Node,
         pub(crate) expansion: Vec<Node>,
-        pub(crate) guide: Option<RepackGuide>,
+        pub(crate) guide: RepackGuide,
     }
 }
 
@@ -263,20 +129,6 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
                 ctxt,
             )?,
         ))
-    }
-    pub(crate) fn new_place_expansion<'a>(
-        base: Place<'tcx>,
-        expansion: &PlaceExpansion<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        Ok(BorrowPcgExpansion::Place(BorrowPcgPlaceExpansion::new(
-            base.into(),
-            expansion,
-            ctxt,
-        )?))
     }
 }
 
@@ -362,7 +214,7 @@ where
 
 impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgExpansionData<P> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        let guide_part = if let Some(guide) = self.guide
+        let guide_part = if let Some(guide) = self.guide.as_non_default()
             && matches!(mode, OutputMode::Test)
         {
             DisplayOutput::Text(format!(" (guide={guide:?})").into())
@@ -465,7 +317,7 @@ impl<
 
 impl<'tcx> BorrowPcgExpansion<'tcx> {
     #[must_use]
-    pub fn guide(&self) -> Option<RepackGuide> {
+    pub fn guide(&self) -> RepackGuide {
         match self {
             BorrowPcgExpansion::Place(place_expansion) => place_expansion.guide,
             BorrowPcgExpansion::LifetimeProjection(lifetime_projection_expansion) => {
@@ -478,10 +330,10 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     /// information. This is the case when the expansion node labels (for
     /// places, and for region projections) are the same as the base node
     /// labels.
-    pub(crate) fn is_packable(
+    pub(crate) fn is_packable<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
         &self,
-        capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
+        capabilities: &impl PlaceCapabilitiesReader<'tcx, Ctxt>,
+        ctxt: Ctxt,
     ) -> bool {
         let BorrowPcgExpansion::Place(place_expansion) = self else {
             return false;
@@ -525,7 +377,7 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
         }
         pcg_validity_assert!(
-            !(base.is_place() && base.place().is_ref(ctxt) && expansion == &PlaceExpansion::Deref),
+            !(base.is_place() && base.place().is_ref(ctxt) && expansion.is_deref()),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
             base.place().display_string(ctxt)

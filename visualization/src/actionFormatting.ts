@@ -1,8 +1,7 @@
-import {
-  BorrowPcgActionKindDebugRepr,
-  CapabilityKind,
-  RepackOp,
-} from "./generated/types";
+import { BorrowPcgActionKindDebugRepr } from "./generated_types/BorrowPcgActionKindDebugRepr";
+import { CapabilityKind } from "./generated_types/CapabilityKind";
+import { OwnedCapability } from "./generated_types/OwnedCapability";
+import { RepackOp } from "./generated_types/RepackOp";
 
 export function capabilityLetter(capability: CapabilityKind): string {
   switch (capability) {
@@ -14,11 +13,24 @@ export function capabilityLetter(capability: CapabilityKind): string {
       return "E";
     case "ShallowExclusive":
       return "e";
+    case "None":
+      return "⦰";
+  }
+}
+
+export function ownedCapabilityLetter(capability: OwnedCapability): string {
+  switch (capability) {
+    case "Deep":
+      return "D";
+    case "Uninitialized":
+      return "U";
+    case "Shallow":
+      return "S";
   }
 }
 
 export function actionLine(
-  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+  action: RepackOp | BorrowPcgActionKindDebugRepr
 ): string {
   switch (action.type) {
     case "Expand":
@@ -29,7 +41,7 @@ export function actionLine(
       if (typeof action.data === "string") {
         return action.data;
       }
-      return `${action.data.place}: ${capabilityLetter(action.data.from)} -> ${action.data.to ? capabilityLetter(action.data.to) : "None"}`;
+      return `${action.data.place}: ${ownedCapabilityLetter(action.data.from)} -> ${ownedCapabilityLetter(action.data.to)}`;
     case "RegainLoanedCapability":
       return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
     case "AddEdge":

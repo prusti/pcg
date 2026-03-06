@@ -61,9 +61,14 @@ export type ReactFlowNodeData = BasicBlockData & {
   pcgData?: PcgBlockVisualizationData;
 };
 
+import { GenericPcgAction } from "./generated_types/GenericPcgAction";
+import { ActionKindWithDebugInfo } from "./generated_types/ActionKindWithDebugInfo";
+import { BorrowPcgActionKindDebugRepr } from "./generated_types/BorrowPcgActionKindDebugRepr";
+import { RepackOp } from "./generated_types/RepackOp";
+
 export type PcgAction = GenericPcgAction<
   ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>,
-  ActionKindWithDebugInfo<RepackOp<string, string, string>, string | null>
+  ActionKindWithDebugInfo<RepackOp, string | null>
 >;
 
 export type PcgActions = PcgAction[];
@@ -83,19 +88,14 @@ type Branded<T, B> = T & { [tag]: B };
 export type FunctionSlug = Branded<string, "FunctionSlug">;
 export type FunctionName = Branded<string, "FunctionName">;
 
-import type {
-  ActionKindWithDebugInfo,
-  BorrowPcgActionKindDebugRepr,
-  EvalStmtPhase,
-  FunctionMetadata,
-  GenericPcgAction,
-  MirStmt,
-  PcgBlockVisualizationData,
-  PcgStmtVisualizationData,
-  PcgSuccessorVisualizationData,
-  RepackOp,
-  SourcePos,
-} from "./generated/types";
+import { EvalStmtPhase } from "./generated_types/EvalStmtPhase";
+import { FunctionMetadata } from "./generated_types/FunctionMetadata";
+import { SourcePos } from "./generated_types/SourcePos";
+import { PcgStmtVisualizationData } from "./generated_types/PcgStmtVisualizationData";
+import { PcgSuccessorVisualizationData } from "./generated_types/PcgSuccessorVisualizationData";
+import { MirStmt } from "./generated_types/MirStmt"
+import { PcgBlockVisualizationData } from "./generated_types/PcgBlockVisualizationData";
+
 export type {
   EvalStmtPhase,
   FunctionMetadata,

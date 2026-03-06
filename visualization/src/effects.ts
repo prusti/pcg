@@ -1,4 +1,4 @@
-import { MirNode } from "./generated/types";
+import { MirNode } from "./generated_types/MirNode";
 import { CurrentPoint, MirStmt } from "./types";
 
 export function addKeyDownListener(

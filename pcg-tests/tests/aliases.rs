@@ -5,6 +5,7 @@ use pcg::{
     results::PcgLocation,
     rustc_interface::middle::mir::{self, START_BLOCK},
     rustc_interface::span::Symbol,
+    utils::{Place, PlaceProjectable},
 };
 use pcg_tests::run_pcg_on_str;
 
@@ -52,12 +53,9 @@ fn test_aliases() {
         let stmt = &bb.statements[1];
         let x = ctxt.local_place("x").unwrap();
         let temp4 = mir::Local::from(4_usize).into();
-        let temp: mir::Place<'_> = mir::Local::from(2_usize).into();
-        let aliases = stmt.aliases(
-            temp.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx()),
-            ctxt.body(),
-            ctxt.tcx(),
-        );
+        let temp: Place<'_> = mir::Local::from(2_usize).into();
+        let temp_deref = temp.project_deref(ctxt).unwrap();
+        let aliases = stmt.aliases(temp_deref, ctxt.body(), ctxt.tcx());
         // *_2 aliases _4 at bb3[1]
         assert!(
             aliases.contains(&temp4),
@@ -83,8 +81,8 @@ fn test_aliases() {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let ctxt = analysis.ctxt();
         let stmt = &bb.statements[12];
-        let w = ctxt.local_place("w").unwrap().to_rust_place(ctxt);
-        let w_deref = w.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
+        let w = ctxt.local_place("w").unwrap();
+        let w_deref = w.project_deref(ctxt).unwrap();
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
         let aliases = stmt.aliases(w_deref, ctxt.body(), ctxt.tcx());
         // *w aliases x at bb0[12]
@@ -111,18 +109,18 @@ fn test_aliases() {
         let bb = analysis.get_all_for_bb(1usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[2];
 
-        let y = ctxt.local_place("y").unwrap().to_rust_place(ctxt);
-        let y_deref = y.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let local3: mir::Place<'_> = mir::Local::from(3_usize).into();
-        let local3_deref = local3.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
+        let y = ctxt.local_place("y").unwrap();
+        let y_deref = y.project_deref(ctxt).unwrap();
+        let local3: Place<'_> = mir::Local::from(3_usize).into();
+        let local3_deref = local3.project_deref(ctxt).unwrap();
         let aliases = stmt.aliases(y_deref, ctxt.body(), ctxt.tcx());
-        assert!(aliases.contains(&local3_deref));
+        assert!(aliases.contains(&local3_deref.to_rust_place(ctxt)));
         assert!(
             analysis
                 .results_for_all_blocks()
                 .unwrap()
-                .all_place_aliases(y_deref, ctxt.body(), ctxt.tcx())
-                .contains(&local3_deref)
+                .all_place_aliases(y_deref.to_rust_place(ctxt), ctxt.body(), ctxt.tcx())
+                .contains(&local3_deref.to_rust_place(ctxt))
         );
     });
 
@@ -140,13 +138,13 @@ fn test_aliases() {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[2];
 
-        let f = ctxt.local_place("f").unwrap().to_rust_place(ctxt);
-        let f_deref = f.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let local3: mir::Place<'_> = mir::Local::from(3_usize).into();
-        let local3_deref = local3.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
+        let f = ctxt.local_place("f").unwrap();
+        let f_deref = f.project_deref(ctxt).unwrap();
+        let local3: Place<'_> = mir::Local::from(3_usize).into();
+        let local3_deref = local3.project_deref(ctxt).unwrap();
         let aliases = stmt.aliases(local3_deref, ctxt.body(), ctxt.tcx());
-        assert!(aliases.contains(&f_deref));
-        assert!(!aliases.contains(&f));
+        assert!(aliases.contains(&f_deref.to_rust_place(ctxt)));
+        assert!(!aliases.contains(&f.to_rust_place(ctxt)));
     });
 
     // enum_write_branch_read_branch
@@ -172,29 +170,33 @@ fn main() {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(2usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
-        let init_z: mir::Place<'_> = mir::Local::from(5_usize).into();
-        let z_deref = init_z.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let local3: mir::Place<'_> = mir::Local::from(3_usize).into();
-        let deref3 = local3.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let deref_target = deref3.project_deeper(
-            &[
+        let init_z: Place<'_> = mir::Local::from(5_usize).into();
+        let z_deref = init_z.project_deref(ctxt).unwrap();
+        let local3: Place<'_> = mir::Local::from(3_usize).into();
+        let deref3 = local3.project_deref(ctxt).unwrap();
+        let deref_target = deref3
+            .project_deeper(
                 mir::ProjectionElem::Downcast(Some(Symbol::intern("X")), 0usize.into()),
+                ctxt,
+            )
+            .unwrap()
+            .project_deeper(
                 mir::ProjectionElem::Field(0usize.into(), ctxt.tcx().types.i32),
-            ],
-            ctxt.tcx(),
-        );
+                ctxt,
+            )
+            .unwrap();
         let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
         eprintln!("aliases: {:?}", aliases);
         eprintln!("deref_target: {:?}", deref_target);
-        assert!(aliases.contains(&deref_target));
+        assert!(aliases.contains(&deref_target.to_rust_place(ctxt)));
         assert!(
             analysis
                 .results_for_all_blocks()
                 .unwrap()
-                .all_place_aliases(z_deref, &ctxt.body(), ctxt.tcx())
-                .contains(&deref_target)
+                .all_place_aliases(z_deref.to_rust_place(ctxt), &ctxt.body(), ctxt.tcx())
+                .contains(&deref_target.to_rust_place(ctxt))
         );
-        assert!(!aliases.contains(&deref3));
+        assert!(!aliases.contains(&deref3.to_rust_place(ctxt)));
     });
 
     // enum_write_branch_read_whole
@@ -218,22 +220,26 @@ fn main() {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[0];
-        let init_z: mir::Place<'_> = mir::Local::from(5_usize).into();
-        let z_deref = init_z.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let local3: mir::Place<'_> = mir::Local::from(3_usize).into();
-        let deref3 = local3.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        let deref_target = deref3.project_deeper(
-            &[
+        let init_z: Place<'_> = mir::Local::from(5_usize).into();
+        let z_deref = init_z.project_deref(ctxt).unwrap();
+        let local3: Place<'_> = mir::Local::from(3_usize).into();
+        let deref3 = local3.project_deref(ctxt).unwrap();
+        let deref_target = deref3
+            .project_deeper(
                 mir::ProjectionElem::Downcast(Some(Symbol::intern("X")), 0usize.into()),
+                ctxt,
+            )
+            .unwrap()
+            .project_deeper(
                 mir::ProjectionElem::Field(0usize.into(), ctxt.tcx().types.i32),
-            ],
-            ctxt.tcx(),
-        );
+                ctxt,
+            )
+            .unwrap();
         let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
         eprintln!("aliases: {:?}", aliases);
         eprintln!("deref_target: {:?}", deref_target);
-        assert!(aliases.contains(&deref_target));
-        assert!(!aliases.contains(&deref3));
+        assert!(aliases.contains(&deref_target.to_rust_place(ctxt)));
+        assert!(!aliases.contains(&deref3.to_rust_place(ctxt)));
     });
 
     // 59_struct_ptrs_deep.rs
@@ -251,7 +257,7 @@ fn main() {
     run_pcg_on_str(input, |mut analysis| {
         let ctxt = analysis.ctxt();
 
-        let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
+        let x = ctxt.local_place("x").unwrap();
         check_all_statements(&ctxt.body(), &mut analysis, |_location, stmt| {
             let _ = stmt.aliases(x, &ctxt.body(), ctxt.tcx());
         });
@@ -269,13 +275,13 @@ fn main() {
     run_pcg_on_str(input, |mut analysis| {
         let ctxt = analysis.ctxt();
 
-        let temp: mir::Place<'_> = mir::Local::from(4_usize).into();
-        let star_temp = temp.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
+        let temp: Place<'_> = mir::Local::from(4_usize).into();
+        let star_temp = temp.project_deref(ctxt).unwrap();
         check_all_statements(&ctxt.body(), &mut analysis, |location, stmt| {
             assert!(
                 !stmt
                     .aliases(star_temp, &ctxt.body(), ctxt.tcx())
-                    .contains(&temp),
+                    .contains(&temp.to_rust_place(ctxt)),
                 "Bad alias for {:?}",
                 location
             );
@@ -302,7 +308,7 @@ fn main() {
             .local_place("e")
             .unwrap()
             .project_deref(ctxt)
-            .to_rust_place(ctxt);
+            .unwrap();
         let a = ctxt.local_place("a").unwrap().to_rust_place(ctxt);
         assert!(
             last_bg
@@ -329,8 +335,9 @@ fn main() {
             .local_place("c")
             .unwrap()
             .project_deref(ctxt)
+            .unwrap()
             .project_deref(ctxt)
-            .to_rust_place(ctxt);
+            .unwrap();
         let a = ctxt.local_place("a").unwrap().to_rust_place(ctxt);
         assert!(
             last_bg
@@ -352,11 +359,12 @@ fn main() {
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
         let stmt = &bb0.statements[11];
-        let y_deref = ctxt.local_place("y").unwrap().project_deref(ctxt);
+        let y_deref = ctxt.local_place("y").unwrap().project_deref(ctxt).unwrap();
         let y_deref_3 = y_deref
             .project_deref(ctxt)
+            .unwrap()
             .project_deref(ctxt)
-            .to_rust_place(ctxt);
+            .unwrap();
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
         assert!(
             stmt.aliases(y_deref_3, &ctxt.body(), ctxt.tcx())
@@ -396,8 +404,8 @@ fn main() {
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
         let last_bg = &bb0.statements[13];
-        let temp: mir::Place<'_> = mir::Local::from(5_usize).into();
-        let star_5 = temp.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
+        let temp: Place<'_> = mir::Local::from(5_usize).into();
+        let star_5 = temp.project_deref(ctxt).unwrap();
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
         assert!(
             last_bg

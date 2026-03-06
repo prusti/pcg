@@ -829,7 +829,7 @@ fn test_selected_crates() {
             "bstr",
             "1.11.3",
             Some("2025-03-13"),
-            TestCrateType::function(
+            TestCrateType::function_debug_failure(
                 "<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next",
                 Some(27),
             ),

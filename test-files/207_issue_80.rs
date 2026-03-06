@@ -29,7 +29,7 @@ fn _test4(b: bool, mut x: S2, y: T1) {
     if b {
         let z = x.f.f;
     }
-    // PCG: bb3[4] pre_main: unpack x with capability W
+    // PCG: bb3[4] pre_main: unpack x with capability Real
     x.f.f = y;
 }
 

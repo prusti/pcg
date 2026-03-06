@@ -9,7 +9,7 @@ use pcg::utils::{PcgSettings, display::DisplayWithCtxt};
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
     borrow_checker::r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
-    borrow_pcg::region_projection::{PcgRegion, RegionIdx},
+    borrow_pcg::region_projection::{PcgRegion, RegionIdx, HasRegions},
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{

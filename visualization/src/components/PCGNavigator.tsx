@@ -1,41 +1,24 @@
 import React, { useState, useEffect } from "react";
 import {
   EvalStmtPhase,
-  PcgAction,
   PcgProgramPointData,
   NavigatorPoint,
   CurrentPoint,
   FunctionSlug,
 } from "../types";
-import {
-  PcgBlockVisualizationData,
-  DotFileAtPhase,
-  AppliedAction,
-  ApplyActionResult,
-} from "../generated/types";
-import { actionLine } from "../actionFormatting";
+import { DotFileAtPhase } from "../generated_types/DotFileAtPhase";
 import {
   useLocalStorageBool,
   useLocalStorageNumber,
 } from "../hooks/useLocalStorageState";
 import { Api } from "../api";
-import { openDotGraphInNewWindow } from "../dot_graph";
+import {
+  openDotGraphInNewWindow,
+  openDotContentInNewWindow,
+} from "../dot_graph";
 import { toBasicBlock } from "../util";
-
-type NavigationItem =
-  | { type: "iteration"; name: string; filename: string }
-  | {
-      type: "action";
-      phase: "successor";
-      index: number;
-      action: PcgAction;
-    }
-  | {
-      type: "action";
-      phase: EvalStmtPhase;
-      index: number;
-      action: AppliedAction<PcgAction, ApplyActionResult<string>>;
-    };
+import { PcgBlockVisualizationData } from "../generated_types/PcgBlockVisualizationData";
+import NavigationItemList, { NavigationItem } from "./NavigationItemList";
 
 export const NAVIGATOR_DEFAULT_WIDTH = 200;
 export const NAVIGATOR_MIN_WIDTH_NUM = 40;
@@ -91,6 +74,195 @@ const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
     return `bb${currentPoint.block1} -> bb${currentPoint.block2}`;
   }
 };
+
+function DotGraphButton({
+  label,
+  dotContent,
+  title,
+}: {
+  label: string;
+  dotContent: string;
+  title: string;
+}) {
+  return (
+    <button
+      style={{
+        display: "block",
+        marginTop: "6px",
+        marginBottom: "6px",
+        padding: "4px 8px",
+        cursor: "pointer",
+        backgroundColor: "#007acc",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        fontSize: "12px",
+      }}
+      onClick={() => openDotContentInNewWindow(dotContent, title)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CollapsiblePlaceUsages({
+  title,
+  usages,
+}: {
+  title: string;
+  usages: { [key: string]: string };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const keys = Object.keys(usages);
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "▼" : "▶"} {title} ({keys.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {keys.map((k) => (
+            <div key={k}>
+              {k}: {usages[k]}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsiblePlaceLabels({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: Array<[string, Array<{ from: string; to: string }>]>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(
+    new Set()
+  );
+  const toggleEntry = (index: number) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "▼" : "▶"} {title} ({entries.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {entries.map(([place, replacements], i) => (
+            <div key={i} style={{ marginTop: "4px" }}>
+              <div
+                onClick={() => toggleEntry(i)}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                {expandedEntries.has(i) ? "▼" : "▶"} {place} (
+                {replacements.length})
+              </div>
+              {expandedEntries.has(i) && (
+                <div style={{ paddingLeft: "12px" }}>
+                  {replacements.map((r, j) => (
+                    <div key={j}>
+                      {r.from} → {r.to}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsibleRootPlaces({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: Array<[string, Array<string>]>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(
+    new Set()
+  );
+  const toggleEntry = (index: number) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "▼" : "▶"} {title} ({entries.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {entries.map(([livePlace, rootPlaces], i) => (
+            <div key={i} style={{ marginTop: "4px" }}>
+              <div
+                onClick={() => toggleEntry(i)}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                {expandedEntries.has(i) ? "▼" : "▶"} {livePlace} (
+                {rootPlaces.length})
+              </div>
+              {expandedEntries.has(i) && (
+                <div style={{ paddingLeft: "12px" }}>
+                  {rootPlaces.map((rp, j) => (
+                    <div key={j}>{rp}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PCGNavigator({
   selectedPoint,
@@ -283,83 +455,7 @@ export default function PCGNavigator({
     onGoToPreviousStatement,
   ]);
 
-  // Render navigation items in order
-  const renderItems = () => {
-    return navigationItems.map((item, idx) => {
-      try {
-        console.log(item);
-        if (item.type === "iteration") {
-          const isSelected =
-            selectedPoint?.type === "iteration" &&
-            selectedPoint.name === item.name;
-          return (
-            <div
-              key={`iteration-${item.name}-${idx}`}
-              style={{
-                border: "1px solid #000",
-                padding: "8px",
-                marginBottom: "8px",
-                backgroundColor: isSelected ? "lightgreen" : "transparent",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-              onClick={() => {
-                onSelectPoint({ type: "iteration", name: item.name });
-              }}
-            >
-              {item.name}
-            </div>
-          );
-        } else {
-          // action
-          const isSelected =
-            selectedPoint?.type === "action" &&
-            selectedPoint.phase === item.phase &&
-            selectedPoint.index === item.index;
-          const action =
-            item.phase === "successor" ? item.action : item.action.action;
-          let hoverText = action.data.debug_info || "";
-          const itemContent = actionLine(action.data.kind);
-          if (item.phase !== "successor") {
-            if (!hoverText) {
-              hoverText = item.action.result.change_summary;
-            } else {
-              hoverText += " " + item.action.result.change_summary;
-            }
-          }
-          return (
-            <div
-              key={`action-${item.phase}-${item.index}-${idx}`}
-              style={{
-                cursor: "pointer",
-                padding: "6px 12px",
-                marginBottom: "4px",
-                borderRadius: "4px",
-                backgroundColor: isSelected ? "#007acc" : "#f5f5f5",
-                color: isSelected ? "white" : "inherit",
-                border: isSelected ? "1px solid #007acc" : "1px solid #ddd",
-              }}
-              onClick={() => {
-                onSelectPoint({
-                  type: "action",
-                  phase: item.phase,
-                  index: item.index,
-                });
-              }}
-              title={hoverText || undefined}
-            >
-              <code>{itemContent}</code>
-            </div>
-          );
-        }
-      } catch (error) {
-        console.error("Error rendering item %O:", item, error);
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        <div>{errorMessage}</div>;
-      }
-    });
-  };
+  const loopData = pcgData.loop_data;
 
   return (
     <div
@@ -443,7 +539,52 @@ export default function PCGNavigator({
               padding: "15px",
             }}
           >
-            {renderItems()}
+            {loopData ? (
+              <div>
+                <b>Loop Head</b>
+                {loopData.dot_graphs.map(([name, dotContent]) => (
+                  <DotGraphButton
+                    key={name}
+                    label={name}
+                    dotContent={dotContent}
+                    title={`${name} Graph`}
+                  />
+                ))}
+                <CollapsiblePlaceUsages
+                  title="Used Places"
+                  usages={loopData.used_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Live Loop Places"
+                  usages={loopData.live_loop_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Loop Blocked Places"
+                  usages={loopData.loop_blocked_places.usages}
+                />
+                <CollapsiblePlaceUsages
+                  title="Loop Blocker Places"
+                  usages={loopData.loop_blocker_places.usages}
+                />
+                <CollapsibleRootPlaces
+                  title="Ancestors of Live Places"
+                  entries={loopData.ancestors_of_live_places}
+                />
+                <CollapsibleRootPlaces
+                  title="Root Places"
+                  entries={loopData.root_places}
+                />
+                <CollapsiblePlaceLabels
+                  title="Place Labels"
+                  entries={loopData.place_labels}
+                />
+              </div>
+            ) : null}
+            <NavigationItemList
+              navigationItems={navigationItems}
+              selectedPoint={selectedPoint}
+              onSelectPoint={onSelectPoint}
+            />
           </div>
           <button
             style={{

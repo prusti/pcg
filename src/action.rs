@@ -5,6 +5,7 @@ use derive_more::{Deref, DerefMut, From};
 use serde_derive::Serialize;
 
 use crate::{
+    DebugDataTypes,
     borrow_pcg::{
         action::{
             ApplyActionResult, BorrowPcgActionKind, BorrowPcgActionKindDebugRepr,
@@ -14,17 +15,16 @@ use crate::{
         unblock_graph::BorrowPcgUnblockAction,
         validity_conditions::ValidityConditions,
     },
-    owned_pcg::{RegainedCapability, RepackOp},
-    pcg::capabilities::CapabilityKind,
-    rustc_interface::middle::mir,
+    owned_pcg::{PcgRepackOpDataTypes, RegainedCapability, RepackOp},
+    pcg::capabilities::PositiveCapability,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place, PlaceLike,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        DebugRepr, HasBorrowCheckerCtxt, OwnedPlace, PcgNodeComponent, Place, PlaceLike, display::{DisplayOutput, DisplayWithCtxt, OutputMode}
     },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(Action=PcgActionDebugRepr, Result=ApplyActionResult<String>)))]
 pub(crate) struct AppliedAction<'tcx, Action = PcgAction<'tcx>, Result = ApplyActionResult> {
     pub(crate) action: Action,
     pub(crate) result: Result,
@@ -179,7 +179,7 @@ impl<'tcx> PcgActions<'tcx> {
 /// A pair of a PCG action and a debug context (indicating the source of the
 /// action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct ActionKindWithDebugInfo<T, DebugInfo = Option<DisplayOutput>> {
     pub(crate) kind: T,
     pub(crate) debug_info: DebugInfo,
@@ -222,7 +222,7 @@ impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDeb
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
 pub type OwnedPcgAction<'tcx, P = Place<'tcx>> =
-    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>>;
+    ActionKindWithDebugInfo<RepackOp<'tcx, PcgRepackOpDataTypes<'tcx, P>>>;
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
@@ -237,7 +237,11 @@ pub type BorrowPcgAction<
 mod private {
     use serde_derive::Serialize;
 
-    #[cfg_attr(feature = "type-export", derive(specta::Type))]
+    #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+    #[cfg_attr(
+        feature = "type-export",
+        ts(bound = "Borrow: ts_rs::TS, Owned: ts_rs::TS")
+    )]
     #[derive(Clone, PartialEq, Eq, Debug, Serialize)]
     #[serde(tag = "type", content = "data")]
     pub enum GenericPcgAction<Borrow, Owned> {
@@ -246,7 +250,7 @@ mod private {
     }
 }
 
-impl<'tcx, EdgeKind, P, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
+impl<'tcx, EdgeKind, P: std::fmt::Debug, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
     for PcgAction<'tcx, EdgeKind, P, VC>
 {
     fn from(action: BorrowPcgAction<'tcx, EdgeKind, P, VC>) -> PcgAction<'tcx, EdgeKind, P, VC> {
@@ -254,7 +258,9 @@ impl<'tcx, EdgeKind, P, VC> From<BorrowPcgAction<'tcx, EdgeKind, P, VC>>
     }
 }
 
-impl<'tcx, EdgeKind, P, VC> From<OwnedPcgAction<'tcx, P>> for PcgAction<'tcx, EdgeKind, P, VC> {
+impl<'tcx, EdgeKind, P: std::fmt::Debug, VC> From<OwnedPcgAction<'tcx, P>>
+    for PcgAction<'tcx, EdgeKind, P, VC>
+{
     fn from(action: OwnedPcgAction<'tcx, P>) -> Self {
         PcgAction::<'tcx, EdgeKind, P, VC>::Owned(action)
     }
@@ -270,7 +276,7 @@ pub type PcgAction<
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
     ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
-    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, Option<String>>,
+    ActionKindWithDebugInfo<RepackOp<'static, DebugDataTypes>, Option<String>>,
 >;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
@@ -287,7 +293,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
 impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
     pub(crate) fn restore_capability<Ctxt>(
         place: P,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         debug_context: impl Into<DisplayOutput>,
         ctxt: Ctxt,
     ) -> Self
@@ -307,11 +313,12 @@ impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, 
 }
 
 impl<'tcx, EdgeKind, P: PcgNodeComponent, VC> PcgAction<'tcx, EdgeKind, P, VC> {
-    pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
+    pub(crate) fn debug_line<Ctxt: Copy>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
         BorrowPcgActionKind<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
         OwnedPcgAction<'tcx, P>: DisplayWithCtxt<Ctxt>,
         P: DisplayWithCtxt<Ctxt>,
+        OwnedPlace<'tcx>: DisplayWithCtxt<Ctxt>,
     {
         match self {
             PcgAction::Borrow(action) => action.debug_line(ctxt),

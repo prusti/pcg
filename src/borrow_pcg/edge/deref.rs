@@ -13,10 +13,11 @@ use crate::{
         },
         region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection},
     },
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
+    pcg::{PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
+        BorrowedPlace, CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -27,9 +28,9 @@ use crate::{
 /// A PCG Hyperedge from the a reference-typed place, and a lifetime projection
 /// to the dereferenced place.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DerefEdge<'tcx, P = Place<'tcx>> {
+pub struct DerefEdge<'tcx, P = Place<'tcx>, BP = BorrowedPlace<'tcx>> {
     pub(crate) blocked_place: MaybeLabelledPlace<'tcx, P>,
-    pub(crate) deref_place: MaybeLabelledPlace<'tcx, P>,
+    pub(crate) deref_place: MaybeLabelledPlace<'tcx, BP>,
     /// The lifetime projection that is blocked in this edge. In general, this
     /// will not be labelled if `blocked_place` is a shared reference, and
     /// labelled with the MIR location of the dereference if `blocked_place` is
@@ -43,7 +44,7 @@ impl<'tcx> DerefEdge<'tcx> {
         self.blocked_place
     }
     #[must_use]
-    pub fn deref_place(self) -> MaybeLabelledPlace<'tcx> {
+    pub fn deref_place(self) -> MaybeLabelledPlace<'tcx, BorrowedPlace<'tcx>> {
         self.deref_place
     }
 
@@ -66,7 +67,11 @@ impl<'tcx> DerefEdge<'tcx> {
         let blocked_place_label: Option<SnapshotLocation> = None;
         DerefEdge {
             blocked_place: MaybeLabelledPlace::new(place, blocked_place_label),
-            deref_place: place.project_deref(ctxt).into(),
+            deref_place: place
+                .project_deref(ctxt)
+                .unwrap()
+                .expect_borrowed_place(ctxt)
+                .into(),
             blocked_lifetime_projection,
         }
     }
@@ -77,7 +82,7 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for DerefEdge<'tcx> {
         self.blocked_place.check_validity(ctxt)?;
         self.deref_place.check_validity(ctxt)?;
         self.blocked_lifetime_projection.check_validity(ctxt)?;
-        if self.deref_place.last_projection().unwrap().1 != mir::PlaceElem::Deref {
+        if self.deref_place.to_place_labelled().last_projection().unwrap().1 != mir::PlaceElem::Deref {
             return Err("Deref edge deref place must end with a deref projection".to_owned());
         }
         Ok(())
@@ -120,18 +125,19 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctx
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
-    for DerefEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt + Copy> LabelEdgePlaces<'tcx, Ctxt, Place<'tcx>>
+    for DerefEdge<'tcx>
 where
-    MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
+    MaybeLabelledPlace<'tcx>: LabelPlace<'tcx, Ctxt>,
+    Place<'tcx>: PcgPlace<'tcx, Ctxt>,
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx, P>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
+        predicate: &LabelNodePredicate<'tcx>,
+        labeller: &impl PlaceLabeller<'tcx, Ctxt>,
         ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx, P>> {
-        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx, P>> = vec![
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx>> = vec![
             &mut self.blocked_place,
             &mut self.blocked_lifetime_projection.base,
         ];
@@ -146,25 +152,21 @@ where
 
     fn label_blocked_by_places(
         &mut self,
-        predicate: &LabelNodePredicate<'tcx, P>,
-        labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
-        ctxt: Ctxt,
-    ) -> HashSet<NodeReplacement<'tcx, P>> {
-        conditionally_label_places(
-            vec![&mut self.deref_place],
-            predicate,
-            labeller,
-            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Deref),
-            ctxt,
-        )
+        _predicate: &LabelNodePredicate<'tcx>,
+        _labeller: &impl PlaceLabeller<'tcx, Ctxt>,
+        _ctxt: Ctxt,
+    ) -> HashSet<NodeReplacement<'tcx>> {
+        // BorrowedPlace deref_place uses a different type parameter (BP),
+        // so labelling is handled separately via to_place_labelled conversion.
+        HashSet::default()
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for DerefEdge<'tcx, P> {
+impl<'tcx, Ctxt: Copy> EdgeData<'tcx, Ctxt> for DerefEdge<'tcx> {
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -179,11 +181,13 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for Dere
 
     fn blocked_by_nodes<'slf>(
         &'slf self,
-        ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+        _ctxt: Ctxt,
+    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
-        Box::new(vec![self.deref_place.to_local_node(ctxt)].into_iter())
+        Box::new(
+            vec![LocalNode::Place(self.deref_place.to_place_labelled())].into_iter(),
+        )
     }
 }

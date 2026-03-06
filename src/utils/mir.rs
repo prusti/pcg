@@ -1,19 +1,10 @@
-use derive_more::From;
+use derive_more::{Deref, From};
 
 use crate::rustc_interface::middle::mir;
 
-#[cfg(feature = "type-export")]
-#[derive(specta::Type)]
-struct BasicBlockMarker {
-    _basic_block: (),
-}
-
 #[derive(Copy, Clone, From, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct BasicBlock(
-    #[cfg_attr(feature = "type-export", specta(type = crate::utils::StringOf<BasicBlockMarker>))]
-    mir::BasicBlock,
-);
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+pub struct BasicBlock(#[cfg_attr(feature = "type-export", ts(type = "string"))] mir::BasicBlock);
 
 impl std::fmt::Debug for BasicBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -27,5 +18,22 @@ impl serde::Serialize for BasicBlock {
         S: serde::Serializer,
     {
         format!("{:?}", self.0).serialize(serializer)
+    }
+}
+
+#[derive(From, Deref, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Local(mir::Local);
+
+#[cfg(feature = "type-export")]
+impl ts_rs::TS for Local {
+    type WithoutGenerics = Local;
+    type OptionInnerType = Local;
+
+    fn name(_cfg: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
+
+    fn inline(cfg: &ts_rs::Config) -> String {
+        <Self as ts_rs::TS>::name(cfg)
     }
 }

@@ -15,7 +15,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        DebugCtxt, PcgPlace, Place, SnapshotLocation,
+        DebugCtxt, HasCompilerCtxt, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -277,14 +277,16 @@ pub(crate) trait LocalNodeLike<'tcx, Ctxt, P = Place<'tcx>>:
     fn to_local_node(self, ctxt: Ctxt) -> LocalNode<'tcx, P>;
 }
 
-impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
-    fn to_local_node(self, _ctxt: Ctxt) -> LocalNode<'tcx> {
-        LocalNode::Place(self.into())
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> LocalNodeLike<'tcx, Ctxt> for mir::Place<'tcx> {
+    fn to_local_node(self, ctxt: Ctxt) -> LocalNode<'tcx> {
+        LocalNode::Place(Place::from_mir_place(self, ctxt).into())
     }
 }
 
-impl<'tcx, Ctxt> PcgNodeLike<'tcx, Ctxt, Place<'tcx>> for mir::Place<'tcx> {
-    fn to_pcg_node(self, _ctxt: Ctxt) -> PcgNode<'tcx> {
-        self.into()
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PcgNodeLike<'tcx, Ctxt, Place<'tcx>>
+    for mir::Place<'tcx>
+{
+    fn to_pcg_node(self, ctxt: Ctxt) -> PcgNode<'tcx> {
+        PcgNode::Place(Place::from_mir_place(self, ctxt).into())
     }
 }

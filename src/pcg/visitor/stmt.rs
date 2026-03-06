@@ -1,16 +1,21 @@
 use super::PcgVisitor;
 
 use crate::{
-    action::BorrowPcgAction,
+    action::{BorrowPcgAction, OwnedPcgAction},
     borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
+        borrow_pcg_edge::BorrowPcgEdgeLike,
+        edge::kind::BorrowPcgEdgeKind, region_projection::HasRegions,
     },
-    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesReader},
-    pcg_validity_assert,
+    owned_pcg::RepackOp,
+    pcg::{
+        CapabilityKind, OwnedCapability, PcgRefLike, PositiveCapability,
+        place_capabilities::PlaceCapabilitiesReader,
+    },
     rustc_interface::middle::mir::{Statement, StatementKind},
+    utils::Place,
 };
 
-use crate::utils::{self, DataflowCtxt, visitor::FallableVisitor};
+use crate::utils::{DataflowCtxt, visitor::FallableVisitor};
 
 use super::{EvalStmtPhase, PcgError};
 
@@ -35,20 +40,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     fn stmt_pre_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
         assert!(self.phase() == EvalStmtPhase::PreMain);
         match &statement.kind {
-            StatementKind::StorageDead(local) => {
-                let place: utils::Place<'tcx> = (*local).into();
-                let snapshot_location = self.prev_snapshot_location();
-                self.record_and_apply_action(
-                    BorrowPcgAction::label_place_and_update_related_capabilities(
-                        place,
-                        snapshot_location,
-                        LabelPlaceReason::StorageDead,
-                    )
-                    .into(),
-                )?;
-            }
             StatementKind::Assign(box (target, _)) => {
-                let target: utils::Place<'tcx> = (*target).into();
+                let target = Place::from_mir_place(*target, self.ctxt);
                 // Any references to target should be made old because it
                 // will be overwritten in the assignment.
                 if target.is_ref(self.ctxt)
@@ -63,15 +56,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // and its permission should be Exclusive.
                     if self
                         .pcg
-                        .capabilities
-                        .get(target, self.ctxt)
-                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
-                        == Some(CapabilityKind::Read)
+                        .place_capability_equals(target, PositiveCapability::Read, self.ctxt)
                     {
                         self.record_and_apply_action(
                             BorrowPcgAction::restore_capability(
                                 target,
-                                CapabilityKind::Exclusive,
+                                PositiveCapability::Exclusive,
                                 "Assign: restore capability to exclusive",
                             )
                             .into(),
@@ -79,24 +69,29 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
 
-                if let Some(target_cap_sym) = self.pcg.capabilities.get(target, self.ctxt) {
-                    let target_cap = target_cap_sym.expect_concrete();
-                    pcg_validity_assert!(
-                        target_cap >= CapabilityKind::Write,
-                        "target_cap: {:?}",
-                        target_cap
-                    );
-                    if target_cap != CapabilityKind::Write {
-                        self.record_and_apply_action(
-                            BorrowPcgAction::weaken(
-                                target,
-                                target_cap,
-                                Some(CapabilityKind::Write),
-                                "pre_main",
-                            )
-                            .into(),
-                        )?;
-                    }
+                if let Some(target) = target.as_owned_place(self.ctxt)
+                    && let Some(owned_cap) = self.pcg.owned.owned_capability(target)
+                    && owned_cap > OwnedCapability::Uninitialized
+                {
+                    self.record_and_apply_action(
+                        OwnedPcgAction::new(
+                            RepackOp::weaken(target, owned_cap, OwnedCapability::Uninitialized),
+                            None,
+                        )
+                        .into(),
+                    )?;
+                } else if let Some(target_cap) = self.pcg.get(target, self.ctxt).into_positive()
+                    && CapabilityKind::<()>::Write < target_cap
+                {
+                    self.record_and_apply_action(
+                        BorrowPcgAction::weaken(
+                            target,
+                            target_cap,
+                            CapabilityKind::Write,
+                            "pre_main",
+                        )
+                        .into(),
+                    )?;
                 }
                 for rp in target.lifetime_projections(self.ctxt).into_iter() {
                     let blocked_edges = self
@@ -126,7 +121,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     fn stmt_post_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
         assert!(self.phase() == EvalStmtPhase::PostMain);
         if let StatementKind::Assign(box (target, rvalue)) = &statement.kind {
-            self.assign_post_main((*target).into(), rvalue)?;
+            self.assign_post_main(Place::from_mir_place(*target, self.ctxt), rvalue)?;
         }
         Ok(())
     }

@@ -8,7 +8,12 @@ mod fpcs;
 pub(crate) mod join;
 pub(crate) mod join_semi_lattice;
 mod local;
+pub(crate) mod materialize;
+pub(crate) mod node;
+pub(crate) mod node_data;
+pub(crate) mod traverse;
 mod update;
 
 pub use fpcs::*;
 pub(crate) use local::*;
+pub(crate) use node::*;

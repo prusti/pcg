@@ -7,12 +7,14 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Weaken,
+    DebugDataTypes, PcgDataTypes, RepackDataTypes, RepackType, Weaken,
+    pcg::{OwnedCapability, edge::EdgeMutability},
     rustc_interface::middle::mir::{self, PlaceElem},
+    utils::{OwnedPlace, PlaceLike},
 };
 
 use crate::{
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{
         CompilerCtxt, ConstantIndex, DebugRepr, HasCompilerCtxt, Place,
@@ -21,19 +23,261 @@ use crate::{
 };
 use serde_derive::Serialize;
 
+pub(crate) type RequiredGuide<D = ()> = RepackGuide<mir::Local, D, !>;
+
+impl From<RequiredGuide> for RepackGuide {
+    fn from(val: RequiredGuide) -> Self {
+        match val {
+            RepackGuide::Default(never) => match never {},
+            RepackGuide::Downcast(downcast, ()) => RepackGuide::Downcast(downcast, ()),
+            RepackGuide::ConstantIndex(constant_index, ()) => {
+                RepackGuide::ConstantIndex(constant_index, ())
+            }
+            RepackGuide::Index(local, ()) => RepackGuide::Index(local, ()),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data: (),
+            } => RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data: (),
+            },
+        }
+    }
+}
+
+impl Default for RepackGuide {
+    fn default() -> Self {
+        RepackGuide::Default(())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum RepackGuide<Local = mir::Local> {
-    Downcast(Option<Symbol>, VariantIdx),
-    ConstantIndex(ConstantIndex),
-    Index(Local),
-    Subslice { from: u64, to: u64, from_end: bool },
+pub enum RepackGuide<Local = mir::Local, D = (), Default = ()> {
+    Default(Default),
+    Downcast(Downcast, D),
+    ConstantIndex(ConstantIndex, D),
+    Index(Local, D),
+    Subslice {
+        from: u64,
+        to: u64,
+        from_end: bool,
+        data: D,
+    },
+}
+
+#[cfg(feature = "type-export")]
+impl ts_rs::TS for RepackGuide {
+    type WithoutGenerics = RepackGuide;
+
+    type OptionInnerType = RepackGuide;
+
+    fn name(_cfg: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
+
+    fn inline(cfg: &ts_rs::Config) -> String {
+        <Self as ts_rs::TS>::name(cfg)
+    }
+}
+
+impl serde::Serialize for RepackGuide {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(format!("{self:?}").as_str())
+    }
+}
+
+impl<'tcx, D, Default: Copy> RepackGuide<mir::Local, D, Default> {
+    pub(crate) fn try_map_data<'slf, R>(
+        &'slf self,
+        f: impl Fn(&'slf D) -> Option<R>,
+    ) -> Option<RepackGuide<mir::Local, R, Default>> {
+        match self {
+            RepackGuide::Index(local, data) => Some(RepackGuide::Index(*local, f(data)?)),
+            RepackGuide::Downcast(downcast, data) => {
+                Some(RepackGuide::Downcast(*downcast, f(data)?))
+            }
+            RepackGuide::ConstantIndex(constant_index, data) => {
+                Some(RepackGuide::ConstantIndex(*constant_index, f(data)?))
+            }
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => Some(RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: f(data)?,
+            }),
+            RepackGuide::Default(other) => Some(RepackGuide::Default(*other)),
+        }
+    }
+
+    pub(crate) fn as_non_default(&self) -> Option<RequiredGuide> {
+        match self {
+            RepackGuide::Default(_) => None,
+            RepackGuide::Index(local, _) => Some(RepackGuide::Index(*local, ())),
+            RepackGuide::Downcast(downcast, _) => Some(RepackGuide::Downcast(*downcast, ())),
+            RepackGuide::ConstantIndex(constant_index, _) => {
+                Some(RepackGuide::ConstantIndex(*constant_index, ()))
+            }
+            RepackGuide::Subslice {
+                from, to, from_end, ..
+            } => Some(RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: (),
+            }),
+        }
+    }
+
+    pub(crate) fn map_data<'slf, R>(
+        &'slf self,
+        f: impl FnOnce(&'slf D) -> R,
+    ) -> RepackGuide<mir::Local, R, Default>
+    where
+        D: 'slf,
+        'tcx: 'slf,
+    {
+        match self {
+            RepackGuide::Index(local, data) => RepackGuide::Index(*local, f(data)),
+            RepackGuide::Downcast(downcast, data) => RepackGuide::Downcast(*downcast, f(data)),
+            RepackGuide::ConstantIndex(constant_index, data) => {
+                RepackGuide::ConstantIndex(*constant_index, f(data))
+            }
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => RepackGuide::Subslice {
+                from: *from,
+                to: *to,
+                from_end: *from_end,
+                data: f(data),
+            },
+            RepackGuide::Default(other) => RepackGuide::Default(*other),
+        }
+    }
+
+    pub(crate) fn elem_data_mut(&mut self) -> (PlaceElem<'tcx>, &mut D) {
+        match self {
+            RepackGuide::Index(local, data) => (PlaceElem::Index(*local), data),
+            RepackGuide::Downcast(downcast, data) => (
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx),
+                data,
+            ),
+            RepackGuide::ConstantIndex(constant_index, data) => (
+                PlaceElem::ConstantIndex {
+                    offset: constant_index.offset,
+                    min_length: constant_index.min_length,
+                    from_end: constant_index.from_end,
+                },
+                data,
+            ),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => (
+                PlaceElem::Subslice {
+                    from: *from,
+                    to: *to,
+                    from_end: *from_end,
+                },
+                data,
+            ),
+            RepackGuide::Default(_) => todo!(),
+        }
+    }
+    pub(crate) fn without_data(&self) -> RepackGuide<mir::Local, (), Default> {
+        self.map_data(|_| ())
+    }
+    pub(crate) fn elem_data(&self) -> (PlaceElem<'tcx>, &D) {
+        match self {
+            RepackGuide::Index(local, data) => (PlaceElem::Index(*local), data),
+            RepackGuide::Downcast(downcast, data) => (
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx),
+                data,
+            ),
+            RepackGuide::ConstantIndex(constant_index, data) => (
+                PlaceElem::ConstantIndex {
+                    offset: constant_index.offset,
+                    min_length: constant_index.min_length,
+                    from_end: constant_index.from_end,
+                },
+                data,
+            ),
+            RepackGuide::Subslice {
+                from,
+                to,
+                from_end,
+                data,
+            } => (
+                PlaceElem::Subslice {
+                    from: *from,
+                    to: *to,
+                    from_end: *from_end,
+                },
+                data,
+            ),
+            RepackGuide::Default(_) => todo!(),
+        }
+    }
+}
+
+impl<Default: Clone + Eq + std::fmt::Debug> RepackGuide<mir::Local, (), Default> {
+    fn downcast(symbol: Option<Symbol>, variant_idx: VariantIdx) -> Self {
+        Self::Downcast(
+            Downcast {
+                symbol,
+                variant_idx,
+            },
+            (),
+        )
+    }
+    fn constant_index(offset: u64, min_length: u64, from_end: bool) -> Self {
+        Self::ConstantIndex(
+            ConstantIndex {
+                offset,
+                min_length,
+                from_end,
+            },
+            (),
+        )
+    }
+
+    fn subslice(from: u64, to: u64, from_end: bool) -> Self {
+        Self::Subslice {
+            from,
+            to,
+            from_end,
+            data: (),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct Downcast {
+    pub(crate) symbol: Option<Symbol>,
+    pub(crate) variant_idx: VariantIdx,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RepackGuide {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
-                RepackGuide::Index(local) => {
+                RepackGuide::Index(local, ()) => {
                     format!("index with local {}", (*local).display_string(ctxt))
                 }
                 _ => format!("{self:?}"),
@@ -43,65 +287,65 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
     }
 }
 
-impl From<RepackGuide> for PlaceElem<'_> {
-    fn from(val: RepackGuide) -> Self {
+impl From<RequiredGuide> for PlaceElem<'_> {
+    fn from(val: RequiredGuide) -> Self {
         match val {
-            RepackGuide::Index(local) => PlaceElem::Index(local),
-            RepackGuide::Downcast(symbol, variant_idx) => PlaceElem::Downcast(symbol, variant_idx),
-            RepackGuide::ConstantIndex(constant_index) => PlaceElem::ConstantIndex {
+            RepackGuide::Index(local, ()) => PlaceElem::Index(local),
+            RepackGuide::Downcast(downcast, ()) => {
+                PlaceElem::Downcast(downcast.symbol, downcast.variant_idx)
+            }
+            RepackGuide::ConstantIndex(constant_index, ()) => PlaceElem::ConstantIndex {
                 offset: constant_index.offset,
                 min_length: constant_index.min_length,
                 from_end: constant_index.from_end,
             },
-            RepackGuide::Subslice { from, to, from_end } => {
-                PlaceElem::Subslice { from, to, from_end }
-            }
+            RepackGuide::Subslice {
+                from, to, from_end, ..
+            } => PlaceElem::Subslice { from, to, from_end },
         }
     }
 }
 
-impl TryFrom<PlaceElem<'_>> for RepackGuide {
-    type Error = ();
-    fn try_from(elem: PlaceElem<'_>) -> Result<Self, Self::Error> {
+impl From<PlaceElem<'_>> for RepackGuide {
+    fn from(elem: PlaceElem<'_>) -> Self {
         match elem {
-            PlaceElem::Index(local) => Ok(RepackGuide::Index(local)),
-            PlaceElem::Downcast(symbol, variant_idx) => {
-                Ok(RepackGuide::Downcast(symbol, variant_idx))
-            }
+            PlaceElem::Index(local) => RepackGuide::Index(local, ()),
+            PlaceElem::Downcast(symbol, variant_idx) => RepackGuide::downcast(symbol, variant_idx),
             PlaceElem::ConstantIndex {
                 offset,
                 min_length,
                 from_end,
-            } => Ok(RepackGuide::ConstantIndex(ConstantIndex {
-                offset,
-                min_length,
-                from_end,
-            })),
-            PlaceElem::Subslice { from, to, from_end } => {
-                Ok(RepackGuide::Subslice { from, to, from_end })
-            }
-            _ => Err(()),
+            } => RepackGuide::constant_index(offset, min_length, from_end),
+            PlaceElem::Subslice { from, to, from_end } => RepackGuide::subslice(from, to, from_end),
+            _ => RepackGuide::Default(()),
         }
     }
 }
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Place=String,Guide=String)))]
+pub struct RepackExpand<
+    'tcx,
+    Place = crate::utils::Place<'tcx>,
+    Guide = RepackGuide,
+    Capability = EdgeMutability,
+> {
     pub(crate) from: Place,
-    pub(crate) guide: Option<Guide>,
-    pub(crate) capability: CapabilityKind,
+    pub(crate) guide: Guide,
+    pub(crate) mutability: Capability,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackExpand<'tcx> {
-    type Repr = RepackExpand<'static, String, String>;
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, C: Copy + serde::Serialize> DebugRepr<Ctxt>
+    for RepackExpand<'tcx, Place<'tcx>, RepackGuide, C>
+{
+    type Repr = RepackExpand<'static, String, String, C>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         RepackExpand {
             from: self.from.display_string(ctxt),
-            guide: self.guide.map(|g| g.display_string(ctxt)),
-            capability: self.capability,
+            guide: self.guide.display_string(ctxt),
+            mutability: self.mutability,
             _marker: PhantomData,
         }
     }
@@ -110,20 +354,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
 impl<'tcx> RepackExpand<'tcx> {
     pub(crate) fn new(
         from: Place<'tcx>,
-        guide: Option<RepackGuide>,
-        capability: CapabilityKind,
+        guide: RepackGuide,
+        edge_mutability: EdgeMutability,
     ) -> Self {
         Self {
             from,
             guide,
-            capability,
+            mutability: edge_mutability,
             _marker: PhantomData,
         }
     }
 
     #[must_use]
-    pub fn capability(&self) -> CapabilityKind {
-        self.capability
+    pub fn mutability(&self) -> EdgeMutability {
+        self.mutability
     }
 
     #[must_use]
@@ -132,7 +376,7 @@ impl<'tcx> RepackExpand<'tcx> {
     }
 
     #[must_use]
-    pub fn guide(&self) -> Option<RepackGuide> {
+    pub fn guide(&self) -> RepackGuide {
         self.guide
     }
 
@@ -150,11 +394,12 @@ impl<'tcx> RepackExpand<'tcx> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
-    pub(crate) to: Place,
-    pub(crate) capability: CapabilityKind,
-    pub(crate) guide: Option<Guide>,
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Guide=String)))]
+pub struct RepackCollapse<'tcx, P = crate::utils::Place<'tcx>, Guide = RepackGuide> {
+    pub(crate) to: P,
+    pub(crate) capability: PositiveCapability,
+    pub(crate) guide: Guide,
     #[serde(skip)]
     _marker: PhantomData<&'tcx ()>,
 }
@@ -165,18 +410,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackCo
         RepackCollapse {
             to: self.to.display_string(ctxt),
             capability: self.capability,
-            guide: self.guide.map(|g| g.display_string(ctxt)),
+            guide: self.guide.display_string(ctxt),
             _marker: PhantomData,
         }
     }
 }
 
 impl<'tcx> RepackCollapse<'tcx> {
-    pub(crate) fn new(
-        to: Place<'tcx>,
-        capability: CapabilityKind,
-        guide: Option<RepackGuide>,
-    ) -> Self {
+    pub(crate) fn new(to: Place<'tcx>, capability: PositiveCapability, guide: RepackGuide) -> Self {
         Self {
             to,
             capability,
@@ -186,14 +427,14 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 
     #[must_use]
-    pub fn guide(self) -> Option<RepackGuide> {
+    pub fn guide(self) -> RepackGuide {
         self.guide
     }
 
     #[must_use]
     pub fn box_deref_place(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<Place<'tcx>> {
         if self.to.ty(ctxt).ty.is_box() {
-            self.to.project_deeper(PlaceElem::Deref, ctxt).ok()
+            self.to.project_elem(PlaceElem::Deref, ctxt).ok()
         } else {
             None
         }
@@ -205,7 +446,7 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 
     #[must_use]
-    pub fn capability(&self) -> CapabilityKind {
+    pub fn capability(&self) -> PositiveCapability {
         self.capability
     }
 
@@ -214,11 +455,42 @@ impl<'tcx> RepackCollapse<'tcx> {
     }
 }
 
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+pub struct PcgRepackOpDataTypes<'tcx, P = Place<'tcx>, RepackMetadata = RepackType>(
+    PhantomData<&'tcx (P, RepackMetadata)>,
+);
+
+impl<P, E> Eq for PcgRepackOpDataTypes<'_, P, E> {}
+
+impl<P, E> PartialEq for PcgRepackOpDataTypes<'_, P, E> {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl<P, E> Clone for PcgRepackOpDataTypes<'_, P, E> {
+    fn clone(&self) -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<P, E> std::fmt::Debug for PcgRepackOpDataTypes<'_, P, E> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PcgRepackOpDataTypes")
+    }
+}
+
+impl<'tcx, P: std::fmt::Debug, E> PcgDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {
+    type Place = P;
+}
+
+impl<'tcx, P: std::fmt::Debug, E> RepackDataTypes<'tcx> for PcgRepackOpDataTypes<'tcx, P, E> {}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[serde(tag = "type", content = "data")]
-pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
-{
+#[cfg_attr(feature = "type-export", ts(concrete(D=PcgRepackOpDataTypes<'tcx>)))]
+pub enum RepackOp<'tcx, D: RepackDataTypes<'tcx> = PcgRepackOpDataTypes<'tcx>> {
     /// Rust will sometimes join two `BasicBlocks` where a local is live in one and dead in the other.
     /// Our analysis will join these two into a state where the local is dead, and this Op marks the
     /// edge from where it was live.
@@ -232,49 +504,55 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// This Op only appears for edges between basic blocks. It is often emitted for edges to panic
     /// handling blocks, but can also appear in regular code for example in the MIR of
     /// [this function](https://github.com/dtolnay/syn/blob/3da56a712abf7933b91954dbfb5708b452f88504/src/attr.rs#L623-L628).
-    StorageDead(Local),
+    StorageDead(D::Local),
     /// This Op only appears within a `BasicBlock` and is attached to a
     /// [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
     /// statement. We emit it for any such statement where the local may already be dead. We
     /// guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
     /// safely ignore the statement this is attached to.
-    IgnoreStorageDead(Local),
+    IgnoreStorageDead(D::Local),
     /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
     /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
     ///
     /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
     /// the same capability. It can also appear at basic block join points, where one branch has
     /// a weaker capability than the other.
-    Weaken(Weaken<'tcx, Place, CapabilityKind>),
+    Weaken(Weaken<'tcx, D::OwnedPlace, OwnedCapability, OwnedCapability>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places (except as noted in the documentation for that fn) which will be obtained by unpacking.
-    Expand(RepackExpand<'tcx, Place, Guide>),
+    Expand(RepackExpand<'tcx, D::Place, D::RepackGuide, D::ExpandCapability>),
     /// Instructs that one should pack up `place` with the given capability.
     /// `guide` denotes e.g. the enum variant to pack from. One can use
     /// [`Place::expand_one_level(_.0, _.1, ..)`](Place::expand_one_level) to get the set of all
     /// places which should be packed up. We guarantee that the current state holds exactly the
     /// given capability for all places in this set.
-    Collapse(RepackCollapse<'tcx, Place, Guide>),
+    Collapse(RepackCollapse<'tcx, D::Place, D::RepackGuide>),
     /// TODO
-    DerefShallowInit(Place, Place),
+    DerefShallowInit(D::Place, D::Place),
     /// This place should have its capability changed from `Lent` (for mutably
     /// borrowed places) or `Read` (for shared borrow places), to the given
     /// capability, because it is no longer lent out.
-    RegainLoanedCapability(RegainedCapability<Place>),
+    RegainLoanedCapability(RegainedCapability<D::Place>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
-    pub(crate) capability: CapabilityKind,
+    #[cfg_attr(
+        feature = "type-export",
+        ts(
+            as = "crate::pcg::capabilities::capability_kind::debug_reprs::PositiveCapabilityDebugRepr"
+        )
+    )]
+    pub(crate) capability: PositiveCapability,
 }
 
 impl<Place> RegainedCapability<Place> {
-    pub fn new(place: Place, capability: CapabilityKind) -> Self {
+    pub fn new(place: Place, capability: PositiveCapability) -> Self {
         Self { place, capability }
     }
 }
@@ -292,7 +570,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp<'tcx> {
-    type Repr = RepackOp<'static, String, String, String>;
+    type Repr = RepackOp<'static, DebugDataTypes>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         match self {
             RepackOp::StorageDead(local) => RepackOp::StorageDead(local.display_string(ctxt)),
@@ -312,10 +590,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     }
 }
 
-impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
-    for RepackOp<'_, mir::Local, P>
+impl<'tcx, Ctxt: Copy, D: RepackDataTypes<'tcx>> DisplayWithCtxt<Ctxt> for RepackOp<'tcx, D>
+where
+    D::Place: DisplayWithCtxt<Ctxt>,
+    D::OwnedPlace: DisplayWithCtxt<Ctxt>,
+    D::ExpandCapability: DisplayWithCtxt<Ctxt>,
 {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -326,10 +607,11 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
                     )
                 }
                 RepackOp::Expand(expand) => format!(
-                    "unpack {} with capability {:?}",
+                    "unpack {} with capability {}",
                     expand.from.display_string(ctxt),
-                    expand.capability
+                    expand.mutability.display_output(ctxt, mode).into_text()
                 ),
+                RepackOp::Weaken(weaken) => weaken.display_output(ctxt, mode).into_text().to_string(),
                 _ => format!("{self:?}"),
             }
             .into(),
@@ -337,20 +619,11 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     }
 }
 
-impl<'tcx> RepackOp<'tcx> {
-    /// Temporary: create a Weaken for `StorageDead`.
-    /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
-    pub(crate) fn weaken_for_storage_dead(
-        place: Place<'tcx>,
-        from: CapabilityKind,
-        to: CapabilityKind,
-    ) -> Self {
-        Self::Weaken(Weaken::new_for_storage_dead(place, from, to))
-    }
+impl<'tcx, D: RepackDataTypes<'tcx>> RepackOp<'tcx, D> {
     pub(crate) fn expand<'a>(
-        from: Place<'tcx>,
-        guide: Option<RepackGuide>,
-        for_cap: CapabilityKind,
+        from: D::Place,
+        guide: D::RepackGuide,
+        for_cap: D::ExpandCapability,
         _ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Self {
         // Note that we might generate expand annotations with `Write` capability for
@@ -358,17 +631,24 @@ impl<'tcx> RepackOp<'tcx> {
         Self::Expand(RepackExpand {
             from,
             guide,
-            capability: for_cap,
+            mutability: for_cap,
             _marker: PhantomData,
         })
+    }
+}
+
+impl<'tcx> RepackOp<'tcx> {
+    pub(crate) fn weaken(place: OwnedPlace<'tcx>, from: OwnedCapability, to: OwnedCapability) -> Self {
+        assert!(from > to);
+        Self::Weaken(Weaken::new(place, from, to))
     }
 
     #[must_use]
     pub fn affected_place(&self) -> Place<'tcx> {
         match *self {
             RepackOp::StorageDead(local) | RepackOp::IgnoreStorageDead(local) => local.into(),
-            RepackOp::Weaken(Weaken { place, .. })
-            | RepackOp::Collapse(RepackCollapse { to: place, .. })
+            RepackOp::Weaken(Weaken { place, .. }) => place.place(),
+            RepackOp::Collapse(RepackCollapse { to: place, .. })
             | RepackOp::Expand(RepackExpand { from: place, .. })
             | RepackOp::RegainLoanedCapability(RegainedCapability { place, .. })
             | RepackOp::DerefShallowInit(place, _) => place,

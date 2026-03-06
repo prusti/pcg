@@ -8,10 +8,7 @@ use crate::{
         edge_data::EdgeData,
         graph::{Conditioned, frozen::FrozenGraphRef},
     },
-    pcg::{
-        PcgNode,
-        obtain::{PlaceCollapser, PlaceObtainer},
-    },
+    pcg::{PcgNode, PcgRefLike, obtain::PlaceObtainer},
     utils::{
         DataflowCtxt, DebugCtxt, HasPlace, Place,
         data_structures::{HashMap, HashSet},
@@ -54,13 +51,13 @@ impl<'tcx> EdgesToRemove<'tcx> {
     fn push(&mut self, edge: &BorrowPcgEdge<'tcx>, reason: Reason) {
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref) => {
-                if let Some(deref_edges) = self.deref_edges.get_mut(&deref.deref_place) {
+                if let Some(deref_edges) = self.deref_edges.get_mut(&deref.deref_place.to_place_labelled()) {
                     deref_edges
                         .value
                         .insert(Conditioned::new(*deref, edge.conditions().clone()));
                 } else {
                     self.deref_edges.insert(
-                        deref.deref_place,
+                        deref.deref_place.to_place_labelled(),
                         WithReason {
                             value: vec![Conditioned::new(*deref, edge.conditions().clone())]
                                 .into_iter()
@@ -127,7 +124,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     ) -> Result<(), PcgError<'tcx>> {
         let debug_iteration_limit = 10000;
         let mut iteration = 0;
-        self.restore_capability_to_leaf_places(for_place, self.ctxt)?;
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
@@ -137,12 +133,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             for action in edges_to_remove.removal_actions() {
                 match action {
                     RemovalAction::RemoveDerefEdgesTo(place, edges, reason) => {
-                        self.remove_deref_edges_to(place, edges, &reason)?;
+                        self.remove_deref_edges_to(
+                            place,
+                            edges,
+                            &format!("remove deref edges; {reason}"),
+                        )?;
                     }
                     RemovalAction::RemoveOtherEdge(borrow_pcg_edge, reason) => {
                         self.remove_edge_and_perform_associated_state_updates(
                             &borrow_pcg_edge,
-                            &reason,
+                            &format!("remove other edge; {reason}"),
                         )?;
                     }
                 }
@@ -252,7 +252,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: "Expansion is old or dead".into(),
                     }
-                } else if expansion.is_packable(self.pcg.capabilities, self.ctxt) {
+                } else if expansion.is_packable(&self.pcg.as_ref(), self.ctxt) {
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",

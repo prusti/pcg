@@ -13,21 +13,20 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{HasRegions, LocalLifetimeProjection},
         state::BorrowStateMutRef,
     },
     error::PcgError,
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
+        LabelPlaceConditionally, PcgMutRef, PcgRefLike, PositiveCapability,
         ctxt::AnalysisCtxt,
-        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
     },
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        Place, PlaceLike, SnapshotLocation, data_structures::HashSet,
     },
 };
 
@@ -45,12 +44,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> RenderDebugGraph
 {
     #[cfg(feature = "visualization")]
     fn render_debug_graph(&self, debug_imgcat: Option<DebugImgcat>, comment: &str) {
-        self.pcg.as_ref().render_debug_graph(
-            self.location(),
-            debug_imgcat,
-            comment,
-            self.ctxt.bc_ctxt(),
-        );
+        self.pcg
+            .as_ref()
+            .render_debug_graph(self.location(), debug_imgcat, comment, self.ctxt);
     }
 }
 
@@ -82,12 +78,22 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
         }
     }
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) enum RefTargetType {
+    Shared,
+    NormalMut,
+    TwoPhase,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(crate) enum ObtainType {
-    ForStorageDead,
-    Capability(CapabilityKind),
-    TwoPhaseExpand,
+    StorageDead,
+    RefTarget(RefTargetType),
+    Move,
+    Copy,
+    Write,
     LoopInvariant {
         is_blocked: bool,
         usage_type: PlaceUsageType,
@@ -95,74 +101,33 @@ pub(crate) enum ObtainType {
 }
 
 impl ObtainType {
-    /// The capability to use when generating expand annotations.
-    ///
-    /// If the expansion is for a place e.g. `x.f` where `x` currently has
-    /// Exclusive capability, and the obtain is for Write capability, then
-    /// expansion will have Exclusive capability (subsequently a Weaken
-    /// annotation will be generated for the target place to downgrade it from
-    /// Exclusive to Write). This ensures that other fields of `x` retain their
-    /// Exclusive capability.
-    ///
-    /// Otherwise, the capability for the expansion is the same as the
-    /// capability for the [`ObtainType`].
-    pub(crate) fn capability_for_expand<'a, 'tcx>(
-        self,
-        place: Place<'tcx>,
-        current_cap: CapabilityKind,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind
-    where
-        'tcx: 'a,
-    {
-        if let ObtainType::Capability(CapabilityKind::Write) = self
-            && current_cap.is_exclusive()
-        {
-            CapabilityKind::Exclusive
-        } else {
-            self.capability(place, ctxt)
-        }
-    }
-    pub(crate) fn capability<'a, 'tcx>(
+    pub(crate) fn min_required_capability_to_obtain<'a, 'tcx>(
         self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> CapabilityKind
+    ) -> PositiveCapability
     where
         'tcx: 'a,
     {
         match self {
-            ObtainType::ForStorageDead => CapabilityKind::Write,
-            ObtainType::Capability(cap) => cap,
-            ObtainType::TwoPhaseExpand => CapabilityKind::Read,
-            ObtainType::LoopInvariant {
-                is_blocked: _,
-                usage_type,
-            } => {
+            ObtainType::StorageDead | ObtainType::Write => PositiveCapability::Write,
+            ObtainType::Move
+            | ObtainType::RefTarget(RefTargetType::NormalMut | RefTargetType::TwoPhase) => {
+                PositiveCapability::Exclusive
+            }
+            ObtainType::Copy | ObtainType::RefTarget(RefTargetType::Shared) => {
+                PositiveCapability::Read
+            }
+            ObtainType::LoopInvariant { usage_type, .. } => {
                 if usage_type == PlaceUsageType::Read
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)
                 {
-                    CapabilityKind::Read
+                    PositiveCapability::Read
                 } else {
-                    CapabilityKind::Exclusive
+                    PositiveCapability::Exclusive
                 }
             }
-        }
-    }
-
-    pub(crate) fn should_label_rp<'a, 'tcx>(
-        self,
-        rp: LifetimeProjection<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        match self {
-            ObtainType::ForStorageDead | ObtainType::TwoPhaseExpand => true,
-            ObtainType::Capability(cap) => !cap.is_read(),
-            ObtainType::LoopInvariant { .. } => rp.base.is_mutable(ctxt),
         }
     }
 }
@@ -189,6 +154,7 @@ impl LabelForLifetimeProjection {
 }
 
 // TODO: The edges that are added here could just be part of the collapse "action" probably
+#[allow(dead_code)]
 pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     HasSnapshotLocation + ActionApplier<'tcx>
 {
@@ -196,95 +162,49 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn borrows_state(&mut self) -> BorrowStateMutRef<'_, 'tcx>;
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx>;
-
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
-
-    fn restore_capability_to_leaf_places(
-        &mut self,
-        parent_place: Option<Place<'tcx>>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        let mut leaf_places = self.leaf_places(ctxt.bc_ctxt());
-        tracing::debug!(
-            "Leaf places: {}",
-            leaf_places.display_string(ctxt.bc_ctxt())
-        );
-        leaf_places.retain(|p| {
-            self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read.into())
-                && !p.projects_shared_ref(ctxt)
-                && p.parent_place()
-                    .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())
-        });
-        tracing::debug!(
-            "Restoring capability to leaf places: {}",
-            leaf_places.display_string(ctxt.bc_ctxt())
-        );
-        for place in leaf_places {
-            if let Some(parent_place) = parent_place
-                && !parent_place.is_prefix_of(place)
-            {
-                continue;
-            }
-            let action = PcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "restore capability to leaf place",
-                ctxt,
-            );
-            self.apply_action(action)?;
-        }
-        Ok(())
-    }
 
     /// Collapses owned places and performs appropriate updates to lifetime projections.
     fn collapse_owned_places_and_lifetime_projections_to(
         &mut self,
         place: Place<'tcx>,
-        capability: CapabilityKind,
+        capability: PositiveCapability,
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
-        let to_collapse = self
-            .get_local_expansions(place.local)
-            .places_to_collapse_for_obtain_of(place, ctxt);
-        tracing::debug!(
-            "To obtain {}, will collapse {}",
-            place.display_string(ctxt.ctxt()),
-            to_collapse.display_string(ctxt.ctxt())
-        );
-        for place in to_collapse {
-            let expansions = self
-                .get_local_expansions(place.local)
-                .expansions_from(place)
-                .cloned()
-                .collect::<Vec<_>>();
-            for pe in expansions {
-                self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                    RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
-                    Some(context.clone().into()),
-                )))?;
-                for rp in place.lifetime_projections(ctxt) {
-                    let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
-                        .expansion_places(&pe.expansion, ctxt)
-                        .unwrap()
-                        .into_iter()
-                        .flat_map(|ep| {
-                            ep.lifetime_projections(ctxt)
-                                .into_iter()
-                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
-                                .map(std::convert::Into::into)
-                                .collect::<Vec<_>>()
-                        })
-                        .collect::<Vec<_>>();
-                    if rp_expansion.len() > 1 && capability.is_exclusive() {
-                        self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
-                    }
+    ) -> Result<bool, PcgError<'tcx>> {
+        let local_expansions = self.get_local_expansions(place.local);
+        let place = place.nearest_owned_place(ctxt).as_owned_place(ctxt).unwrap();
+        let Some(subtree) = local_expansions.find_subtree(place.projection).subtree() else {
+            return Ok(false);
+        };
+        let expansions = subtree.expansions_longest_first(place, ctxt).unwrap();
+        for pe in &expansions {
+            self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
+                RepackOp::Collapse(RepackCollapse::new(pe.place, capability, pe.guide())),
+                Some(context.clone().into()),
+            )))
+            .map_err(|e| e.add_context(format!("Collapsing expansions {expansions:?}")))?;
+            for rp in pe.place.lifetime_projections(ctxt) {
+                let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = pe
+                    .place
+                    .expansion_places(&pe.expansion, ctxt)
+                    .unwrap()
+                    .into_iter()
+                    .flat_map(|ep| {
+                        ep.lifetime_projections(ctxt)
+                            .into_iter()
+                            .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
+                            .map(std::convert::Into::into)
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                if rp_expansion.len() > 1 {
+                    self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
                 }
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Only for owned places.
@@ -298,7 +218,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             if let Some(place) = node.base.as_current_place() {
                 let labeller = SetLabel(self.prev_snapshot_location());
                 self.borrows_state().graph.label_place(
-                    (*place).into(),
+                    place,
                     LabelPlaceReason::Collapse,
                     &labeller,
                     ctxt,
@@ -307,7 +227,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 let mut replacements = HashSet::default();
                 node.label_place_conditionally(
                     &mut replacements,
-                    &LabelNodePredicate::PlaceEquals((*place).into()),
+                    &LabelNodePredicate::PlaceEquals(place),
                     &labeller,
                     LabelNodeContext::new(
                         SourceOrTarget::Source,

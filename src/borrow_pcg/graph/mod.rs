@@ -10,6 +10,7 @@ use std::{borrow::Cow, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
+        borrow_pcg_expansion::BorrowPcgExpansion,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         has_pcs_elem::LabelLifetimeProjectionResult,
         region_projection::LifetimeProjectionLabel,
@@ -20,12 +21,13 @@ use crate::{
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
+        ast::Mutability,
         data_structures::fx::FxHashSet,
         middle::mir::{self},
     },
     utils::{
-        CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt,
-        HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place, PlaceLike,
+        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
+        PcgNodeComponent, PcgPlace, PcgSettings, Place, PlaceLike,
         data_structures::{HashMap, HashSet},
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -130,20 +132,46 @@ impl<Kind: Eq + std::hash::Hash + PartialEq, VC: PartialEq> PartialEq
 pub(crate) fn borrows_imgcat_debug(
     block: mir::BasicBlock,
     debug_imgcat: Option<DebugImgcat>,
+    settings: &PcgSettings,
 ) -> bool {
-    if let Some(debug_block) = *DEBUG_BLOCK
+    if let Some(debug_block) = settings.debug_block
         && debug_block != block
     {
         return false;
     }
     if let Some(debug_imgcat) = debug_imgcat {
-        DEBUG_IMGCAT.contains(&debug_imgcat)
+        settings.debug_imgcat.contains(&debug_imgcat)
     } else {
-        !DEBUG_IMGCAT.is_empty()
+        !settings.debug_imgcat.is_empty()
     }
 }
 
 impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
+    pub(crate) fn descendant_edges<'slf, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
+        &'slf self,
+        node: BlockedNode<'tcx, P>,
+        ctxt: Ctxt,
+    ) -> HashSet<BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>>
+    where
+        EdgeKind: EdgeData<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: Eq + std::hash::Hash,
+    {
+        let mut seen: HashSet<BlockedNode<'tcx, P>> = HashSet::default();
+        let mut result: HashSet<BorrowPcgEdgeRef<'tcx, 'slf, EdgeKind, VC>> = HashSet::default();
+        let mut stack = vec![node];
+        while let Some(node) = stack.pop() {
+            if seen.insert(node) {
+                for edge in self.edges_blocking(node, ctxt) {
+                    result.insert(edge);
+                    for node in edge.kind.blocked_by_nodes(ctxt) {
+                        stack.push(node.into());
+                    }
+                }
+            }
+        }
+        result
+    }
+
     pub(crate) fn nodes<Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
         &self,
         ctxt: Ctxt,
@@ -258,7 +286,85 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
     }
 }
 
+pub(crate) enum BorrowedCapability {
+    Exclusive,
+    Read,
+    None,
+}
+
 impl<'tcx> BorrowsGraph<'tcx> {
+    pub(crate) fn is_transitively_blocked<'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: Ctxt,
+    ) -> Option<Mutability>
+    where
+        'tcx: 'a,
+    {
+        let mut result = None;
+        for edge in self.descendant_edges(place.into(), ctxt) {
+            match edge.kind {
+                BorrowPcgEdgeKind::Borrow(borrow) => {
+                    if borrow.effective_mutability().is_mut() {
+                        return Some(Mutability::Mut);
+                    }
+                    result = Some(Mutability::Not);
+                }
+                BorrowPcgEdgeKind::Abstraction(_) => {
+                    for blocked in edge.blocked_by_nodes(ctxt) {
+                        match blocked {
+                            PcgNode::Place(_) => todo!(),
+                            PcgNode::LifetimeProjection(lifetime_projection) => {
+                                if lifetime_projection.could_contain_mutable_borrows(ctxt) {
+                                    return Some(Mutability::Mut);
+                                }
+                                result = Some(Mutability::Not);
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        result
+    }
+
+    pub(crate) fn capability<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> Option<BorrowedCapability>
+    where
+        'tcx: 'a,
+    {
+        if !self.contains(place, ctxt) {
+            return None;
+        }
+        if place.projects_shared_ref(ctxt) {
+            return Some(BorrowedCapability::Read);
+        }
+        match self.is_transitively_blocked(place, ctxt) {
+            Some(Mutability::Mut) => return Some(BorrowedCapability::None),
+            Some(Mutability::Not) => return Some(BorrowedCapability::Read),
+            None => {}
+        }
+        if self.edges_blocking(place.into(), ctxt).next().is_some() {
+            return Some(BorrowedCapability::Read);
+        }
+        let blocked_by_edges = self.edges_blocked_by(place.into(), ctxt);
+        for edge in blocked_by_edges {
+            if let BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(place_expansion)) =
+                edge.kind
+                && place_expansion
+                    .expansion
+                    .iter()
+                    .all(|place| self.is_transitively_blocked(place.place(), ctxt).is_none())
+            {
+                return Some(BorrowedCapability::Read);
+            }
+        }
+        Some(BorrowedCapability::Exclusive)
+    }
     #[must_use]
     pub fn coupled_edges(&self) -> HashSet<Conditioned<PcgCoupledEdgeKind<'tcx>>> {
         self.edges
@@ -338,7 +444,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn contains_deref_edge_to(&self, place: Place<'tcx>) -> bool {
         self.edges().any(|edge| {
             if let BorrowPcgEdgeKind::Deref(e) = edge.kind {
-                e.deref_place == place.into()
+                e.deref_place.to_place_labelled() == place.into()
             } else {
                 false
             }
@@ -369,15 +475,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
-    pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
-        for edge in self.edges() {
-            if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind
-                && borrow.reserve_location() == location
-            {
-                return Some(borrow);
-            }
-        }
-        None
+    pub(crate) fn take_borrow_created_at(
+        &mut self,
+        location: mir::Location,
+    ) -> Option<Conditioned<BorrowEdge<'tcx>>> {
+        self.edges
+            .extract_if(|edge, _| {
+                if let BorrowPcgEdgeKind::Borrow(borrow) = edge {
+                    borrow.reserve_location() == location
+                } else {
+                    false
+                }
+            })
+            .map(|(edge, conditions)| {
+                let BorrowPcgEdgeKind::Borrow(borrow) = edge else {
+                    unreachable!();
+                };
+                Conditioned::new(borrow, conditions)
+            })
+            .next()
     }
 
     pub(crate) fn into_edges(self) -> impl Iterator<Item = BorrowPcgEdge<'tcx>> {
@@ -501,7 +617,8 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(concrete(Conditions=String)))]
 pub struct Conditioned<T, Conditions = ValidityConditions> {
     pub(crate) conditions: Conditions,
     pub(crate) value: T,

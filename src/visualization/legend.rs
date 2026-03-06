@@ -1,5 +1,5 @@
 use crate::{
-    pcg::CapabilityKind,
+    pcg::PositiveCapability,
     visualization::{GraphNode, NodeId, NodeType},
 };
 
@@ -105,9 +105,10 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
         node_type: NodeType::PlaceNode {
             owned: true,
             label: "x".to_owned(),
-            capability: Some(CapabilityKind::Write),
+            capability: Some(PositiveCapability::Write),
             location: None,
             ty: "&'a mut i32".to_owned(),
+            capability_reason: "Other".to_owned(),
         },
     };
 
@@ -128,6 +129,7 @@ fn write_node_legend<T: Write>(out: &mut T) -> io::Result<()> {
             location: None,
             capability: None,
             ty: "i32".to_owned(),
+            capability_reason: "Other".to_owned(),
         },
     };
 

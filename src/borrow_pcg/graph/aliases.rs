@@ -142,7 +142,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         for edge in self.edges_blocked_by(node, ctxt) {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
-                    let blocked = deref_edge.deref_place;
+                    let blocked = deref_edge.deref_place.to_place_labelled();
                     extend(blocked.into(), seen, &mut result, direct);
                 }
                 BorrowPcgEdgeKind::Borrow(borrow_edge) => {

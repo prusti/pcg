@@ -1,19 +1,25 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            kind::BorrowPcgEdgeKind,
+        },
+        edge_data::LabelNodePredicate,
+        graph::Conditioned,
         region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
+            HasRegions, LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
     },
+    error::CallWithUnsafePtrWithNestedLifetime,
     owned_pcg::{OwnedPcg, RepackExpand},
     pcg::{
-        CapabilityKind,
+        PcgRefLike,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
-        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
+        place_capabilities::PlaceCapabilitiesReader,
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
@@ -107,26 +113,22 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             })
             .collect::<HashSet<_>>();
         for place in leaf_future_node_places {
-            // If the place is a leaf, and its not borrowed, then we remove the future label
-            if self.pcg.is_expansion_leaf(place, self.ctxt)
-                && !self
-                    .ctxt
-                    .bc()
-                    .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
-                && self.pcg.capabilities.get(place, self.ctxt).is_none()
-            {
-                let action = PcgAction::restore_capability(
-                    place,
-                    CapabilityKind::Exclusive,
-                    "Leaf future node restore cap",
-                    self.ctxt,
-                );
-                self.record_and_apply_action(action)?;
+            // If the place is a leaf, then we remove the future label
+            if self.pcg.is_leaf_place(place, self.ctxt) {
+                self.record_and_apply_action(
+                    BorrowPcgAction::label_lifetime_projection(
+                        LabelNodePredicate::all_future_postfixes(place),
+                        None,
+                        "Leaf future node: remove future LP label",
+                    )
+                    .into(),
+                )?;
             }
         }
         Ok(())
     }
 
+    #[tracing::instrument(skip(self), level = "warn")]
     pub(crate) fn apply(
         mut self,
         object: AnalysisObject<'_, 'tcx>,
@@ -137,23 +139,23 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                 self.place_obtainer().collapse_owned_places()?;
                 for triple in &self.tw.operand_triples {
                     tracing::debug!("Require triple {:?}", triple);
-                    self.require_triple(*triple)?;
+                    self.require_triple(triple)?;
                 }
             }
             EvalStmtPhase::PostOperands => {
                 for triple in &self.tw.operand_triples {
-                    self.ensure_triple(*triple)?;
+                    self.ensure_triple(triple)?;
                 }
             }
             EvalStmtPhase::PreMain => {
                 for triple in &self.tw.main_triples {
                     tracing::debug!("Require triple {:?}", triple);
-                    self.require_triple(*triple)?;
+                    self.require_triple(triple)?;
                 }
             }
             EvalStmtPhase::PostMain => {
                 for triple in &self.tw.main_triples {
-                    self.ensure_triple(*triple)?;
+                    self.ensure_triple(triple)?;
                 }
             }
         }
@@ -238,7 +240,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
     ) -> Result<(), PcgError<'tcx>> {
         match operand {
             Operand::Copy(place) => {
-                let place: Place<'tcx> = (*place).into();
+                let place = Place::from_mir_place(*place, self.ctxt);
                 if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
                     return Err(PcgError::unsupported(
                         PcgUnsupportedError::MoveUnsafePtrWithNestedLifetime(e),
@@ -247,10 +249,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
             }
             Operand::Move(place) => {
                 if self.phase() == EvalStmtPhase::PostOperands {
+                    let place = Place::from_mir_place(*place, self.ctxt);
                     let snapshot_location = self.prev_snapshot_location();
                     self.record_and_apply_action(
                         BorrowPcgAction::label_place_and_update_related_capabilities(
-                            (*place).into(),
+                            place,
                             snapshot_location,
                             LabelPlaceReason::MoveOut,
                         )
@@ -281,15 +284,24 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         {
             for operand in args {
                 if let Some(place) = operand.node.place() {
-                    let place: utils::Place<'tcx> = place.into();
+                    let place = Place::from_mir_place(place, self.ctxt);
                     if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                        return Err(
-                            PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(e).into()
-                        );
+                        let function = format!("{func:?}");
+                        if function != "std::io::_print" {
+                            let err = CallWithUnsafePtrWithNestedLifetime {
+                                function: format!("{func:?}"),
+                                span: *fn_span,
+                                place: e,
+                            };
+                            return Err(PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(
+                                err,
+                            )
+                            .into());
+                        }
                     }
                 }
             }
-            let destination: utils::Place<'tcx> = (*destination).into();
+            let destination: utils::Place<'tcx> = Place::from_mir_place(*destination, self.ctxt);
             self.make_function_call_abstraction(
                 func,
                 *fn_span,
@@ -328,6 +340,10 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         self.super_rvalue_fallable(rvalue, location)?;
         Ok(())
     }
+
+    fn to_place(&self, place: mir::Place<'tcx>) -> Place<'tcx> {
+        Place::from_mir_place(place, self.ctxt)
+    }
 }
 
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
@@ -340,21 +356,22 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
         Ctxt: DataflowCtxt<'a, 'tcx>,
     {
         let local_expansions = self.pcg.owned[local].get_allocated();
-        let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
+        let leaf_expansions = local_expansions.leaf_expansions(local.into(), self.ctxt);
         let parent_places = leaf_expansions
             .iter()
-            .map(|pe| pe.place)
+            .map(|pe| pe.base_place)
             .collect::<HashSet<_>>();
         let places_to_collapse = parent_places
             .into_iter()
             .filter_map(|place| {
-                let expansion_places = local_expansions.all_children_of(place, self.ctxt);
+                let expansion_places = local_expansions
+                    .all_children_of(place.as_owned_place(self.ctxt).unwrap(), self.ctxt);
                 if expansion_places
                     .iter()
                     .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt.bc_ctxt()))
                     && let Some(candidate_cap) = self
                         .pcg
-                        .capabilities
+                        .as_ref()
                         .uniform_capability(expansion_places.into_iter(), self.ctxt)
                 {
                     Some((place, candidate_cap))
@@ -367,9 +384,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
             return Ok(false);
         }
         for (place, candidate_cap) in places_to_collapse {
+            let _span = tracing::span!(tracing::Level::WARN, "collapse_iteration",
+            place = place.display_string(self.ctxt.bc_ctxt()),
+            candidate_cap = ?candidate_cap
+            )
+            .entered();
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
-                candidate_cap.expect_concrete(),
+                candidate_cap.into_positive().unwrap(),
                 format!(
                     "Collapse owned place {} (iteration {})",
                     place.display_string(self.ctxt.bc_ctxt()),
@@ -377,18 +399,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 ),
                 self.ctxt,
             )?;
-            if place.projection.is_empty()
-                && self
-                    .pcg
-                    .capabilities
-                    .get(place, self.ctxt)
-                    .map(super::capabilities::SymbolicCapability::expect_concrete)
-                    == Some(CapabilityKind::Read)
-            {
-                self.pcg
-                    .capabilities
-                    .insert(place, CapabilityKind::Exclusive, self.ctxt);
-            }
         }
         Ok(true)
     }
@@ -419,15 +429,26 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         created_location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        let Some(borrow) = self.pcg.borrow_created_at(created_location) else {
+        let Some(Conditioned {
+            value: mut borrow,
+            conditions,
+        }) = self.pcg.take_borrow_created_at(created_location)
+        else {
             return Ok(());
         };
+        borrow.activated = true;
         tracing::info!(
             "{:?} activate twophase borrow: {}",
             self.location(),
             borrow.display_string(self.ctxt.bc_ctxt())
         );
         let blocked_place = borrow.blocked_place.place();
+        let borrow: BorrowPcgEdgeKind<'tcx> = borrow.into();
+        self.pcg
+            .borrow
+            .graph
+            .insert(Conditioned::new(borrow, conditions), self.ctxt.bc_ctxt());
+
         self.place_obtainer()
             .remove_read_permission_upwards_and_label_rps(
                 blocked_place,
@@ -441,12 +462,11 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &mut self,
         expand: RepackExpand<'tcx>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].get_allocated_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt);
+        expansions.perform_expand_action(expand, ctxt);
     }
 }

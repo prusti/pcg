@@ -16,10 +16,7 @@ use crate::{
     action::AppliedActions,
     error::PcgError,
     r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
-    pcg::{
-        ctxt::{AnalysisCtxt, HasSettings},
-        place_capabilities::SymbolicPlaceCapabilities,
-    },
+    pcg::ctxt::{AnalysisCtxt, HasSettings},
     pcg_validity_assert,
     rustc_interface::{
         middle::mir::{self, BasicBlock},
@@ -51,8 +48,8 @@ pub struct DataflowIterationDebugInfo {
 }
 
 #[derive(Clone, Eq, Debug)]
-pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
-    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
+pub struct PcgDomainData<'a, 'tcx> {
+    pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx>>>,
     pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }
 
@@ -82,7 +79,7 @@ impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
     }
 }
 
-impl<Capabilities: PartialEq> PartialEq for PcgDomainData<'_, '_, Capabilities> {
+impl PartialEq for PcgDomainData<'_, '_> {
     fn eq(&self, other: &Self) -> bool {
         self.pcg == other.pcg
     }

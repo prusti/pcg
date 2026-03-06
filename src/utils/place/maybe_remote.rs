@@ -61,16 +61,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
             MaybeRemotePlace::Remote(rp) => Some(MaybeRemoteCurrentPlace::Remote(*rp)),
         }
     }
-
-    pub(crate) fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        match self {
-            MaybeRemotePlace::Local(p) => p.is_mutable(ctxt),
-            MaybeRemotePlace::Remote(_) => false,
-        }
-    }
 }
 
 impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
@@ -190,12 +180,6 @@ impl<'tcx> From<LabelledPlace<'tcx>> for MaybeRemotePlace<'tcx> {
 
 impl<'tcx> From<Place<'tcx>> for MaybeRemotePlace<'tcx> {
     fn from(place: Place<'tcx>) -> Self {
-        MaybeRemotePlace::Local(place.into())
-    }
-}
-
-impl<'tcx> From<mir::Place<'tcx>> for MaybeRemotePlace<'tcx> {
-    fn from(place: mir::Place<'tcx>) -> Self {
         MaybeRemotePlace::Local(place.into())
     }
 }

@@ -17,9 +17,9 @@ impl<T: io::Write> GraphDrawer<T> {
         }
     }
 
-    pub(crate) fn draw<'a, 'tcx: 'a>(
+    pub(crate) fn draw<'pcg, 'a: 'pcg, 'tcx: 'a>(
         mut self,
-        graph: &Graph<'a>,
+        graph: &Graph<'pcg>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> io::Result<()> {
         let graph_with_edge_ctxt = DotGraphWithEdgeCtxt::from_graph(graph, ctxt);

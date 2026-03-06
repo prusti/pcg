@@ -10,7 +10,7 @@ fn f(mut x: i32, mut y: i32, mut z: i32) {
     let s = if z > 5 {
         &mut *r
     } else {
-        // PCG: bb5[1] pre_operands: r: W
+        // PCG: bb5[1] pre_operands: r: e
         &mut z
     };
 

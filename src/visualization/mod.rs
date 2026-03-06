@@ -7,6 +7,7 @@
 
 pub mod bc_facts_graph;
 pub(crate) mod ctxt;
+pub(crate) mod data;
 pub mod dot_graph;
 pub mod drawer;
 pub(crate) mod functions_metadata;
@@ -24,13 +25,8 @@ pub(crate) mod stmt_graphs;
 pub use mir_graph::SourcePos;
 
 use crate::{
-    borrow_pcg::{
-        edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph,
-        validity_conditions::ValidityConditions,
-    },
-    pcg::{
-        CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
-    },
+    borrow_pcg::{edge::borrow_flow::BorrowFlowEdgeKind, validity_conditions::ValidityConditions},
+    pcg::{PcgRef, PositiveCapability},
     rustc_interface::middle::mir::Location,
     utils::{
         HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
@@ -45,8 +41,6 @@ use std::{
     io::{self},
     path::Path,
 };
-
-use graph_constructor::BorrowsGraphConstructor;
 
 use self::{
     dot_graph::{
@@ -91,6 +85,7 @@ impl GraphNode {
                 location,
                 label,
                 ty,
+                capability_reason,
             } => {
                 let location_html: Html = match location {
                     Some(l) => Html::Seq(vec![
@@ -101,7 +96,7 @@ impl GraphNode {
                 };
                 let color = if location.is_some()
                     || capability.is_none()
-                    || matches!(capability, Some(CapabilityKind::Write))
+                    || matches!(capability, Some(PositiveCapability::Write))
                 {
                     "gray"
                 } else if *owned {
@@ -136,7 +131,7 @@ impl GraphNode {
                     shape: DotStringAttr("rect".into()),
                     style,
                     penwidth,
-                    tooltip: Some(DotStringAttr(ty.clone().into())),
+                    tooltip: Some(DotStringAttr(format!("{ty} - {capability_reason}").into())),
                 }
             }
             NodeType::RegionProjectionNode {
@@ -162,9 +157,10 @@ enum NodeType {
     PlaceNode {
         owned: bool,
         label: String,
-        capability: Option<CapabilityKind>,
+        capability: Option<PositiveCapability>,
         location: Option<SnapshotLocation>,
         ty: String,
+        capability_reason: String,
     },
     RegionProjectionNode {
         label: Html,
@@ -232,10 +228,10 @@ impl<'a> GraphEdge<'a> {
             | GraphEdge::Coupled { .. } => None,
         }
     }
-    pub(super) fn to_dot_edge<'tcx: 'a>(
+    pub(super) fn to_dot_edge<'mir: 'a, 'tcx: 'mir>(
         &self,
         edge_id: Option<DotEdgeId>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'mir, 'tcx>,
     ) -> DotEdge {
         match self {
             GraphEdge::Projection { source, target } => DotEdge {
@@ -389,23 +385,10 @@ impl<'a> Graph<'a> {
     }
 }
 
-pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
+pub(crate) fn generate_pcg_dot_graph<'pcg, 'a: 'pcg, 'tcx: 'a>(
+    pcg: PcgRef<'pcg, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    capabilities: &'a impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
-    borrows_domain: &'a BorrowsGraph<'tcx>,
-) -> io::Result<String> {
-    let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
-    let graph = constructor.construct_graph();
-    let mut buf = vec![];
-    let drawer = GraphDrawer::new(&mut buf, None);
-    drawer.draw(&graph, ctxt)?;
-    Ok(String::from_utf8(buf).unwrap())
-}
-
-pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
-    pcg: PcgRef<'a, 'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    location: Location,
+    location: Option<Location>,
 ) -> io::Result<String> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
@@ -421,7 +404,7 @@ pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
     location: Location,
     file_path: &Path,
 ) -> io::Result<()> {
-    let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
+    let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), Some(location));
     let graph = constructor.construct_graph();
     let dot_file = File::create(file_path).unwrap();
     let ctxt_file = File::create(file_path.with_extension("json")).unwrap();

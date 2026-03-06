@@ -9,17 +9,17 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::LifetimeProjection,
+        region_projection::{HasRegions, LifetimeProjection},
         state::BorrowsStateLike,
     },
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgNode, PcgRefLike,
+        CapabilityKind, PcgNode, PcgRefLike, PositiveCapability,
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::BlockType,
     },
     utils::{
-        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, PlaceProjectable, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -40,7 +40,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             self.record_and_apply_action(
                     BorrowPcgAction::weaken(
                         place,
-                        CapabilityKind::Read,
+                        PositiveCapability::Read,
                         BlockType::DerefMutRefForExclusive.blocked_place_maximum_retained_capability(),
                         format!(
                             "{:?}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
@@ -54,8 +54,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             self.record_and_apply_action(
                 BorrowPcgAction::weaken(
                     place,
-                    CapabilityKind::Read,
-                    None,
+                    PositiveCapability::Read,
+                    CapabilityKind::None(()),
                     format!(
                         "{:?}: remove read permission upwards from base place {}",
                         reason,
@@ -82,7 +82,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut current = place;
         while self
             .pcg
-            .place_capability_equals(current, CapabilityKind::Read)
+            .place_capability_equals(current, PositiveCapability::Read, self.ctxt)
         {
             self.weaken_capability_from_read(current, reason)?;
             let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
@@ -92,13 +92,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     && leaf_nodes.contains(&place.into())
                     && self
                         .pcg
-                        .place_capability_equals(place, CapabilityKind::Read)
+                        .place_capability_equals(place, PositiveCapability::Read, self.ctxt)
                     && !place.projects_shared_ref(self.ctxt)
                 {
                     self.record_and_apply_action(
                         BorrowPcgAction::restore_capability(
                             place,
-                            CapabilityKind::Exclusive,
+                            PositiveCapability::Exclusive,
                             format!(
                                 "{:?}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
                                 reason,
@@ -115,6 +115,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 if current.is_ref(self.ctxt)
                     && !current
                         .project_deref(self.ctxt)
+                        .unwrap()
                         .regions(self.ctxt)
                         .iter()
                         .contains(r)
@@ -233,18 +234,4 @@ pub(crate) enum AdjustCapabilityReason {
     /// blocked place's parent place also has capability R, it should be removed
     /// as well.
     TwoPhaseBorrowActivation,
-
-    /// Currently, there are situations in the analysis that require obtaining
-    /// capability E to a place with capability R. In particular, consider the following code:
-    /// ```rust
-    /// let mut pair = (String::new(), String::new());
-    /// let fst = &pair.0;
-    /// let snd = pair.1;
-    /// ```
-    /// For the assignment to `fst`, the PCG will weaken `pair` to capability
-    /// `R`, and then unpack it. Therefore, `pair.1` will have capability `R`.
-    /// The assignment to `snd` requires obtaining capability `E` to `pair.1`,
-    /// To handle this case, we would remove capability from `pair` and upgrade
-    /// `pair.1` to `E`.
-    UpgradeReadToExclusive,
 }

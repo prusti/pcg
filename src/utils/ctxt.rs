@@ -1,9 +1,8 @@
 use crate::{
     HasSettings, Sealed,
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
-    borrow_pcg::{
-        borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
+    borrow_pcg::region_projection::{
+        HasRegions, OverrideRegionDebugString, PcgRegion, TyVarianceVisitor,
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -22,7 +21,11 @@ use crate::{
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
+    utils::{
+        PlaceLike, PlaceProjectable,
+        place::{Place, PlaceExpansion},
+        validity::HasValidityCheck,
+    },
     validity_checks_enabled,
 };
 
@@ -144,12 +147,15 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.tcx.def_path_str(self.def_id())
     }
 
-    pub fn local_place(&self, var_name: &str) -> Option<Place<'tcx>> {
+    pub fn local_place(self, var_name: &str) -> Option<Place<'tcx>>
+    where
+        T: Copy,
+    {
         for info in &self.mir.var_debug_info {
             if let VarDebugInfoContents::Place(place) = info.value
                 && info.name.to_string() == var_name
             {
-                return Some(place.into());
+                return Some(Place::from_mir_place(place, self));
             }
         }
         None
@@ -240,7 +246,7 @@ pub enum ProjectionKind {
     Other,
 }
 // TODO: Merge with ExpandedPlace?
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ShallowExpansion<'tcx> {
     pub(crate) target_place: Place<'tcx>,
 
@@ -275,13 +281,8 @@ impl<'tcx> ShallowExpansion<'tcx> {
         self.target_place.last_projection().unwrap().0
     }
 
-    pub(crate) fn guide(&self) -> Option<RepackGuide> {
-        self.target_place
-            .last_projection()
-            .unwrap()
-            .1
-            .try_into()
-            .ok()
+    pub(crate) fn guide(&self) -> RepackGuide {
+        self.target_place.last_projection().unwrap().1.into()
     }
 
     #[must_use]
@@ -436,7 +437,7 @@ impl ConstantIndex {
     {
         self.other_elems()
             .into_iter()
-            .map(|e| from.project_deeper(e, ctxt).unwrap())
+            .map(|e| from.project_elem(e, ctxt).unwrap())
             .collect()
     }
 
@@ -485,13 +486,9 @@ impl<'tcx> Place<'tcx> {
             index < guide_place.projection.len(),
             "self place {self:?} is not a prefix of guide place {guide_place:?}"
         );
-        let new_projection = ctxt.tcx().mk_place_elems_from_iter(
-            self.projection
-                .iter()
-                .copied()
-                .chain([guide_place.projection[index]]),
-        );
-        let new_current_place = Place::new(self.local, new_projection);
+        let new_current_place = self
+            .project_elem(guide_place.projection[index], ctxt)
+            .unwrap();
         let (other_places, kind) = match guide_place.projection[index] {
             ProjectionElem::Field(projected_field, _field_ty) => {
                 let other_places = self.expand_field(Some(projected_field.index()), ctxt)?;
@@ -589,7 +586,8 @@ impl<'tcx> Place<'tcx> {
                             field,
                             field_def.ty(ctxt.tcx(), substs),
                         );
-                        places.push(field_place.into());
+                        let field_place = Place::from_mir_place(field_place, ctxt);
+                        places.push(field_place);
                     }
                 }
                 if without_field.is_some() {
@@ -608,7 +606,8 @@ impl<'tcx> Place<'tcx> {
                         let field_place =
                             ctxt.tcx()
                                 .mk_place_field(self.to_rust_place(ctxt), field, arg);
-                        places.push(field_place.into());
+                        let field_place = Place::from_mir_place(field_place, ctxt);
+                        places.push(field_place);
                     }
                 }
                 if without_field.is_some() {
@@ -624,12 +623,13 @@ impl<'tcx> Place<'tcx> {
                         let field_place =
                             ctxt.tcx()
                                 .mk_place_field(self.to_rust_place(ctxt), field, subst_ty);
-                        places.push(field_place.into());
+                        let field_place = Place::from_mir_place(field_place, ctxt);
+                        places.push(field_place);
                     }
                 }
             }
             TyKind::Ref(..) => {
-                places.push(ctxt.tcx().mk_place_deref(self.to_rust_place(ctxt)).into());
+                places.push(self.project_deref(ctxt)?);
             }
             TyKind::Alias(..) => {
                 return Err(PcgError::unsupported(
@@ -681,7 +681,7 @@ impl<'tcx> Place<'tcx> {
             .find(|(typ, _)| predicate(*typ))
             .map(|(_, proj)| {
                 let projection = ctxt.tcx().mk_place_elems(proj);
-                Self::new(self.local, projection)
+                Self::new(self.local, projection, ctxt)
             })
     }
 

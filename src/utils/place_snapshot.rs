@@ -221,8 +221,8 @@ impl<'tcx, Ctxt> LocalNodeLike<'tcx, Ctxt> for LabelledPlace<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
-    for LabelledPlace<'tcx>
+impl<'tcx, P: HasValidityCheck<Ctxt>, Ctxt: DebugCtxt + Copy> HasValidityCheck<Ctxt>
+    for LabelledPlace<'tcx, P>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.place.check_validity(ctxt)
@@ -268,17 +268,5 @@ impl<P: PcgNodeComponent> LabelledPlace<'_, P> {
 
     pub fn at(&self) -> SnapshotLocation {
         self.at
-    }
-}
-
-impl<'tcx> LabelledPlace<'tcx> {
-    pub(crate) fn with_inherent_region<'a>(
-        &self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> LabelledPlace<'tcx>
-    where
-        'tcx: 'a,
-    {
-        LabelledPlace::new(self.place.with_inherent_region(ctxt), self.at)
     }
 }

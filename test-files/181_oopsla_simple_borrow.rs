@@ -7,5 +7,5 @@ fn main() {
     // PCG: bb0[6] post_main: borrow: y <before bb0[6]:PreMain> = &mut  x
     // PCG: bb0[6] post_main: {y} -> {*y}
     // PCG: bb0[6] post_main: *y: E
-    // PCG: bb0[7] post_main: y: W
+    // PCG: bb0[7] post_main: y: e
 }

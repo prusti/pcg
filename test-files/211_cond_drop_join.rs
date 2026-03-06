@@ -8,8 +8,8 @@ fn ex1_replace_fst_cond(mut p: Pair, s: String) -> Pair {
     if rand_bool() {
         drop(p.fst);
     }
-    // PCG: bb4 -> bb5: unpack p with capability E
-    // PCG: bb4 -> bb5: Weaken(Weaken { place: _1.0, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb4 -> bb5: unpack p with capability Real
+    // PCG: bb4 -> bb5: Weaken p.fst from D to U
     p.fst = s;
     p
 }

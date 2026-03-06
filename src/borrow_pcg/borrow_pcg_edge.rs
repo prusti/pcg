@@ -73,9 +73,9 @@ impl<EdgeKind, VC> BorrowPcgEdgeRef<'_, '_, EdgeKind, VC> {
     }
 }
 
-impl<EdgeKind> Copy for BorrowPcgEdgeRef<'_, '_, EdgeKind> {}
+impl<EdgeKind, VC> Copy for BorrowPcgEdgeRef<'_, '_, EdgeKind, VC> {}
 
-impl<EdgeKind> Clone for BorrowPcgEdgeRef<'_, '_, EdgeKind> {
+impl<EdgeKind, VC> Clone for BorrowPcgEdgeRef<'_, '_, EdgeKind, VC> {
     fn clone(&self) -> Self {
         *self
     }
@@ -318,6 +318,12 @@ impl<P: PcgNodeComponent> LocalNode<'_, P> {
 pub type BlockedNode<'tcx, P = Place<'tcx>> =
     PcgNode<'tcx, MaybeLabelledPlace<'tcx, P>, PcgLifetimeProjectionBase<'tcx, P>>;
 
+impl<P> From<P> for BlockedNode<'_, P> {
+    fn from(place: P) -> Self {
+        BlockedNode::Place(place.into())
+    }
+}
+
 impl<'tcx, P: Copy> PcgNodeWithPlace<'tcx, P> {
     pub(crate) fn as_local_node<'a>(&self) -> Option<LocalNode<'tcx, P>>
     where
@@ -346,18 +352,6 @@ impl<T: Copy, U> PcgNode<'_, T, U> {
             PcgNode::Place(p) => Some(*p),
             PcgNode::LifetimeProjection(_) => None,
         }
-    }
-}
-
-impl<'tcx> From<mir::Place<'tcx>> for BlockedNode<'tcx> {
-    fn from(place: mir::Place<'tcx>) -> Self {
-        BlockedNode::Place(place.into())
-    }
-}
-
-impl<'tcx> From<Place<'tcx>> for BlockedNode<'tcx> {
-    fn from(place: Place<'tcx>) -> Self {
-        BlockedNode::Place(place.into())
     }
 }
 

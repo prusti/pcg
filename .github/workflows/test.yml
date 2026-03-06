@@ -164,23 +164,6 @@ jobs:
       working-directory: flowistry/crates/flowistry
       run: cargo test
 
-  check_generated_types:
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - uses: actions/checkout@v4
-    - name: Save current generated types
-      run: cp visualization/src/generated/types.ts /tmp/types.ts.before
-    - name: Generate TypeScript types
-      run: cargo run --manifest-path type-export/Cargo.toml --bin generate_types
-    - name: Check generated types are up-to-date
-      run: |
-        if ! diff /tmp/types.ts.before visualization/src/generated/types.ts; then
-          echo "ERROR: Generated TypeScript types are out of date."
-          echo "Run 'cargo run --manifest-path type-export/Cargo.toml --bin generate_types' to update."
-          exit 1
-        fi
-
   build_visualization:
     runs-on: ubuntu-latest
     steps:

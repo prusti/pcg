@@ -25,7 +25,7 @@ fn f(mut c: &mut Composite) {
     let b = c.f2.foo();
     let cc = &c.f1;
     // At this point *c.f2 is exclusive, so *c shouldn't have any capabilities
-    // ~PCG: bb1[8] pre_operands: *c: R
+    // ~PCG: bb1[8] post_main: *c: R
     mess_with_data(&mut c.f2, b);
     let dd = cc;
     let z = c;

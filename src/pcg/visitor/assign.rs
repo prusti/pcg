@@ -10,9 +10,8 @@ use crate::{
         region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
-        CapabilityKind, EvalStmtPhase,
+        EvalStmtPhase,
         obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
-        place_capabilities::PlaceCapabilitiesInterface,
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
     utils::Place,
@@ -43,9 +42,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         operand: &Operand<'tcx>,
     ) -> PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>> {
         match operand {
-            Operand::Copy(place) => PlaceOrConst::Place((*place).into()),
+            Operand::Copy(place) => {
+                let place = Place::from_mir_place(*place, self.ctxt);
+                PlaceOrConst::Place(place.into())
+            }
             Operand::Move(place) => PlaceOrConst::Place(MaybeLabelledPlace::new(
-                (*place).into(),
+                Place::from_mir_place(*place, self.ctxt),
                 Some(self.pre_operand_move_label()),
             )),
             Operand::Constant(const_) => PlaceOrConst::Const(const_.const_),
@@ -61,20 +63,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
 
-        // If `target` is a reference, then the dereferenced place technically
-        // still retains its capabilities. However, because we currently only
-        // keep capabilities for non-labelled places, we remove all the capabilities
-        // to everything postfix of `target`.
-        //
-        // We should change this logic once we start keeping capabilities for
-        // labelled places.
-        if target.is_ref(ctxt) {
-            self.pcg.capabilities.remove_all_postfixes(target, ctxt);
-        }
-
-        self.pcg
-            .capabilities
-            .insert(target, CapabilityKind::Exclusive, self.ctxt);
         match rvalue {
             Rvalue::Aggregate(
                 box (mir::AggregateKind::Adt(..)
@@ -82,10 +70,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 | mir::AggregateKind::Array(..)),
                 fields,
             ) => {
-                let target: utils::Place<'tcx> = (*target).into();
                 for (field_idx, field) in fields.iter().enumerate() {
                     let operand_place: utils::Place<'tcx> = if let Some(place) = field.place() {
-                        place.into()
+                        Place::from_mir_place(place, ctxt)
                     } else {
                         continue;
                     };
@@ -112,8 +99,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
-                let blocked_place: utils::Place<'tcx> = (*blocked_place).into();
-                let blocked_place = blocked_place.with_inherent_region(self.ctxt);
+                let blocked_place: utils::Place<'tcx> = Place::from_mir_place(*blocked_place, ctxt);
                 if !target.ty(self.ctxt).ty.is_ref() {
                     return Err(PcgError::unsupported(
                         PcgUnsupportedError::AssignBorrowToNonReferenceType,
@@ -128,7 +114,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     *kind,
                     self.location(),
                     *borrow_region,
-                    &mut self.pcg.capabilities,
                     self.ctxt,
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
@@ -156,8 +141,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 } else {
                     None
                 };
-                let place: utils::Place<'tcx> = (*place).into();
-                let place = place.with_inherent_region(self.ctxt);
+                let place: utils::Place<'tcx> = Place::from_mir_place(*place, self.ctxt);
                 (
                     PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
                         .lifetime_projections(self.ctxt),

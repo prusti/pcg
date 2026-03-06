@@ -12,12 +12,13 @@ use crate::{
     action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::PlaceOrConst,
+        region_projection::{HasRegions, PlaceOrConst},
     },
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
+        CapabilityLike, DomainDataWithCtxt, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor,
+        PositiveCapability, ResultsCtxt, ctxt::HasSettings,
         place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
@@ -31,8 +32,8 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
-        domain_data::DomainDataStates, validity::HasValidityCheck,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceProjectable,
+        display::DebugLines, domain_data::DomainDataStates, validity::HasValidityCheck,
     },
 };
 
@@ -110,6 +111,22 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
         Ok(Some(result))
     }
+
+    fn expect_results(&self) -> &DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
+        self.results().unwrap()
+    }
+
+    fn results(
+        &self,
+    ) -> std::result::Result<&DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>>, PcgError<'tcx>>
+    {
+        self.cursor.get().expect_results_or_error()
+    }
+
+    fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
+        self.expect_results().ctxt
+    }
+
     pub(crate) fn terminator<'slf>(
         &'slf mut self,
     ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
@@ -145,16 +162,10 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             .into_iter()
             .map(|succ| {
                 self.cursor.seek_to_block_start(succ);
-                let to = self
-                    .cursor
-                    .get()
-                    .expect_results_or_error()?
-                    .data
-                    .pcg
-                    .clone();
+                let to = self.results()?.data.pcg.clone();
 
                 let owned_bridge = from_post_main
-                    .bridge(&to.entry_state, location.block, succ, ctxt)
+                    .bridge(&to.entry_state, location.block, succ, self.results_ctxt())
                     .unwrap();
 
                 let mut borrow_actions = BorrowPcgActions::new();
@@ -286,6 +297,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         body: &'mir Body<'tcx>,
         tcx: TyCtxt<'tcx>,
     ) -> FxHashSet<mir::Place<'tcx>> {
+        let place = Place::from_mir_place(place, CompilerCtxt::new(body, tcx, ()));
         self.aggregate(|stmt| stmt.aliases(place, body, tcx))
     }
 }
@@ -309,20 +321,23 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     pub fn loop_invariant_place_capabilities(
         &self,
         place_usages: &PlaceUsages<'tcx>,
-        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> HashMap<Place<'tcx>, CapabilityKind> {
-        let initial_capabilities =
-            self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> HashMap<Place<'tcx>, PositiveCapability> {
+        let initial_capabilities = &self.statements[0].states[EvalStmtPhase::PreOperands];
         let mut result = HashMap::default();
         for place_usage in place_usages.iter() {
-            if let Some(initial_capability) = initial_capabilities.get(place_usage.place, ctxt) {
+            if let Some(initial_capability) = initial_capabilities
+                .get(place_usage.place, ctxt)
+                .into_positive()
+            {
                 let usage_capability = match place_usage.usage {
-                    PlaceUsageType::Read => CapabilityKind::Read,
-                    PlaceUsageType::Mutate => CapabilityKind::Exclusive,
+                    PlaceUsageType::Read => PositiveCapability::Read,
+                    PlaceUsageType::Mutate => PositiveCapability::Exclusive,
                 };
                 if let Some(joined_capability) = initial_capability
                     .expect_concrete()
-                    .minimum(usage_capability)
+                    .minimum(usage_capability.into(), ())
+                    .into_positive()
                 {
                     result.insert(place_usage.place, joined_capability);
                 }
@@ -414,7 +429,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
                     PlaceOrConst::Place(p) => {
                         let assoc_place = p.related_local_place();
                         if assoc_place.is_ref(ctxt) {
-                            Some(assoc_place.project_deref(ctxt))
+                            Some(assoc_place.project_deref(ctxt).unwrap())
                         } else {
                             None
                         }

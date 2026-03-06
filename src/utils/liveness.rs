@@ -12,23 +12,32 @@ use crate::{
         },
         mir_dataflow::{Backward, GenKill, JoinSemiLattice, ResultsCursor, fmt::DebugWithContext},
     },
-    utils::{CompilerCtxt, Place, data_structures::HashSet},
+    utils::{CompilerCtxt, HasCompilerCtxt, Place, data_structures::HashSet},
 };
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-struct PlaceLivenessDomain<'tcx> {
+#[derive(Clone, Debug)]
+struct PlaceLivenessDomain<'a, 'tcx> {
     places: HashSet<Place<'tcx>>,
+    ctxt: CompilerCtxt<'a, 'tcx, ()>,
 }
 
-impl<'tcx> PlaceLivenessDomain<'tcx> {
+impl PartialEq for PlaceLivenessDomain<'_, '_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.places == other.places
+    }
+}
+
+impl Eq for PlaceLivenessDomain<'_, '_> {}
+
+impl<'tcx> PlaceLivenessDomain<'_, 'tcx> {
     fn is_live(&self, place: Place<'tcx>) -> bool {
         self.places.iter().any(|p| p.is_prefix_or_postfix_of(place))
     }
 }
 
-struct TransferFunction<'a, 'tcx>(pub &'a mut PlaceLivenessDomain<'tcx>);
+struct TransferFunction<'inner, 'a, 'tcx>(pub &'inner mut PlaceLivenessDomain<'a, 'tcx>);
 
-impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
+impl<'tcx> Visitor<'tcx> for TransferFunction<'_, '_, 'tcx> {
     fn visit_place(
         &mut self,
         place: &mir::Place<'tcx>,
@@ -41,7 +50,9 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
             return;
         }
 
-        match DefUse::for_place(*place, context) {
+        let place = Place::from_mir_place(*place, self.0.ctxt);
+
+        match DefUse::for_place(place, context) {
             Some(DefUse::Def) => {
                 if let PlaceContext::MutatingUse(
                     MutatingUseContext::Call | MutatingUseContext::AsmOutput,
@@ -52,14 +63,14 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
                     // `call_return_effect` above. However, if the place looks like `*_5`, this is
                     // still unconditionally a use of `_5`.
                 } else {
-                    self.0.kill((*place).into());
+                    self.0.kill(place);
                 }
             }
-            Some(DefUse::Use) => self.0.gen_((*place).into()),
+            Some(DefUse::Use) => self.0.gen_(place),
             None => {}
         }
 
-        self.visit_projection(place.as_ref(), context, location);
+        self.visit_projection(*place, context, location);
     }
 
     fn visit_local(&mut self, local: mir::Local, context: PlaceContext, _: mir::Location) {
@@ -67,7 +78,7 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
     }
 }
 
-impl<'tcx> GenKill<Place<'tcx>> for PlaceLivenessDomain<'tcx> {
+impl<'tcx> GenKill<Place<'tcx>> for PlaceLivenessDomain<'_, 'tcx> {
     fn gen_(&mut self, elem: Place<'tcx>) {
         self.places.retain(|p| !p.is_prefix_or_postfix_of(elem));
         self.places.insert(elem);
@@ -78,7 +89,7 @@ impl<'tcx> GenKill<Place<'tcx>> for PlaceLivenessDomain<'tcx> {
     }
 }
 
-impl JoinSemiLattice for PlaceLivenessDomain<'_> {
+impl JoinSemiLattice for PlaceLivenessDomain<'_, '_> {
     fn join(&mut self, other: &Self) -> bool {
         let mut changed = false;
         for place in &other.places {
@@ -91,10 +102,18 @@ impl JoinSemiLattice for PlaceLivenessDomain<'_> {
     }
 }
 
-struct PlaceLivenessAnalysis;
+struct PlaceLivenessAnalysis<'a, 'tcx> {
+    ctxt: CompilerCtxt<'a, 'tcx, ()>,
+}
 
-impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
-    type Domain = PlaceLivenessDomain<'tcx>;
+impl<'a, 'tcx> PlaceLivenessAnalysis<'a, 'tcx> {
+    fn new(ctxt: CompilerCtxt<'a, 'tcx, ()>) -> Self {
+        Self { ctxt }
+    }
+}
+
+impl<'a, 'tcx> Analysis<'tcx> for PlaceLivenessAnalysis<'a, 'tcx> {
+    type Domain = PlaceLivenessDomain<'a, 'tcx>;
     type Direction = Backward;
 
     const NAME: &'static str = "place_liveness";
@@ -102,6 +121,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     fn bottom_value(&self, _body: &mir::Body<'tcx>) -> Self::Domain {
         PlaceLivenessDomain {
             places: HashSet::default(),
+            ctxt: self.ctxt,
         }
     }
 
@@ -132,17 +152,21 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
 /// we currently give the drops special treatment.
 #[derive(Clone)]
 pub(crate) struct PlaceLiveness<'mir, 'tcx> {
-    cursor: Rc<RefCell<ResultsCursor<'mir, 'tcx, AnalysisEngine<PlaceLivenessAnalysis>>>>,
+    cursor:
+        Rc<RefCell<ResultsCursor<'mir, 'tcx, AnalysisEngine<PlaceLivenessAnalysis<'mir, 'tcx>>>>>,
 }
 
-impl DebugWithContext<AnalysisEngine<PlaceLivenessAnalysis>> for PlaceLivenessDomain<'_> {}
+impl DebugWithContext<AnalysisEngine<PlaceLivenessAnalysis<'_, '_>>>
+    for PlaceLivenessDomain<'_, '_>
+{
+}
 
 impl<'mir, 'tcx> PlaceLiveness<'mir, 'tcx> {
     pub(crate) fn new<BC: Copy>(ctxt: CompilerCtxt<'mir, 'tcx, BC>) -> Self {
         Self {
             cursor: Rc::new(RefCell::new(
                 compute_fixpoint(
-                    AnalysisEngine(PlaceLivenessAnalysis),
+                    AnalysisEngine(PlaceLivenessAnalysis::new(ctxt.ctxt())),
                     ctxt.tcx(),
                     ctxt.body(),
                 )
@@ -168,19 +192,19 @@ enum DefUse {
 
 impl DefUse {
     fn apply<'tcx>(
-        state: &mut PlaceLivenessDomain<'tcx>,
-        place: mir::Place<'tcx>,
+        state: &mut PlaceLivenessDomain<'_, 'tcx>,
+        place: Place<'tcx>,
         context: PlaceContext,
     ) {
         match DefUse::for_place(place, context) {
-            Some(DefUse::Def) => state.kill(place.into()),
-            Some(DefUse::Use) => state.gen_(place.into()),
+            Some(DefUse::Def) => state.kill(place),
+            Some(DefUse::Use) => state.gen_(place),
             None => {}
         }
     }
 
     #[allow(clippy::match_same_arms)]
-    fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
+    fn for_place(place: Place<'_>, context: PlaceContext) -> Option<DefUse> {
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
             // We don't count drops as use in our analysis because drop

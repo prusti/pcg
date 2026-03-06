@@ -8,15 +8,12 @@ use crate::{
         borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        region_projection::{HasRegions, OverrideRegionDebugString, PcgLifetimeProjectionBase},
         validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
     },
-    pcg::{
-        CapabilityLike, PcgNodeWithPlace,
-        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
-    },
+    pcg::PcgNodeWithPlace,
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
         data_structures::HashSet,
@@ -44,12 +41,10 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     error::PcgError,
-    pcg::{
-        CapabilityKind, PcgNode, ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface,
-    },
+    pcg::{PositiveCapability, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::middle::{
-        mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
+        mir::{self, BasicBlock, BorrowKind, Location},
         ty::{self},
     },
     utils::{
@@ -188,17 +183,15 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         self.graph().frozen_graph().leaf_nodes(ctxt)
     }
 
-    fn label_place_and_update_related_capabilities<
+    fn label_place<
         'a,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         Ctxt: Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
-        C,
     >(
         &mut self,
         place: P,
         reason: LabelPlaceReason,
         labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> ApplyActionResult
     where
@@ -208,12 +201,6 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     {
         let state = self.as_mut_ref();
         let replacements = state.graph.label_place(place, reason, labeller, ctxt);
-        // If in a join we don't want to change capabilities because this will
-        // essentially be handled by the join logic.
-        // See 69_http_header_map.rs
-        if reason != LabelPlaceReason::JoinOwnedReadAndWriteCapabilities {
-            capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt));
-        }
         let display = display_node_replacements(&replacements, ctxt, OutputMode::Normal);
         ApplyActionResult {
             changed: true,
@@ -235,39 +222,26 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             .label_lifetime_projections(predicate, label, ctxt)
     }
 
-    fn remove<'a, P: Copy + Eq + std::hash::Hash, Ctxt: Copy, C>(
+    fn remove<'a, P: Copy + Eq + std::hash::Hash, Ctxt: Copy>(
         &mut self,
         edge: &EdgeKind,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
-        ctxt: Ctxt,
+        _ctxt: Ctxt,
     ) -> bool
     where
         'tcx: 'a,
         EdgeKind: EdgeData<'tcx, Ctxt, P> + Eq + std::hash::Hash,
     {
         let state = self.as_mut_ref();
-        let removed = state.graph.remove(edge).is_some();
-        if removed {
-            for node in edge.blocked_by_nodes(ctxt) {
-                if !state.graph.contains(node, ctxt)
-                    && let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
-                {
-                    let _ = capabilities.remove(place, ctxt);
-                }
-            }
-        }
-        removed
+        state.graph.remove(edge).is_some()
     }
 
     fn apply_action<
         'a,
         Ctxt: DebugCtxt + Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        C: CapabilityLike,
     >(
         &mut self,
         action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> Result<ApplyActionResult, PcgError<'tcx>>
     where
@@ -283,13 +257,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         let result = match action.kind {
             BorrowPcgActionKind::Restore(restore) => {
                 let restore_place = restore.place();
-                if let Some(cap) = capabilities.get(restore_place, ctxt) {
-                    pcg_validity_assert!(cap.expect_concrete() < restore.capability());
-                }
-                if !capabilities.insert(restore_place, restore.capability(), ctxt) {
-                    // panic!("Capability should have been updated")
-                }
-                if restore.capability() == CapabilityKind::Exclusive {
+                if restore.capability() == PositiveCapability::Exclusive {
                     self.label_lifetime_projections(
                         &LabelNodePredicate::all_future_postfixes(restore_place),
                         None,
@@ -298,42 +266,15 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 }
                 ApplyActionResult::changed_no_display()
             }
-            BorrowPcgActionKind::Weaken(weaken) => {
-                let weaken_place = weaken.place();
-                pcg_validity_assert!(
-                    capabilities
-                        .get(weaken_place, ctxt)
-                        .unwrap()
-                        .expect_concrete()
-                        == weaken.from,
-                    [ctxt],
-                    "Weakening from {:?} to {:?} is not valid",
-                    capabilities
-                        .get(weaken_place, ctxt)
-                        .unwrap()
-                        .expect_concrete(),
-                    weaken.from
-                );
-                match weaken.to {
-                    Some(to) => {
-                        capabilities.insert(weaken_place, to, ctxt);
-                    }
-                    None => {
-                        assert!(capabilities.remove(weaken_place, ctxt).is_some());
-                    }
-                }
-                ApplyActionResult::changed_no_display()
-            }
-            BorrowPcgActionKind::LabelPlace(action) => self
-                .label_place_and_update_related_capabilities(
-                    action.place,
-                    action.reason,
-                    &SetLabel(action.location),
-                    capabilities,
-                    ctxt,
-                ),
+            BorrowPcgActionKind::Weaken(_weaken) => ApplyActionResult::changed_no_display(),
+            BorrowPcgActionKind::LabelPlace(action) => self.label_place(
+                action.place,
+                action.reason,
+                &SetLabel(action.location),
+                ctxt,
+            ),
             BorrowPcgActionKind::RemoveEdge(edge) => {
-                ApplyActionResult::from_changed(self.remove(&edge.value, capabilities, ctxt))
+                ApplyActionResult::from_changed(self.remove(&edge.value, ctxt))
             }
             BorrowPcgActionKind::AddEdge { edge } => {
                 ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt))
@@ -421,12 +362,7 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_initial_borrows<C: CapabilityLike>(
-        &mut self,
-        local: mir::Local,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) {
+    fn introduce_initial_borrows(&mut self, local: mir::Local, ctxt: AnalysisCtxt<'a, 'tcx>) {
         let arg_place: Place<'tcx> = local.into();
         for region in arg_place.regions(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
@@ -460,7 +396,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                         ),
                         "Introduce initial borrows",
                     ),
-                    capabilities,
                     ctxt.bc_ctxt(),
                 )
                 .unwrap()
@@ -469,13 +404,10 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         }
     }
 
-    pub(crate) fn start_block<C: CapabilityLike>(
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Self {
+    pub(crate) fn start_block(ctxt: AnalysisCtxt<'a, 'tcx>) -> Self {
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
-            borrow.introduce_initial_borrows(arg, capabilities, ctxt);
+            borrow.introduce_initial_borrows(arg, ctxt);
         }
         borrow
     }
@@ -538,7 +470,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         kind: BorrowKind,
         location: Location,
         region: ty::Region<'tcx>,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
@@ -566,36 +497,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             ),
             ctxt.ctxt()
         ));
-
-        if let BorrowKind::Mut {
-            kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
-        } = kind
-        {
-            let _ = capabilities.remove(blocked_place, ctxt);
-        } else {
-            let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-            match blocked_place_capability
-                .map(super::super::pcg::capabilities::SymbolicCapability::expect_concrete)
-            {
-                Some(CapabilityKind::Exclusive) => {
-                    assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
-                }
-                Some(CapabilityKind::Read) => {
-                    // Do nothing, this just adds another shared borrow
-                }
-                other => {
-                    // Shouldn't be None or Write, due to capability updates
-                    // based on the TripleWalker analysis
-                    pcg_validity_assert!(
-                        false,
-                        "{:?}: Unexpected capability for borrow blocked place {:?}: {:?}",
-                        location,
-                        blocked_place,
-                        other
-                    );
-                }
-            }
-        }
     }
 }
 
