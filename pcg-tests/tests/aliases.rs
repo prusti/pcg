@@ -3,8 +3,10 @@
 use pcg::{
     PcgOutput,
     results::PcgLocation,
-    rustc_interface::middle::mir::{self, START_BLOCK},
-    rustc_interface::span::Symbol,
+    rustc_interface::{
+        middle::mir::{self, START_BLOCK},
+        span::Symbol,
+    },
 };
 use pcg_tests::run_pcg_on_str;
 
@@ -30,6 +32,17 @@ fn check_all_statements<'mir, 'tcx>(
     }
 }
 
+macro_rules! assert_alias_contains {
+    ($aliases:expr, $expected:expr) => {
+        assert!(
+            $aliases.contains($expected),
+            "Aliases: {:?} does not contain {:?}",
+            $aliases,
+            $expected
+        );
+    };
+}
+
 #[test]
 fn test_aliases() {
     tracing_subscriber::fmt()
@@ -46,10 +59,19 @@ fn test_aliases() {
             x;
         }
     "#;
+
+    fn get_stmt<'a, 'tcx>(
+        analysis: &mut PcgOutput<'a, 'tcx>,
+        block: mir::BasicBlock,
+        statement_index: usize,
+    ) -> PcgLocation<'a, 'tcx> {
+        let bb = analysis.get_all_for_bb(block).unwrap().unwrap();
+        bb.statements[statement_index].clone()
+    }
+
     run_pcg_on_str(input, |mut analysis| {
         let ctxt = analysis.ctxt();
-        let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
-        let stmt = &bb.statements[1];
+        let stmt = get_stmt(&mut analysis, 3usize.into(), 1);
         let x = ctxt.local_place("x").unwrap();
         let temp4 = mir::Local::from(4_usize).into();
         let temp: mir::Place<'_> = mir::Local::from(2_usize).into();
@@ -65,7 +87,8 @@ fn test_aliases() {
             aliases,
             temp4
         );
-        assert!(aliases.contains(&(x.to_rust_place(ctxt))));
+        // assert_alias_contains!(&aliases, &x.to_rust_place(ctxt));
+        // assert!(aliases.contains(&(x.to_rust_place(ctxt))));
     });
 
     // pointer_reborrow_nested

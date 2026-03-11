@@ -67,9 +67,6 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
         let sig = data.identity_fn_sig(tcx);
         let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
         let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
-        if sig.has_aliases() {
-            return Err(MakeFunctionShapeError::ContainsAliasType);
-        }
         let outlives = OutlivesEnvironment::from_normalized_bounds(
             param_env,
             vec![],
