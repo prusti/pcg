@@ -4,7 +4,13 @@ use derive_more::{Deref, From};
 
 use crate::{
     borrow_pcg::{
-        edge::abstraction::{AbstractionBlockEdge, function::FunctionDataShapeDataSource},
+        edge::abstraction::{
+            AbstractionBlockEdge,
+            function::{
+                CallDatatypes, DefinedFnCallShapeDataSource, DefinedFnTarget, FunctionCallData,
+                FunctionDefShapeDataSource, RustCallDatatypes,
+            },
+        },
         region_projection::{
             HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx,
         },
@@ -19,7 +25,7 @@ use crate::{
         span::def_id::DefId,
     },
     utils::{
-        self, CompilerCtxt, HasTyCtxt,
+        self, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -29,9 +35,14 @@ pub struct ArgIdx(usize);
 
 impl crate::Sealed for ArgIdx {}
 
-impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for ArgIdx {
-    fn rust_ty(&self, (function_data, ctxt): (FunctionData<'tcx>, Ctxt)) -> ty::Ty<'tcx> {
-        function_data.identity_fn_sig(ctxt.tcx()).inputs()[self.0]
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>>
+    HasTy<'tcx, (FunctionData<'tcx>, Option<GenericArgsRef<'tcx>>, Ctxt)> for ArgIdx
+{
+    fn rust_ty(
+        &self,
+        (function_data, substs, ctxt): (FunctionData<'tcx>, Option<GenericArgsRef<'tcx>>, Ctxt),
+    ) -> ty::Ty<'tcx> {
+        function_data.fn_sig(substs, ctxt.tcx()).inputs()[self.0]
     }
 }
 
@@ -61,11 +72,22 @@ impl<T, U: OverrideRegionDebugString> OverrideRegionDebugString for (T, U) {
     }
 }
 
-impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for ArgIdxOrResult {
-    fn rust_ty(&self, (function_data, ctxt): (FunctionData<'tcx>, Ctxt)) -> ty::Ty<'tcx> {
+impl<T, U, V: OverrideRegionDebugString> OverrideRegionDebugString for (T, U, V) {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.2.override_region_debug_string(region)
+    }
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>>
+    HasTy<'tcx, (FunctionData<'tcx>, Option<GenericArgsRef<'tcx>>, Ctxt)> for ArgIdxOrResult
+{
+    fn rust_ty(
+        &self,
+        (function_data, substs, ctxt): (FunctionData<'tcx>, Option<GenericArgsRef<'tcx>>, Ctxt),
+    ) -> ty::Ty<'tcx> {
         match self {
-            ArgIdxOrResult::Argument(arg) => arg.rust_ty((function_data, ctxt.tcx())),
-            ArgIdxOrResult::Result => function_data.identity_fn_sig(ctxt.tcx()).output(),
+            ArgIdxOrResult::Argument(arg) => arg.rust_ty((function_data, substs, ctxt.tcx())),
+            ArgIdxOrResult::Result => function_data.fn_sig(substs, ctxt.tcx()).output(),
         }
     }
 }
@@ -79,27 +101,13 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdxOrResult {
     }
 }
 
-pub(crate) struct FunctionCall<'a, 'tcx> {
-    pub(crate) substs: Option<GenericArgsRef<'tcx>>,
-    pub(crate) location: mir::Location,
-    pub(crate) inputs: &'a [&'a mir::Operand<'tcx>],
-    pub(crate) output: utils::Place<'tcx>,
-}
+struct BorrowPcgCallDatatypes<'a, 'tcx: 'a>(PhantomData<(&'a (), &'tcx ())>);
 
-impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
-    pub(crate) fn new(
-        location: mir::Location,
-        inputs: &'a [&'a mir::Operand<'tcx>],
-        output: utils::Place<'tcx>,
-        substs: Option<GenericArgsRef<'tcx>>,
-    ) -> Self {
-        Self {
-            substs,
-            location,
-            inputs,
-            output,
-        }
-    }
+impl<'a, 'tcx: 'a> CallDatatypes<'tcx> for BorrowPcgCallDatatypes<'a, 'tcx> {
+    type CallerDefId = ();
+    type Inputs = &'a [&'a mir::Operand<'tcx>];
+    type OutputPlace = utils::Place<'tcx>;
+    type Location = mir::Location;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,18 +118,18 @@ pub enum CheckOutlivesError<'tcx> {
     },
 }
 
-pub(crate) trait FunctionShapeDataSource<'tcx> {
-    type Ctxt: HasTyCtxt<'tcx> + Copy;
-    fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>>;
-    fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
+pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> {
+    fn target(&self) -> Option<DefinedFnTarget<'tcx>>;
+    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>>;
+    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
     fn outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: Self::Ctxt,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>>;
 
-    fn input_arg_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
+    fn input_arg_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
         self.input_tys(ctxt)
             .into_iter()
             .enumerate()
@@ -129,18 +137,18 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
             .collect()
     }
 
-    fn result_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
+    fn result_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
         ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.output_ty(ctxt))
     }
 
-    fn inputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeInput> {
+    fn inputs(&self, ctxt: Ctxt) -> Vec<FunctionShapeInput> {
         self.input_arg_projections(ctxt)
             .into_iter()
             .map(std::convert::Into::into)
             .collect()
     }
 
-    fn outputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeOutput> {
+    fn outputs(&self, ctxt: Ctxt) -> Vec<FunctionShapeOutput> {
         self.result_projections(ctxt)
             .into_iter()
             .map(std::convert::Into::into)
@@ -148,26 +156,31 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
     }
 }
 
-impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
-    type Ctxt = CompilerCtxt<'a, 'tcx>;
-    fn input_tys(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + Copy>
+    FunctionShapeDataSource<'tcx, Ctxt> for FunctionCallData<'tcx, RustCallDatatypes<'operands>>
+{
+    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.inputs
             .iter()
             .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
             .collect()
     }
 
-    fn output_ty(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
-        self.output.ty(ctxt).ty
+    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.output_place.ty(ctxt).ty
     }
 
     fn outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.borrow_checker.outlives(sup, sub, self.location))
+        Ok(ctxt.bc().outlives(sup, sub, self.location))
+    }
+
+    fn target(&self) -> Option<DefinedFnTarget<'tcx>> {
+        self.target
     }
 }
 
@@ -285,12 +298,9 @@ impl FunctionShape {
 
     pub fn for_fn<'tcx>(
         def_id: DefId,
-        caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        let data = FunctionData::new(def_id);
-        Self::new(&data.shape_data_source(caller_substs, tcx)?, tcx)
-            .map_err(MakeFunctionShapeError::CheckOutlivesError)
+    ) -> Result<Self, CheckOutlivesError<'tcx>> {
+        Self::new(&FunctionDefShapeDataSource::new(def_id, tcx), tcx)
     }
 }
 
@@ -332,20 +342,11 @@ impl<'tcx> FunctionData<'tcx> {
         self.def_id
     }
 
-    pub(crate) fn shape_data_source(
-        self,
-        caller_substs: Option<GenericArgsRef<'tcx>>,
-        tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionDataShapeDataSource<'tcx>, MakeFunctionShapeError<'tcx>> {
-        FunctionDataShapeDataSource::new(self, caller_substs, tcx)
-    }
-
     pub fn shape(
         self,
-        caller_substs: Option<GenericArgsRef<'tcx>>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        FunctionShape::new(&self.shape_data_source(caller_substs, tcx)?, tcx)
+        FunctionShape::new(&FunctionDefShapeDataSource::new(self.def_id, tcx), tcx)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 
@@ -354,7 +355,7 @@ impl<'tcx> FunctionData<'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError<'tcx>> {
         let shape = self
-            .shape(None, tcx)
+            .shape(tcx)
             .map_err(CoupleAbstractionError::MakeFunctionShape)?;
         Ok(shape.coupled_edges())
     }
@@ -398,9 +399,13 @@ impl FunctionShape {
         self.edges.is_subset(&other.edges)
     }
 
-    pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
+    pub(crate) fn new<
+        'tcx,
+        Ctxt: HasTyCtxt<'tcx> + Copy,
+        ShapeData: FunctionShapeDataSource<'tcx, Ctxt>,
+    >(
         shape_data: &ShapeData,
-        ctxt: ShapeData::Ctxt,
+        ctxt: Ctxt,
     ) -> Result<Self, CheckOutlivesError<'tcx>> {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,

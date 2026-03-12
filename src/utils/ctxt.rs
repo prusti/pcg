@@ -374,6 +374,9 @@ pub trait HasCompilerCtxt<'a, 'tcx>: HasTyCtxt<'tcx> + Copy {
     fn body(self) -> &'a Body<'tcx> {
         self.ctxt().body()
     }
+    fn def_id(&self) -> LocalDefId where 'tcx: 'a {
+        self.body().source.def_id().expect_local()
+    }
 }
 
 pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:

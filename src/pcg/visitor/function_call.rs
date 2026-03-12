@@ -3,25 +3,33 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         FunctionData,
-        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
+        abstraction::{
+            ArgIdx, ArgIdxOrResult, FunctionShape, FunctionShapeDataSource,
+        },
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
             function::{
-                FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
+                CallDatatypes, DefinedFnTarget, FunctionCallAbstraction,
+                FunctionCallAbstractionEdgeMetadata, FunctionCallData, DefinedFnCallShapeDataSource,
             },
         },
         edge_data::LabelNodePredicate,
-        region_projection::{HasRegions, LifetimeProjection},
+        region_projection::{HasRegions, HasTy, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
+        index::Idx,
         middle::mir::{Location, Operand},
         span::Span,
     },
-    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    utils::{
+        PcgSettings,
+        data_structures::HashSet,
+        display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
+    },
 };
 
 use super::PcgError;
@@ -30,20 +38,15 @@ use crate::{
     utils::{self, DataflowCtxt, HasCompilerCtxt, SnapshotLocation},
 };
 
-fn get_function_call_data<'a, 'tcx: 'a>(
+fn get_function_call_target<'a, 'tcx: 'a>(
     func: &Operand<'tcx>,
-    operand_tys: Vec<ty::Ty<'tcx>>,
-    call_span: Span,
     ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-) -> Option<FunctionCallData<'tcx>> {
+) -> Option<DefinedFnTarget<'tcx>> {
     match func.ty(ctxt.body(), ctxt.tcx()).kind() {
-        ty::TyKind::FnDef(def_id, substs) => Some(FunctionCallData::new(
-            *def_id,
+        ty::TyKind::FnDef(def_id, substs) => Some(DefinedFnTarget {
+            fn_def_id: *def_id,
             substs,
-            operand_tys,
-            ctxt.ctxt().def_id(),
-            call_span,
-        )),
+        }),
         _ => None,
     }
 }
@@ -53,12 +56,16 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         self.ctxt.settings()
     }
 
-    fn node_for_input(
+    fn node_for_input<'ops, D: CallDatatypes<'tcx, Inputs = &'ops [&'ops Operand<'tcx>]>>(
         &self,
-        call: &FunctionCall<'_, 'tcx>,
+        call: &FunctionCallData<'tcx, D>,
+        // data_source: &impl FunctionShapeDataSource<'tcx, Ctxt>,
         input: LifetimeProjection<'tcx, ArgIdx>,
-    ) -> FunctionCallAbstractionInput<'tcx> {
-        let operand = call.inputs[*input.base];
+    ) -> FunctionCallAbstractionInput<'tcx>
+    where
+        'tcx: 'ops,
+    {
+        let operand = call.inputs[input.base.index()];
         let operand = self.maybe_labelled_operand(operand);
         FunctionCallAbstractionInput(
             LifetimeProjection::from_index(operand, input.region_idx)
@@ -66,15 +73,22 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         )
     }
 
-    fn node_for_output(
+    fn node_for_output<
+        'ops,
+        D: CallDatatypes<'tcx, OutputPlace = utils::Place<'tcx>, Inputs = &'ops [&'ops Operand<'tcx>]>,
+    >(
         &self,
-        call: &FunctionCall<'_, 'tcx>,
+        call: &FunctionCallData<'tcx, D>,
         output: LifetimeProjection<'tcx, ArgIdxOrResult>,
-    ) -> FunctionCallAbstractionOutput<'tcx> {
+    ) -> FunctionCallAbstractionOutput<'tcx>
+    where
+        'tcx: 'ops,
+    {
         match output.base {
             ArgIdxOrResult::Argument(arg_idx) => {
                 let operand = call.inputs[*arg_idx];
                 let place = self.maybe_labelled_operand(operand).expect_place();
+                tracing::warn!("place for output {}: {:?}", output, place);
                 LifetimeProjection::from_index(place, output.region_idx)
                     .with_label(
                         Some(SnapshotLocation::After(self.location().block).into()),
@@ -83,28 +97,52 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     .into()
             }
             ArgIdxOrResult::Result => {
-                LifetimeProjection::from_index(call.output, output.region_idx).into()
+                debug_assert!(
+                    call.output_place.regions(self.ctxt.bc_ctxt()).len()
+                        > output.region_idx.index(),
+                    "Output region index {} is out of bounds for place {:?}:{:?}",
+                    output.region_idx.index(),
+                    call.output_place,
+                    call.output_place.rust_ty(self.ctxt.bc_ctxt())
+                );
+                LifetimeProjection::from_index(call.output_place, output.region_idx).into()
             }
         }
     }
 
-    fn create_edges_for_shape(
+    fn create_edges_for_shape<
+        'ops,
+        D: CallDatatypes<'tcx, Location = Location, Inputs = &'ops [&'ops Operand<'tcx>], OutputPlace = utils::Place<'tcx>>,
+    >(
         &mut self,
-        shape: &FunctionShape,
-        call: &FunctionCall<'_, 'tcx>,
-        function_data: Option<FunctionData<'tcx>>,
-    ) -> Result<(), PcgError<'tcx>> {
+        shape: FunctionShape,
+        call: FunctionCallData<'tcx, D>,
+    ) -> Result<(), PcgError<'tcx>>
+    where
+        FunctionCallData<'tcx, D>: FunctionShapeDataSource<'tcx, Ctxt>,
+        'tcx: 'ops,
+    {
         let metadata = FunctionCallAbstractionEdgeMetadata {
             location: call.location,
-            function_data,
-            caller_substs: call.substs,
+            target: call.target(),
         };
-        let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
+        // tracing::warn!(
+        //     "shape: {}",
+        //     shape.display_string((function_data.unwrap(), self.ctxt.bc_ctxt()))
+        // );
+        let abstraction_edges: HashSet<
+            AbstractionBlockEdge<
+                'tcx,
+                FunctionCallAbstractionInput<'tcx>,
+                FunctionCallAbstractionOutput<'tcx>,
+            >,
+        > = shape
             .edges()
             .map(|AbstractionBlockEdge { input, output, .. }| {
+                // tracing::warn!("input: {:?}, output: {:?}", input, output);
                 AbstractionBlockEdge::new_checked(
-                    self.node_for_input(call, input),
-                    self.node_for_output(call, output),
+                    self.node_for_input(&call, input),
+                    self.node_for_output(&call, output),
                     self.ctxt.bc_ctxt(),
                 )
             })
@@ -149,29 +187,23 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         Ok(())
     }
     #[tracing::instrument(skip(self, func, args, destination))]
-    pub(super) fn make_function_call_abstraction(
+    pub(super) fn make_function_call_abstraction<'args, 'mir>(
         &mut self,
         func: &Operand<'tcx>,
         call_span: Span,
-        args: &[&Operand<'tcx>],
+        args: &'args [&'args Operand<'tcx>],
         destination: utils::Place<'tcx>,
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        let function_call_data: Option<FunctionCallData<'tcx>> = get_function_call_data(
-            func,
-            args.iter()
-                .map(|arg| arg.ty(self.ctxt.body(), self.ctxt.tcx()))
-                .collect(),
-            call_span,
-            self.ctxt,
-        );
-
-        let call = FunctionCall::new(
+        let target = get_function_call_target(func, self.ctxt);
+        let caller_data = FunctionCallData {
+            target,
+            caller_def_id: self.ctxt.def_id(),
+            span: call_span,
+            inputs: args,
+            output_place: destination,
             location,
-            args,
-            destination,
-            function_call_data.as_ref().map(|f| f.substs),
-        );
+        };
 
         let ctxt = self.ctxt;
 
@@ -229,10 +261,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )?;
             }
         }
-        let call_shape = FunctionShape::new(&call, self.ctxt.bc_ctxt());
-        let function_data = function_call_data.as_ref().map(|f| f.function_data);
-        let shape = if let Some(function_call_data) = function_call_data.as_ref() {
-            match function_call_data.shape(ctxt.bc_ctxt()) {
+        let call_shape = FunctionShape::new(&caller_data, self.ctxt.bc_ctxt()).unwrap();
+        let as_defined_fn_call_data = caller_data.as_defined_fn_call_data();
+        if let Some(as_defined_fn_call_data) = caller_data.as_defined_fn_call_data() {
+            let shape_data_source = DefinedFnCallShapeDataSource::new(
+                as_defined_fn_call_data,
+                self.ctxt.tcx(),
+            )
+            .unwrap();
+            match FunctionShape::new(&shape_data_source, self.ctxt) {
                 Ok(sig_shape) => {
                     // pcg_validity_assert!(
                     //     sig_shape.is_specialization_of(&call_shape),
@@ -246,7 +283,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
                     // );
 
-                    Ok(sig_shape)
+                    self.create_edges_for_shape(sig_shape, caller_data)
                 }
                 Err(err) => {
                     tracing::warn!(
@@ -254,15 +291,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         call_span,
                         err
                     );
-                    call_shape
+                    self.create_edges_for_shape(call_shape, caller_data)
                 }
             }
         } else {
-            call_shape
+            self.create_edges_for_shape(call_shape, caller_data)
         }
-        .map_err(|err| PcgError::internal(format!("{err:?}")))?;
-        self.create_edges_for_shape(&shape, &call, function_data)?;
-
-        Ok(())
+        .map_err(move |err| PcgError::internal(format!("{err:?}")))
     }
 }
