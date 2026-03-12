@@ -262,7 +262,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             }
         }
         let call_shape = FunctionShape::new(&caller_data, self.ctxt.bc_ctxt()).unwrap();
-        let as_defined_fn_call_data = caller_data.as_defined_fn_call_data();
         if let Some(as_defined_fn_call_data) = caller_data.as_defined_fn_call_data() {
             let shape_data_source = DefinedFnCallShapeDataSource::new(
                 as_defined_fn_call_data,

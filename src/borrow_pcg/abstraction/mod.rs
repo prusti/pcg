@@ -101,15 +101,6 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdxOrResult {
     }
 }
 
-struct BorrowPcgCallDatatypes<'a, 'tcx: 'a>(PhantomData<(&'a (), &'tcx ())>);
-
-impl<'a, 'tcx: 'a> CallDatatypes<'tcx> for BorrowPcgCallDatatypes<'a, 'tcx> {
-    type CallerDefId = ();
-    type Inputs = &'a [&'a mir::Operand<'tcx>];
-    type OutputPlace = utils::Place<'tcx>;
-    type Location = mir::Location;
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckOutlivesError<'tcx> {
     CannotCompareRegions {

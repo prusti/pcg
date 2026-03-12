@@ -106,51 +106,45 @@ impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let sig = call.fn_sig(tcx);
-        // let sig = data.identity_fn_sig(tcx);
-        // tracing::warn!("caller_substs of {:?}: {:?}", data, caller_substs);
-        // tracing::warn!("sig of {:?}: {:?}\n\n\n", data, sig);
-        // let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
-        // let typing_env = ty::TypingEnv::fully_monomorphized();
         let infcx = tcx
             .infer_ctxt()
             .ignoring_regions()
             .skip_leak_check(true)
             .build(ty::TypingMode::PostAnalysis);
-        // .with_next_trait_solver(true)
-        // .build_with_typing_env(typing_env);
-        // let typing_env = tcx.typing_env_normalized_for_post_analysis(data.def_id);
         let typing_env = ty::TypingEnv::post_analysis(tcx, call.caller_def_id);
         let mut trait_engine: Box<dyn TraitEngine<'tcx, FulfillmentError<'tcx>>> =
             TraitEngineExt::new(&infcx);
-        // let sig = match infcx
-        //     .at(&ObligationCause::dummy(), typing_env.param_env)
-        //     .deeply_normalize(sig, &mut *trait_engine)
-        // {
-        //     Ok(sig) => sig,
-        //     Err(_) => panic!("No solution found for sig: {:?}", sig),
-        // };
+        let sig = match infcx
+            .at(&ObligationCause::dummy(), typing_env.param_env)
+            .deeply_normalize(sig, &mut *trait_engine)
+        {
+            Ok(sig) => sig,
+            Err(_) => panic!("No solution found for sig: {:?}", sig),
+        };
 
-        let normalize =
-            |ty: ty::Ty<'tcx>, trait_engine: &mut dyn TraitEngine<'tcx, FulfillmentError<'tcx>>| {
-                tracing::warn!("normalizing ty: {:?}", ty);
-                infcx
-                    .at(&ObligationCause::dummy(), typing_env.param_env)
-                    .structurally_normalize_ty(ty, trait_engine)
-                    .unwrap_or_else(|errors| {
-                        panic!("No solution found for ty: {:?}, errors: {:?}", ty, errors)
-                    })
-            };
+        tracing::warn!("Normalized sig: {:?}", sig);
 
-        let input_tys = sig
-            .inputs()
-            .iter()
-            .copied()
-            .map(|ty| normalize(ty, &mut *trait_engine))
-            .collect::<Vec<_>>();
-        let output_ty = normalize(sig.output(), &mut *trait_engine);
+        // let normalize =
+        //     |ty: ty::Ty<'tcx>, trait_engine: &mut dyn TraitEngine<'tcx, FulfillmentError<'tcx>>| {
+        //         tracing::warn!("normalizing ty: {:?}", ty);
+        //         infcx
+        //             .at(&ObligationCause::dummy(), typing_env.param_env)
+        //             .structurally_normalize_ty(ty, trait_engine)
+        //             .unwrap_or_else(|errors| {
+        //                 panic!("No solution found for ty: {:?}, errors: {:?}", ty, errors)
+        //             })
+        //     };
 
-        tracing::warn!("input_tys: {:?}", input_tys);
-        tracing::warn!("output_ty: {:?}", output_ty);
+        // let input_tys = sig
+        //     .inputs()
+        //     .iter()
+        //     .copied()
+        //     .map(|ty| normalize(ty, &mut *trait_engine))
+        //     .collect::<Vec<_>>();
+        // let output_ty = normalize(sig.output(), &mut *trait_engine);
+
+        // tracing::warn!("input_tys: {:?}", input_tys);
+        // tracing::warn!("output_ty: {:?}", output_ty);
 
         // tracing::warn!("sig normal: {:?}\n\n\n", sig);
         let outlives = OutlivesEnvironment::from_normalized_bounds(
@@ -391,7 +385,8 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     }
 
     pub fn function_data(&self) -> Option<FunctionData<'tcx>> {
-        self.target.map(|target| FunctionData::new(target.fn_def_id))
+        self.target
+            .map(|target| FunctionData::new(target.fn_def_id))
     }
 }
 
