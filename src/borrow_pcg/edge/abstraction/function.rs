@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut};
 
@@ -6,8 +6,8 @@ use crate::{
     borrow_pcg::{
         FunctionData,
         abstraction::{
-            CallShapeDataSource, CheckOutlivesError, FnShapeDataSource, ForCall, ForFn,
-            FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
+            ArgIdx, ArgIdxOrResult, CallShapeDataSource, CheckOutlivesError, FnShapeDataSource,
+            ForCall, ForFn, FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
         },
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
@@ -17,7 +17,7 @@ use crate::{
             NodeReplacement,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
-        region_projection::{LifetimeProjectionLabel, PcgRegion},
+        region_projection::{LifetimeProjection, LifetimeProjectionLabel, PcgRegion},
         visitor::extract_regions,
     },
     coupling::CoupledEdgeKind,
@@ -58,11 +58,11 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy, DS: CallShapeDataSource<'tcx, Ctxt>>
 
     fn region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: ty::RegionVid,
+        sub: ty::RegionVid,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        self.call_region_outlives(sup, sub, ctxt)
+        self.call_region_outlives(sup.into(), sub, ctxt)
     }
 }
 
@@ -151,11 +151,13 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> +
 
     fn call_region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: ty::RegionVid,
+        sub: ty::RegionVid,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.bc().outlives(sup, sub, self.call.location))
+        Ok(ctxt
+            .bc()
+            .outlives(sup.into(), sub.into(), self.call.location))
     }
 
     fn location(&self) -> Location {
@@ -167,10 +169,14 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> +
     }
 }
 
+type DefProjection<'tcx, Idx> = LifetimeProjection<'tcx, Idx, PcgRegion<'tcx>>;
+type CallProjection<'tcx> = LifetimeProjection<'tcx, Place<'tcx>, ty::RegionVid>;
+
 pub struct DefinedFnCallShapeDataSource<'operands, 'tcx: 'operands> {
     call: FunctionCallData<'tcx, DefinedFnCallDatatypes<'operands>>,
+    input_def_call_map: HashMap<DefProjection<'tcx, ArgIdx>, CallProjection<'tcx>>,
+    output_def_call_map: HashMap<DefProjection<'tcx, ()>, CallProjection<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
-    normalized_sig: ty::FnSig<'tcx>,
 }
 
 impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
@@ -179,57 +185,15 @@ impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
         call: DefinedFnCallData<'operands, 'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        let sig = call.fn_sig(tcx);
-
-        let normalized_sig = tcx.expand_free_alias_tys(sig);
-
-        tracing::debug!("Normalized sig: {:?}", normalized_sig);
-
-        let outlives = OutlivesEnvironment::from_normalized_bounds(
-            tcx.param_env(call.target.fn_def_id),
-            vec![],
-            vec![],
-            HashSet::default(),
-        );
-        Ok(Self {
-            call,
-            outlives,
-            normalized_sig,
-        })
+        let sig = call.identity_fn_sig(tcx);
+        todo!()
     }
 
-    /// Maps a call-site region (typically a `RegionVid`) to the corresponding
-    /// region in the function's signature by matching region positions between
-    /// the operand types and the fn sig types.
-    fn map_to_sig_region<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
+    pub(crate) fn lookup_region_in_sig(
         &self,
-        region: PcgRegion<'tcx>,
-        ctxt: Ctxt,
-    ) -> Option<PcgRegion<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        for (operand, sig_input_ty) in self.call.inputs.iter().zip(self.normalized_sig.inputs()) {
-            let operand_ty = operand.ty(ctxt.body(), ctxt.tcx());
-            let op_regions = extract_regions(operand_ty);
-            let sig_regions = extract_regions(*sig_input_ty);
-            for (op_r, sig_r) in op_regions.iter().zip(sig_regions.iter()) {
-                if *op_r == region {
-                    return Some(*sig_r);
-                }
-            }
-        }
-
-        let output_ty = self.call.output_place.ty(ctxt).ty;
-        let op_regions = extract_regions(output_ty);
-        let sig_regions = extract_regions(self.normalized_sig.output());
-        for (op_r, sig_r) in op_regions.iter().zip(sig_regions.iter()) {
-            if *op_r == region {
-                return Some(*sig_r);
-            }
-        }
-
-        None
+        region: ty::RegionVid,
+    ) -> PcgRegion<'tcx> {
+        todo!()
     }
 }
 
@@ -269,67 +233,17 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy
 
     fn call_region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: ty::RegionVid,
+        sub: ty::RegionVid,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        if sup.is_static() || sup == sub {
-            return Ok(true);
-        }
-
-        let target = self.call.target;
-
-        // Map early-bound regions via substs
-        let mapped_sup = target.region_for_outlives_check(sup, ctxt);
-        let mapped_sub = target.region_for_outlives_check(sub, ctxt);
-
-        // For regions still unresolved (e.g. late-bound), map via fn sig,
-        // then re-apply subst mapping in case the sig region is an early-bound
-        // region variable.
-        let mapped_sup = if matches!(mapped_sup, PcgRegion::RegionVid(_)) {
-            let sig_region = self
-                .map_to_sig_region(mapped_sup, ctxt)
-                .unwrap_or(mapped_sup);
-            if matches!(sig_region, PcgRegion::RegionVid(_)) {
-                target.region_for_outlives_check(sig_region, ctxt)
-            } else {
-                sig_region
-            }
-        } else {
-            mapped_sup
-        };
-        let mapped_sub = if matches!(mapped_sub, PcgRegion::RegionVid(_)) {
-            let sig_region = self
-                .map_to_sig_region(mapped_sub, ctxt)
-                .unwrap_or(mapped_sub);
-            if matches!(sig_region, PcgRegion::RegionVid(_)) {
-                target.region_for_outlives_check(sig_region, ctxt)
-            } else {
-                sig_region
-            }
-        } else {
-            mapped_sub
-        };
-
-        if mapped_sup.is_static() || mapped_sup == mapped_sub {
-            return Ok(true);
-        }
-
-        if matches!(mapped_sup, PcgRegion::RegionVid(_))
-            || matches!(mapped_sub, PcgRegion::RegionVid(_))
-        {
-            Err(CheckOutlivesError::CannotCompareRegions {
-                sup: mapped_sup,
-                sub: mapped_sub,
-                loc: self.call.location,
-            })
-        } else {
-            Ok(self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
-                mapped_sub.rust_region(ctxt.tcx()),
-                mapped_sup.rust_region(ctxt.tcx()),
-            ))
-        }
+        let sup = self.lookup_region_in_sig(sup);
+        let sub = self.lookup_region_in_sig(sub);
+        Ok(self.outlives.free_region_map().sub_free_regions(
+            ctxt.tcx(),
+            sub.rust_region(ctxt.tcx()),
+            sup.rust_region(ctxt.tcx()),
+        ))
     }
 
     fn location(&self) -> Location {
@@ -380,28 +294,6 @@ pub struct FunctionCallData<'tcx, D: CallDatatypes<'tcx>> {
     pub(crate) location: D::Location,
 }
 
-impl<'tcx> DefinedFnTarget<'tcx> {
-    pub(crate) fn region_for_outlives_check(
-        self,
-        region: PcgRegion<'tcx>,
-        ctxt: impl HasTyCtxt<'tcx> + Copy,
-    ) -> PcgRegion<'tcx> {
-        if let Some(index) = self
-            .substs
-            .iter()
-            .position(|arg| arg.as_region().is_some_and(|r| PcgRegion::from(r) == region))
-        {
-            let fn_ty = ctxt.tcx().type_of(self.fn_def_id).instantiate_identity();
-            let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
-                panic!("Expected a function type");
-            };
-            identity_substs.region_at(index).into()
-        } else {
-            region
-        }
-    }
-}
-
 pub(crate) type DefinedFnCallData<'operands, 'tcx: 'operands> =
     FunctionCallData<'tcx, DefinedFnCallDatatypes<'operands>>;
 
@@ -418,19 +310,6 @@ impl<'operands, 'tcx: 'operands> FunctionCallData<'tcx, RustCallDatatypes<'opera
             location: self.location,
         })
     }
-
-    pub(crate) fn shape_data_source<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + Copy>(
-        self,
-        ctxt: Ctxt,
-    ) -> Box<dyn CallShapeDataSource<'tcx, Ctxt> + 'operands>
-    where
-        'tcx: 'a,
-    {
-        match self.as_defined_fn_call_data() {
-            Some(call) => Box::new(DefinedFnCallShapeDataSource::new(call, ctxt.tcx()).unwrap()),
-            None => Box::new(UndefinedFnCallShapeDataSource { call: self }),
-        }
-    }
 }
 
 impl<'operands, 'tcx: 'operands> DefinedFnCallData<'operands, 'tcx> {
@@ -438,6 +317,11 @@ impl<'operands, 'tcx: 'operands> DefinedFnCallData<'operands, 'tcx> {
         let instantiated = tcx
             .fn_sig(self.target.fn_def_id)
             .instantiate(tcx, self.target.substs);
+        tcx.liberate_late_bound_regions(self.target.fn_def_id, instantiated)
+    }
+
+    pub(crate) fn identity_fn_sig(self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+        let instantiated = tcx.fn_sig(self.target.fn_def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.target.fn_def_id, instantiated)
     }
 }

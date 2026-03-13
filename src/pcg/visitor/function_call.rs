@@ -117,7 +117,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         call: FunctionCallData<'tcx, RustCallDatatypes<'ops>>,
     ) -> Result<(), PcgError<'tcx>>
     where
-        'tcx: 'ops,
+        'a: 'ops
     {
         let metadata = FunctionCallAbstractionEdgeMetadata {
             location: call.location,

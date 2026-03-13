@@ -118,8 +118,8 @@ pub(crate) trait CallShapeDataSource<'tcx, Ctxt> {
 
     fn call_region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: ty::RegionVid,
+        sub: ty::RegionVid,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>>;
 }
@@ -158,11 +158,11 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> +
 
     fn call_region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: ty::RegionVid,
+        sub: ty::RegionVid,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.bc().outlives(sup, sub, self.location))
+        Ok(ctxt.bc().outlives(sup.into(), sub.into(), self.location))
     }
 
     fn location(&self) -> mir::Location {
@@ -175,11 +175,11 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> +
 }
 
 #[derive(Copy, PartialEq, Eq, Clone, Debug, Hash)]
-pub(crate) struct ProjectionData<'tcx, T> {
+pub(crate) struct ProjectionData<'tcx, T, R> {
     base: T,
     ty: ty::Ty<'tcx>,
     region_idx: RegionIdx,
-    region: PcgRegion<'tcx>,
+    region: R,
 }
 
 impl<'tcx, T: Copy> ProjectionData<'tcx, T> {
@@ -276,13 +276,14 @@ impl FunctionShapeNode {
 /// A bipartite graph describing the shape of a function. Note that *outputs*
 /// include lifetime projections of nested lifetimes in the function arguments.
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct FunctionShape {
+pub struct FunctionShape<Of = ()> {
     inputs: Vec<FunctionShapeInput>,
     outputs: Vec<FunctionShapeOutput>,
     edges: BTreeSet<AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>,
+    _marker: PhantomData<Of>,
 }
 
-impl FunctionShape {
+impl<Of> FunctionShape<Of> {
     pub fn edges(
         &self,
     ) -> impl Iterator<Item = AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>
@@ -295,7 +296,10 @@ impl FunctionShape {
         (self.inputs, self.outputs)
     }
 
-    pub fn for_fn<'tcx>(def_id: DefId, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
+    pub fn for_fn<'tcx>(
+        def_id: DefId,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<FunctionShape<ForFn>, MakeFunctionShapeError<'tcx>> {
         FunctionDefShapeDataSource::new(def_id, tcx).shape(tcx)
     }
 }
@@ -341,7 +345,7 @@ impl<'tcx> FunctionData<'tcx> {
     pub fn shape(
         self,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<FunctionShape<ForFn>, MakeFunctionShapeError<'tcx>> {
         FunctionDefShapeDataSource::new(self.def_id, tcx).shape(tcx)
     }
 
@@ -388,24 +392,41 @@ where
     }
 }
 
+trait ShapeOf {
+    type Region<'tcx>: Into<PcgRegion<'tcx>>;
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub(crate) struct ForCall;
+
+impl ShapeOf for ForCall {
+    type Region<'tcx> = ty::RegionVid;
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub(crate) struct ForFn;
 
-pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Copy> {
+impl ShapeOf for ForFn {
+    type Region<'tcx> = PcgRegion<'tcx>;
+}
+
+pub(crate) trait FunctionShapeDataSource<'tcx, Usage: ShapeOf, Ctxt: HasTyCtxt<'tcx> + Copy> {
+    type ShapeSource: ShapeOf;
     fn shape_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>>;
     fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
 
     /// Checks whether `sup` outlives `sub` in the context of this shape.
     fn region_outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: <Self::ShapeSource as ShapeOf>::Region<'tcx>,
+        sub: <Self::ShapeSource as ShapeOf>::Region<'tcx>,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>>;
 
-    fn input_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
+    fn shape_input_projections(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<LifetimeProjection<'tcx, ArgIdx, <Self::ShapeSource as ShapeOf>::Region<'tcx>>> {
         self.shape_input_tys(ctxt)
             .into_iter()
             .enumerate()
@@ -413,16 +434,24 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Co
             .collect()
     }
 
-    fn result_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
+    fn result_projections(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<LifetimeProjection<'tcx, ArgIdxOrResult, <Self::ShapeSource as ShapeOf>::Region<'tcx>>>
+    {
         ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.shape_output_ty(ctxt))
     }
 
-    fn output_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
+    fn output_projections(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<LifetimeProjection<'tcx, ArgIdxOrResult, <Self::ShapeSource as ShapeOf>::Region<'tcx>>>
+    {
         let mut inputs = self
-            .input_projections(ctxt)
+            .shape_input_projections(ctxt)
             .into_iter()
             .flat_map(|input| {
-                if ctxt.region_is_invariant_in_type(input.region, input.ty) {
+                if ctxt.region_is_invariant_in_type(input.region().into(), input.ty) {
                     Some(input.with_base(ArgIdxOrResult::Argument(input.base)))
                 } else {
                     None
@@ -437,8 +466,8 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Co
         inputs
     }
 
-    fn shape(&self, ctxt: Ctxt) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        let inputs = self.input_projections(ctxt);
+    fn shape(&self, ctxt: Ctxt) -> Result<FunctionShape<Usage>, MakeFunctionShapeError<'tcx>> {
+        let inputs = self.shape_input_projections(ctxt);
         let outputs = self.output_projections(ctxt);
         let mut edges = BTreeSet::default();
         for input in inputs.iter() {
@@ -455,11 +484,12 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Co
             inputs: inputs.into_iter().map(|input| input.into()).collect(),
             outputs: outputs.into_iter().map(|output| output.into()).collect(),
             edges,
+            _marker: PhantomData,
         })
     }
 }
 
-impl FunctionShape {
+impl<Of> FunctionShape<Of> {
     pub fn coupled_edges(&self) -> FunctionShapeCoupledEdges {
         CoupledEdgesData::new(self.edges.iter().copied())
     }
@@ -495,13 +525,14 @@ mod tests {
         let result =
             FunctionShapeOutput::new(ArgIdxOrResult::Result, tick_a, None, TestCtxt(tick_a))
                 .unwrap();
-        let shape = FunctionShape {
+        let shape = FunctionShape::<ForFn> {
             inputs: vec![rx, ry],
             outputs: vec![result],
             edges: BTreeSet::from([
                 AbstractionBlockEdge::new(rx, result),
                 AbstractionBlockEdge::new(ry, result),
             ]),
+            _marker: PhantomData,
         };
         let coupled_edges = shape.coupled_edges();
         assert_eq!(coupled_edges.len(), 1);

@@ -1,5 +1,5 @@
 //! Data structures for lifetime projections.
-use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
+use std::{borrow::Cow, cmp::Ordering, fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::{Display, From};
 
@@ -462,13 +462,41 @@ impl DisplayWithCtxt<()> for LifetimeProjectionLabel {
 #[deprecated(note = "Use LifetimeProjection instead")]
 pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeProjection<'tcx, P>;
 
+impl<'tcx, Base: Ord, Region> Ord for LifetimeProjection<'tcx, Base, Region> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.base, self.region_idx, self.label).cmp(&(&other.base, other.region_idx, other.label))
+    }
+}
+
+impl<'tcx, Base: PartialEq, Region> PartialEq for LifetimeProjection<'tcx, Base, Region> {
+    fn eq(&self, other: &Self) -> bool {
+        (&self.base, self.region_idx, self.label) == (&other.base, other.region_idx, other.label)
+    }
+}
+
+impl<'tcx, Base: Eq, Region> Eq for LifetimeProjection<'tcx, Base, Region> {}
+
+impl<'tcx, Base: PartialOrd, Region> PartialOrd for LifetimeProjection<'tcx, Base, Region> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (&self.base, self.region_idx, self.label).partial_cmp(&(
+            &other.base,
+            other.region_idx,
+            other.label,
+        ))
+    }
+}
+
 /// A lifetime projection b↓r, where `b` is a base and `r` is a region.
-#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> {
+#[derive(Clone, Debug, Hash, Copy)]
+pub struct LifetimeProjection<
+    'tcx,
+    Base = PcgLifetimeProjectionBase<'tcx>,
+    Region = PcgRegion<'tcx>,
+> {
     pub(crate) base: Base,
     pub(crate) region_idx: RegionIdx,
     pub(crate) label: Option<LifetimeProjectionLabel>,
-    phantom: PhantomData<&'tcx ()>,
+    phantom: PhantomData<&'tcx Region>,
 }
 
 impl<Base> crate::Sealed for LifetimeProjection<'_, Base> {}
@@ -778,8 +806,8 @@ impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjecti
     }
 }
 
-impl<'lproj: 'tcx, 'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>>
-    DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
+impl<'tcx, Ctxt: Copy, T: DisplayWithCtxt<Ctxt> + HasRegions<'tcx, Ctxt>>
+    DisplayWithCtxt<Ctxt> for LifetimeProjection<'tcx, T>
 where
     PcgRegion<'tcx>: DisplayWithCtxt<Ctxt>,
 {
