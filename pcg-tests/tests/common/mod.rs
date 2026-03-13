@@ -70,6 +70,28 @@ fn find_workspace_base_dir() -> PathBuf {
     manifest_dir.parent().unwrap().to_path_buf()
 }
 
+/// Returns the actual cargo target directory for a given crate directory,
+/// respecting global and project-level cargo config overrides.
+fn cargo_target_dir(crate_dir: &Path) -> PathBuf {
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .current_dir(crate_dir)
+        .output()
+        .expect("Failed to run cargo metadata");
+    assert!(
+        output.status.success(),
+        "cargo metadata failed in {}",
+        crate_dir.display()
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("Failed to parse cargo metadata output");
+    PathBuf::from(
+        metadata["target_directory"]
+            .as_str()
+            .expect("target_directory not found in cargo metadata"),
+    )
+}
+
 #[allow(dead_code)]
 #[must_use]
 pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
@@ -97,7 +119,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         ));
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let pcg_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());
+    let pcg_exe = cargo_target_dir(&pcg_bin_dir).join(target).join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -142,8 +164,7 @@ fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
 pub fn run_pcg_on_file(file: &Path) {
     let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
-    let pcg_exe = pcg_bin_dir
-        .join("target")
+    let pcg_exe = cargo_target_dir(&pcg_bin_dir)
         .join("debug")
         .join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());

@@ -6,7 +6,8 @@ use crate::{
     borrow_pcg::{
         FunctionData,
         abstraction::{
-            CheckOutlivesError, FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
+            CallShapeDataSource, CheckOutlivesError, FnShapeDataSource, ForCall, ForFn,
+            FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
         },
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
@@ -17,17 +18,21 @@ use crate::{
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::{LifetimeProjectionLabel, PcgRegion},
+        visitor::extract_regions,
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
         hir::def_id::DefId,
-        infer::{infer::TyCtxtInferExt, traits::ObligationCause},
+        infer::{
+            infer::{RegionVariableOrigin, TyCtxtInferExt},
+            traits::ObligationCause,
+        },
         middle::{
             mir::{Location, Operand},
-            ty::{self, GenericArgsRef, TypeFoldable, TypeVisitableExt},
+            ty::{self, GenericArgsRef, TypeFoldable, TypeVisitableExt, fold_regions},
         },
-        span::{Span, def_id::LocalDefId},
+        span::{DUMMY_SP, Span, def_id::LocalDefId},
         trait_selection::{
             infer::outlives::env::OutlivesEnvironment,
             traits::{
@@ -50,6 +55,29 @@ pub(crate) struct FunctionDefShapeDataSource<'tcx> {
     fn_def_id: DefId,
     outlives: OutlivesEnvironment<'tcx>,
 }
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy, DS: CallShapeDataSource<'tcx, Ctxt>>
+    FunctionShapeDataSource<'tcx, ForCall, Ctxt> for DS
+{
+    fn shape_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.call_input_tys(ctxt)
+    }
+
+    fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.call_output_ty(ctxt)
+    }
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, ForFn, Ctxt>
+    for FunctionDefShapeDataSource<'tcx>
+{
+    fn shape_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.fn_sig(ctxt).inputs().iter().copied().collect()
+    }
+
+    fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.fn_sig(ctxt).output()
+    }
+}
 
 impl<'tcx> FunctionDefShapeDataSource<'tcx> {
     pub(crate) fn new(fn_def_id: DefId, tcx: ty::TyCtxt<'tcx>) -> Self {
@@ -64,27 +92,21 @@ impl<'tcx> FunctionDefShapeDataSource<'tcx> {
             outlives,
         }
     }
-    pub(crate) fn fn_sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+    pub(crate) fn fn_sig(&self, ctxt: impl HasTyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+        let tcx = ctxt.tcx();
         let sig = tcx.fn_sig(self.fn_def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.fn_def_id, sig)
     }
 }
 
-impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, Ctxt>
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FnShapeDataSource<'tcx, Ctxt>
     for FunctionDefShapeDataSource<'tcx>
 {
-    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
-        self.fn_sig(ctxt.tcx()).inputs().iter().copied().collect()
-    }
-    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        self.fn_sig(ctxt.tcx()).output()
+    fn fn_sig(&self, ctxt: Ctxt) -> ty::FnSig<'tcx> {
+        self.fn_sig(ctxt.tcx())
     }
 
-    fn target(&self) -> Option<DefinedFnTarget<'tcx>> {
-        None
-    }
-
-    fn outlives(
+    fn fn_region_outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
@@ -94,9 +116,46 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, Ctxt>
     }
 }
 
+pub(crate) struct UndefinedFnCallShapeDataSource<'operands, 'tcx: 'operands> {
+    pub(crate) call: FunctionCallData<'tcx, RustCallDatatypes<'operands>>,
+}
+
+impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + Copy>
+    CallShapeDataSource<'tcx, Ctxt> for UndefinedFnCallShapeDataSource<'operands, 'tcx>
+{
+    fn call_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.call
+            .inputs
+            .iter()
+            .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
+            .collect()
+    }
+    fn call_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.call.output_place.ty(ctxt).ty
+    }
+
+    fn call_region_outlives(
+        &self,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+        ctxt: Ctxt,
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
+        Ok(ctxt.bc().outlives(sup, sub, self.call.location))
+    }
+
+    fn location(&self) -> Location {
+        self.call.location
+    }
+
+    fn target(&self) -> Option<DefinedFnTarget<'tcx>> {
+        None
+    }
+}
+
 pub struct DefinedFnCallShapeDataSource<'operands, 'tcx: 'operands> {
     call: FunctionCallData<'tcx, DefinedFnCallDatatypes<'operands>>,
     outlives: OutlivesEnvironment<'tcx>,
+    normalized_sig: ty::FnSig<'tcx>,
 }
 
 impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
@@ -106,54 +165,122 @@ impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let sig = call.fn_sig(tcx);
-        let infcx = tcx
-            .infer_ctxt()
-            .ignoring_regions()
-            .skip_leak_check(true)
-            .build(ty::TypingMode::PostAnalysis);
+
         let typing_env = ty::TypingEnv::post_analysis(tcx, call.caller_def_id);
-        let mut trait_engine: Box<dyn TraitEngine<'tcx, FulfillmentError<'tcx>>> =
-            TraitEngineExt::new(&infcx);
-        let sig = match infcx
-            .at(&ObligationCause::dummy(), typing_env.param_env)
-            .deeply_normalize(sig, &mut *trait_engine)
-        {
-            Ok(sig) => sig,
-            Err(_) => panic!("No solution found for sig: {:?}", sig),
+        // Expand free type aliases (e.g. `type Foo = Bar`) before deep
+        // normalization. `deeply_normalize` would panic (via `raise_fatal`)
+        // when encountering recursive or overflowing free aliases, whereas
+        // `expand_free_alias_tys` handles overflow gracefully.
+        let sig = tcx.expand_free_alias_tys(sig);
+        let normalized_sig = if true {
+            let infcx = tcx
+                .infer_ctxt()
+                .skip_leak_check(true)
+                .build(ty::TypingMode::PostAnalysis);
+
+            // The sig may contain ReVar regions from the caller's borrow
+            // checker context. A fresh InferCtxt doesn't know about these, so
+            // replace them with fresh region variables before normalizing,
+            // then map back afterward.
+            let mut old_to_new: Vec<(ty::RegionVid, ty::Region<'tcx>)> = Vec::new();
+            let sig_with_fresh_regions = fold_regions(tcx, sig, |r, _| {
+                if let ty::ReVar(vid) = r.kind() {
+                    if let Some(fresh) = old_to_new
+                        .iter()
+                        .find_map(|(v, f)| (*v == vid).then_some(*f))
+                    {
+                        fresh
+                    } else {
+                        let fresh = infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
+                        old_to_new.push((vid, fresh));
+                        fresh
+                    }
+                } else {
+                    r
+                }
+            });
+
+            let mut trait_engine: Box<dyn TraitEngine<'tcx, FulfillmentError<'tcx>>> =
+                TraitEngineExt::new(&infcx);
+            let normalized = match infcx
+                .at(&ObligationCause::dummy(), typing_env.param_env)
+                .deeply_normalize(sig_with_fresh_regions, &mut *trait_engine)
+            {
+                Ok(sig) => sig,
+                Err(errs) => {
+                    tracing::warn!("Cannot normalize sig {:?}: {:?}", sig, errs);
+                    return Err(MakeFunctionShapeError::ContainsAliasType);
+                }
+            };
+
+            // Map fresh region variables back to the original caller ReVars.
+            fold_regions(tcx, normalized, |r, _| {
+                if let ty::ReVar(vid) = r.kind() {
+                    old_to_new
+                        .iter()
+                        .find_map(|(old_vid, fresh)| {
+                            if let ty::ReVar(fresh_vid) = fresh.kind() {
+                                (fresh_vid == vid).then(|| ty::Region::new_var(tcx, *old_vid))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(r)
+                } else {
+                    r
+                }
+            })
+        } else {
+            sig
         };
 
-        tracing::warn!("Normalized sig: {:?}", sig);
+        tracing::debug!("Normalized sig: {:?}", normalized_sig);
 
-        // let normalize =
-        //     |ty: ty::Ty<'tcx>, trait_engine: &mut dyn TraitEngine<'tcx, FulfillmentError<'tcx>>| {
-        //         tracing::warn!("normalizing ty: {:?}", ty);
-        //         infcx
-        //             .at(&ObligationCause::dummy(), typing_env.param_env)
-        //             .structurally_normalize_ty(ty, trait_engine)
-        //             .unwrap_or_else(|errors| {
-        //                 panic!("No solution found for ty: {:?}, errors: {:?}", ty, errors)
-        //             })
-        //     };
-
-        // let input_tys = sig
-        //     .inputs()
-        //     .iter()
-        //     .copied()
-        //     .map(|ty| normalize(ty, &mut *trait_engine))
-        //     .collect::<Vec<_>>();
-        // let output_ty = normalize(sig.output(), &mut *trait_engine);
-
-        // tracing::warn!("input_tys: {:?}", input_tys);
-        // tracing::warn!("output_ty: {:?}", output_ty);
-
-        // tracing::warn!("sig normal: {:?}\n\n\n", sig);
         let outlives = OutlivesEnvironment::from_normalized_bounds(
             typing_env.param_env,
             vec![],
             vec![],
             HashSet::default(),
         );
-        Ok(Self { call, outlives })
+        Ok(Self {
+            call,
+            outlives,
+            normalized_sig,
+        })
+    }
+
+    /// Maps a call-site region (typically a `RegionVid`) to the corresponding
+    /// region in the function's signature by matching region positions between
+    /// the operand types and the fn sig types.
+    fn map_to_sig_region<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>(
+        &self,
+        region: PcgRegion<'tcx>,
+        ctxt: Ctxt,
+    ) -> Option<PcgRegion<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        for (operand, sig_input_ty) in self.call.inputs.iter().zip(self.normalized_sig.inputs()) {
+            let operand_ty = operand.ty(ctxt.body(), ctxt.tcx());
+            let op_regions = extract_regions(operand_ty);
+            let sig_regions = extract_regions(*sig_input_ty);
+            for (op_r, sig_r) in op_regions.iter().zip(sig_regions.iter()) {
+                if *op_r == region {
+                    return Some(*sig_r);
+                }
+            }
+        }
+
+        let output_ty = self.call.output_place.ty(ctxt).ty;
+        let op_regions = extract_regions(output_ty);
+        let sig_regions = extract_regions(self.normalized_sig.output());
+        for (op_r, sig_r) in op_regions.iter().zip(sig_regions.iter()) {
+            if *op_r == region {
+                return Some(*sig_r);
+            }
+        }
+
+        None
     }
 }
 
@@ -178,28 +305,73 @@ impl<'tcx> FunctionData<'tcx> {
 }
 
 impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy>
-    FunctionShapeDataSource<'tcx, Ctxt> for DefinedFnCallShapeDataSource<'operands, 'tcx>
+    CallShapeDataSource<'tcx, Ctxt> for DefinedFnCallShapeDataSource<'operands, 'tcx>
 {
-    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+    fn call_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.call
             .inputs
             .iter()
             .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
             .collect()
     }
-    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+    fn call_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.call.output_place.ty(ctxt).ty
     }
 
-    fn outlives(
+    fn call_region_outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        self.call
-            .target
-            .check_outlives_in_env(sup, sub, &self.outlives, ctxt)
+        if sup.is_static() || sup == sub {
+            return Ok(true);
+        }
+
+        let target = self.call.target;
+
+        // Map early-bound regions via substs
+        let mapped_sup = target.region_for_outlives_check(sup, ctxt);
+        let mapped_sub = target.region_for_outlives_check(sub, ctxt);
+
+        // For regions still unresolved (e.g. late-bound), map via fn sig
+        let mapped_sup = if matches!(mapped_sup, PcgRegion::RegionVid(_)) {
+            self.map_to_sig_region(mapped_sup, ctxt)
+                .unwrap_or(mapped_sup)
+        } else {
+            mapped_sup
+        };
+        let mapped_sub = if matches!(mapped_sub, PcgRegion::RegionVid(_)) {
+            self.map_to_sig_region(mapped_sub, ctxt)
+                .unwrap_or(mapped_sub)
+        } else {
+            mapped_sub
+        };
+
+        if mapped_sup.is_static() || mapped_sup == mapped_sub {
+            return Ok(true);
+        }
+
+        match (mapped_sup, mapped_sub) {
+            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
+                Err(CheckOutlivesError::CannotCompareRegions {
+                    sup: mapped_sup,
+                    sub: mapped_sub,
+                    loc: self.call.location,
+                })
+            }
+            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
+            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
+            _ => Ok(self.outlives.free_region_map().sub_free_regions(
+                ctxt.tcx(),
+                mapped_sub.rust_region(ctxt.tcx()),
+                mapped_sup.rust_region(ctxt.tcx()),
+            )),
+        }
+    }
+
+    fn location(&self) -> Location {
+        self.call.location
     }
 
     fn target(&self) -> Option<DefinedFnTarget<'tcx>> {
@@ -266,32 +438,6 @@ impl<'tcx> DefinedFnTarget<'tcx> {
             region
         }
     }
-    pub(crate) fn check_outlives_in_env(
-        self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
-        env: &OutlivesEnvironment<'tcx>,
-        ctxt: impl HasTyCtxt<'tcx> + Copy,
-    ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        if sup.is_static() || sup == sub {
-            return Ok(true);
-        }
-        let sup = self.region_for_outlives_check(sup, ctxt);
-        let sub = self.region_for_outlives_check(sub, ctxt);
-        let result = match (sup, sub) {
-            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
-            }
-            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
-            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
-            _ => Ok(env.free_region_map().sub_free_regions(
-                ctxt.tcx(),
-                sub.rust_region(ctxt.tcx()),
-                sup.rust_region(ctxt.tcx()),
-            )),
-        }?;
-        Ok(result)
-    }
 }
 
 pub(crate) type DefinedFnCallData<'operands, 'tcx: 'operands> =
@@ -309,6 +455,19 @@ impl<'operands, 'tcx: 'operands> FunctionCallData<'tcx, RustCallDatatypes<'opera
             output_place: self.output_place,
             location: self.location,
         })
+    }
+
+    pub(crate) fn shape_data_source<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + Copy>(
+        self,
+        ctxt: Ctxt,
+    ) -> Box<dyn CallShapeDataSource<'tcx, Ctxt> + 'operands>
+    where
+        'tcx: 'a,
+    {
+        match self.as_defined_fn_call_data() {
+            Some(call) => Box::new(DefinedFnCallShapeDataSource::new(call, ctxt.tcx()).unwrap()),
+            None => Box::new(UndefinedFnCallShapeDataSource { call: self }),
+        }
     }
 }
 

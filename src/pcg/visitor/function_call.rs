@@ -4,15 +4,16 @@ use crate::{
     borrow_pcg::{
         FunctionData,
         abstraction::{
-            ArgIdx, ArgIdxOrResult, FunctionShape, FunctionShapeDataSource,
+            ArgIdx, ArgIdxOrResult, CallShapeDataSource, FunctionShape, FunctionShapeDataSource,
         },
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
             function::{
-                CallDatatypes, DefinedFnTarget, FunctionCallAbstraction,
-                FunctionCallAbstractionEdgeMetadata, FunctionCallData, DefinedFnCallShapeDataSource,
+                CallDatatypes, DefinedFnCallShapeDataSource, DefinedFnTarget,
+                FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
+                RustCallDatatypes, UndefinedFnCallShapeDataSource,
             },
         },
         edge_data::LabelNodePredicate,
@@ -110,21 +111,24 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         }
     }
 
-    fn create_edges_for_shape<
-        'ops,
-        D: CallDatatypes<'tcx, Location = Location, Inputs = &'ops [&'ops Operand<'tcx>], OutputPlace = utils::Place<'tcx>>,
-    >(
+    fn create_edges_for_call<'ops>(
         &mut self,
-        shape: FunctionShape,
-        call: FunctionCallData<'tcx, D>,
+        call: FunctionCallData<'tcx, RustCallDatatypes<'ops>>,
     ) -> Result<(), PcgError<'tcx>>
     where
-        FunctionCallData<'tcx, D>: FunctionShapeDataSource<'tcx, Ctxt>,
         'tcx: 'ops,
     {
         let metadata = FunctionCallAbstractionEdgeMetadata {
             location: call.location,
-            target: call.target(),
+            target: call.target,
+        };
+        let shape = match call.as_defined_fn_call_data() {
+            Some(call) => {
+                DefinedFnCallShapeDataSource::new(call, self.ctxt.tcx())
+                    .unwrap()
+                    .shape(self.ctxt)
+            }
+            None => UndefinedFnCallShapeDataSource { call }.shape(self.ctxt),
         };
         // tracing::warn!(
         //     "shape: {}",
@@ -261,41 +265,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )?;
             }
         }
-        let call_shape = FunctionShape::new(&caller_data, self.ctxt.bc_ctxt()).unwrap();
-        if let Some(as_defined_fn_call_data) = caller_data.as_defined_fn_call_data() {
-            let shape_data_source = DefinedFnCallShapeDataSource::new(
-                as_defined_fn_call_data,
-                self.ctxt.tcx(),
-            )
-            .unwrap();
-            match FunctionShape::new(&shape_data_source, self.ctxt) {
-                Ok(sig_shape) => {
-                    // pcg_validity_assert!(
-                    //     sig_shape.is_specialization_of(&call_shape),
-                    //     "Signature shape {} for function {:?} with signature {:#?}\nInstantiated:{:#?}\n does not specialize Call shape {}.\nDiff: {}",
-                    //     sig_shape.display_string(self.ctxt.bc_ctxt()),
-                    //     function_call_data.def_id(),
-                    //     ctxt.tcx().fn_sig(function_call_data.def_id()),
-                    //     function_call_data.function_data.fn_sig(self.ctxt.bc_ctxt()),
-                    //     // function_call_data.fully_normalized_sig(self.ctxt.bc_ctxt()),
-                    //     call_shape.display_string(self.ctxt.bc_ctxt()),
-                    //     sig_shape.diff(&call_shape).display_string(self.ctxt.bc_ctxt())
-                    // );
-
-                    self.create_edges_for_shape(sig_shape, caller_data)
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        "Error getting signature shape at {:?}: {:?}",
-                        call_span,
-                        err
-                    );
-                    self.create_edges_for_shape(call_shape, caller_data)
-                }
-            }
-        } else {
-            self.create_edges_for_shape(call_shape, caller_data)
-        }
-        .map_err(move |err| PcgError::internal(format!("{err:?}")))
+        self.create_edges_for_call(caller_data)
     }
 }
