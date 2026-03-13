@@ -295,7 +295,7 @@ impl FunctionShape {
         (self.inputs, self.outputs)
     }
 
-    pub fn for_fn<'tcx>(def_id: DefId, tcx: ty::TyCtxt<'tcx>) -> FunctionShape {
+    pub fn for_fn<'tcx>(def_id: DefId, tcx: ty::TyCtxt<'tcx>) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
         FunctionDefShapeDataSource::new(def_id, tcx).shape(tcx)
     }
 }
@@ -342,7 +342,7 @@ impl<'tcx> FunctionData<'tcx> {
         self,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        Ok(FunctionDefShapeDataSource::new(self.def_id, tcx).shape(tcx))
+        FunctionDefShapeDataSource::new(self.def_id, tcx).shape(tcx)
     }
 
     pub fn coupled_edges(
@@ -396,6 +396,15 @@ pub(crate) struct ForFn;
 pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Copy> {
     fn shape_input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>>;
     fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
+
+    /// Checks whether `sup` outlives `sub` in the context of this shape.
+    fn region_outlives(
+        &self,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+        ctxt: Ctxt,
+    ) -> Result<bool, CheckOutlivesError<'tcx>>;
+
     fn input_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
         self.shape_input_tys(ctxt)
             .into_iter()
@@ -428,20 +437,25 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Usage, Ctxt: HasTyCtxt<'tcx> + Co
         inputs
     }
 
-    fn shape(&self, ctxt: Ctxt) -> FunctionShape {
+    fn shape(&self, ctxt: Ctxt) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
         let inputs = self.input_projections(ctxt);
         let outputs = self.output_projections(ctxt);
         let mut edges = BTreeSet::default();
         for input in inputs.iter() {
             for output in outputs.iter() {
-                edges.insert(AbstractionBlockEdge::new((*input).into(), (*output).into()));
+                let should_connect = self
+                    .region_outlives(input.region, output.region, ctxt)
+                    .map_err(MakeFunctionShapeError::CheckOutlivesError)?;
+                if should_connect {
+                    edges.insert(AbstractionBlockEdge::new((*input).into(), (*output).into()));
+                }
             }
         }
-        FunctionShape {
+        Ok(FunctionShape {
             inputs: inputs.into_iter().map(|input| input.into()).collect(),
             outputs: outputs.into_iter().map(|output| output.into()).collect(),
             edges,
-        }
+        })
     }
 }
 

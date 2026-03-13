@@ -10,12 +10,12 @@ use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
-    error::PcgUnsupportedError,
+    error::{PcgInternalError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     pcg::place_capabilities::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
     },
-    rustc_interface::middle::mir::Local,
+    rustc_interface::middle::mir::{self, Local},
     utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use itertools::Itertools;
@@ -257,28 +257,24 @@ impl<'tcx> LocalExpansions<'tcx> {
         to: Place<'tcx>,
         _for_cap: Option<CapabilityKind>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
+        location: mir::Location,
         ctxt: Ctxt,
-    ) -> Vec<RepackOp<'tcx>>
+    ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgInternalError<'tcx>>
     where
         'tcx: 'a,
     {
         if !self.contains_expansion_from(to) {
-            return vec![];
+            return Ok(vec![]);
         }
         let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
-        let ops: Vec<RepackOp<'tcx>> = places_to_collapse
-            .into_iter()
-            .flat_map(|place| {
-                let actions = self.collapse_actions_for(place, capabilities, ctxt);
-                actions
-                    .into_iter()
-                    .map(|action| {
-                        self.perform_collapse_action(action, capabilities, ctxt);
-                        RepackOp::Collapse(action)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        ops
+        let mut ops = Vec::new();
+        for place in places_to_collapse {
+            let actions = self.collapse_actions_for(place, capabilities, ctxt);
+            for action in actions {
+                self.perform_collapse_action(action, capabilities, location, ctxt)?;
+                ops.push(RepackOp::Collapse(action));
+            }
+        }
+        Ok(ops)
     }
 }

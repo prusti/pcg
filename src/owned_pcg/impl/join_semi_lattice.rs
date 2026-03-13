@@ -9,7 +9,7 @@ use crate::{
         action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
         state::BorrowsStateLike,
     },
-    error::PcgError,
+    error::{PcgError, PcgInternalError},
     owned_pcg::{
         ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
         join::data::JoinOwnedData,
@@ -75,12 +75,14 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                         *k = CapabilityKind::Write.into();
                     }
                 }
+                let location = mir::Location { block: self.block, statement_index: 0 };
                 repacks.extend(expansions.collapse(
                     expansions.local.into(),
                     None,
                     self.capabilities,
+                    location,
                     ctxt,
-                ));
+                )?);
                 repacks.push(RepackOp::StorageDead(expansions.local));
                 *self.owned = OwnedPcgLocal::Unallocated;
                 Ok(repacks)
@@ -222,34 +224,31 @@ impl<'tcx> LocalExpansions<'tcx> {
         &mut self,
         collapse: RepackCollapse<'tcx>,
         place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C>,
+        location: mir::Location,
         ctxt: Ctxt,
-    ) where
+    ) -> Result<(), PcgInternalError<'tcx>>
+    where
         'tcx: 'a,
     {
         let expansion_places = self.all_children_of(collapse.to, ctxt);
-        let retained_cap: C =
-            expansion_places
-                .iter()
-                .fold(CapabilityKind::Exclusive.into(), |acc, place| {
-                    let removed_cap = place_capabilities.remove(*place, ctxt);
-                    let removed_cap = pcg_validity_expect_some!(
-                        removed_cap,
-                        fallback: CapabilityKind::Exclusive.into(),
-                        [ctxt],
-                        "Expected capability for {}",
-                        place.display_string(ctxt.ctxt())
-                    );
-                    let joined_cap = removed_cap.minimum(acc, ctxt);
-                    pcg_validity_expect_some!(joined_cap,
-                        fallback: CapabilityKind::Exclusive.into(),
-                        [ctxt],
-                        "Cannot join capability {:?} of {} with min cap {:?}",
-                        removed_cap.expect_concrete(),
-                        place.display_string(ctxt.ctxt()),
-                        acc.expect_concrete()
-                    )
-                });
+        let mut retained_cap: C = CapabilityKind::Exclusive.into();
+        for place in expansion_places.iter() {
+            let removed_cap = place_capabilities.remove(*place, ctxt);
+            let Some(removed_cap) = removed_cap else {
+                return Err(PcgInternalError::NoCapability(*place, location));
+            };
+            let joined_cap = removed_cap.minimum(retained_cap, ctxt);
+            retained_cap = pcg_validity_expect_some!(joined_cap,
+                fallback: CapabilityKind::Exclusive.into(),
+                [ctxt],
+                "Cannot join capability {:?} of {} with min cap {:?}",
+                removed_cap.expect_concrete(),
+                place.display_string(ctxt.ctxt()),
+                retained_cap.expect_concrete()
+            );
+        }
         self.remove_all_expansions_from(collapse.to, ctxt);
         place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        Ok(())
     }
 }

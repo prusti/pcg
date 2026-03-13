@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
+    error::PcgInternalError,
     owned_pcg::{LocalExpansions, OwnedPcgLocal},
     pcg::{
         CapabilityKind,
@@ -14,6 +15,7 @@ use crate::{
         triple::{PlaceCondition, Triple},
     },
     pcg_validity_assert,
+    rustc_interface::middle::mir,
     utils::{
         HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike, display::DisplayWithCompilerCtxt,
     },
@@ -28,8 +30,10 @@ impl<'tcx> OwnedPcg<'tcx> {
         &self,
         pre: PlaceCondition<'tcx>,
         capabilities: &SymbolicPlaceCapabilities<'tcx>,
+        location: mir::Location,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) where
+    ) -> Result<(), PcgInternalError<'tcx>>
+    where
         'tcx: 'a,
     {
         match pre {
@@ -63,21 +67,8 @@ impl<'tcx> OwnedPcg<'tcx> {
                     CapabilityKind::ShallowExclusive => unreachable!(),
                 }
                 if place.is_owned(ctxt) {
-                    if capabilities.get(place, ctxt).is_some() {
-                        // pcg_validity_assert!(
-                        //     matches!(
-                        //         current_cap.partial_cmp(&required_cap),
-                        //         Some(Ordering::Equal) | Some(Ordering::Greater)
-                        //     ),
-                        //     "Capability {current_cap:?} is not >= {required_cap:?} for {place:?}"
-                        // )
-                    } else {
-                        pcg_validity_assert!(
-                            false,
-                            [ctxt],
-                            "No capability for {}",
-                            place.display_string(ctxt.bc_ctxt())
-                        );
+                    if capabilities.get(place, ctxt).is_none() {
+                        return Err(PcgInternalError::NoCapability(place, location));
                     }
                 }
             }
@@ -90,18 +81,21 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::RemoveCapability(_) => unreachable!(),
         }
+        Ok(())
     }
     pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         t: Triple<'tcx>,
         place_capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
+        location: mir::Location,
         ctxt: Ctxt,
-    ) where
+    ) -> Result<(), PcgInternalError<'tcx>>
+    where
         'tcx: 'a,
     {
-        self.check_pre_satisfied(t.pre(), place_capabilities, ctxt);
+        self.check_pre_satisfied(t.pre(), place_capabilities, location, ctxt)?;
         let Some(post) = t.post() else {
-            return;
+            return Ok(());
         };
         match post {
             PlaceCondition::Return => unreachable!(),
@@ -135,5 +129,6 @@ impl<'tcx> OwnedPcg<'tcx> {
                 place_capabilities.remove(place, ctxt);
             }
         }
+        Ok(())
     }
 }

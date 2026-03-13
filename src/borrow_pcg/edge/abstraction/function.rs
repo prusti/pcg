@@ -24,22 +24,12 @@ use crate::{
     pcg::PcgNodeWithPlace,
     rustc_interface::{
         hir::def_id::DefId,
-        infer::{
-            infer::{RegionVariableOrigin, TyCtxtInferExt},
-            traits::ObligationCause,
-        },
         middle::{
             mir::{Location, Operand},
-            ty::{self, GenericArgsRef, TypeFoldable, TypeVisitableExt, fold_regions},
+            ty::{self, GenericArgsRef, TypeFoldable, TypeVisitableExt},
         },
-        span::{DUMMY_SP, Span, def_id::LocalDefId},
-        trait_selection::{
-            infer::outlives::env::OutlivesEnvironment,
-            traits::{
-                FulfillmentError, NormalizeExt, StructurallyNormalizeExt, TraitEngine,
-                TraitEngineExt, query::normalize::QueryNormalizeExt,
-            },
-        },
+        span::{Span, def_id::LocalDefId},
+        trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgPlace, Place,
@@ -65,6 +55,15 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy, DS: CallShapeDataSource<'tcx, Ctxt>>
     fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.call_output_ty(ctxt)
     }
+
+    fn region_outlives(
+        &self,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+        ctxt: Ctxt,
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
+        self.call_region_outlives(sup, sub, ctxt)
+    }
 }
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, ForFn, Ctxt>
@@ -76,6 +75,15 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, ForFn, Ct
 
     fn shape_output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.fn_sig(ctxt).output()
+    }
+
+    fn region_outlives(
+        &self,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+        ctxt: Ctxt,
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
+        self.fn_region_outlives(sup, sub, ctxt)
     }
 }
 
@@ -112,7 +120,14 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FnShapeDataSource<'tcx, Ctxt>
         sub: PcgRegion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        todo!()
+        if sup.is_static() || sup == sub {
+            return Ok(true);
+        }
+        Ok(self.outlives.free_region_map().sub_free_regions(
+            ctxt.tcx(),
+            sub.rust_region(ctxt.tcx()),
+            sup.rust_region(ctxt.tcx()),
+        ))
     }
 }
 
@@ -166,78 +181,12 @@ impl<'operands, 'tcx: 'operands> DefinedFnCallShapeDataSource<'operands, 'tcx> {
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let sig = call.fn_sig(tcx);
 
-        let typing_env = ty::TypingEnv::post_analysis(tcx, call.caller_def_id);
-        // Expand free type aliases (e.g. `type Foo = Bar`) before deep
-        // normalization. `deeply_normalize` would panic (via `raise_fatal`)
-        // when encountering recursive or overflowing free aliases, whereas
-        // `expand_free_alias_tys` handles overflow gracefully.
-        let sig = tcx.expand_free_alias_tys(sig);
-        let normalized_sig = if true {
-            let infcx = tcx
-                .infer_ctxt()
-                .skip_leak_check(true)
-                .build(ty::TypingMode::PostAnalysis);
-
-            // The sig may contain ReVar regions from the caller's borrow
-            // checker context. A fresh InferCtxt doesn't know about these, so
-            // replace them with fresh region variables before normalizing,
-            // then map back afterward.
-            let mut old_to_new: Vec<(ty::RegionVid, ty::Region<'tcx>)> = Vec::new();
-            let sig_with_fresh_regions = fold_regions(tcx, sig, |r, _| {
-                if let ty::ReVar(vid) = r.kind() {
-                    if let Some(fresh) = old_to_new
-                        .iter()
-                        .find_map(|(v, f)| (*v == vid).then_some(*f))
-                    {
-                        fresh
-                    } else {
-                        let fresh = infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
-                        old_to_new.push((vid, fresh));
-                        fresh
-                    }
-                } else {
-                    r
-                }
-            });
-
-            let mut trait_engine: Box<dyn TraitEngine<'tcx, FulfillmentError<'tcx>>> =
-                TraitEngineExt::new(&infcx);
-            let normalized = match infcx
-                .at(&ObligationCause::dummy(), typing_env.param_env)
-                .deeply_normalize(sig_with_fresh_regions, &mut *trait_engine)
-            {
-                Ok(sig) => sig,
-                Err(errs) => {
-                    tracing::warn!("Cannot normalize sig {:?}: {:?}", sig, errs);
-                    return Err(MakeFunctionShapeError::ContainsAliasType);
-                }
-            };
-
-            // Map fresh region variables back to the original caller ReVars.
-            fold_regions(tcx, normalized, |r, _| {
-                if let ty::ReVar(vid) = r.kind() {
-                    old_to_new
-                        .iter()
-                        .find_map(|(old_vid, fresh)| {
-                            if let ty::ReVar(fresh_vid) = fresh.kind() {
-                                (fresh_vid == vid).then(|| ty::Region::new_var(tcx, *old_vid))
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or(r)
-                } else {
-                    r
-                }
-            })
-        } else {
-            sig
-        };
+        let normalized_sig = tcx.expand_free_alias_tys(sig);
 
         tracing::debug!("Normalized sig: {:?}", normalized_sig);
 
         let outlives = OutlivesEnvironment::from_normalized_bounds(
-            typing_env.param_env,
+            tcx.param_env(call.target.fn_def_id),
             vec![],
             vec![],
             HashSet::default(),
@@ -334,16 +283,30 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy
         let mapped_sup = target.region_for_outlives_check(sup, ctxt);
         let mapped_sub = target.region_for_outlives_check(sub, ctxt);
 
-        // For regions still unresolved (e.g. late-bound), map via fn sig
+        // For regions still unresolved (e.g. late-bound), map via fn sig,
+        // then re-apply subst mapping in case the sig region is an early-bound
+        // region variable.
         let mapped_sup = if matches!(mapped_sup, PcgRegion::RegionVid(_)) {
-            self.map_to_sig_region(mapped_sup, ctxt)
-                .unwrap_or(mapped_sup)
+            let sig_region = self
+                .map_to_sig_region(mapped_sup, ctxt)
+                .unwrap_or(mapped_sup);
+            if matches!(sig_region, PcgRegion::RegionVid(_)) {
+                target.region_for_outlives_check(sig_region, ctxt)
+            } else {
+                sig_region
+            }
         } else {
             mapped_sup
         };
         let mapped_sub = if matches!(mapped_sub, PcgRegion::RegionVid(_)) {
-            self.map_to_sig_region(mapped_sub, ctxt)
-                .unwrap_or(mapped_sub)
+            let sig_region = self
+                .map_to_sig_region(mapped_sub, ctxt)
+                .unwrap_or(mapped_sub);
+            if matches!(sig_region, PcgRegion::RegionVid(_)) {
+                target.region_for_outlives_check(sig_region, ctxt)
+            } else {
+                sig_region
+            }
         } else {
             mapped_sub
         };
@@ -352,21 +315,20 @@ impl<'operands, 'a, 'tcx: 'a + 'operands, Ctxt: HasCompilerCtxt<'a, 'tcx> + Copy
             return Ok(true);
         }
 
-        match (mapped_sup, mapped_sub) {
-            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                Err(CheckOutlivesError::CannotCompareRegions {
-                    sup: mapped_sup,
-                    sub: mapped_sub,
-                    loc: self.call.location,
-                })
-            }
-            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
-            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
-            _ => Ok(self.outlives.free_region_map().sub_free_regions(
+        if matches!(mapped_sup, PcgRegion::RegionVid(_))
+            || matches!(mapped_sub, PcgRegion::RegionVid(_))
+        {
+            Err(CheckOutlivesError::CannotCompareRegions {
+                sup: mapped_sup,
+                sub: mapped_sub,
+                loc: self.call.location,
+            })
+        } else {
+            Ok(self.outlives.free_region_map().sub_free_regions(
                 ctxt.tcx(),
                 mapped_sub.rust_region(ctxt.tcx()),
                 mapped_sup.rust_region(ctxt.tcx()),
-            )),
+            ))
         }
     }
 
@@ -426,8 +388,8 @@ impl<'tcx> DefinedFnTarget<'tcx> {
     ) -> PcgRegion<'tcx> {
         if let Some(index) = self
             .substs
-            .regions()
-            .position(|r| PcgRegion::from(r) == region)
+            .iter()
+            .position(|arg| arg.as_region().is_some_and(|r| PcgRegion::from(r) == region))
         {
             let fn_ty = ctxt.tcx().type_of(self.fn_def_id).instantiate_identity();
             let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {

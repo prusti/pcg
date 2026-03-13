@@ -20,6 +20,7 @@ use crate::{
         region_projection::{HasRegions, HasTy, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
+    error::PcgInternalError,
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
         index::Idx,
@@ -123,13 +124,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             target: call.target,
         };
         let shape = match call.as_defined_fn_call_data() {
-            Some(call) => {
-                DefinedFnCallShapeDataSource::new(call, self.ctxt.tcx())
-                    .unwrap()
-                    .shape(self.ctxt)
-            }
+            Some(call) => DefinedFnCallShapeDataSource::new(call, self.ctxt.tcx())
+                .unwrap()
+                .shape(self.ctxt),
             None => UndefinedFnCallShapeDataSource { call }.shape(self.ctxt),
-        };
+        }
+        .map_err(move |err| PcgError::internal(PcgInternalError::MakeFunctionShapeError(err)))?;
         // tracing::warn!(
         //     "shape: {}",
         //     shape.display_string((function_data.unwrap(), self.ctxt.bc_ctxt()))

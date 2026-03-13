@@ -12,7 +12,7 @@ use crate::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
     },
-    error::PcgError,
+    error::{PcgError, PcgInternalError},
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
         index::{Idx, IndexVec},
@@ -879,11 +879,11 @@ impl<
             ctxt,
         )
         .ok_or_else(|| {
-            PcgError::internal(format!(
+            PcgError::internal(PcgInternalError::Other(format!(
                 "Region {region} not found in place {base:?}",
                 region = self.region(ctxt),
                 base = self.base,
-            ))
+            )))
         })
     }
 

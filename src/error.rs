@@ -1,10 +1,11 @@
 use derive_more::From;
 
 use crate::{
+    borrow_pcg::MakeFunctionShapeError,
     coupling::CoupleInputError,
-    rustc_interface::middle::ty,
+    rustc_interface::middle::{mir, ty},
     utils::{
-        self, PANIC_ON_ERROR,
+        self, PANIC_ON_ERROR, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -53,10 +54,12 @@ impl<'tcx> PcgError<'tcx> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PcgErrorKind<'tcx> {
     Unsupported(PcgUnsupportedError<'tcx>),
-    Internal(PcgInternalError),
+    Internal(PcgInternalError<'tcx>),
 }
 
-impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'_> {
+impl<'a, 'tcx: 'a, Ctxt: crate::utils::HasCompilerCtxt<'a, 'tcx> + Copy> DisplayWithCtxt<Ctxt>
+    for PcgErrorKind<'tcx>
+{
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match mode {
             OutputMode::Test => match self {
@@ -73,13 +76,13 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'_> {
 }
 
 impl<'tcx> PcgError<'tcx> {
-    #[allow(dead_code)]
-    pub(crate) fn internal(msg: String) -> Self {
+    pub(crate) fn internal(err: PcgInternalError<'tcx>) -> Self {
         Self {
-            kind: PcgErrorKind::Internal(PcgInternalError::new(msg)),
+            kind: PcgErrorKind::Internal(err),
             context: vec![],
         }
     }
+
 
     pub(crate) fn unsupported(err: PcgUnsupportedError<'tcx>) -> Self {
         Self {
@@ -90,22 +93,39 @@ impl<'tcx> PcgError<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PcgInternalError(String);
+pub enum PcgInternalError<'tcx> {
+    MakeFunctionShapeError(MakeFunctionShapeError<'tcx>),
+    NoCapability(Place<'tcx>, mir::Location),
+    Other(String),
+}
 
-impl PcgInternalError {
+impl<'tcx> PcgInternalError<'tcx> {
     pub(crate) fn new(msg: String) -> Self {
-        Self(msg)
+        Self::Other(msg)
     }
 }
 
-impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgInternalError {
-    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        format!("{self:?}").into()
+impl<'a, 'tcx: 'a, Ctxt: crate::utils::HasCompilerCtxt<'a, 'tcx> + Copy> DisplayWithCtxt<Ctxt>
+    for PcgInternalError<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        match self {
+            PcgInternalError::NoCapability(place, location) => format!(
+                "NoCapability({}, {:?})",
+                place.display_string(ctxt),
+                location
+            )
+            .into(),
+            PcgInternalError::Other(msg) => format!("Other({msg})").into(),
+            PcgInternalError::MakeFunctionShapeError(make_function_shape_error) => {
+                format!("{:?}", make_function_shape_error).into()
+            }
+        }
     }
 }
 
-impl From<PcgInternalError> for PcgError<'_> {
-    fn from(e: PcgInternalError) -> Self {
+impl<'tcx> From<PcgInternalError<'tcx>> for PcgError<'tcx> {
+    fn from(e: PcgInternalError<'tcx>) -> Self {
         PcgError::new(PcgErrorKind::Internal(e), vec![])
     }
 }

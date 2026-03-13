@@ -517,8 +517,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     capability_projections.perform_collapse_action(
                         collapse,
                         self.pcg.capabilities,
+                        self.location,
                         analysis_ctxt,
-                    );
+                    )?;
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {

@@ -8,7 +8,7 @@ use crate::{
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
     borrows_imgcat_debug,
-    error::PcgError,
+    error::{PcgError, PcgInternalError},
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind, CapabilityLike, SymbolicCapability,
@@ -339,9 +339,11 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     pub(crate) fn ensure_triple<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         t: Triple<'tcx>,
+        location: mir::Location,
         ctxt: Ctxt,
-    ) {
-        self.owned.ensures(t, &mut self.capabilities, ctxt);
+    ) -> Result<(), PcgInternalError<'tcx>> {
+        self.owned
+            .ensures(t, &mut self.capabilities, location, ctxt)
     }
 
     pub(crate) fn join_owned_data(

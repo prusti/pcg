@@ -50,7 +50,7 @@ impl<'tcx, Edge: std::fmt::Debug + Clone + Eq + std::hash::Hash> UnblockGraph<'t
     pub fn actions<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         self,
         ctxt: Ctxt,
-    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx, Edge>>, PcgInternalError>
+    ) -> Result<Vec<BorrowPcgUnblockAction<'tcx, Edge>>, PcgInternalError<'tcx>>
     where
         'tcx: 'a,
         Edge: EdgeData<'tcx, Ctxt>,

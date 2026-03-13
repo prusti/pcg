@@ -4,6 +4,7 @@ use crate::{
     borrow_pcg::action::LabelPlaceReason,
     capability_gte,
     error::PcgError,
+    rustc_interface::middle::mir,
     owned_pcg::{
         ExpandedPlace, LocalExpansions, RepackExpand, RepackOp,
         join::{data::JoinOwnedData, obtain::JoinObtainer},
@@ -241,9 +242,10 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // The other expansion is a downcast to a variant that is
                 // presumably borrowed or partially-moved (see 206_issue_77.rs).
                 // It won't survive the join, so collapse it.
+                let location = mir::Location { block: other.block, statement_index: 0 };
                 other
                     .owned
-                    .collapse(place, Some(CapabilityKind::Write), other.capabilities, ctxt);
+                    .collapse(place, Some(CapabilityKind::Write), other.capabilities, location, ctxt)?;
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion)
             } else {
                 // We might as well just expand our place

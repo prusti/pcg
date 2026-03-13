@@ -43,7 +43,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     #[tracing::instrument(skip(self, triple))]
     pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
-        self.pcg.ensure_triple(triple, self.ctxt);
+        self.pcg
+            .ensure_triple(triple, self.location(), self.ctxt)?;
         Ok(())
     }
 }

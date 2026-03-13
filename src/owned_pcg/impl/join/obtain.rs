@@ -35,11 +35,13 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
             }
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::Collapse(collapse) => {
+                    let location = mir::Location { block: self.data.block, statement_index: 0 };
                     self.data.owned.perform_collapse_action(
                         collapse,
                         self.data.capabilities,
+                        location,
                         self.ctxt,
-                    );
+                    )?;
                     self.actions.push(action.kind);
                 }
                 RepackOp::RegainLoanedCapability(regained_capability) => {
