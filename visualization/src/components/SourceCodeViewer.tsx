@@ -112,10 +112,11 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
           borderBottom: minimized ? "none" : "1px solid #ccc",
           padding: "12px 16px",
           display: "flex",
-          alignItems: "center",
-          gap: "8px",
+          flexDirection: "column",
+          gap: "6px",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <label htmlFor="function-select" style={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
           Function:
         </label>
@@ -210,6 +211,20 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
             {minimized ? "▼" : "▲"}
           </button>
         )}
+        </div>
+        <code
+          style={{
+            fontSize: "12px",
+            backgroundColor: "#e8e8e8",
+            padding: "2px 8px",
+            borderRadius: "4px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+          title={metadata.signature}
+        >
+          {metadata.signature}
+        </code>
       </div>
       {!minimized && (
         <div ref={containerRef}>

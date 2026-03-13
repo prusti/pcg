@@ -16,7 +16,16 @@ impl<T> CompilerCtxt<'_, '_, T> {
 
     pub(crate) fn function_metadata(&self) -> FunctionMetadata {
         let start = SourcePos::new(self.mir.span.lo(), self.tcx);
-        FunctionMetadata::new(self.body_def_path_str(), self.source().unwrap(), start)
+        let def_id = self.def_id();
+        let fn_sig = self.tcx.fn_sig(def_id).instantiate_identity();
+        let fn_sig = self.tcx.liberate_late_bound_regions(def_id.into(), fn_sig);
+        let signature = format!("{fn_sig}");
+        FunctionMetadata::new(
+            self.body_def_path_str(),
+            signature,
+            self.source().unwrap(),
+            start,
+        )
     }
 }
 

@@ -26,14 +26,16 @@ impl FunctionSlug {
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct FunctionMetadata {
     name: String,
+    signature: String,
     source: String,
     start: SourcePos,
 }
 
 impl FunctionMetadata {
-    pub fn new(name: String, source: String, start: SourcePos) -> Self {
+    pub fn new(name: String, signature: String, source: String, start: SourcePos) -> Self {
         Self {
             name,
+            signature,
             source,
             start,
         }
