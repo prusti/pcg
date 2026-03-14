@@ -27,15 +27,23 @@ impl FunctionSlug {
 pub(crate) struct FunctionMetadata {
     name: String,
     signature: String,
+    debug_signature: String,
     source: String,
     start: SourcePos,
 }
 
 impl FunctionMetadata {
-    pub fn new(name: String, signature: String, source: String, start: SourcePos) -> Self {
+    pub fn new(
+        name: String,
+        signature: String,
+        debug_signature: String,
+        source: String,
+        start: SourcePos,
+    ) -> Self {
         Self {
             name,
             signature,
+            debug_signature,
             source,
             start,
         }
