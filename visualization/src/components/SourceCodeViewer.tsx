@@ -44,6 +44,7 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoverPosition, setHoverPosition] = useState<SourcePos | null>(null);
+  const [showDebugSignature, setShowDebugSignature] = useState(false);
   const metadata = functions[selectedFunction];
 
   const isSingleLineSpan = (): boolean => {
@@ -112,10 +113,11 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
           borderBottom: minimized ? "none" : "1px solid #ccc",
           padding: "12px 16px",
           display: "flex",
-          alignItems: "center",
-          gap: "8px",
+          flexDirection: "column",
+          gap: "6px",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <label htmlFor="function-select" style={{ fontWeight: "bold", whiteSpace: "nowrap" }}>
           Function:
         </label>
@@ -210,6 +212,39 @@ const SourceCodeViewer: React.FC<SourceCodeViewerProps> = ({
             {minimized ? "▼" : "▲"}
           </button>
         )}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <code
+            style={{
+              fontSize: "12px",
+              backgroundColor: "#e8e8e8",
+              padding: "2px 8px",
+              borderRadius: "4px",
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={showDebugSignature ? metadata.debug_signature : metadata.signature}
+          >
+            {showDebugSignature ? metadata.debug_signature : metadata.signature}
+          </code>
+          <button
+            onClick={() => setShowDebugSignature((prev) => !prev)}
+            style={{
+              cursor: "pointer",
+              backgroundColor: showDebugSignature ? "#4CAF50" : "#888",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              padding: "2px 8px",
+              fontSize: "11px",
+              whiteSpace: "nowrap",
+            }}
+            title={showDebugSignature ? "Show display signature" : "Show debug signature"}
+          >
+            {showDebugSignature ? "Debug" : "Display"}
+          </button>
+        </div>
       </div>
       {!minimized && (
         <div ref={containerRef}>

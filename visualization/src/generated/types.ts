@@ -80,7 +80,7 @@ export type EvalStmtData<T> = { pre_operands: T; post_operands: T; pre_main: T; 
 
 export type EvalStmtPhase = "pre_operands" | "post_operands" | "pre_main" | "post_main";
 
-export type FunctionMetadata = { name: string; source: string; start: SourcePos };
+export type FunctionMetadata = { name: string; signature: string; debug_signature: string; source: string; start: SourcePos };
 
 export type GenericPcgAction<Borrow, Owned> = { type: "Borrow"; data: Borrow } | { type: "Owned"; data: Owned };
 
