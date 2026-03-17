@@ -509,6 +509,23 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
     if let Some(dir_path) = pcg_ctxt.visualization_output_path() {
         generate_json_from_mir(&dir_path.join("mir.json"), pcg_ctxt.compiler_ctxt)
             .expect("Failed to generate JSON from MIR");
+        {
+            use std::fmt::Write;
+            let loop_analysis = analysis_results.analysis().loop_analysis();
+            let mut loop_text = String::new();
+            for bb in body.basic_blocks.indices() {
+                let depth = loop_analysis.loop_depth(bb);
+                let loops: Vec<_> = loop_analysis.loops(bb).collect();
+                let loop_head = loop_analysis.loop_head_of(bb);
+                writeln!(
+                    &mut loop_text,
+                    "{bb:?} depth: {depth}, loops: {loops:?}, loop head?: {loop_head:?}"
+                )
+                .unwrap();
+            }
+            std::fs::write(dir_path.join("loop_analysis.txt"), &loop_text)
+                .expect("Failed to write loop analysis text");
+        }
         let mut visualization_data = PcgVisualizationData::new();
         for block in body.basic_blocks.indices() {
             let Ok(Some(pcg_block)) = analysis_results.get_all_for_bb(block) else {

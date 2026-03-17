@@ -50,6 +50,14 @@ export abstract class Api {
   async fetchDotFile(filePath: string): Promise<string> {
     return await this.fetchTextFile(filePath);
   }
+
+  async getLoopAnalysis(functionName: string): Promise<string | null> {
+    try {
+      return await this.fetchTextFile(`data/${functionName}/loop_analysis.txt`);
+    } catch {
+      return null;
+    }
+  }
 }
 
 class FetchApi extends Api {
