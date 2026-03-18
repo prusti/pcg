@@ -2,6 +2,7 @@ import React from "react";
 import { Api } from "../api";
 import { CurrentPoint, FunctionSlug } from "../types";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
+import LoopResults from "./LoopResults";
 
 interface SettingsProps {
   showSettings: boolean;
@@ -41,7 +42,8 @@ export default function Settings({
         right: 0,
         top: 0,
         bottom: 0,
-        width: "300px",
+        minWidth: "300px",
+        width: "fit-content",
         backgroundColor: "#f5f5f5",
         borderLeft: "2px solid #ccc",
         padding: "20px",
@@ -99,6 +101,14 @@ export default function Settings({
         <h4>Borrow Checker</h4>
         <BorrowCheckerGraphs
           currentPoint={currentPoint}
+          selectedFunction={selectedFunction}
+          api={api}
+        />
+      </div>
+
+      <div style={{ marginBottom: "20px" }}>
+        <h4>Loop Results</h4>
+        <LoopResults
           selectedFunction={selectedFunction}
           api={api}
         />
