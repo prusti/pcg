@@ -9,7 +9,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::LifetimeProjection,
+        region_projection::{HasTy, LifetimeProjection},
         state::BorrowsStateLike,
     },
     error::PcgError,
@@ -78,6 +78,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError<'tcx>> {
         let place_regions = place.regions(self.ctxt);
+        // tracing::warn!("Regions for place {:?}: {:?}", place, place_regions);
         let mut prev = None;
         let mut current = place;
         while self
@@ -110,8 +111,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             }
             for r in &place_regions {
-                let current_rp =
-                    LifetimeProjection::new(current, *r, None, self.ctxt.ctxt()).unwrap();
+                let Some(current_rp) = LifetimeProjection::new(current, *r, None, self.ctxt.ctxt()) else {
+                    // e.g. for ReStatic
+                    continue;
+                };
                 if current.is_ref(self.ctxt)
                     && !current
                         .project_deref(self.ctxt)

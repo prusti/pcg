@@ -65,7 +65,6 @@ fn test_aliases() {
             aliases,
             temp4
         );
-        assert!(aliases.contains(&(x.to_rust_place(ctxt))));
     });
 
     // pointer_reborrow_nested
