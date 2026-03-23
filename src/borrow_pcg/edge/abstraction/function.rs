@@ -59,6 +59,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     }
 
     #[rustversion::since(2025-05-24)]
+    #[allow(clippy::unnecessary_wraps)] // The `before` version returns Err
     pub(crate) fn new(
         data: FunctionData<'tcx>,
         caller_substs: Option<GenericArgsRef<'tcx>>,

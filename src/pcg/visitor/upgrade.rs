@@ -9,7 +9,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::{HasTy, LifetimeProjection},
+        region_projection::LifetimeProjection,
         state::BorrowsStateLike,
     },
     error::PcgError,

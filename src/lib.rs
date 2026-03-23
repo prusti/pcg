@@ -776,6 +776,7 @@ pub(crate) fn validity_checks_warn_only() -> bool {
 }
 
 #[cfg(feature = "type-export")]
+#[must_use]
 pub fn type_collection() -> specta::TypeCollection {
     specta::export()
 }
