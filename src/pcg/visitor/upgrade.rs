@@ -111,7 +111,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             }
             for r in &place_regions {
-                let Some(current_rp) = LifetimeProjection::new(current, *r, None, self.ctxt.ctxt()) else {
+                let Some(current_rp) = LifetimeProjection::new(current, *r, None, self.ctxt.ctxt())
+                else {
                     // e.g. for ReStatic
                     continue;
                 };
