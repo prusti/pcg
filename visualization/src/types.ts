@@ -27,6 +27,7 @@ export type BasicBlockData = {
   block: number;
   stmts: MirStmt[];
   terminator: MirStmt;
+  callee_dot: string | null;
 };
 
 export type DagreInputNode<T = unknown> = {

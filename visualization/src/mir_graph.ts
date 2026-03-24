@@ -130,6 +130,7 @@ export function layoutNodesWithDagre(
       block: node.block,
       stmts: node.stmts,
       terminator: node.terminator,
+      callee_dot: node.callee_dot,
     },
   }));
 

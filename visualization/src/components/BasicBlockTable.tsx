@@ -4,6 +4,7 @@ import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
 import { PcgBlockVisualizationData } from "../generated/types";
 import { actionLine } from "../actionFormatting";
+import { openDotStringInNewWindow } from "../dot_graph";
 
 interface BasicBlockTableProps {
   data: BasicBlockData;
@@ -167,6 +168,29 @@ export default function BasicBlockTable({
           }
           actions={getActionsForStmt(data.stmts.length)}
         />
+        {data.callee_dot && (
+          <tr>
+            <td colSpan={2} style={{ textAlign: "center", padding: "2px" }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openDotStringInNewWindow(data.callee_dot!, `Function Shape - bb${data.block}`);
+                }}
+                style={{
+                  cursor: "pointer",
+                  backgroundColor: "#007acc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "3px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                }}
+              >
+                View Function Shape
+              </button>
+            </td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
@@ -190,6 +214,7 @@ export function computeTableHeight(
         block: data.block,
         stmts: data.stmts,
         terminator: data.terminator,
+        callee_dot: data.callee_dot,
       },
       setCurrentPoint: () => {},
       showActionsInGraph,

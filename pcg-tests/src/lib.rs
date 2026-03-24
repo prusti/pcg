@@ -44,6 +44,7 @@ impl FileLoader for StringLoader {
         Ok(fs::read(path)?.into())
     }
 
+    #[rustversion::since(2026-01-01)]
     fn current_directory(&self) -> io::Result<PathBuf> {
         std::env::current_dir()
     }

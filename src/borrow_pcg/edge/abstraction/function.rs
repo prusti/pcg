@@ -40,15 +40,88 @@ use crate::{
 
 use crate::coupling::HyperEdge;
 
-pub struct FunctionDataShapeDataSource<'tcx> {
-    input_tys: Vec<ty::Ty<'tcx>>,
-    output_ty: ty::Ty<'tcx>,
+#[derive(Clone)]
+pub struct DefinedFnSigShapeDataSource<'tcx> {
     def_id: DefId,
-    caller_substs: Option<GenericArgsRef<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
 }
 
-impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
+    /// Returns the function signature with late-bound regions liberated.
+    fn sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
+        let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
+        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
+}
+
+impl<'tcx> FunctionShapeDataSource<'tcx> for DefinedFnSigShapeDataSource<'tcx> {
+    type Ctxt = ty::TyCtxt<'tcx>;
+
+    fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.sig(ctxt).inputs().to_vec()
+    }
+
+    fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx> {
+        self.sig(ctxt).output()
+    }
+
+    fn outlives(
+        &self,
+        sup: PcgRegion<'tcx>,
+        sub: PcgRegion<'tcx>,
+        ctxt: Self::Ctxt,
+    ) -> Result<bool, CheckOutlivesError<'tcx>> {
+        if sup.is_static() || sup == sub {
+            return Ok(true);
+        }
+        match (sup, sub) {
+            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
+                Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
+            }
+            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
+            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
+            _ => Ok(self.outlives.free_region_map().sub_free_regions(
+                ctxt,
+                sub.rust_region(ctxt),
+                sup.rust_region(ctxt),
+            )),
+        }
+    }
+}
+
+impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
+    #[rustversion::before(2025-05-24)]
+    pub(crate) fn new(
+        _def_id: DefId,
+        _tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+        Err(MakeFunctionShapeError::UnsupportedRustVersion)
+    }
+
+    #[rustversion::since(2025-05-24)]
+    #[allow(clippy::unnecessary_wraps)]
+    pub(crate) fn new(
+        def_id: DefId,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+        let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
+        let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
+        let outlives = OutlivesEnvironment::from_normalized_bounds(
+            param_env,
+            vec![],
+            vec![],
+            HashSet::default(),
+        );
+        Ok(Self { def_id, outlives })
+    }
+}
+
+pub struct DefinedFnCallShapeDataSource<'tcx> {
+    call: DefinedFnCall<'tcx>,
+    outlives: OutlivesEnvironment<'tcx>,
+}
+
+impl<'tcx> DefinedFnCallShapeDataSource<'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _data: FunctionData<'tcx>,
@@ -61,12 +134,10 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     #[rustversion::since(2025-05-24)]
     #[allow(clippy::unnecessary_wraps)] // The `before` version returns Err
     pub(crate) fn new(
-        data: FunctionData<'tcx>,
-        caller_substs: Option<GenericArgsRef<'tcx>>,
+        call: DefinedFnCall<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        let sig = data.identity_fn_sig(tcx);
-        let typing_env = ty::TypingEnv::post_analysis(tcx, data.def_id);
+        let typing_env = ty::TypingEnv::post_analysis(tcx, call.function_data.def_id);
         let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         let outlives = OutlivesEnvironment::from_normalized_bounds(
             param_env,
@@ -74,13 +145,7 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
             vec![],
             HashSet::default(),
         );
-        Ok(Self {
-            def_id: data.def_id,
-            input_tys: sig.inputs().to_vec(),
-            output_ty: sig.output(),
-            outlives,
-            caller_substs,
-        })
+        Ok(Self { call, outlives })
     }
 }
 
@@ -90,18 +155,32 @@ impl<'tcx> FunctionData<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
+
+    pub(crate) fn fn_sig(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+        substs: GenericArgsRef<'tcx>,
+    ) -> ty::FnSig<'tcx> {
+        let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, substs);
+        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
 }
 
-impl<'tcx> FunctionDataShapeDataSource<'tcx> {
+impl<'tcx> DefinedFnCallShapeDataSource<'tcx> {
     pub(crate) fn region_for_outlives_check(
         &self,
         region: PcgRegion<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> PcgRegion<'tcx> {
-        if let Some(substs) = self.caller_substs
-            && let Some(index) = substs.regions().position(|r| PcgRegion::from(r) == region)
+        if let Some(index) = self
+            .call
+            .caller_substs
+            .regions()
+            .position(|r| PcgRegion::from(r) == region)
         {
-            let fn_ty = tcx.type_of(self.def_id).instantiate_identity();
+            let fn_ty = tcx
+                .type_of(self.call.function_data.def_id)
+                .instantiate_identity();
             let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
                 panic!("Expected a function type");
             };
@@ -112,13 +191,13 @@ impl<'tcx> FunctionDataShapeDataSource<'tcx> {
     }
 }
 
-impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
+impl<'tcx> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSource<'tcx> {
     type Ctxt = ty::TyCtxt<'tcx>;
-    fn input_tys(&self, _ctxt: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
-        self.input_tys.clone()
+    fn input_tys(&self, ctxt: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
+        self.call.input_tys(ctxt)
     }
-    fn output_ty(&self, _ctxt: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
-        self.output_ty
+    fn output_ty(&self, ctxt: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+        self.call.output_ty(ctxt)
     }
 
     fn outlives(
@@ -150,8 +229,7 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for FunctionDataShapeDataSource<'tcx> {
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionCallData<'tcx> {
-    pub(crate) function_data: FunctionData<'tcx>,
-    pub(crate) substs: GenericArgsRef<'tcx>,
+    pub(crate) call: DefinedFnCall<'tcx>,
     pub(crate) caller_def_id: LocalDefId,
     pub(crate) operand_tys: Vec<ty::Ty<'tcx>>,
     pub(crate) span: Span,
@@ -166,8 +244,7 @@ impl<'tcx> FunctionCallData<'tcx> {
         span: Span,
     ) -> Self {
         Self {
-            function_data: FunctionData::new(def_id),
-            substs,
+            call: DefinedFnCall::new(FunctionData::new(def_id), substs),
             caller_def_id,
             operand_tys,
             span,
@@ -178,8 +255,7 @@ impl<'tcx> FunctionCallData<'tcx> {
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        let data =
-            FunctionDataShapeDataSource::new(self.function_data, Some(self.substs), ctxt.tcx)?;
+        let data = DefinedFnCallShapeDataSource::new(self.call, ctxt.tcx)?;
         FunctionShape::new(&data, ctxt.tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
@@ -214,11 +290,38 @@ impl<Metadata, Input: Copy, Output: Copy>
         CoupledEdgeKind::new(self.metadata, self.edge.to_singleton_hyper_edge())
     }
 }
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
+pub(crate) struct DefinedFnCall<'tcx> {
+    pub(crate) function_data: FunctionData<'tcx>,
+    pub(crate) caller_substs: GenericArgsRef<'tcx>,
+}
+
+impl<'tcx> DefinedFnCall<'tcx> {
+    pub(crate) fn new(
+        function_data: FunctionData<'tcx>,
+        caller_substs: GenericArgsRef<'tcx>,
+    ) -> Self {
+        Self {
+            function_data,
+            caller_substs,
+        }
+    }
+
+    pub(crate) fn input_tys(&self, ctxt: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
+        let sig = self.function_data.fn_sig(ctxt, self.caller_substs);
+        sig.inputs().to_vec()
+    }
+
+    pub(crate) fn output_ty(&self, ctxt: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+        self.function_data.fn_sig(ctxt, self.caller_substs).output()
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]
 pub struct FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub(crate) location: Location,
-    pub(crate) function_data: Option<FunctionData<'tcx>>,
-    pub(crate) caller_substs: Option<GenericArgsRef<'tcx>>,
+    pub(crate) defined_fn_call: Option<DefinedFnCall<'tcx>>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
@@ -228,8 +331,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
         DisplayOutput::Text(
             format!(
                 "call{} at {:?}",
-                if let Some(function_data) = &self.function_data {
-                    format!(" {}", ctxt.tcx().def_path_str(function_data.def_id))
+                if let Some(defined_fn_call) = &self.defined_fn_call {
+                    format!(
+                        " {}",
+                        ctxt.tcx()
+                            .def_path_str(defined_fn_call.function_data.def_id)
+                    )
                 } else {
                     String::new()
                 },
@@ -245,26 +352,24 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     }
 
     pub fn def_id(&self) -> Option<DefId> {
-        self.function_data.as_ref().map(|f| f.def_id)
+        self.defined_fn_call
+            .as_ref()
+            .map(|f| f.function_data.def_id)
     }
 
     pub fn function_data(&self) -> Option<FunctionData<'tcx>> {
-        self.function_data
+        self.defined_fn_call.as_ref().map(|f| f.function_data)
     }
 
     pub fn shape(
         &self,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        let function_data = self
-            .function_data
-            .as_ref()
-            .ok_or(MakeFunctionShapeError::NoFunctionData)?;
-        FunctionShape::new(
-            &function_data.shape_data_source(self.caller_substs, ctxt.tcx)?,
-            ctxt.tcx,
-        )
-        .map_err(MakeFunctionShapeError::CheckOutlivesError)
+        let Some(call) = self.defined_fn_call.as_ref() else {
+            return Err(MakeFunctionShapeError::NoFunctionData);
+        };
+        let data = DefinedFnCallShapeDataSource::new(*call, ctxt.tcx)?;
+        FunctionShape::new(&data, ctxt.tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
@@ -358,10 +463,10 @@ impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> D
 
 impl<'tcx> FunctionCallAbstraction<'tcx> {
     pub fn def_id(&self) -> Option<DefId> {
-        self.metadata.function_data.as_ref().map(|f| f.def_id)
+        self.metadata.function_data().as_ref().map(|f| f.def_id)
     }
     pub fn substs(&self) -> Option<GenericArgsRef<'tcx>> {
-        self.metadata.caller_substs
+        self.metadata.defined_fn_call.as_ref().map(|f| f.caller_substs)
     }
 
     pub fn location(&self) -> Location {

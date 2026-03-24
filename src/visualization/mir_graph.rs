@@ -1,7 +1,7 @@
 use crate::{
     rustc_interface::{
         self,
-        middle::ty::TyCtxt,
+        middle::ty::{self, TyCtxt},
         span::{BytePos, Span},
     },
     utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
@@ -9,6 +9,7 @@ use crate::{
 use serde_derive::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
+    fmt::Write,
     fs::File,
     io::{self},
     path::Path,
@@ -75,6 +76,8 @@ struct MirNode {
     block: usize,
     stmts: Vec<MirStmt>,
     terminator: MirStmt,
+    /// DOT graph of the callee's MIR, if this block's terminator is a call.
+    callee_dot: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -343,6 +346,57 @@ fn mk_mir_stmt(
     }
 }
 
+/// Resolve a call terminator's `func` operand to a `DefId` and generic args.
+#[allow(clippy::needless_lifetimes)]
+fn resolve_callee<'tcx>(
+    func: &Operand<'tcx>,
+    body: &mir::Body<'tcx>,
+    tcx: TyCtxt<'tcx>,
+) -> Option<(rustc_interface::hir::def_id::DefId, ty::GenericArgsRef<'tcx>)> {
+    let func_ty = func.ty(body, tcx);
+    if let ty::TyKind::FnDef(def_id, substs) = func_ty.kind() {
+        Some((*def_id, substs))
+    } else {
+        None
+    }
+}
+
+/// Generate a DOT graph representing the function shape (bipartite graph of
+/// lifetime outlives relationships) for the callee at a call site.
+fn generate_function_shape_dot<'tcx>(
+    def_id: rustc_interface::hir::def_id::DefId,
+    substs: ty::GenericArgsRef<'tcx>,
+    tcx: TyCtxt<'tcx>,
+) -> Option<String> {
+    use crate::borrow_pcg::abstraction::FunctionShape;
+    let shape = FunctionShape::for_fn(def_id, substs, tcx).ok()?;
+    let fn_name = tcx.def_path_str(def_id);
+    let edges: Vec<_> = shape.edges().collect();
+    let (inputs, outputs) = shape.take_inputs_and_outputs();
+
+    let mut dot = String::new();
+    writeln!(dot, "digraph \"{fn_name}\" {{").ok()?;
+    writeln!(dot, "  rankdir=LR;").ok()?;
+    writeln!(dot, "  node [shape=box fontname=monospace fontsize=12];").ok()?;
+    writeln!(dot, "  subgraph cluster_inputs {{").ok()?;
+    writeln!(dot, "    label=\"Inputs\";").ok()?;
+    for input in &inputs {
+        writeln!(dot, "    \"in_{input}\" [label=\"{input}\"];").ok()?;
+    }
+    writeln!(dot, "  }}").ok()?;
+    writeln!(dot, "  subgraph cluster_outputs {{").ok()?;
+    writeln!(dot, "    label=\"Outputs\";").ok()?;
+    for output in &outputs {
+        writeln!(dot, "    \"out_{output}\" [label=\"{output}\"];").ok()?;
+    }
+    writeln!(dot, "  }}").ok()?;
+    for edge in &edges {
+        writeln!(dot, "  \"in_{}\" -> \"out_{}\";", edge.input, edge.output).ok()?;
+    }
+    writeln!(dot, "}}").ok()?;
+    Some(dot)
+}
+
 fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
@@ -376,11 +430,19 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             ctxt,
         );
 
+        let callee_dot = if let TerminatorKind::Call { func, .. } = &data.terminator().kind {
+            resolve_callee(func, ctxt.body(), ctxt.tcx())
+                .and_then(|(def_id, substs)| generate_function_shape_dot(def_id, substs, ctxt.tcx()))
+        } else {
+            None
+        };
+
         nodes.push(MirNode {
             id: format!("{bb:?}"),
             block: bb.as_usize(),
             stmts: stmts.collect(),
             terminator,
+            callee_dot,
         });
 
         match &data.terminator().kind {
