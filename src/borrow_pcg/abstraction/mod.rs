@@ -113,7 +113,14 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
                     .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
                     .collect();
                 let call_output_ty = self.output.ty(ctxt).ty;
-                sig_shape.remap_to_call_site(&call_input_tys, call_output_ty)
+                let sig_input_tys = data_source.input_tys(ctxt);
+                let sig_output_ty = data_source.output_ty(ctxt);
+                sig_shape.remap_to_call_site(
+                    &call_input_tys,
+                    call_output_ty,
+                    &sig_input_tys,
+                    sig_output_ty,
+                )
             }
             None => FunctionShape::new(
                 &FnCallDataSource::new(
@@ -471,8 +478,11 @@ impl FunctionShape {
         self,
         call_input_tys: &[ty::Ty<'tcx>],
         call_output_ty: ty::Ty<'tcx>,
+        sig_input_tys: &[ty::Ty<'tcx>],
+        sig_output_ty: ty::Ty<'tcx>,
     ) -> Self {
         fn remap_region_idx<'tcx>(
+            sig_ty: ty::Ty<'tcx>,
             call_ty: ty::Ty<'tcx>,
             sig_region_idx: RegionIdx,
         ) -> Option<RegionIdx> {
@@ -480,24 +490,29 @@ impl FunctionShape {
             if sig_region_idx.index() < call_regions.len() {
                 Some(sig_region_idx)
             } else {
-                panic!(
-                    "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions)",
-                    sig_region_idx, call_ty, call_regions.len()
+                tracing::warn!(
+                    "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions, sig type {:?})",
+                    sig_region_idx, call_ty, call_regions.len(), sig_ty
                 );
+                None
             }
         }
 
         let remap_input = |input: FunctionShapeInput| -> Option<FunctionShapeInput> {
-            remap_region_idx(call_input_tys[*input.base], input.region_idx)?;
+            remap_region_idx(
+                sig_input_tys[*input.base],
+                call_input_tys[*input.base],
+                input.region_idx,
+            )?;
             Some(input)
         };
 
         let remap_output = |output: FunctionShapeOutput| -> Option<FunctionShapeOutput> {
-            let call_ty = match output.base {
-                ArgIdxOrResult::Argument(arg) => call_input_tys[*arg],
-                ArgIdxOrResult::Result => call_output_ty,
+            let (sig_ty, call_ty) = match output.base {
+                ArgIdxOrResult::Argument(arg) => (sig_input_tys[*arg], call_input_tys[*arg]),
+                ArgIdxOrResult::Result => (sig_output_ty, call_output_ty),
             };
-            remap_region_idx(call_ty, output.region_idx)?;
+            remap_region_idx(sig_ty, call_ty, output.region_idx)?;
             Some(output)
         };
 

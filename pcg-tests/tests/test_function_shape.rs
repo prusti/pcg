@@ -162,3 +162,71 @@ fn test_choose_no_outlives_caller_same_lifetime() {
         assert_choose_no_outlives_shape(&sig_shape);
     });
 }
+
+/// `DerefMut::deref_mut` on `RefMut<'a, i32>` has an alias projection type
+/// (`<RefMut<'a, i32> as Deref>::Target`) in its return type. The instantiated
+/// signature carries 2 regions (the `&mut` borrow and `'a` from `RefMut`),
+/// producing 2 output region projections and 3 edges. The normalized call-site
+/// type is `&mut i32` (1 region), so `remap_to_call_site` must drop edges
+/// targeting the out-of-bounds `RegionIdx(1)` on the result.
+#[test]
+fn test_deref_mut_alias_output() {
+    let input = r#"
+        use std::cell::RefCell;
+        fn caller() {
+            let cell = RefCell::new(42i32);
+            let mut borrow = cell.borrow_mut();
+            *borrow = 10;
+        }
+    "#;
+    run_pcg_on_str(input, |analysis| {
+        let ctxt = analysis.ctxt();
+        let body = ctxt.body();
+        let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "deref_mut");
+        let shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
+
+        let (inputs, outputs) = shape.clone().take_inputs_and_outputs();
+        assert_eq!(inputs.len(), 2, "input has 2 region projections (borrow + RefMut lifetime)");
+        assert_eq!(outputs.len(), 2, "output alias has 2 region projections before normalization");
+
+        let edges: Vec<_> = shape.edges().collect();
+        assert_eq!(edges.len(), 3, "3 edges: arg0[0]->result[0], arg0[1]->arg0_post[1], arg0[1]->result[1]");
+
+        let result_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| e.output().base() == ArgIdxOrResult::Result)
+            .collect();
+        assert_eq!(result_edges.len(), 2, "2 edges target result before remap");
+    });
+}
+
+/// `Vec<&'a mut i32>::into_iter` should have a 1-to-1 shape: the single
+/// region in the input (`'a` in `Vec<&'a mut i32>`) flows to the single
+/// region in the result (`'a` in `IntoIter<&'a mut i32>`).
+///
+/// Note: the sig shape uses identity substs, where `T` is a type parameter
+/// with no regions. The regions only appear with the caller's substs (where
+/// `T = &'a mut i32`). This test checks the sig-derived call shape only.
+#[test]
+fn test_vec_into_iter_shape() {
+    let input = r#"
+        fn caller<'a>(v: Vec<&'a mut i32>) {
+            let _iter = v.into_iter();
+        }
+    "#;
+    run_pcg_on_str(input, |analysis| {
+        let ctxt = analysis.ctxt();
+        let body = ctxt.body();
+        let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "into_iter");
+        let call_shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
+
+        let (inputs, outputs) = call_shape.clone().take_inputs_and_outputs();
+        assert_eq!(inputs.len(), 1, "one input region projection");
+        assert_eq!(outputs.len(), 1, "one output region projection");
+
+        let edges: Vec<_> = call_shape.edges().collect();
+        assert_eq!(edges.len(), 1, "1-to-1 shape: arg0 -> result");
+        assert_eq!(*edges[0].input().base(), 0);
+        assert_eq!(edges[0].output().base(), ArgIdxOrResult::Result);
+    });
+}

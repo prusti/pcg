@@ -200,15 +200,56 @@ impl<'tcx> FunctionData<'tcx> {
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
 
+    /// Returns the function signature instantiated with the given substs.
+    #[must_use]
+    pub fn fn_sig(self, tcx: ty::TyCtxt<'tcx>, substs: GenericArgsRef<'tcx>) -> ty::FnSig<'tcx> {
+        let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, substs);
+        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
+}
+
+impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
+    /// Maps an instantiated region back to the corresponding identity region
+    /// for outlives checking against the function's param_env. Returns `None`
+    /// if the region cannot be mapped (e.g. nested inside a type argument).
+    fn region_for_outlives_check(
+        &self,
+        region: PcgRegion<'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Option<PcgRegion<'tcx>> {
+        if let Some(index) = self
+            .call
+            .caller_substs
+            .regions()
+            .position(|r| PcgRegion::from(r) == region)
+        {
+            let fn_ty = tcx
+                .type_of(self.call.function_data.def_id)
+                .instantiate_identity();
+            let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
+                panic!("Expected a function type");
+            };
+            Some(identity_substs.region_at(index).into())
+        } else {
+            None
+        }
+    }
 }
 
 impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSource<'a, 'tcx> {
     type Ctxt = CompilerCtxt<'a, 'tcx>;
     fn input_tys(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<ty::Ty<'tcx>> {
-        self.call.function_data.identity_fn_sig(ctxt.tcx()).inputs().to_vec()
+        self.call
+            .function_data
+            .fn_sig(ctxt.tcx(), self.call.caller_substs)
+            .inputs()
+            .to_vec()
     }
     fn output_ty(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx> {
-        self.call.function_data.identity_fn_sig(ctxt.tcx()).output()
+        self.call
+            .function_data
+            .fn_sig(ctxt.tcx(), self.call.caller_substs)
+            .output()
     }
 
     fn outlives(
@@ -220,6 +261,15 @@ impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSourc
         if sup.is_static() || sup == sub {
             return Ok(true);
         }
+        // Map instantiated regions back to identity regions for the param_env
+        // check. If a region can't be mapped (e.g. nested in a type arg or
+        // late-bound), conservatively return false.
+        let Some(sup) = self.region_for_outlives_check(sup, ctxt.tcx()) else {
+            return Ok(false);
+        };
+        let Some(sub) = self.region_for_outlives_check(sub, ctxt.tcx()) else {
+            return Ok(false);
+        };
         let result = match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
