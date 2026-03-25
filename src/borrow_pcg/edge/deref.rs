@@ -72,8 +72,10 @@ impl<'tcx> DerefEdge<'tcx> {
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for DerefEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for DerefEdge<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.deref_place.check_validity(ctxt)?;
         self.blocked_lifetime_projection.check_validity(ctxt)?;

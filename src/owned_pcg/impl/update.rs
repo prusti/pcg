@@ -5,18 +5,15 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    owned_pcg::{LocalExpansions, OwnedPcgLocal},
-    pcg::{
+    HasSettings, owned_pcg::{LocalExpansions, OwnedPcgLocal}, pcg::{
         CapabilityKind,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
         triple::{PlaceCondition, Triple},
-    },
-    pcg_validity_assert,
-    utils::{
+    }, pcg_validity_assert, utils::{
         HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike, display::DisplayWithCompilerCtxt,
-    },
+    }
 };
 
 use crate::rustc_interface::middle::mir::RETURN_PLACE;
@@ -28,7 +25,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         &self,
         pre: PlaceCondition<'tcx>,
         capabilities: &SymbolicPlaceCapabilities<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) where
         'tcx: 'a,
     {
@@ -91,7 +88,7 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::RemoveCapability(_) => unreachable!(),
         }
     }
-    pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         t: Triple<'tcx>,
         place_capabilities: &mut SymbolicPlaceCapabilities<'tcx>,

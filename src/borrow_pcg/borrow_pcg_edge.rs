@@ -176,8 +176,10 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
     }
 }
 
-impl<'a, 'tcx: 'a, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for T {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt, T: BorrowPcgEdgeLike<'tcx>>
+    HasValidityCheck<Ctxt> for T
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.kind().check_validity(ctxt)
     }
 }
@@ -288,8 +290,8 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for MaybeRemotePlace<'tcx> {
-    fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<'tcx, Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for MaybeRemotePlace<'tcx> {
+    fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         Ok(())
     }
 }

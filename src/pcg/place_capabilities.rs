@@ -3,6 +3,7 @@ use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 use itertools::Itertools;
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge_data::LabelNodePredicate,
@@ -11,7 +12,7 @@ use crate::{
     pcg::{CapabilityKind, CapabilityLike, SymbolicCapability},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
         display::{DebugLines, DisplayWithCompilerCtxt},
         validity::HasValidityCheck,
     },
@@ -248,8 +249,10 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt> HasValidityCheck<Ctxt>
+    for PlaceCapabilities<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         for (place, cap) in self.iter() {
             if place.projects_shared_ref(ctxt) && !cap.is_read() {
                 return Err(format!(
@@ -268,11 +271,15 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'t
             if caps_from_local.is_empty() {
                 continue;
             }
-            fn allowed_child_cap<'tcx>(
+            fn allowed_child_cap<
+                'a,
+                'tcx: 'a,
+                Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt,
+            >(
                 parent_place: Place<'tcx>,
                 parent_cap: CapabilityKind,
                 child_cap: CapabilityKind,
-                ctxt: CompilerCtxt<'_, 'tcx>,
+                ctxt: Ctxt,
             ) -> bool {
                 match (parent_cap, child_cap) {
                     (CapabilityKind::Write, _) if parent_place.ref_mutability(ctxt).is_some() => {
@@ -305,8 +312,10 @@ impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for PlaceCapabilities<'t
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for SymbolicPlaceCapabilities<'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt> DebugLines<Ctxt>
+    for SymbolicPlaceCapabilities<'tcx>
+{
+    fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.iter()
             .map(|(node, capability)| {
                 Cow::Owned(format!(
@@ -361,7 +370,7 @@ impl<'tcx, C: CapabilityLike> PlaceCapabilities<'tcx, C>
 where
     Self: PlaceCapabilitiesInterface<'tcx, C>,
 {
-    pub(crate) fn regain_loaned_capability<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn regain_loaned_capability<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         place: Place<'tcx>,
         capability: C,
@@ -376,7 +385,7 @@ where
             borrows.label_lifetime_projections(
                 &LabelNodePredicate::all_future_postfixes(place),
                 None,
-                ctxt.bc_ctxt(),
+                ctxt,
             );
         }
     }

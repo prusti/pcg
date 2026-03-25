@@ -9,14 +9,9 @@ pub(crate) mod join;
 use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
-    error::PcgUnsupportedError,
-    owned_pcg::RepackGuide,
-    pcg::place_capabilities::{
+    HasSettings, borrow_pcg::borrow_pcg_expansion::PlaceExpansion, error::PcgUnsupportedError, owned_pcg::RepackGuide, pcg::place_capabilities::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
-    },
-    rustc_interface::middle::mir::Local,
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
+    }, rustc_interface::middle::mir::Local, utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet}
 };
 use itertools::Itertools;
 
@@ -177,7 +172,14 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn is_leaf_place(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
+    pub(crate) fn is_leaf_place<'a>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.leaf_places(ctxt).contains(&place)
     }
 
@@ -252,7 +254,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         places
     }
 
-    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
+    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>>(
         &mut self,
         to: Place<'tcx>,
         _for_cap: Option<CapabilityKind>,

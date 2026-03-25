@@ -11,15 +11,10 @@ use derive_more::From;
 
 use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
 use crate::{
-    BodyAndBorrows,
-    error::PcgError,
-    r#loop::{LoopAnalysis, PlaceUsages},
-    pcg::{
+    BodyAndBorrows, HasSettings, borrow_pcg::region_projection::OverrideRegionDebugString, error::PcgError, r#loop::{LoopAnalysis, PlaceUsages}, pcg::{
         BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
         SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, triple::TripleWalker,
-    },
-    pcg_validity_assert,
-    rustc_interface::{
+    }, pcg_validity_assert, rustc_interface::{
         borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
         dataflow::Analysis,
         index::IndexVec,
@@ -31,11 +26,10 @@ use crate::{
             ty::{self, GenericArgsRef},
         },
         mir_dataflow::{Forward, move_paths::MoveData},
-    },
-    utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef,
+    }, utils::{
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, DebugCtxt, PcgSettings, arena::PcgArenaRef,
         visitor::FallableVisitor,
-    },
+    }
 };
 
 #[derive(Clone)]
@@ -123,6 +117,27 @@ type Block = usize;
 
 pub(crate) type PcgArenaStore = bumpalo::Bump;
 pub(crate) type PcgArena<'a> = &'a PcgArenaStore;
+
+impl<'eng, 'a, 'tcx: 'a> HasSettings<'a> for &'eng PcgEngine<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
+impl<'eng, 'a, 'tcx: 'a> OverrideRegionDebugString for &'eng PcgEngine<'a, 'tcx> {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.ctxt.borrow_checker.override_region_debug_string(region)
+    }
+}
+
+impl<'eng, 'a, 'tcx: 'a> DebugCtxt for &'eng PcgEngine<'a, 'tcx> {
+    fn func_name(&self) -> String {
+        self.ctxt.func_name()
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.ctxt.num_basic_blocks()
+    }
+}
 
 pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,

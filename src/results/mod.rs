@@ -17,8 +17,8 @@ use crate::{
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ctxt::HasSettings,
-        place_capabilities::PlaceCapabilitiesReader, successor_blocks,
+        CapabilityKind, EvalStmtPhase, Pcg, PcgEngine, PcgNode, PcgSuccessor, ResultsCtxt,
+        ctxt::HasSettings, place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
         data_structures::fx::FxHashSet,
@@ -81,9 +81,17 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         self.ctxt().body()
     }
 
+    fn engine(&self) -> &PcgEngine<'a, 'tcx> {
+        &self.cursor.analysis().0
+    }
+
+    fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
+        ResultsCtxt::new(self.engine().ctxt, self.engine().settings)
+    }
+
     #[must_use]
     pub fn ctxt(&self) -> CompilerCtxt<'a, 'tcx> {
-        self.cursor.analysis().0.ctxt
+        self.engine().ctxt
     }
 
     /// Returns the free pcs for the location `exp_loc` and iterates the cursor
@@ -127,7 +135,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             .abstraction_edges()
             .collect::<FxHashSet<_>>();
 
-        let ctxt: CompilerCtxt = self.ctxt();
+        let ctxt: ResultsCtxt<'a, 'tcx> = self.results_ctxt();
         let block = &self.body()[location.block];
 
         let succ_blocks = successor_blocks(block.terminator())
@@ -168,7 +176,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                                 ),
                                 "terminator",
                             ),
-                            ctxt,
+                            self.engine(),
                         );
                     }
                 }
@@ -332,7 +340,10 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+    pub fn debug_lines(
+        &self,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+    ) -> Vec<Cow<'static, str>> {
         let mut result = Vec::new();
         for stmt in &self.statements {
             for phase in EvalStmtPhase::phases() {
@@ -360,8 +371,8 @@ pub struct PcgLocation<'a, 'tcx> {
     pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for Vec<RepackOp<'tcx>> {
-    fn debug_lines(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+impl<'tcx, Ctxt> DebugLines<Ctxt> for Vec<RepackOp<'tcx>> {
+    fn debug_lines(&self, _ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.iter().map(|r| Cow::Owned(format!("{r:?}"))).collect()
     }
 }
@@ -375,7 +386,7 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasSettings<'a> + HasBorrowCheckerCtxt<'a, 
     }
 }
 
-impl<'tcx> PcgLocation<'_, 'tcx> {
+impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
     #[must_use]
     pub fn actions<'slf>(&'slf self, phase: EvalStmtPhase) -> PcgActions<'tcx> {
         self.actions[phase].map_actions(|action| action.action.clone())
@@ -429,7 +440,7 @@ impl<'tcx> PcgLocation<'_, 'tcx> {
     pub(crate) fn debug_lines(
         &self,
         phase: EvalStmtPhase,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.states[phase].debug_lines(ctxt);
         for action in self.actions[phase].iter() {

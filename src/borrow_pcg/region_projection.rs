@@ -22,12 +22,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, PcgNodeComponent,
-        Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        remote::RemotePlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY, display::{DisplayOutput, DisplayWithCtxt, OutputMode}, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, remote::RemotePlace, validity::HasValidityCheck
     },
 };
 
@@ -926,12 +921,13 @@ impl<'tcx, P, T: HasPlace<'tcx, P>> HasPlace<'tcx, P> for LifetimeProjection<'tc
 impl<
     'a,
     'tcx: 'a,
+    Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     T: PcgNodeComponent
-        + HasTy<'tcx, CompilerCtxt<'a, 'tcx>>
-        + HasRegions<'tcx, CompilerCtxt<'a, 'tcx>>,
-> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LifetimeProjection<'tcx, T>
+        + HasTy<'tcx, Ctxt>
+        + HasRegions<'tcx, Ctxt>
+> HasValidityCheck<Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         let num_regions = self.base.regions(ctxt);
         if self.region_idx.index() >= num_regions.len() {
             Err(format!(

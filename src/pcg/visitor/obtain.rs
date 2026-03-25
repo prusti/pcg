@@ -1,7 +1,5 @@
 use crate::{
-    Weaken,
-    action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
-    borrow_pcg::{
+    HasSettings, Weaken, action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction}, borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
@@ -13,9 +11,7 @@ use crate::{
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
         state::{BorrowStateMutRef, BorrowsStateLike},
-    },
-    owned_pcg::RepackOp,
-    pcg::{
+    }, owned_pcg::RepackOp, pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
@@ -26,13 +22,10 @@ use crate::{
             SymbolicPlaceCapabilities,
         },
         visitor::upgrade::AdjustCapabilityReason,
-    },
-    pcg_validity_assert,
-    rustc_interface::middle::mir,
-    utils::{
+    }, pcg_validity_assert, rustc_interface::middle::mir, utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-    },
+    }
 };
 use std::cmp::Ordering;
 
@@ -464,18 +457,17 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         action: PcgAction<'tcx>,
     ) -> Result<(), PcgError<'tcx>>
     where
-        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>,
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
         tracing::debug!(
             "Applying Action: {}",
             action.debug_line(self.ctxt.bc_ctxt())
         );
-        let analysis_ctxt = self.ctxt;
         let result = match &action {
             PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
                 action.clone(),
                 self.pcg.capabilities,
-                analysis_ctxt.bc_ctxt(),
+                self.ctxt,
             )?,
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
@@ -483,7 +475,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         regained_capability.place,
                         regained_capability.capability.into(),
                         self.pcg.borrow.as_mut_ref(),
-                        analysis_ctxt,
+                        self.ctxt,
                     );
                     ApplyActionResult::changed_no_display()
                 }
@@ -491,7 +483,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     self.pcg.owned.perform_expand_action(
                         expand,
                         self.pcg.capabilities,
-                        analysis_ctxt,
+                        self.ctxt,
                     );
                     ApplyActionResult::changed_no_display()
                 }
@@ -506,7 +498,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         self.pcg.capabilities.insert(
                             target_place,
                             CapabilityKind::Read,
-                            analysis_ctxt,
+                            self.ctxt,
                         );
                     }
                     ApplyActionResult::changed_no_display()
@@ -517,7 +509,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     capability_projections.perform_collapse_action(
                         collapse,
                         self.pcg.capabilities,
-                        analysis_ctxt,
+                        self.ctxt,
                     );
                     ApplyActionResult::changed_no_display()
                 }
@@ -527,7 +519,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     );
                     self.pcg
                         .capabilities
-                        .insert(weaken.place, weaken.to, analysis_ctxt);
+                        .insert(weaken.place, weaken.to, self.ctxt);
                     ApplyActionResult::changed_no_display()
                 }
                 _ => unreachable!(),

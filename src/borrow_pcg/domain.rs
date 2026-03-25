@@ -124,8 +124,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 
 pcg_node_like_wrapper!(LoopAbstractionOutput<'tcx, P>);
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstractionOutput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for LoopAbstractionOutput<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }

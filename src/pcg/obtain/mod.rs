@@ -3,8 +3,7 @@ pub(crate) mod expand;
 use std::marker::PhantomData;
 
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction},
-    borrow_pcg::{
+    HasSettings, action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction}, borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
@@ -15,20 +14,14 @@ use crate::{
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         state::BorrowStateMutRef,
-    },
-    error::PcgError,
-    r#loop::PlaceUsageType,
-    owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
-    pcg::{
+    }, error::PcgError, r#loop::PlaceUsageType, owned_pcg::{LocalExpansions, RepackCollapse, RepackOp}, pcg::{
         CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
-    },
-    rustc_interface::middle::mir,
-    utils::{
+    }, rustc_interface::middle::mir, utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
         Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
-    },
+    }
 };
 
 pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
@@ -243,7 +236,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         place: Place<'tcx>,
         capability: CapabilityKind,
         context: String,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError<'tcx>> {
         let to_collapse = self
             .get_local_expansions(place.local)
@@ -288,7 +281,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     }
 
     /// Only for owned places.
-    fn create_aggregate_lifetime_projections<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt>(
+    fn create_aggregate_lifetime_projections<
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+    >(
         &mut self,
         base: LocalLifetimeProjection<'tcx>,
         expansion: &[LocalLifetimeProjection<'tcx>],

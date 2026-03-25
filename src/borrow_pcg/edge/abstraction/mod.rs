@@ -6,7 +6,7 @@ pub(crate) mod r#type;
 use std::marker::PhantomData;
 
 use crate::{
-    borrow_pcg::{
+    HasSettings, borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
         edge::{
@@ -22,15 +22,12 @@ use crate::{
             PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
-    },
-    coupling::HyperEdge,
-    pcg::PcgNodeLike,
-    utils::{
+    }, coupling::HyperEdge, pcg::PcgNodeLike, utils::{
         DebugCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
-    },
+    }
 };
 
 use crate::coupling::PcgCoupledEdgeKind;
@@ -307,7 +304,7 @@ impl<
 }
 
 impl<Input, Output> AbstractionBlockEdge<'_, Input, Output> {
-    pub(crate) fn new_checked<Ctxt: DebugCtxt + Copy>(
+    pub(crate) fn new_checked<'a, Ctxt: DebugCtxt + Copy + HasSettings<'a>>(
         input: Input,
         output: Output,
         ctxt: Ctxt,

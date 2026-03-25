@@ -5,7 +5,7 @@ use crate::{
     action::PcgActions,
     borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
     rustc_interface::middle::mir::BasicBlock,
-    utils::CompilerCtxt,
+    utils::{CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt},
 };
 
 #[derive(Debug)]
@@ -41,8 +41,10 @@ impl<'a, 'tcx> PcgSuccessor<'a, 'tcx> {
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for PcgSuccessor<'_, 'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt>
+    DebugLines<Ctxt> for PcgSuccessor<'a, 'tcx>
+{
+    fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         let mut result = Vec::new();
         result.extend(self.actions.iter().map(|a| a.debug_line(ctxt)));
         result

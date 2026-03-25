@@ -33,9 +33,7 @@ use crate::{
     },
     rustc_interface::middle::mir::Location,
     utils::{
-        HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        display::{DisplayWithCtxt, OutputMode},
-        html::Html,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::{DisplayWithCtxt, OutputMode}, html::Html
     },
     visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
 };
@@ -390,8 +388,8 @@ impl<'a> Graph<'a> {
 }
 
 pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    capabilities: &'a impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    ctxt: CompilerCtxt<'a, 'tcx>,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
     borrows_domain: &'a BorrowsGraph<'tcx>,
 ) -> io::Result<String> {
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());

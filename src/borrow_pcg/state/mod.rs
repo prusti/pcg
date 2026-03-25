@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         action::ApplyActionResult,
         borrow_pcg_edge::{BlockingNode, LocalNode},
@@ -261,7 +262,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
 
     fn apply_action<
         'a,
-        Ctxt: DebugCtxt + Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
+        Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx> + HasSettings<'a>,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         C: CapabilityLike,
     >(
@@ -400,20 +401,24 @@ impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'p
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsState<'_, 'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt> for BorrowsState<'_, 'tcx> {
+    fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.graph.debug_lines(ctxt)
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateRef<'_, 'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for BorrowStateRef<'_, 'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.graph.check_validity(ctxt)
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for BorrowStateMutRef<'_, 'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for BorrowStateMutRef<'_, 'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.as_ref().check_validity(ctxt)
     }
 }
@@ -461,7 +466,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                         "Introduce initial borrows",
                     ),
                     capabilities,
-                    ctxt.bc_ctxt(),
+                    ctxt
                 )
                 .unwrap()
                 .changed
@@ -531,7 +536,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         blocked_place: Place<'tcx>,
         assigned_place: Place<'tcx>,

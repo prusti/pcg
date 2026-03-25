@@ -16,9 +16,10 @@ use crate::{
         },
         visitor::extract_regions,
     },
-    rustc_interface::index::Idx,
     coupling::{CoupleAbstractionError, CoupledEdgesData},
+    pcg_validity_assert,
     rustc_interface::{
+        index::Idx,
         middle::{
             mir,
             ty::{self, GenericArgsRef},
@@ -490,9 +491,13 @@ impl FunctionShape {
             if sig_region_idx.index() < call_regions.len() {
                 Some(sig_region_idx)
             } else {
-                tracing::warn!(
+                pcg_validity_assert!(
+                    false,
                     "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions, sig type {:?})",
-                    sig_region_idx, call_ty, call_regions.len(), sig_ty
+                    sig_region_idx,
+                    call_ty,
+                    call_regions.len(),
+                    sig_ty
                 );
                 None
             }

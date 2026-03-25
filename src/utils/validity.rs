@@ -1,4 +1,4 @@
-use crate::rustc_interface::middle::mir::HasLocalDecls;
+use crate::{HasSettings, rustc_interface::middle::mir::HasLocalDecls};
 
 use crate::{
     pcg_validity_assert, pcg_validity_expect_ok,
@@ -6,14 +6,20 @@ use crate::{
     utils::{DebugCtxt, HasCompilerCtxt},
 };
 
-pub trait HasValidityCheck<Ctxt: DebugCtxt + Copy> {
+pub trait HasValidityCheck<Ctxt: DebugCtxt> {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String>;
 
-    fn assert_validity(&self, ctxt: Ctxt) {
+    fn assert_validity<'a>(&self, ctxt: Ctxt)
+    where
+        Ctxt: HasSettings<'a>,
+    {
         pcg_validity_expect_ok!(self.check_validity(ctxt), fallback: (), [ctxt], "Validity check failed");
     }
 
-    fn assert_validity_at_location(&self, location: mir::Location, ctxt: Ctxt) {
+    fn assert_validity_at_location<'a>(&self, location: mir::Location, ctxt: Ctxt)
+    where
+        Ctxt: HasSettings<'a>,
+    {
         pcg_validity_expect_ok!(self.check_validity(ctxt), fallback: (), [ctxt at location]);
     }
 

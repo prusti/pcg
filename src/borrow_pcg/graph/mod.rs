@@ -63,8 +63,8 @@ impl<EdgeKind, VC> Default for BorrowsGraph<'_, EdgeKind, VC> {
     }
 }
 
-impl<'tcx> DebugLines<CompilerCtxt<'_, 'tcx>> for BorrowsGraph<'tcx> {
-    fn debug_lines(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<Cow<'static, str>> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt> for BorrowsGraph<'tcx> {
+    fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.edges()
             .map(|edge| edge.test_string(ctxt))
             .sorted()
@@ -432,7 +432,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .collect()
     }
 
-    pub(crate) fn roots(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> FxHashSet<PcgNode<'tcx>> {
+    pub(crate) fn roots<'a>(
+        &self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> FxHashSet<PcgNode<'tcx>>
+    where
+        'tcx: 'a,
+    {
         let roots: FxHashSet<PcgNode<'tcx>> = self
             .nodes(ctxt)
             .into_iter()
@@ -441,11 +447,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
         roots
     }
 
-    pub(crate) fn is_root<T: Copy + Into<PcgNode<'tcx>>>(
+    pub(crate) fn is_root<'a, T: Copy + Into<PcgNode<'tcx>>>(
         &self,
         node: T,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.contains(node.into(), ctxt)
             && match node.into().as_local_node() {
                 Some(node) => match node {
@@ -456,19 +465,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
             }
     }
 
-    pub(crate) fn has_edge_blocked_by(
+    pub(crate) fn has_edge_blocked_by<'a>(
         &self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+        ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+    ) -> bool
+    where
+        'tcx: 'a,
+    {
         self.edges().any(|edge| edge.is_blocked_by(node, ctxt))
     }
 
     pub(crate) fn nodes_blocked_by<'graph, 'mir: 'graph, 'bc: 'graph>(
         &'graph self,
         node: LocalNode<'tcx>,
-        ctxt: CompilerCtxt<'mir, 'tcx>,
-    ) -> Vec<PcgNode<'tcx>> {
+        ctxt: impl HasCompilerCtxt<'mir, 'tcx> + DebugCtxt,
+    ) -> Vec<PcgNode<'tcx>>
+    where
+        'tcx: 'mir,
+    {
         self.edges_blocked_by(node, ctxt)
             .flat_map(|edge| edge.blocked_nodes(ctxt).collect::<Vec<_>>())
             .collect()

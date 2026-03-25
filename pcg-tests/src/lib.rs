@@ -107,6 +107,7 @@ pub fn run_pcg_on_str(
             "--crate-type".to_string(),
             "lib".to_string(),
             "--edition=2021".to_string(),
+            "--cap-lints=allow".to_string(),
         ],
         &mut TestCallbacks {
             input: input.to_string(),

@@ -55,41 +55,43 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     (sig_shape, call_shape)
 }
 
-fn assert_choose_shape(shape: &FunctionShape) {
+struct ExpectedShape {
+    inputs: usize,
+    outputs: usize,
+    edges: Vec<(usize, ArgIdxOrResult)>,
+}
+
+fn shape_matches(shape: &FunctionShape, expected: &ExpectedShape) {
     let (inputs, outputs) = shape.clone().take_inputs_and_outputs();
-    assert_eq!(inputs.len(), 2, "choose has 2 inputs (one region per arg)");
-    assert_eq!(outputs.len(), 1, "choose has 1 output (result region)");
+    assert_eq!(inputs.len(), expected.inputs, "unexpected number of inputs");
+    assert_eq!(outputs.len(), expected.outputs, "unexpected number of outputs");
 
-    let edges: Vec<_> = shape.edges().collect();
-    assert_eq!(edges.len(), 2, "choose has 2 edges: arg0->result, arg1->result");
-
-    let mut edge_input_bases: Vec<usize> = edges
-        .iter()
-        .map(|e| *e.input().base())
+    let mut actual_edges: Vec<(usize, ArgIdxOrResult)> = shape
+        .edges()
+        .map(|e| (*e.input().base(), e.output().base()))
         .collect();
-    edge_input_bases.sort();
-    assert_eq!(edge_input_bases, vec![0, 1], "edges come from arg0 and arg1");
+    actual_edges.sort();
 
-    for edge in &edges {
-        assert_eq!(
-            edge.output().base(),
-            ArgIdxOrResult::Result,
-            "all edges target the result"
-        );
+    let mut expected_edges = expected.edges.clone();
+    expected_edges.sort();
+
+    assert_eq!(actual_edges, expected_edges, "unexpected edges");
+}
+
+fn choose_shape() -> ExpectedShape {
+    ExpectedShape {
+        inputs: 2,
+        outputs: 1,
+        edges: vec![(0, ArgIdxOrResult::Result), (1, ArgIdxOrResult::Result)],
     }
 }
 
-/// Without an outlives constraint between `'a` and `'b`, only arg0 connects
-/// to the result (since `'b` does not outlive `'a`).
-fn assert_choose_no_outlives_shape(shape: &FunctionShape) {
-    let (inputs, outputs) = shape.clone().take_inputs_and_outputs();
-    assert_eq!(inputs.len(), 2);
-    assert_eq!(outputs.len(), 1);
-
-    let edges: Vec<_> = shape.edges().collect();
-    assert_eq!(edges.len(), 1, "only arg0->result, not arg1->result");
-    assert_eq!(*edges[0].input().base(), 0, "edge comes from arg0");
-    assert_eq!(edges[0].output().base(), ArgIdxOrResult::Result);
+fn choose_no_outlives_shape() -> ExpectedShape {
+    ExpectedShape {
+        inputs: 2,
+        outputs: 1,
+        edges: vec![(0, ArgIdxOrResult::Result)],
+    }
 }
 
 /// Single lifetime: both args flow to result.
@@ -106,7 +108,7 @@ fn test_choose_single_lifetime() {
     "#;
     run_pcg_on_str(input, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        assert_choose_shape(&sig_shape);
+        shape_matches(&sig_shape, &choose_shape());
     });
 }
 
@@ -124,7 +126,7 @@ fn test_choose_two_lifetimes_with_outlives() {
     "#;
     run_pcg_on_str(input, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        assert_choose_shape(&sig_shape);
+        shape_matches(&sig_shape, &choose_shape());
     });
 }
 
@@ -142,7 +144,7 @@ fn test_choose_no_outlives() {
     "#;
     run_pcg_on_str(input, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        assert_choose_no_outlives_shape(&sig_shape);
+        shape_matches(&sig_shape, &choose_no_outlives_shape());
     });
 }
 
@@ -159,7 +161,7 @@ fn test_choose_no_outlives_caller_same_lifetime() {
     "#;
     run_pcg_on_str(input, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        assert_choose_no_outlives_shape(&sig_shape);
+        shape_matches(&sig_shape, &choose_no_outlives_shape());
     });
 }
 
@@ -185,18 +187,15 @@ fn test_deref_mut_alias_output() {
         let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "deref_mut");
         let shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
 
-        let (inputs, outputs) = shape.clone().take_inputs_and_outputs();
-        assert_eq!(inputs.len(), 2, "input has 2 region projections (borrow + RefMut lifetime)");
-        assert_eq!(outputs.len(), 2, "output alias has 2 region projections before normalization");
-
-        let edges: Vec<_> = shape.edges().collect();
-        assert_eq!(edges.len(), 3, "3 edges: arg0[0]->result[0], arg0[1]->arg0_post[1], arg0[1]->result[1]");
-
-        let result_edges: Vec<_> = edges
-            .iter()
-            .filter(|e| e.output().base() == ArgIdxOrResult::Result)
-            .collect();
-        assert_eq!(result_edges.len(), 2, "2 edges target result before remap");
+        shape_matches(&shape, &ExpectedShape {
+            inputs: 2,
+            outputs: 2,
+            edges: vec![
+                (0, ArgIdxOrResult::Result),
+                (0, ArgIdxOrResult::Argument(0.into())),
+                (0, ArgIdxOrResult::Result),
+            ],
+        });
     });
 }
 
@@ -220,13 +219,10 @@ fn test_vec_into_iter_shape() {
         let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "into_iter");
         let call_shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
 
-        let (inputs, outputs) = call_shape.clone().take_inputs_and_outputs();
-        assert_eq!(inputs.len(), 1, "one input region projection");
-        assert_eq!(outputs.len(), 1, "one output region projection");
-
-        let edges: Vec<_> = call_shape.edges().collect();
-        assert_eq!(edges.len(), 1, "1-to-1 shape: arg0 -> result");
-        assert_eq!(*edges[0].input().base(), 0);
-        assert_eq!(edges[0].output().base(), ArgIdxOrResult::Result);
+        shape_matches(&call_shape, &ExpectedShape {
+            inputs: 1,
+            outputs: 1,
+            edges: vec![(0, ArgIdxOrResult::Result)],
+        });
     });
 }

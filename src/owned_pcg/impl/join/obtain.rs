@@ -4,15 +4,16 @@ use crate::{
     error::PcgError,
     owned_pcg::{LocalExpansions, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
-        place_capabilities::SymbolicPlaceCapabilities,
+        CompilerCtxtWithSettings, ctxt::AnalysisCtxt, obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser}, place_capabilities::SymbolicPlaceCapabilities
     },
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, Place, SnapshotLocation, data_structures::HashSet},
 };
 
+pub(crate) type JoinCtxt<'a, 'tcx> = CompilerCtxtWithSettings<'a, 'tcx>;
+
 pub(crate) struct JoinObtainer<'pcg: 'exp, 'exp, 'slf, 'a, 'tcx> {
-    pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
+    pub(crate) ctxt: JoinCtxt<'a, 'tcx>,
     pub(crate) data: &'slf mut JoinOwnedData<'a, 'pcg, 'tcx, &'exp mut LocalExpansions<'tcx>>,
     pub(crate) actions: Vec<RepackOp<'tcx>>,
 }
