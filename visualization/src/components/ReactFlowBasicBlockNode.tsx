@@ -12,6 +12,7 @@ export default function ReactFlowBasicBlockNode({ data }: NodeProps<ReactFlowNod
           stmts: data.stmts,
           terminator: data.terminator,
           callee_dot: data.callee_dot,
+          call_shape_dot: data.call_shape_dot,
         }}
         currentPoint={data.currentPoint}
         setCurrentPoint={data.setCurrentPoint}

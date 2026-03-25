@@ -90,7 +90,7 @@ export type MirEdge = { source: string; target: string; label: string };
 
 export type MirGraph = { nodes: MirNode[]; edges: MirEdge[] };
 
-export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator: MirStmt; callee_dot: string | null };
+export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator: MirStmt; callee_dot: string | null; call_shape_dot: string | null };
 
 export type MirStmt = { stmt: string; debug_stmt: string; span: MirStmtSpan; loans_invalidated_start: string[]; loans_invalidated_mid: string[]; borrows_in_scope_start: string[]; borrows_in_scope_mid: string[] };
 

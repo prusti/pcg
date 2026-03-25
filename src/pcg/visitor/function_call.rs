@@ -227,8 +227,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )?;
             }
         }
-        let shape = FunctionShape::new(&call, self.ctxt.bc_ctxt())
-            .map_err(|err| PcgError::internal(format!("{err:?}")))?;
+        let shape = call.shape(self.ctxt.bc_ctxt());
         self.create_edges_for_shape(&shape, &call)?;
 
         Ok(())

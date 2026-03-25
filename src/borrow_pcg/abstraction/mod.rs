@@ -6,7 +6,10 @@ use crate::{
     borrow_pcg::{
         edge::abstraction::{
             AbstractionBlockEdge,
-            function::{DefinedFnCall, DefinedFnCallShapeDataSource, DefinedFnSigShapeDataSource},
+            function::{
+                DefinedFnCall, DefinedFnCallShapeDataSource, DefinedFnSigShapeDataSource,
+                FnCallDataSource,
+            },
         },
         region_projection::{
             HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx,
@@ -82,6 +85,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdxOrResult {
     }
 }
 
+#[derive(Copy, Clone)]
 pub(crate) struct FunctionCall<'a, 'tcx> {
     pub(crate) defined: Option<DefinedFnCall<'tcx>>,
     pub(crate) location: mir::Location,
@@ -89,10 +93,33 @@ pub(crate) struct FunctionCall<'a, 'tcx> {
     pub(crate) output: utils::Place<'tcx>,
 }
 
-impl<'a, 'tcx> FunctionCall<'a, 'tcx> {
+impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
+    pub(crate) fn shape<'a>(self, ctxt: CompilerCtxt<'a, 'tcx>) -> FunctionShape
+    where
+        'tcx: 'a,
+    {
+        match self.defined {
+            Some(defined) => {
+                let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt.tcx()).unwrap();
+                FunctionShape::new(&data_source, ctxt).unwrap()
+            }
+            None => FunctionShape::new(
+                &FnCallDataSource::new(
+                    self.location,
+                    self.inputs
+                        .iter()
+                        .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
+                        .collect(),
+                    self.output.ty(ctxt).ty,
+                ),
+                ctxt,
+            )
+            .unwrap(),
+        }
+    }
     pub(crate) fn new(
         location: mir::Location,
-        inputs: &'a [&'a mir::Operand<'tcx>],
+        inputs: &'ops [&'ops mir::Operand<'tcx>],
         output: utils::Place<'tcx>,
         defined: Option<DefinedFnCall<'tcx>>,
     ) -> Self {
@@ -148,29 +175,6 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
             .into_iter()
             .map(std::convert::Into::into)
             .collect()
-    }
-}
-
-impl<'a, 'tcx> FunctionShapeDataSource<'tcx> for FunctionCall<'a, 'tcx> {
-    type Ctxt = CompilerCtxt<'a, 'tcx>;
-    fn input_tys(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Vec<ty::Ty<'tcx>> {
-        self.inputs
-            .iter()
-            .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
-            .collect()
-    }
-
-    fn output_ty(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> ty::Ty<'tcx> {
-        self.output.ty(ctxt).ty
-    }
-
-    fn outlives(
-        &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.borrow_checker.outlives(sup, sub, self.location))
     }
 }
 
@@ -289,10 +293,10 @@ impl FunctionShape {
     pub fn for_fn<'tcx>(
         def_id: DefId,
         caller_substs: GenericArgsRef<'tcx>,
-        tcx: ty::TyCtxt<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         let data = FunctionData::new(def_id);
-        Self::new(&data.shape_data_source(caller_substs, tcx)?, tcx)
+        Self::new(&data.shape_data_source(caller_substs, ctxt.tcx())?, ctxt)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
@@ -335,20 +339,23 @@ impl<'tcx> FunctionData<'tcx> {
         self.def_id
     }
 
-    pub(crate) fn shape_data_source(
+    pub(crate) fn shape_data_source<'a>(
         self,
         caller_substs: GenericArgsRef<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<DefinedFnCallShapeDataSource<'tcx>, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<DefinedFnCallShapeDataSource<'a, 'tcx>, MakeFunctionShapeError<'tcx>>
+    where
+        'tcx: 'a,
+    {
         DefinedFnCallShapeDataSource::new(DefinedFnCall::new(self, caller_substs), tcx)
     }
 
-    pub fn shape(
+    pub fn shape<'a>(
         self,
         caller_substs: GenericArgsRef<'tcx>,
-        tcx: ty::TyCtxt<'tcx>,
+        ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        FunctionShape::new(&self.shape_data_source(caller_substs, tcx)?, tcx)
+        FunctionShape::new(&self.shape_data_source(caller_substs, ctxt.tcx())?, ctxt)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 
@@ -357,8 +364,8 @@ impl<'tcx> FunctionData<'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<FunctionShapeCoupledEdges, CoupleAbstractionError<'tcx>> {
         let source = DefinedFnSigShapeDataSource::new(self.def_id, tcx)?;
-        let shape = FunctionShape::new(&source, tcx)
-            .map_err(MakeFunctionShapeError::CheckOutlivesError)?;
+        let shape =
+            FunctionShape::new(&source, tcx).map_err(MakeFunctionShapeError::CheckOutlivesError)?;
         Ok(shape.coupled_edges())
     }
 }

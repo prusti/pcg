@@ -168,26 +168,33 @@ export default function BasicBlockTable({
           }
           actions={getActionsForStmt(data.stmts.length)}
         />
-        {data.callee_dot && (
+        {(data.callee_dot || data.call_shape_dot) && (
           <tr>
             <td colSpan={2} style={{ textAlign: "center", padding: "2px" }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openDotStringInNewWindow(data.callee_dot!, `Function Shape - bb${data.block}`);
-                }}
-                style={{
-                  cursor: "pointer",
-                  backgroundColor: "#007acc",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "3px",
-                  padding: "2px 8px",
-                  fontSize: "11px",
-                }}
-              >
-                View Function Shape
-              </button>
+              {[
+                { dot: data.callee_dot, label: "View Function Shape", color: "#007acc", title: "Function Shape" },
+                { dot: data.call_shape_dot, label: "View Call Shape", color: "#cc7a00", title: "Call Shape" },
+              ].filter(b => b.dot).map((b, idx) => (
+                <button
+                  key={b.label}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDotStringInNewWindow(b.dot!, `${b.title} - bb${data.block}`);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    backgroundColor: b.color,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "3px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    marginLeft: idx > 0 ? "4px" : undefined,
+                  }}
+                >
+                  {b.label}
+                </button>
+              ))}
             </td>
           </tr>
         )}
@@ -215,6 +222,7 @@ export function computeTableHeight(
         stmts: data.stmts,
         terminator: data.terminator,
         callee_dot: data.callee_dot,
+        call_shape_dot: data.call_shape_dot,
       },
       setCurrentPoint: () => {},
       showActionsInGraph,

@@ -3,8 +3,10 @@
 use pcg::{
     PcgOutput,
     results::PcgLocation,
-    rustc_interface::middle::mir::{self, START_BLOCK},
-    rustc_interface::span::Symbol,
+    rustc_interface::{
+        middle::mir::{self, START_BLOCK},
+        span::Symbol,
+    },
 };
 use pcg_tests::run_pcg_on_str;
 
