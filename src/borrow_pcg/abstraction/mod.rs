@@ -16,6 +16,7 @@ use crate::{
         },
         visitor::extract_regions,
     },
+    rustc_interface::index::Idx,
     coupling::{CoupleAbstractionError, CoupledEdgesData},
     rustc_interface::{
         middle::{
@@ -94,6 +95,10 @@ pub(crate) struct FunctionCall<'a, 'tcx> {
 }
 
 impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
+    /// Computes the shape for this function call. For defined function calls,
+    /// uses the sig-derived call shape: computes the signature shape using the
+    /// instantiated signature types, then remaps region indices to the
+    /// call-site types (handling unnormalized alias types in the sig).
     pub(crate) fn shape<'a>(self, ctxt: CompilerCtxt<'a, 'tcx>) -> FunctionShape
     where
         'tcx: 'a,
@@ -101,7 +106,14 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         match self.defined {
             Some(defined) => {
                 let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt.tcx()).unwrap();
-                FunctionShape::new(&data_source, ctxt).unwrap()
+                let sig_shape = FunctionShape::new(&data_source, ctxt).unwrap();
+                let call_input_tys: Vec<_> = self
+                    .inputs
+                    .iter()
+                    .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
+                    .collect();
+                let call_output_ty = self.output.ty(ctxt).ty;
+                sig_shape.remap_to_call_site(&call_input_tys, call_output_ty)
             }
             None => FunctionShape::new(
                 &FnCallDataSource::new(
@@ -439,6 +451,74 @@ impl FunctionShape {
             outputs: shape_data.outputs(ctxt),
             edges: shape,
         })
+    }
+
+    /// Remaps region indices from signature types to call-site types.
+    ///
+    /// The signature shape is computed using the instantiated signature, which
+    /// may contain unnormalized alias types with extra regions not present in
+    /// the call-site types. This method finds the actual region for each sig
+    /// shape node and locates its index in the corresponding call-site type,
+    /// skipping edges whose regions exist only in the alias type.
+    /// Remaps region indices from signature types to call-site types.
+    ///
+    /// The sig type and call-site type for each argument/result have the same
+    /// structure, so the j-th region in the sig type corresponds to the j-th
+    /// region in the call-site type. When unnormalized alias types in the sig
+    /// introduce extra regions (out of bounds in the call-site type), the
+    /// corresponding edges are dropped.
+    fn remap_to_call_site<'tcx>(
+        self,
+        call_input_tys: &[ty::Ty<'tcx>],
+        call_output_ty: ty::Ty<'tcx>,
+    ) -> Self {
+        fn remap_region_idx<'tcx>(
+            call_ty: ty::Ty<'tcx>,
+            sig_region_idx: RegionIdx,
+        ) -> Option<RegionIdx> {
+            let call_regions = extract_regions(call_ty);
+            if sig_region_idx.index() < call_regions.len() {
+                Some(sig_region_idx)
+            } else {
+                panic!(
+                    "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions)",
+                    sig_region_idx, call_ty, call_regions.len()
+                );
+            }
+        }
+
+        let remap_input = |input: FunctionShapeInput| -> Option<FunctionShapeInput> {
+            remap_region_idx(call_input_tys[*input.base], input.region_idx)?;
+            Some(input)
+        };
+
+        let remap_output = |output: FunctionShapeOutput| -> Option<FunctionShapeOutput> {
+            let call_ty = match output.base {
+                ArgIdxOrResult::Argument(arg) => call_input_tys[*arg],
+                ArgIdxOrResult::Result => call_output_ty,
+            };
+            remap_region_idx(call_ty, output.region_idx)?;
+            Some(output)
+        };
+
+        let edges = self
+            .edges
+            .into_iter()
+            .filter_map(|edge| {
+                let input = remap_input(edge.input)?;
+                let output = remap_output(edge.output)?;
+                Some(AbstractionBlockEdge::new(input, output))
+            })
+            .collect();
+
+        let inputs = self.inputs.into_iter().filter_map(remap_input).collect();
+        let outputs = self.outputs.into_iter().filter_map(remap_output).collect();
+
+        FunctionShape {
+            inputs,
+            outputs,
+            edges,
+        }
     }
 
     #[must_use]

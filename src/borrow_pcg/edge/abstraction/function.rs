@@ -199,8 +199,8 @@ impl<'tcx> FunctionData<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
-}
 
+}
 
 impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSource<'a, 'tcx> {
     type Ctxt = CompilerCtxt<'a, 'tcx>;

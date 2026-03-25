@@ -2,7 +2,6 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
-        FunctionData,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},

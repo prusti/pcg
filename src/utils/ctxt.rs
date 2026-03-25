@@ -155,7 +155,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         None
     }
 
-    pub(crate) fn def_id(&self) -> LocalDefId {
+    pub fn def_id(&self) -> LocalDefId {
         self.mir.source.def_id().expect_local()
     }
 }
