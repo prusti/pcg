@@ -76,9 +76,9 @@ struct MirNode {
     block: usize,
     stmts: Vec<MirStmt>,
     terminator: MirStmt,
-    /// DOT graph of the callee's function shape (from fn def signature), if
-    /// this block's terminator is a call.
-    callee_dot: Option<String>,
+    /// DOT graph of the signature shape (from fn def signature), if this
+    /// block's terminator is a call.
+    sig_shape_dot: Option<String>,
     /// DOT graph of the call shape derived solely from call-site operand types.
     call_shape_dot: Option<String>,
 }
@@ -355,13 +355,10 @@ fn resolve_callee<'tcx>(
     func: &Operand<'tcx>,
     body: &mir::Body<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> Option<(
-    rustc_interface::hir::def_id::DefId,
-    ty::GenericArgsRef<'tcx>,
-)> {
+) -> Option<rustc_interface::hir::def_id::DefId> {
     let func_ty = func.ty(body, tcx);
-    if let ty::TyKind::FnDef(def_id, substs) = func_ty.kind() {
-        Some((*def_id, substs))
+    if let ty::TyKind::FnDef(def_id, _) = func_ty.kind() {
+        Some(*def_id)
     } else {
         None
     }
@@ -402,11 +399,11 @@ fn function_shape_to_dot(
 /// lifetime outlives relationships) for the callee at a call site.
 fn generate_function_shape_dot<'tcx>(
     def_id: rustc_interface::hir::def_id::DefId,
-    substs: ty::GenericArgsRef<'tcx>,
     ctxt: CompilerCtxt<'_, 'tcx>,
 ) -> Option<String> {
     use crate::borrow_pcg::abstraction::FunctionShape;
-    let shape = FunctionShape::for_fn(def_id, substs, ctxt).ok()?;
+    let identity_substs = ty::GenericArgs::identity_for_item(ctxt.tcx(), def_id);
+    let shape = FunctionShape::for_fn(def_id, identity_substs, ctxt).ok()?;
     let fn_name = ctxt.tcx().def_path_str(def_id);
     function_shape_to_dot(shape, &fn_name)
 }
@@ -462,15 +459,15 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             ctxt,
         );
 
-        let (callee_dot, call_shape_dot) = if let TerminatorKind::Call {
+        let (sig_shape_dot, call_shape_dot) = if let TerminatorKind::Call {
             func,
             args,
             destination,
             ..
         } = &data.terminator().kind
         {
-            let callee = resolve_callee(func, ctxt.body(), ctxt.tcx())
-                .and_then(|(def_id, substs)| generate_function_shape_dot(def_id, substs, ctxt));
+            let sig_shape = resolve_callee(func, ctxt.body(), ctxt.tcx())
+                .and_then(|def_id| generate_function_shape_dot(def_id, ctxt));
             let input_tys = args
                 .iter()
                 .map(|arg| arg.node.ty(ctxt.body(), ctxt.tcx()))
@@ -478,7 +475,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             let output_ty = destination.ty(ctxt.body(), ctxt.tcx()).ty;
             let call_shape =
                 generate_call_shape_dot(input_tys, output_ty, terminator_location, ctxt);
-            (callee, call_shape)
+            (sig_shape, call_shape)
         } else {
             (None, None)
         };
@@ -488,7 +485,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             block: bb.as_usize(),
             stmts: stmts.collect(),
             terminator,
-            callee_dot,
+            sig_shape_dot,
             call_shape_dot,
         });
 

@@ -27,7 +27,7 @@ export type BasicBlockData = {
   block: number;
   stmts: MirStmt[];
   terminator: MirStmt;
-  callee_dot: string | null;
+  sig_shape_dot: string | null;
   call_shape_dot: string | null;
 };
 
