@@ -715,7 +715,6 @@ macro_rules! pcg_validity_assert {
 
     // Helper branch that generates test case format when context is available
     (@with_test_case $cond:expr, $ctxt:expr, $func_name:expr, $($arg:tt)*) => {
-        use $crate::pcg::ctxt::HasSettings;
         if $ctxt.settings().validity_checks {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
             if !$cond {

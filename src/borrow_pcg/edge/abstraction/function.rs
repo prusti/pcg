@@ -31,7 +31,7 @@ use crate::{
         trait_selection::infer::outlives::env::OutlivesEnvironment,
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasTyCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
@@ -54,22 +54,22 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
     }
 }
 
-impl<'tcx> FunctionShapeDataSource<'tcx> for DefinedFnSigShapeDataSource<'tcx> {
-    type Ctxt = ty::TyCtxt<'tcx>;
-
-    fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>> {
-        self.sig(ctxt).inputs().to_vec()
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
+    for DefinedFnSigShapeDataSource<'tcx>
+{
+    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.sig(ctxt.tcx()).inputs().to_vec()
     }
 
-    fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx> {
-        self.sig(ctxt).output()
+    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.sig(ctxt.tcx()).output()
     }
 
     fn outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: Self::Ctxt,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
         if sup.is_static() || sup == sub {
             return Ok(true);
@@ -81,9 +81,9 @@ impl<'tcx> FunctionShapeDataSource<'tcx> for DefinedFnSigShapeDataSource<'tcx> {
             (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
             (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
             _ => Ok(self.outlives.free_region_map().sub_free_regions(
-                ctxt,
-                sub.rust_region(ctxt),
-                sup.rust_region(ctxt),
+                ctxt.tcx(),
+                sub.rust_region(ctxt.tcx()),
+                sup.rust_region(ctxt.tcx()),
             )),
         }
     }
@@ -138,21 +138,22 @@ impl<'a, 'tcx: 'a> FnCallDataSource<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for FnCallDataSource<'a, 'tcx> {
-    type Ctxt = CompilerCtxt<'a, 'tcx>;
-    fn input_tys(&self, _ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
+    for FnCallDataSource<'a, 'tcx>
+{
+    fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
     }
-    fn output_ty(&self, _ctxt: CompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx> {
+    fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.output_ty
     }
     fn outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.borrow_checker.outlives(sup, sub, self.location))
+        Ok(ctxt.bc().outlives(sup, sub, self.location))
     }
 }
 
@@ -236,16 +237,17 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSource<'a, 'tcx> {
-    type Ctxt = CompilerCtxt<'a, 'tcx>;
-    fn input_tys(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<ty::Ty<'tcx>> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
+    for DefinedFnCallShapeDataSource<'a, 'tcx>
+{
+    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.call
             .function_data
             .fn_sig(ctxt.tcx(), self.call.caller_substs)
             .inputs()
             .to_vec()
     }
-    fn output_ty(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> ty::Ty<'tcx> {
+    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.call
             .function_data
             .fn_sig(ctxt.tcx(), self.call.caller_substs)
@@ -256,7 +258,7 @@ impl<'a, 'tcx: 'a> FunctionShapeDataSource<'tcx> for DefinedFnCallShapeDataSourc
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
         if sup.is_static() || sup == sub {
             return Ok(true);
@@ -366,7 +368,6 @@ impl<'tcx> DefinedFnCall<'tcx> {
             caller_substs,
         }
     }
-
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy)]

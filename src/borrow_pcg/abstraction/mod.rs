@@ -1,8 +1,12 @@
-use std::{collections::BTreeSet, marker::PhantomData};
+use std::{
+    collections::{BTreeSet, HashSet},
+    marker::PhantomData,
+};
 
 use derive_more::{Deref, From};
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         edge::abstraction::{
             AbstractionBlockEdge,
@@ -27,7 +31,7 @@ use crate::{
         span::def_id::DefId,
     },
     utils::{
-        self, CompilerCtxt, HasTyCtxt,
+        self, CompilerCtxt, HasBorrowCheckerCtxt, HasTyCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -100,7 +104,10 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
     /// uses the sig-derived call shape: computes the signature shape using the
     /// instantiated signature types, then remaps region indices to the
     /// call-site types (handling unnormalized alias types in the sig).
-    pub(crate) fn shape<'a>(self, ctxt: CompilerCtxt<'a, 'tcx>) -> FunctionShape
+    pub(crate) fn shape<'a>(
+        self,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> FunctionShape
     where
         'tcx: 'a,
     {
@@ -121,6 +128,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
                     call_output_ty,
                     &sig_input_tys,
                     sig_output_ty,
+                    ctxt,
                 )
             }
             None => FunctionShape::new(
@@ -160,18 +168,17 @@ pub enum CheckOutlivesError<'tcx> {
     },
 }
 
-pub(crate) trait FunctionShapeDataSource<'tcx> {
-    type Ctxt: HasTyCtxt<'tcx> + Copy;
-    fn input_tys(&self, ctxt: Self::Ctxt) -> Vec<ty::Ty<'tcx>>;
-    fn output_ty(&self, ctxt: Self::Ctxt) -> ty::Ty<'tcx>;
+pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt> {
+    fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>>;
+    fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
     fn outlives(
         &self,
         sup: PcgRegion<'tcx>,
         sub: PcgRegion<'tcx>,
-        ctxt: Self::Ctxt,
+        ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>>;
 
-    fn input_arg_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
+    fn input_arg_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx>> {
         self.input_tys(ctxt)
             .into_iter()
             .enumerate()
@@ -179,18 +186,18 @@ pub(crate) trait FunctionShapeDataSource<'tcx> {
             .collect()
     }
 
-    fn result_projections(&self, ctxt: Self::Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
+    fn result_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdxOrResult>> {
         ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.output_ty(ctxt))
     }
 
-    fn inputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeInput> {
+    fn inputs(&self, ctxt: Ctxt) -> Vec<FunctionShapeInput> {
         self.input_arg_projections(ctxt)
             .into_iter()
             .map(std::convert::Into::into)
             .collect()
     }
 
-    fn outputs(&self, ctxt: Self::Ctxt) -> Vec<FunctionShapeOutput> {
+    fn outputs(&self, ctxt: Ctxt) -> Vec<FunctionShapeOutput> {
         self.result_projections(ctxt)
             .into_iter()
             .map(std::convert::Into::into)
@@ -298,6 +305,37 @@ pub struct FunctionShape {
 }
 
 impl FunctionShape {
+    /// Constructs a `FunctionShape` from explicit inputs, outputs, and edges.
+    /// Each input/output/edge endpoint is `(base, region_idx)`.
+    pub fn from_raw(
+        inputs: Vec<(ArgIdx, usize)>,
+        outputs: Vec<(ArgIdxOrResult, usize)>,
+        edges: HashSet<((ArgIdx, usize), (ArgIdxOrResult, usize))>,
+    ) -> Self {
+        let inputs = inputs
+            .into_iter()
+            .map(|(base, region)| FunctionShapeInput::from_index(base, region.into()))
+            .collect();
+        let outputs = outputs
+            .into_iter()
+            .map(|(base, region)| FunctionShapeOutput::from_index(base, region.into()))
+            .collect();
+        let edges = edges
+            .into_iter()
+            .map(|((in_base, in_region), (out_base, out_region))| {
+                AbstractionBlockEdge::new(
+                    FunctionShapeInput::from_index(in_base, in_region.into()),
+                    FunctionShapeOutput::from_index(out_base, out_region.into()),
+                )
+            })
+            .collect();
+        Self {
+            inputs,
+            outputs,
+            edges,
+        }
+    }
+
     pub fn edges(
         &self,
     ) -> impl Iterator<Item = AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>>
@@ -428,9 +466,13 @@ impl FunctionShape {
         self.edges.is_subset(&other.edges)
     }
 
-    pub(crate) fn new<'tcx, ShapeData: FunctionShapeDataSource<'tcx>>(
+    pub(crate) fn new<
+        'tcx,
+        Ctxt: HasTyCtxt<'tcx> + Copy,
+        ShapeData: FunctionShapeDataSource<'tcx, Ctxt>,
+    >(
         shape_data: &ShapeData,
-        ctxt: ShapeData::Ctxt,
+        ctxt: Ctxt,
     ) -> Result<Self, CheckOutlivesError<'tcx>> {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput, FunctionShapeOutput>,
@@ -475,24 +517,25 @@ impl FunctionShape {
     /// region in the call-site type. When unnormalized alias types in the sig
     /// introduce extra regions (out of bounds in the call-site type), the
     /// corresponding edges are dropped.
-    fn remap_to_call_site<'tcx>(
+    fn remap_to_call_site<'a, 'tcx: 'a>(
         self,
         call_input_tys: &[ty::Ty<'tcx>],
         call_output_ty: ty::Ty<'tcx>,
         sig_input_tys: &[ty::Ty<'tcx>],
         sig_output_ty: ty::Ty<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Self {
-        fn remap_region_idx<'tcx>(
-            sig_ty: ty::Ty<'tcx>,
-            call_ty: ty::Ty<'tcx>,
-            sig_region_idx: RegionIdx,
-        ) -> Option<RegionIdx> {
+        let remap_region_idx = |sig_ty: ty::Ty<'tcx>,
+                                call_ty: ty::Ty<'tcx>,
+                                sig_region_idx: RegionIdx|
+         -> Option<RegionIdx> {
             let call_regions = extract_regions(call_ty);
             if sig_region_idx.index() < call_regions.len() {
                 Some(sig_region_idx)
             } else {
                 pcg_validity_assert!(
                     false,
+                    [ctxt],
                     "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions, sig type {:?})",
                     sig_region_idx,
                     call_ty,
@@ -501,7 +544,7 @@ impl FunctionShape {
                 );
                 None
             }
-        }
+        };
 
         let remap_input = |input: FunctionShapeInput| -> Option<FunctionShapeInput> {
             remap_region_idx(

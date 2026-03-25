@@ -226,7 +226,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )?;
             }
         }
-        let shape = call.shape(self.ctxt.bc_ctxt());
+        let shape = call.shape(self.ctxt);
         self.create_edges_for_shape(&shape, &call)?;
 
         Ok(())

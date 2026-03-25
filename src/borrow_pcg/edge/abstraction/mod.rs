@@ -106,7 +106,7 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
 }
 
 impl<Input: Copy, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
-    pub(crate) fn new(input: Input, output: Output) -> Self {
+    pub fn new(input: Input, output: Output) -> Self {
         Self {
             _phantom: PhantomData,
             input,

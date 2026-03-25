@@ -2,8 +2,10 @@
 
 extern crate rustc_hir;
 
+use std::collections::HashSet;
+
 use pcg::{
-    borrow_pcg::{ArgIdxOrResult, FunctionShape},
+    borrow_pcg::{ArgIdx, ArgIdxOrResult, FunctionShape},
     rustc_interface::middle::{mir, ty},
     utils::CompilerCtxt,
 };
@@ -55,43 +57,27 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     (sig_shape, call_shape)
 }
 
-struct ExpectedShape {
-    inputs: usize,
-    outputs: usize,
-    edges: Vec<(usize, ArgIdxOrResult)>,
+fn arg(idx: usize) -> ArgIdx {
+    idx.into()
 }
 
-fn shape_matches(shape: &FunctionShape, expected: &ExpectedShape) {
-    let (inputs, outputs) = shape.clone().take_inputs_and_outputs();
-    assert_eq!(inputs.len(), expected.inputs, "unexpected number of inputs");
-    assert_eq!(outputs.len(), expected.outputs, "unexpected number of outputs");
-
-    let mut actual_edges: Vec<(usize, ArgIdxOrResult)> = shape
-        .edges()
-        .map(|e| (*e.input().base(), e.output().base()))
-        .collect();
-    actual_edges.sort();
-
-    let mut expected_edges = expected.edges.clone();
-    expected_edges.sort();
-
-    assert_eq!(actual_edges, expected_edges, "unexpected edges");
+fn choose_shape() -> FunctionShape {
+    FunctionShape::from_raw(
+        vec![(arg(0), 0), (arg(1), 0)],
+        vec![(ArgIdxOrResult::Result, 0)],
+        HashSet::from([
+            ((arg(0), 0), (ArgIdxOrResult::Result, 0)),
+            ((arg(1), 0), (ArgIdxOrResult::Result, 0)),
+        ]),
+    )
 }
 
-fn choose_shape() -> ExpectedShape {
-    ExpectedShape {
-        inputs: 2,
-        outputs: 1,
-        edges: vec![(0, ArgIdxOrResult::Result), (1, ArgIdxOrResult::Result)],
-    }
-}
-
-fn choose_no_outlives_shape() -> ExpectedShape {
-    ExpectedShape {
-        inputs: 2,
-        outputs: 1,
-        edges: vec![(0, ArgIdxOrResult::Result)],
-    }
+fn choose_no_outlives_shape() -> FunctionShape {
+    FunctionShape::from_raw(
+        vec![(arg(0), 0), (arg(1), 0)],
+        vec![(ArgIdxOrResult::Result, 0)],
+        HashSet::from([((arg(0), 0), (ArgIdxOrResult::Result, 0))]),
+    )
 }
 
 /// Single lifetime: both args flow to result.
@@ -106,9 +92,9 @@ fn test_choose_single_lifetime() {
 
         fn choose<'a>(x: &'a mut u32, y: &'a mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, true, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        shape_matches(&sig_shape, &choose_shape());
+        assert_eq!(sig_shape, choose_shape());
     });
 }
 
@@ -124,9 +110,9 @@ fn test_choose_two_lifetimes_with_outlives() {
 
         fn choose<'a, 'b: 'a>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, true, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        shape_matches(&sig_shape, &choose_shape());
+        assert_eq!(sig_shape, choose_shape());
     });
 }
 
@@ -142,9 +128,9 @@ fn test_choose_no_outlives() {
 
         fn choose<'a, 'b>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, true, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        shape_matches(&sig_shape, &choose_no_outlives_shape());
+        assert_eq!(sig_shape, choose_no_outlives_shape());
     });
 }
 
@@ -159,9 +145,9 @@ fn test_choose_no_outlives_caller_same_lifetime() {
 
         fn choose<'a, 'b>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, true, |analysis| {
         let (sig_shape, _) = sig_and_call_shapes(analysis.ctxt(), "choose");
-        shape_matches(&sig_shape, &choose_no_outlives_shape());
+        assert_eq!(sig_shape, choose_no_outlives_shape());
     });
 }
 
@@ -181,21 +167,22 @@ fn test_deref_mut_alias_output() {
             *borrow = 10;
         }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, false, |analysis| {
         let ctxt = analysis.ctxt();
         let body = ctxt.body();
         let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "deref_mut");
         let shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
 
-        shape_matches(&shape, &ExpectedShape {
-            inputs: 2,
-            outputs: 2,
-            edges: vec![
-                (0, ArgIdxOrResult::Result),
-                (0, ArgIdxOrResult::Argument(0.into())),
-                (0, ArgIdxOrResult::Result),
-            ],
-        });
+        let expected = FunctionShape::from_raw(
+            vec![(arg(0), 0), (arg(0), 1)],
+            vec![(ArgIdxOrResult::Result, 0), (ArgIdxOrResult::Result, 1)],
+            HashSet::from([
+                ((arg(0), 0), (ArgIdxOrResult::Result, 0)),
+                ((arg(0), 1), (ArgIdxOrResult::Argument(arg(0)), 1)),
+                ((arg(0), 1), (ArgIdxOrResult::Result, 1)),
+            ]),
+        );
+        assert_eq!(shape, expected);
     });
 }
 
@@ -213,16 +200,17 @@ fn test_vec_into_iter_shape() {
             let _iter = v.into_iter();
         }
     "#;
-    run_pcg_on_str(input, |analysis| {
+    run_pcg_on_str(input, true, |analysis| {
         let ctxt = analysis.ctxt();
         let body = ctxt.body();
         let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "into_iter");
         let call_shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
 
-        shape_matches(&call_shape, &ExpectedShape {
-            inputs: 1,
-            outputs: 1,
-            edges: vec![(0, ArgIdxOrResult::Result)],
-        });
+        let expected = FunctionShape::from_raw(
+            vec![(arg(0), 0)],
+            vec![(ArgIdxOrResult::Result, 0)],
+            HashSet::from([((arg(0), 0), (ArgIdxOrResult::Result, 0))]),
+        );
+        assert_eq!(call_shape, expected);
     });
 }

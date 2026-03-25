@@ -943,7 +943,7 @@ impl<
 }
 
 impl<T> LifetimeProjection<'_, T> {
-    pub(crate) fn from_index(base: T, region_idx: RegionIdx) -> Self {
+    pub fn from_index(base: T, region_idx: RegionIdx) -> Self {
         Self {
             base,
             region_idx,
