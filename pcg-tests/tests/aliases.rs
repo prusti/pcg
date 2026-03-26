@@ -52,7 +52,6 @@ fn test_aliases() {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
-        let x = ctxt.local_place("x").unwrap();
         let temp4 = mir::Local::from(4_usize).into();
         let temp: mir::Place<'_> = mir::Local::from(2_usize).into();
         let aliases = stmt.aliases(

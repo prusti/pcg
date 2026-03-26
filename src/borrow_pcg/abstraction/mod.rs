@@ -118,6 +118,18 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         })
     }
 
+    fn defined_fn_call_shape<'a>(
+        self,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Option<FunctionShape>
+    where
+        'tcx: 'a,
+    {
+        let defined = self.defined_fn_call_with_call_tys(ctxt)?;
+        let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt).ok()?;
+        FunctionShape::new(&data_source, ctxt).ok()
+    }
+
     /// Computes the shape for this function call. For calls to defined
     /// functions, uses the signature-derived call shape: it computes the
     /// signature shape using the instantiated signature types, then remaps
@@ -141,17 +153,15 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
             .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
             .collect();
         let output_ty = self.output.ty(ctxt).ty;
-        match self.defined_fn_call_with_call_tys(ctxt) {
-            Some(defined) => {
-                let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt).unwrap();
-                FunctionShape::new(&data_source, ctxt).unwrap()
-            }
-            None => FunctionShape::new(
-                &FnCallDataSource::new(self.location, input_tys, output_ty),
-                ctxt,
-            )
-            .unwrap(),
-        }
+        self.defined_fn_call_shape(ctxt)
+            .or_else(|| {
+                FunctionShape::new(
+                    &FnCallDataSource::new(self.location, input_tys, output_ty),
+                    ctxt,
+                )
+                .ok()
+            })
+            .unwrap()
     }
     pub(crate) fn new(
         location: mir::Location,

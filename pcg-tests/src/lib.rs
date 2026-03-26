@@ -5,11 +5,7 @@ extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_middle;
 
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{fs, io, path::Path, sync::Arc};
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
 use pcg::{
