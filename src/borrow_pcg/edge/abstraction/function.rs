@@ -316,8 +316,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         // Map to callee identity regions for param_env checking.
         // A region that can't be mapped to an identity region is nested inside
         // a type argument in caller_substs (e.g. 'a in Self = RefMut<'a, i32>).
-        // Such regions are invisible to the callee's signature and cannot
-        // participate in cross-region outlives relationships, so we return false.
+        // Such regions are invisible to the callee's identity signature, so we
+        // cannot check outlives precisely. Returning false here is imprecise —
+        // the hidden region could flow to the result (e.g. deref_mut returns
+        // data borrowed through 'a). The correct fix is implementing generic
+        // lifetimes (doc § Signature Shape) where type parameters participate
+        // in outlives relationships.
+        // TODO: implement generic lifetimes to handle this correctly.
         let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx()))
         else {
             return Ok(false);

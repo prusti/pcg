@@ -153,8 +153,9 @@ fn test_choose_no_outlives_caller_same_lifetime() {
 /// `DerefMut::deref_mut` on `RefMut<'a, i32>` has an alias projection type
 /// (`<RefMut<'a, i32> as Deref>::Target`) in its return type. The call-site
 /// result type is `&mut i32` (1 region), so the shape uses the call-site types
-/// for its structure. The `'a` region from `RefMut` cannot flow to the result
-/// (which is just `i32`), so only the borrow lifetime connects to the result.
+/// for its structure. The `'a` region from `RefMut` could flow to the result
+/// (the deref returns data borrowed through `'a`), so both arg regions connect
+/// to the result.
 #[test]
 fn test_deref_mut_alias_output() {
     let input = r#"
