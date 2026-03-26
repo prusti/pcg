@@ -48,7 +48,6 @@ pub struct DefinedFnSigShapeDataSource<'tcx> {
 }
 
 impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
-    /// Returns the function signature with late-bound regions liberated.
     fn sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
@@ -76,8 +75,7 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
             return Ok(true);
         }
         // TODO: Check whether it is possible for either `sub` or `sup` to be a
-        // `RegionVid` here. If not, the `RegionVid` arms below are dead code
-        // and should be removed.
+        // `RegionVid`.
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
@@ -242,7 +240,8 @@ impl<'tcx> FunctionData<'tcx> {
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
 
-    /// Returns the function signature instantiated with the given substs.
+    /// Returns the function signature instantiated with the given substs (but
+    /// not normalized).
     #[must_use]
     pub fn fn_sig(self, tcx: ty::TyCtxt<'tcx>, substs: GenericArgsRef<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, substs);
@@ -317,8 +316,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         // cannot check outlives precisely. Returning false here is imprecise —
         // the hidden region could flow to the result (e.g. deref_mut returns
         // data borrowed through 'a). The correct fix is implementing
-        // generalized lifetimes (doc § Signature Shape) where type parameters
+        // generalized lifetimes where type parameters
         // participate in outlives relationships.
+        // See https://prusti.github.io/pcg-docs/function-shapes.html for more info.
         // TODO: implement generalized lifetimes to handle this correctly.
         let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return Ok(false);

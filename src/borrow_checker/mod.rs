@@ -278,8 +278,7 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
 
-    /// Returns an iterator over all `RegionVid`s known to the borrow checker
-    /// for this body.
+    /// Returns an iterator over all `RegionVid`s for this body.
     ///
     /// The implementation is a hack: it extracts region vids from the
     /// constraint SCC indices in the region inference context. This is

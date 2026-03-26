@@ -3,7 +3,7 @@ use crate::rustc_interface::{
     middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
 };
 
-use super::region_projection::{Generic, PcgRegion, RegionIdx};
+use super::region_projection::{Generalized, PcgRegion, LifetimeProjectionIdx};
 
 struct LifetimeExtractor<'tcx> {
     lifetimes: Vec<ty::Region<'tcx>>,
@@ -52,7 +52,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 /// `['c, 'd]` respectively. This enables substitution of regions to handle
 /// moves in the PCG e.g for the statement `let x: T<'a, 'b> = move c: T<'c,
 /// 'd>`.
-pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<RegionIdx, PcgRegion<'_>> {
+pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'_>> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
@@ -131,7 +131,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'tcx> 
 pub(crate) fn extract_generalized_lifetimes<'tcx>(
     ty: ty::Ty<'tcx>,
     tcx: ty::TyCtxt<'tcx>,
-) -> IndexVec<RegionIdx<Generic>, GeneralizedLifetime<'tcx>> {
+) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
     let mut visitor = GeneralizedLifetimeExtractor {
         tcx,
         lifetimes: vec![],

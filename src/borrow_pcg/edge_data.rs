@@ -6,7 +6,7 @@ use crate::{
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
             LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
-            PcgLifetimeProjectionBase, RegionIdx,
+            PcgLifetimeProjectionBase, LifetimeProjectionIdx,
         },
     },
     pcg::{
@@ -181,7 +181,7 @@ where
 pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     LifetimeProjectionLabelEquals(Option<LifetimeProjectionLabel>),
     PlaceLabelEquals(Option<SnapshotLocation>),
-    ProjectionRegionIdxEquals(RegionIdx),
+    ProjectionRegionIdxEquals(LifetimeProjectionIdx),
     Equals(PcgNodeWithPlace<'tcx, P>),
     /// The place associated with the node is exactly this place.
     PlaceEquals(P),
@@ -217,7 +217,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// the given base place and region index.
     pub(crate) fn all_non_future(
         place: crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
-        region_idx: RegionIdx,
+        region_idx: LifetimeProjectionIdx,
     ) -> Self {
         Self::And(vec![
             Self::PlaceEquals(place.place()),

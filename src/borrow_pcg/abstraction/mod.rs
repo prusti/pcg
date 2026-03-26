@@ -16,7 +16,7 @@ use crate::{
             },
         },
         region_projection::{
-            HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, RegionIdx,
+            HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, LifetimeProjectionIdx,
         },
         visitor::extract_regions,
     },
@@ -119,12 +119,15 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
     }
 
     /// Computes the shape for this function call. For calls to defined
-    /// functions, uses the sig-derived call shape: computes the signature shape
-    /// using the instantiated signature types, then remaps region indices to
-    /// the call-site types (handling unnormalized alias types in the sig). For
-    /// other calls (e.g. calls to a function pointer), the shape is computed
-    /// by [`FnCallDataSource`], which queries the borrow checker for outlives
-    /// constraints between the call-site regions directly.
+    /// functions, uses the signature-derived call shape: it computes the
+    /// signature shape using the instantiated signature types, then remaps
+    /// region indices to the call-site types (handling unnormalized alias types
+    /// in the sig).  For other calls (e.g. calls to a function pointer), the
+    /// shape is computed by [`FnCallDataSource`], which queries the borrow
+    /// checker for outlives constraints between the regions in the call site
+    /// operands and return place directly.
+    ///
+    /// See https://prusti.github.io/pcg-docs/function-shapes.html for more info.
     pub(crate) fn shape<'a>(
         self,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
@@ -214,7 +217,7 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt> {
 pub(crate) struct ProjectionData<'tcx, T> {
     base: T,
     ty: ty::Ty<'tcx>,
-    region_idx: RegionIdx,
+    region_idx: LifetimeProjectionIdx,
     region: PcgRegion<'tcx>,
 }
 
@@ -589,12 +592,12 @@ mod tests {
         #[derive(Clone, Copy)]
         struct TestCtxt(PcgRegion<'static>);
         impl HasRegions<'static, TestCtxt> for ArgIdx {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion<'static>> {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }
         impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<RegionIdx, PcgRegion<'static>> {
+            fn regions(&self, ctxt: TestCtxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }

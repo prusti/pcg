@@ -57,8 +57,7 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
 // ---------------------------------------------------------------------------
 // Shape construction helpers
 //
-// These wrap `FunctionShape::from_raw` with a readable DSL. A *node* is a
-// (base, region_index) pair written as `arg(i, r)` or `result(r)`.
+// A *node* is a (base, region_index) pair written as `arg(i, r)` or `result(r)`.
 // An *edge* is `arg(i, r) => result(r)` or `arg(i, r) => arg(j, r)`.
 // ---------------------------------------------------------------------------
 

@@ -12,7 +12,7 @@ use crate::{
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
-        region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, RegionIdx},
+        region_projection::{HasRegions, LifetimeProjection, LifetimeProjectionLabel, LifetimeProjectionIdx},
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
@@ -681,7 +681,7 @@ fn add_block_edges<'mir, 'tcx>(
         blocked_place
             .relevant_place_for_blocking()
             .to_pcg_node(ctxt),
-        blocker_rps[RegionIdx::from(0)].to_local_node(ctxt),
+        blocker_rps[LifetimeProjectionIdx::from(0)].to_local_node(ctxt),
         ctxt,
     );
     add_rp_block_edges(expander, blocked_place, blocker, ctxt);

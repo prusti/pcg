@@ -63,7 +63,7 @@ pub enum PcgRegion<'tcx> {
 
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
 pub enum PcgRegionInternalError {
-    RegionIndexOutOfBounds(RegionIdx),
+    RegionIndexOutOfBounds(LifetimeProjectionIdx),
 }
 
 pub trait OverrideRegionDebugString {
@@ -232,11 +232,11 @@ impl<'tcx> From<ty::Region<'tcx>> for PcgRegion<'tcx> {
 
 /// Marker: indexes only into regions extracted from a type.
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct RegionOnly;
+pub struct Region;
 
 /// Marker: indexes into the full generalized lifetime list (regions + type params).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct Generic;
+pub struct Generalized;
 
 /// The index of a region (or generalized lifetime) within a type.
 ///
@@ -244,7 +244,9 @@ pub struct Generic;
 /// regions of a type ([`RegionOnly`], the default) or into the full
 /// generalized lifetime list including type parameters ([`Generic`]).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct RegionIdx<Kind = RegionOnly>(usize, PhantomData<Kind>);
+pub struct LifetimeProjectionIdx<Kind = Region>(usize, PhantomData<Kind>);
+
+pub type RegionIdx = LifetimeProjectionIdx<Region>;
 
 /// Sealed trait for the bounds required on a `RegionIdx` kind parameter.
 ///
@@ -254,20 +256,20 @@ pub trait RegionIdxKind:
     crate::Sealed + PartialEq + Eq + Clone + std::fmt::Debug + Hash + Copy + Ord + PartialOrd + 'static
 {
 }
-impl crate::Sealed for RegionOnly {}
-impl crate::Sealed for Generic {}
-impl RegionIdxKind for RegionOnly {}
-impl RegionIdxKind for Generic {}
+impl crate::Sealed for Region {}
+impl crate::Sealed for Generalized {}
+impl RegionIdxKind for Region {}
+impl RegionIdxKind for Generalized {}
 
-impl<Kind: RegionIdxKind> From<usize> for RegionIdx<Kind> {
+impl<Kind: RegionIdxKind> From<usize> for LifetimeProjectionIdx<Kind> {
     fn from(idx: usize) -> Self {
-        RegionIdx(idx, PhantomData)
+        LifetimeProjectionIdx(idx, PhantomData)
     }
 }
 
-impl<Kind: RegionIdxKind> Idx for RegionIdx<Kind> {
+impl<Kind: RegionIdxKind> Idx for LifetimeProjectionIdx<Kind> {
     fn new(idx: usize) -> Self {
-        RegionIdx(idx, PhantomData)
+        LifetimeProjectionIdx(idx, PhantomData)
     }
 
     fn index(self) -> usize {
@@ -500,9 +502,9 @@ pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeP
 /// only the regions of a type ([`RegionOnly`], the default) or to the full
 /// generalized lifetime list including type parameters ([`Generic`]).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
-pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind = RegionOnly> {
+pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind = Region> {
     pub(crate) base: Base,
-    pub(crate) region_idx: RegionIdx<Kind>,
+    pub(crate) region_idx: LifetimeProjectionIdx<Kind>,
     pub(crate) label: Option<LifetimeProjectionLabel>,
     phantom: PhantomData<&'tcx ()>,
 }
@@ -510,7 +512,7 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind
 /// A generalized lifetime projection, where the index refers to the full
 /// generalized lifetime list (regions + type parameters).
 pub type GeneralizedLifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> =
-    LifetimeProjection<'tcx, Base, Generic>;
+    LifetimeProjection<'tcx, Base, Generalized>;
 
 impl<Base, Kind: RegionIdxKind> crate::Sealed for LifetimeProjection<'_, Base, Kind> {}
 
@@ -520,7 +522,7 @@ pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
 pub(crate) trait PcgLifetimeProjectionLike<
     'tcx,
     P = PcgLifetimeProjectionBase<'tcx>,
-    Kind = RegionOnly,
+    Kind = Region,
 >
 {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx, P, Kind>;
@@ -794,11 +796,11 @@ impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
 /// For the full generalized lifetime list (regions + type parameters), see
 /// [`GeneralizedLifetimeProjection`].
 pub trait HasRegions<'tcx, Ctxt: Copy> {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>>;
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'tcx>>;
     fn lifetime_projections<'a>(
         self,
         ctxt: Ctxt,
-    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
+    ) -> IndexVec<LifetimeProjectionIdx, LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
         Self: Sized + Copy + std::fmt::Debug,
@@ -811,7 +813,7 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
 }
 
 impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt> + Sealed> HasRegions<'tcx, Ctxt> for T {
-    fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>> {
+    fn regions(&self, ctxt: Ctxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'tcx>> {
         extract_regions(self.rust_ty(ctxt))
     }
 }
@@ -1021,7 +1023,7 @@ impl<
 }
 
 impl<T, Kind: RegionIdxKind> LifetimeProjection<'_, T, Kind> {
-    pub fn from_index(base: T, region_idx: RegionIdx<Kind>) -> Self {
+    pub fn from_index(base: T, region_idx: LifetimeProjectionIdx<Kind>) -> Self {
         Self {
             base,
             region_idx,
