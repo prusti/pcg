@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut};
 
@@ -162,8 +162,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
 
 pub(crate) struct DefinedFnCallShapeDataSource<'a, 'tcx> {
     call: DefinedFnCallWithCallTys<'tcx>,
-    sig_normalized_input_tys: Vec<ty::Ty<'tcx>>,
-    sig_normalized_output_ty: ty::Ty<'tcx>,
+    /// Maps call-site regions to their corresponding normalized sig regions.
+    /// Built by walking call-site types and normalized sig types in parallel.
+    region_map: HashMap<PcgRegion<'tcx>, PcgRegion<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
     _marker: PhantomData<&'a ()>,
 }
@@ -177,18 +178,45 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
     }
 
+    /// Builds a mapping from call-site regions to normalized sig regions by
+    /// comparing regions at corresponding positions (by index) in the two types.
+    fn build_region_map(
+        call_tys: &[ty::Ty<'tcx>],
+        call_result_ty: ty::Ty<'tcx>,
+        normalized_sig: &ty::FnSig<'tcx>,
+    ) -> HashMap<PcgRegion<'tcx>, PcgRegion<'tcx>> {
+        use crate::borrow_pcg::visitor::extract_regions;
+        let mut map = HashMap::default();
+        for (call_ty, sig_ty) in call_tys.iter().zip(normalized_sig.inputs().iter()) {
+            let call_regions = extract_regions(*call_ty);
+            let sig_regions = extract_regions(*sig_ty);
+            for (call_r, sig_r) in call_regions.iter().zip(sig_regions.iter()) {
+                map.insert(*call_r, *sig_r);
+            }
+        }
+        let call_result_regions = extract_regions(call_result_ty);
+        let sig_result_regions = extract_regions(normalized_sig.output());
+        for (call_r, sig_r) in call_result_regions.iter().zip(sig_result_regions.iter()) {
+            map.insert(*call_r, *sig_r);
+        }
+        map
+    }
+
     #[rustversion::since(2025-05-24)]
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         call: DefinedFnCallWithCallTys<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        let caller_typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), call.caller_def_id())
-            .with_post_analysis_normalized(ctxt.tcx());
-        let (infcx, param_env) = ctxt
+        // Use the callee's typing env for outlives checks, since after mapping
+        // regions back to identity regions, we need the callee's param env
+        // constraints (e.g. `'b: 'a`).
+        let callee_typing_env =
+            ty::TypingEnv::post_analysis(ctxt.tcx(), call.fn_def_id());
+        let (_, param_env) = ctxt
             .tcx()
             .infer_ctxt()
-            .build_with_typing_env(caller_typing_env);
+            .build_with_typing_env(callee_typing_env);
         let outlives = OutlivesEnvironment::from_normalized_bounds(
             param_env,
             vec![],
@@ -196,12 +224,15 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             HashSet::default(),
         );
         let normalized = call.defined_fn_call.normalized_sig(ctxt);
-        eprintln!("call: {}", call.to_short_string(ctxt));
+        let region_map = Self::build_region_map(
+            &call.call_arg_tys,
+            call.call_result_ty,
+            &normalized,
+        );
         Ok(Self {
             call,
             outlives,
-            sig_normalized_input_tys: normalized.inputs().to_vec(),
-            sig_normalized_output_ty: normalized.output(),
+            region_map,
             _marker: PhantomData,
         })
     }
@@ -223,27 +254,29 @@ impl<'tcx> FunctionData<'tcx> {
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
-    /// Maps an instantiated region back to the corresponding identity region
-    /// for outlives checking against the function's param_env. Returns `None`
-    /// if the region cannot be mapped (e.g. nested inside a type argument).
-    fn region_for_outlives_check(
+    /// Maps a normalized sig region to the callee's identity region.
+    fn normalized_to_identity(
         &self,
         region: PcgRegion<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Option<PcgRegion<'tcx>> {
-        if let Some(index) = self
-            .call
-            .caller_substs()
-            .regions()
-            .position(|r| PcgRegion::from(r) == region)
-        {
-            let fn_ty = tcx.type_of(self.call.fn_def_id()).instantiate_identity();
-            let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
-                panic!("Expected a function type");
-            };
-            Some(identity_substs.region_at(index).into())
-        } else {
-            None
+        match region {
+            PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
+                Some(region)
+            }
+            PcgRegion::RegionVid(_) => {
+                let index = self
+                    .call
+                    .caller_substs()
+                    .regions()
+                    .position(|r| PcgRegion::from(r) == region)?;
+                let fn_ty = tcx.type_of(self.call.fn_def_id()).instantiate_identity();
+                let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
+                    panic!("Expected a function type");
+                };
+                Some(identity_substs.region_at(index).into())
+            }
+            _ => None,
         }
     }
 }
@@ -252,10 +285,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     for DefinedFnCallShapeDataSource<'a, 'tcx>
 {
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
-        self.sig_normalized_input_tys.clone()
+        self.call.call_arg_tys.clone()
     }
     fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
-        self.sig_normalized_output_ty
+        self.call.call_result_ty
     }
 
     fn outlives(
@@ -264,43 +297,43 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         sub: PcgRegion<'tcx>,
         ctxt: Ctxt,
     ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        eprintln!("outlives: sup: {:?}, sub: {:?}", sup, sub);
         if sup.is_static() || sup == sub {
             return Ok(true);
         }
-        println!("sub: {:?}, sup: {:?}", sub, sup);
 
-        if matches!(sub, PcgRegion::ReLateParam(_)) && matches!(sup, PcgRegion::ReLateParam(_)) {
-            return Ok(self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
-                sub.rust_region(ctxt.tcx()),
-                sup.rust_region(ctxt.tcx()),
-            ));
+        // Map call-site regions to normalized sig regions.
+        let sup_norm = self.region_map.get(&sup).copied();
+        let sub_norm = self.region_map.get(&sub).copied();
+
+        // If both map to the same normalized region, they represent the same
+        // lifetime in the callee's signature — outlives holds.
+        if let (Some(s), Some(t)) = (sup_norm, sub_norm) {
+            if s == t {
+                return Ok(true);
+            }
         }
 
-        // Map instantiated regions back to identity regions for the param_env
-        // check. If a region can't be mapped (e.g. nested in a type arg or
-        // late-bound), conservatively return false.
-        let Some(sup) = self.region_for_outlives_check(sup, ctxt.tcx()) else {
-            panic!("sup region {sup} not found in substs");
+        // Map to callee identity regions for param_env checking.
+        // A region that can't be mapped to an identity region is nested inside
+        // a type argument in caller_substs (e.g. 'a in Self = RefMut<'a, i32>).
+        // Such regions are invisible to the callee's signature and cannot
+        // participate in cross-region outlives relationships, so we return false.
+        let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx()))
+        else {
+            return Ok(false);
         };
-        let Some(sub) = self.region_for_outlives_check(sub, ctxt.tcx()) else {
-            panic!("sub region {sub} not found in substs");
+        let Some(sub_id) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx()))
+        else {
+            return Ok(false);
         };
-        eprintln!("sup: {:?}, sub: {:?}", sup, sub);
-        let result = match (sup, sub) {
-            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
-            }
-            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
-            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
-            _ => Ok(self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
-                sub.rust_region(ctxt.tcx()),
-                sup.rust_region(ctxt.tcx()),
-            )),
-        }?;
-        Ok(result)
+        if sup_id == sub_id {
+            return Ok(true);
+        }
+        Ok(self.outlives.free_region_map().sub_free_regions(
+            ctxt.tcx(),
+            sub_id.rust_region(ctxt.tcx()),
+            sup_id.rust_region(ctxt.tcx()),
+        ))
     }
 }
 

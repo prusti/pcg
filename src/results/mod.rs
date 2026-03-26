@@ -85,7 +85,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &self.cursor.analysis().0
     }
 
-    fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
+    pub fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
         ResultsCtxt::new(self.engine().ctxt, self.engine().settings)
     }
 

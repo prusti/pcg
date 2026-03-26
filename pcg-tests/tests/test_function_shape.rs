@@ -1,29 +1,15 @@
 #![feature(rustc_private)]
 
-extern crate rustc_hir;
-extern crate rustc_infer;
-extern crate rustc_span;
-extern crate rustc_trait_selection;
-
 use std::collections::HashSet;
 
 use pcg::{
     borrow_pcg::{
-        ArgIdx, ArgIdxOrResult, FunctionData, FunctionShape,
-        edge::abstraction::function::{DefinedFnCall, DefinedFnCallWithCallTys},
+        ArgIdx, ArgIdxOrResult, FunctionShape,
+        edge::abstraction::function::DefinedFnCallWithCallTys,
     },
-    rustc_interface::middle::{mir, ty},
     utils::{CompilerCtxt, HasCompilerCtxt},
 };
 use pcg_tests::run_pcg_on_str;
-use rustc_infer::{
-    infer::{RegionVariableOrigin, TyCtxtInferExt},
-    traits::{ObligationCause, ScrubbedTraitError, TraitEngine},
-};
-use rustc_span::DUMMY_SP;
-use rustc_trait_selection::traits::{
-    NormalizeExt, StructurallyNormalizeExt, TraitEngineExt, query::type_op::Normalize,
-};
 
 /// Extracts the `(DefId, GenericArgsRef)` for the first call to a function
 /// whose name contains `target_name` in the given MIR body.
@@ -165,11 +151,10 @@ fn test_choose_no_outlives_caller_same_lifetime() {
 }
 
 /// `DerefMut::deref_mut` on `RefMut<'a, i32>` has an alias projection type
-/// (`<RefMut<'a, i32> as Deref>::Target`) in its return type. The instantiated
-/// signature carries 2 regions (the `&mut` borrow and `'a` from `RefMut`),
-/// producing 2 output region projections and 3 edges. The normalized call-site
-/// type is `&mut i32` (1 region), so `remap_to_call_site` must drop edges
-/// targeting the out-of-bounds `RegionIdx(1)` on the result.
+/// (`<RefMut<'a, i32> as Deref>::Target`) in its return type. The call-site
+/// result type is `&mut i32` (1 region), so the shape uses the call-site types
+/// for its structure. The `'a` region from `RefMut` cannot flow to the result
+/// (which is just `i32`), so only the borrow lifetime connects to the result.
 #[test]
 fn test_deref_mut_alias_output() {
     let input = r#"
@@ -182,44 +167,15 @@ fn test_deref_mut_alias_output() {
     "#;
     run_pcg_on_str(input, false, |analysis| {
         let ctxt = analysis.ctxt();
-        let body = ctxt.body();
         let defined_fn_call = find_call("deref_mut", ctxt);
-        eprintln!("substs1: {:?}", defined_fn_call.caller_substs());
-        eprintln!("def_id1: {:?}", defined_fn_call.fn_def_id());
-        let sig = FunctionData::new(defined_fn_call.fn_def_id())
-            .fn_sig(ctxt.tcx(), defined_fn_call.caller_substs());
-        eprintln!("sig1: {:?}", sig);
-        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(
-            ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id())
-                .with_post_analysis_normalized(ctxt.tcx()),
-        );
-        for region in ctxt.borrow_checker().iter_region_vids() {
-            infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
-        }
-        eprintln!("param_env1: {:?}", param_env);
-        let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
-            ScrubbedTraitError,
-        >>::new(&infcx);
-        let normalized = infcx
-            .at(&ObligationCause::dummy(), param_env)
-            .deeply_normalize(sig, &mut *fulfill_cx)
-            .unwrap();
-        // let normalized_output = infcx
-        //     .at(&ObligationCause::dummy(), param_env)
-        //     .structurally_normalize_ty(sig.output(), &mut *fulfill_cx)
-        //     .unwrap();
-        eprintln!("normalized1: {:?}", normalized);
-        eprintln!("normalized1: {}", normalized);
         let shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
-        eprintln!("shape: {}", shape);
 
         let expected = FunctionShape::from_raw(
             vec![(arg(0), 0), (arg(0), 1)],
-            vec![(ArgIdxOrResult::Result, 0), (ArgIdxOrResult::Result, 1)],
+            vec![(ArgIdxOrResult::Result, 0)],
             HashSet::from([
                 ((arg(0), 0), (ArgIdxOrResult::Result, 0)),
                 ((arg(0), 1), (ArgIdxOrResult::Argument(arg(0)), 1)),
-                ((arg(0), 1), (ArgIdxOrResult::Result, 1)),
             ]),
         );
         assert_eq!(shape, expected);
