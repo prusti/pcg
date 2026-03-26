@@ -75,6 +75,9 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
         if sup.is_static() || sup == sub {
             return Ok(true);
         }
+        // TODO: Check whether it is possible for either `sub` or `sup` to be a
+        // `RegionVid` here. If not, the `RegionVid` arms below are dead code
+        // and should be removed.
         match (sup, sub) {
             (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
                 Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
@@ -313,10 +316,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         // Such regions are invisible to the callee's identity signature, so we
         // cannot check outlives precisely. Returning false here is imprecise —
         // the hidden region could flow to the result (e.g. deref_mut returns
-        // data borrowed through 'a). The correct fix is implementing generic
-        // lifetimes (doc § Signature Shape) where type parameters participate
-        // in outlives relationships.
-        // TODO: implement generic lifetimes to handle this correctly.
+        // data borrowed through 'a). The correct fix is implementing
+        // generalized lifetimes (doc § Signature Shape) where type parameters
+        // participate in outlives relationships.
+        // TODO: implement generalized lifetimes to handle this correctly.
         let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return Ok(false);
         };
@@ -521,6 +524,11 @@ impl<'tcx> DefinedFnCall<'tcx> {
             .infer_ctxt()
             .build_with_typing_env(caller_typing_env);
         let subst_sig = self.function_data.fn_sig(ctxt.tcx(), self.caller_substs);
+        // Pre-populate the inference context with region variables so that
+        // their indices align with the borrow checker's `RegionVid`s.
+        // Without this, `deeply_normalize` panics when it encounters region
+        // variables that don't exist in the inference context. This is a hack;
+        // we should find a better way to set up normalization.
         for _ in ctxt.bc_ctxt().borrow_checker().iter_region_vids() {
             infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
         }
@@ -580,21 +588,6 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
         self.defined_fn_call.as_ref().map(|f| f.function_data)
     }
 
-    // pub fn shape(
-    //     &self,
-    //     ctxt: CompilerCtxt<'_, 'tcx>,
-    // ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-    //     let Some(call) = self.defined_fn_call.as_ref() else {
-    //         return Err(MakeFunctionShapeError::NoFunctionData);
-    //     };
-    //     let data = DefinedFnCallShapeDataSource::new(
-    //         *call,
-    //         call.operand_tys.clone(),
-    //         call.output_ty,
-    //         ctxt,
-    //     )?;
-    //     FunctionShape::new(&data, ctxt).map_err(MakeFunctionShapeError::CheckOutlivesError)
-    // }
 }
 
 pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWithMetadata<
@@ -617,7 +610,7 @@ where
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for FunctionCallAbstraction<'tcx, P>
 where
     FunctionCallAbstractionEdge<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,

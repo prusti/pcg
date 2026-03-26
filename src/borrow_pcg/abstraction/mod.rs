@@ -118,10 +118,13 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         })
     }
 
-    /// Computes the shape for this function call. For defined function calls,
-    /// uses the sig-derived call shape: computes the signature shape using the
-    /// instantiated signature types, then remaps region indices to the
-    /// call-site types (handling unnormalized alias types in the sig).
+    /// Computes the shape for this function call. For calls to defined
+    /// functions, uses the sig-derived call shape: computes the signature shape
+    /// using the instantiated signature types, then remaps region indices to
+    /// the call-site types (handling unnormalized alias types in the sig). For
+    /// other calls (e.g. calls to a function pointer), the shape is computed
+    /// by [`FnCallDataSource`], which queries the borrow checker for outlives
+    /// constraints between the call-site regions directly.
     pub(crate) fn shape<'a>(
         self,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
@@ -308,7 +311,6 @@ pub struct FunctionShape {
 
 impl FunctionShape {
     /// Constructs a `FunctionShape` from explicit inputs, outputs, and edges.
-    /// Each input/output/edge endpoint is `(base, region_idx)`.
     #[must_use]
     pub fn from_raw(
         inputs: Vec<(ArgIdx, usize)>,

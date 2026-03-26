@@ -58,37 +58,37 @@ pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<RegionIdx, PcgRegion<'
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
 }
 
-/// A generic lifetime: either a region or an opaque type (type parameter or
-/// non-normalizable alias).
+/// A generalized lifetime: either a region or `RegionsIn(τ)` for an opaque
+/// type (type parameter or non-normalizable alias).
 ///
-/// See the _generic lifetime_ definition in the PCG docs (§ Function Shapes).
+/// See the [_generalized lifetime_ definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
 #[allow(dead_code)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
-pub(crate) enum GenericLifetime<'tcx> {
+pub(crate) enum GeneralizedLifetime<'tcx> {
     Region(PcgRegion<'tcx>),
-    Ty(ty::Ty<'tcx>),
+    RegionsIn(ty::Ty<'tcx>),
 }
 
 #[allow(dead_code)]
-struct GenericLifetimeExtractor<'tcx> {
+struct GeneralizedLifetimeExtractor<'tcx> {
     tcx: ty::TyCtxt<'tcx>,
-    lifetimes: Vec<GenericLifetime<'tcx>>,
+    lifetimes: Vec<GeneralizedLifetime<'tcx>>,
 }
 
 #[allow(dead_code)]
-impl<'tcx> GenericLifetimeExtractor<'tcx> {
-    fn push_if_absent(&mut self, gl: GenericLifetime<'tcx>) {
+impl<'tcx> GeneralizedLifetimeExtractor<'tcx> {
+    fn push_if_absent(&mut self, gl: GeneralizedLifetime<'tcx>) {
         if !self.lifetimes.contains(&gl) {
             self.lifetimes.push(gl);
         }
     }
 }
 
-impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GenericLifetimeExtractor<'tcx> {
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         match ty.kind() {
             ty::TyKind::Param(_) => {
-                self.push_if_absent(GenericLifetime::Ty(ty));
+                self.push_if_absent(GeneralizedLifetime::RegionsIn(ty));
             }
             ty::TyKind::Alias(..) => {
                 let typing_env = ty::TypingEnv::fully_monomorphized();
@@ -97,7 +97,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GenericLifetimeExtractor<'tcx> {
                     .try_normalize_erasing_regions(typing_env, ty)
                     .is_err()
                 {
-                    self.push_if_absent(GenericLifetime::Ty(ty));
+                    self.push_if_absent(GeneralizedLifetime::RegionsIn(ty));
                 } else {
                     ty.super_visit_with(self);
                 }
@@ -118,21 +118,21 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GenericLifetimeExtractor<'tcx> {
         }
     }
     fn visit_region(&mut self, rr: ty::Region<'tcx>) {
-        self.push_if_absent(GenericLifetime::Region(rr.into()));
+        self.push_if_absent(GeneralizedLifetime::Region(rr.into()));
     }
 }
 
-/// Returns the generic lifetime list for `ty`: all regions and opaque types
-/// (type parameters, non-normalizable aliases), in the order they appear, with
-/// duplicates removed.
+/// Returns the generalized lifetime list for `ty`: all regions and
+/// `RegionsIn(τ)` for opaque types (type parameters, non-normalizable
+/// aliases), in the order they appear, with duplicates removed.
 ///
-/// See the `glfts(τ)` definition in the PCG docs (§ Function Shapes).
+/// See the [`glfts(τ)` definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
 #[allow(dead_code)]
-pub(crate) fn extract_generic_lifetimes<'tcx>(
+pub(crate) fn extract_generalized_lifetimes<'tcx>(
     ty: ty::Ty<'tcx>,
     tcx: ty::TyCtxt<'tcx>,
-) -> IndexVec<RegionIdx<Generic>, GenericLifetime<'tcx>> {
-    let mut visitor = GenericLifetimeExtractor {
+) -> IndexVec<RegionIdx<Generic>, GeneralizedLifetime<'tcx>> {
+    let mut visitor = GeneralizedLifetimeExtractor {
         tcx,
         lifetimes: vec![],
     };

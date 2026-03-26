@@ -284,7 +284,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
 impl<
     'a,
     'tcx,
-    Ctxt: DebugCtxt + Copy + HasSettings<'a>,
+    Ctxt: DebugCtxt + HasSettings<'a>,
     P: PcgPlace<'tcx, Ctxt>,
     Node: LocalNodeLike<'tcx, Ctxt, P> + LabelPlace<'tcx, Ctxt, P>,
 > LabelEdgePlaces<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
@@ -388,7 +388,7 @@ impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for BorrowPcgEx
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
     for BorrowPcgExpansionData<MaybeLabelledPlace<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
@@ -410,7 +410,7 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>> HasValidi
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
+impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
     for BorrowPcgExpansionData<LocalLifetimeProjection<'tcx>>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
@@ -516,7 +516,7 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
 
     pub(crate) fn new<
         'a,
-        Ctxt: HasSettings<'a> + DebugCtxt + Copy,
+        Ctxt: HasSettings<'a> + DebugCtxt,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
     >(
         base: Node,

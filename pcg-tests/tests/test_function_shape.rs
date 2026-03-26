@@ -1,17 +1,15 @@
 #![feature(rustc_private)]
 
-use std::collections::HashSet;
-
 use pcg::{
     borrow_pcg::{
-        ArgIdx, ArgIdxOrResult, FunctionShape,
+        ArgIdxOrResult, FunctionShape,
         edge::abstraction::function::DefinedFnCallWithCallTys,
     },
     utils::{CompilerCtxt, HasCompilerCtxt},
 };
 use pcg_tests::run_pcg_on_str;
 
-/// Extracts the `(DefId, GenericArgsRef)` for the first call to a function
+/// Returns the [`DefinedFnCallWithCallTys`] for the first call to a function
 /// whose name contains `target_name` in the given MIR body.
 fn find_call<'a, 'tcx: 'a>(
     target_name: &str,
@@ -56,26 +54,65 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     (sig_shape, call_shape)
 }
 
-fn arg(idx: usize) -> ArgIdx {
-    idx.into()
+// ---------------------------------------------------------------------------
+// Shape construction helpers
+//
+// These wrap `FunctionShape::from_raw` with a readable DSL. A *node* is a
+// (base, region_index) pair written as `arg(i, r)` or `result(r)`.
+// An *edge* is `arg(i, r) => result(r)` or `arg(i, r) => arg(j, r)`.
+// ---------------------------------------------------------------------------
+
+type Node = (ArgIdxOrResult, usize);
+
+fn arg(idx: usize, region: usize) -> Node {
+    (ArgIdxOrResult::Argument(idx.into()), region)
+}
+
+fn result(region: usize) -> Node {
+    (ArgIdxOrResult::Result, region)
+}
+
+/// Constructs a [`FunctionShape`] from a list of input nodes, output nodes,
+/// and edges. Each node is created via [`arg`] or [`result`].
+fn make_shape(inputs: &[Node], outputs: &[Node], edges: &[(Node, Node)]) -> FunctionShape {
+    let inputs = inputs
+        .iter()
+        .map(|(base, region)| {
+            let ArgIdxOrResult::Argument(idx) = base else {
+                panic!("inputs must be arguments, not result");
+            };
+            (*idx, *region)
+        })
+        .collect();
+    let outputs = outputs.iter().copied().collect();
+    let edges = edges
+        .iter()
+        .map(|((in_base, in_r), out)| {
+            let ArgIdxOrResult::Argument(idx) = in_base else {
+                panic!("edge source must be an argument, not result");
+            };
+            ((*idx, *in_r), *out)
+        })
+        .collect();
+    FunctionShape::from_raw(inputs, outputs, edges)
 }
 
 fn choose_shape() -> FunctionShape {
-    FunctionShape::from_raw(
-        vec![(arg(0), 0), (arg(1), 0)],
-        vec![(ArgIdxOrResult::Result, 0)],
-        HashSet::from([
-            ((arg(0), 0), (ArgIdxOrResult::Result, 0)),
-            ((arg(1), 0), (ArgIdxOrResult::Result, 0)),
-        ]),
+    make_shape(
+        &[arg(0, 0), arg(1, 0)],
+        &[result(0)],
+        &[
+            (arg(0, 0), result(0)),
+            (arg(1, 0), result(0)),
+        ],
     )
 }
 
 fn choose_no_outlives_shape() -> FunctionShape {
-    FunctionShape::from_raw(
-        vec![(arg(0), 0), (arg(1), 0)],
-        vec![(ArgIdxOrResult::Result, 0)],
-        HashSet::from([((arg(0), 0), (ArgIdxOrResult::Result, 0))]),
+    make_shape(
+        &[arg(0, 0), arg(1, 0)],
+        &[result(0)],
+        &[(arg(0, 0), result(0))],
     )
 }
 
@@ -171,13 +208,13 @@ fn test_deref_mut_alias_output() {
         let defined_fn_call = find_call("deref_mut", ctxt);
         let shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
 
-        let expected = FunctionShape::from_raw(
-            vec![(arg(0), 0), (arg(0), 1)],
-            vec![(ArgIdxOrResult::Result, 0)],
-            HashSet::from([
-                ((arg(0), 0), (ArgIdxOrResult::Result, 0)),
-                ((arg(0), 1), (ArgIdxOrResult::Argument(arg(0)), 1)),
-            ]),
+        let expected = make_shape(
+            &[arg(0, 0), arg(0, 1)],
+            &[result(0)],
+            &[
+                (arg(0, 0), result(0)),
+                (arg(0, 1), arg(0, 1)),
+            ],
         );
         assert_eq!(shape, expected);
     });
@@ -186,10 +223,6 @@ fn test_deref_mut_alias_output() {
 /// `Vec<&'a mut i32>::into_iter` should have a 1-to-1 shape: the single
 /// region in the input (`'a` in `Vec<&'a mut i32>`) flows to the single
 /// region in the result (`'a` in `IntoIter<&'a mut i32>`).
-///
-/// Note: the sig shape uses identity substs, where `T` is a type parameter
-/// with no regions. The regions only appear with the caller's substs (where
-/// `T = &'a mut i32`). This test checks the sig-derived call shape only.
 #[test]
 fn test_vec_into_iter_shape() {
     let input = r#"
@@ -202,10 +235,10 @@ fn test_vec_into_iter_shape() {
         let defined_fn_call = find_call("into_iter", ctxt);
         let call_shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
 
-        let expected = FunctionShape::from_raw(
-            vec![(arg(0), 0)],
-            vec![(ArgIdxOrResult::Result, 0)],
-            HashSet::from([((arg(0), 0), (ArgIdxOrResult::Result, 0))]),
+        let expected = make_shape(
+            &[arg(0, 0)],
+            &[result(0)],
+            &[(arg(0, 0), result(0))],
         );
         assert_eq!(call_shape, expected);
     });

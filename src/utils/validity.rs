@@ -30,7 +30,7 @@ pub trait HasValidityCheck<Ctxt: DebugCtxt> {
 
 macro_rules! has_validity_check_node_wrapper {
     ($ty:ty) => {
-        impl<'tcx, Ctxt: DebugCtxt + Copy, P> HasValidityCheck<Ctxt> for $ty
+        impl<'tcx, Ctxt: DebugCtxt, P> HasValidityCheck<Ctxt> for $ty
         where
             <Self as std::ops::Deref>::Target: HasValidityCheck<Ctxt>,
         {

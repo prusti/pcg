@@ -350,7 +350,6 @@ fn mk_mir_stmt(
 }
 
 /// Resolve a call terminator's `func` operand to a `DefId` and generic args.
-#[allow(clippy::needless_lifetimes)]
 fn resolve_callee<'tcx>(
     func: &Operand<'tcx>,
     body: &mir::Body<'tcx>,
@@ -458,6 +457,8 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             ctxt,
         );
 
+        // TODO: In principle, we can also create graphs for call shapes for
+        // undefined functions (e.g. function pointers, closures).
         let (sig_shape_dot, call_shape_dot) = if let TerminatorKind::Call {
             func,
             args,

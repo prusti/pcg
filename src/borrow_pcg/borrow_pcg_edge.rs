@@ -84,7 +84,7 @@ impl<EdgeKind> Clone for BorrowPcgEdgeRef<'_, '_, EdgeKind> {
 pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions> =
     Conditioned<EdgeKind, VC>;
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for BorrowPcgEdge<'tcx, BorrowPcgEdgeKind<'tcx, P>>
 where
     BorrowPcgEdgeKind<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,

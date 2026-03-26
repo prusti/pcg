@@ -262,7 +262,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
 
     fn apply_action<
         'a,
-        Ctxt: DebugCtxt + Copy + HasCompilerCtxt<'a, 'tcx> + HasSettings<'a>,
+        Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx> + HasSettings<'a>,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         C: CapabilityLike,
     >(

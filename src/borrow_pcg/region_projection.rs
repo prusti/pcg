@@ -234,15 +234,15 @@ impl<'tcx> From<ty::Region<'tcx>> for PcgRegion<'tcx> {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
 pub struct RegionOnly;
 
-/// Marker: indexes into the full generic lifetime list (regions + type params).
+/// Marker: indexes into the full generalized lifetime list (regions + type params).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
 pub struct Generic;
 
-/// The index of a region (or generic lifetime) within a type.
+/// The index of a region (or generalized lifetime) within a type.
 ///
 /// The `Kind` parameter distinguishes whether this indexes into only the
-/// regions of a type ([`RegionOnly`], the default) or into the full generic
-/// lifetime list including type parameters ([`Generic`]).
+/// regions of a type ([`RegionOnly`], the default) or into the full
+/// generalized lifetime list including type parameters ([`Generic`]).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
 pub struct RegionIdx<Kind = RegionOnly>(usize, PhantomData<Kind>);
 
@@ -494,11 +494,11 @@ impl DisplayWithCtxt<()> for LifetimeProjectionLabel {
 pub type RegionProjection<'tcx, P = PcgLifetimeProjectionBase<'tcx>> = LifetimeProjection<'tcx, P>;
 
 /// A lifetime projection b↓r, where `b` is a base and `r` is a region
-/// (or generic lifetime).
+/// (or generalized lifetime).
 ///
 /// The `Kind` parameter distinguishes whether the region index refers to
 /// only the regions of a type ([`RegionOnly`], the default) or to the full
-/// generic lifetime list including type parameters ([`Generic`]).
+/// generalized lifetime list including type parameters ([`Generic`]).
 #[derive(PartialEq, Eq, Clone, Debug, Hash, Copy, Ord, PartialOrd)]
 pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind = RegionOnly> {
     pub(crate) base: Base,
@@ -507,9 +507,9 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind
     phantom: PhantomData<&'tcx ()>,
 }
 
-/// A generic lifetime projection, where the index refers to the full generic
-/// lifetime list (regions + type parameters).
-pub type GenericLifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> =
+/// A generalized lifetime projection, where the index refers to the full
+/// generalized lifetime list (regions + type parameters).
+pub type GeneralizedLifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> =
     LifetimeProjection<'tcx, Base, Generic>;
 
 impl<Base, Kind: RegionIdxKind> crate::Sealed for LifetimeProjection<'_, Base, Kind> {}
@@ -791,8 +791,8 @@ impl<'tcx, Ctxt, P: PcgNodeComponent> LocalNodeLike<'tcx, Ctxt, P>
 ///
 /// The returned [`IndexVec`] is indexed by [`RegionIdx`] (which defaults to
 /// [`RegionOnly`]), meaning it contains only regions — not type parameters.
-/// For the full generic lifetime list (regions + type parameters), see
-/// [`GenericLifetimeProjection`].
+/// For the full generalized lifetime list (regions + type parameters), see
+/// [`GeneralizedLifetimeProjection`].
 pub trait HasRegions<'tcx, Ctxt: Copy> {
     fn regions(&self, ctxt: Ctxt) -> IndexVec<RegionIdx, PcgRegion<'tcx>>;
     fn lifetime_projections<'a>(

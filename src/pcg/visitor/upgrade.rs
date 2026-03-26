@@ -78,7 +78,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError<'tcx>> {
         let place_regions = place.regions(self.ctxt);
-        // tracing::warn!("Regions for place {:?}: {:?}", place, place_regions);
         let mut prev = None;
         let mut current = place;
         while self

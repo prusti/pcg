@@ -125,7 +125,7 @@ impl<Input: Copy, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
 
 impl<
     'tcx,
-    Ctxt: DebugCtxt + Copy,
+    Ctxt: DebugCtxt,
     P: PcgPlace<'tcx, Ctxt>,
     T: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
     U: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
@@ -289,7 +289,7 @@ impl<Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>> Di
 }
 
 impl<
-    Ctxt: DebugCtxt + Copy,
+    Ctxt: DebugCtxt,
     Input: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
     Output: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
 > HasValidityCheck<Ctxt> for AbstractionBlockEdge<'_, Input, Output>
@@ -308,7 +308,7 @@ impl<
 }
 
 impl<Input, Output> AbstractionBlockEdge<'_, Input, Output> {
-    pub(crate) fn new_checked<'a, Ctxt: DebugCtxt + Copy + HasSettings<'a>>(
+    pub(crate) fn new_checked<'a, Ctxt: DebugCtxt + HasSettings<'a>>(
         input: Input,
         output: Output,
         ctxt: Ctxt,

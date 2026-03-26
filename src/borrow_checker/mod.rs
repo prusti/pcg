@@ -278,6 +278,16 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
 
+    /// Returns an iterator over all `RegionVid`s known to the borrow checker
+    /// for this body.
+    ///
+    /// The implementation is a hack: it extracts region vids from the
+    /// constraint SCC indices in the region inference context. This is
+    /// currently used in
+    /// [`DefinedFnCallWithCallTys::normalize_sig`](crate::borrow_pcg::edge::abstraction::function::DefinedFnCallWithCallTys)
+    /// to pre-populate an inference context with the correct number of region
+    /// variables before performing type normalization. This method should be
+    /// removed if we find a better way to perform that normalization.
     fn iter_region_vids<'slf>(&'slf self) -> Box<dyn Iterator<Item = RegionVid> + 'slf>
     where
         'tcx: 'slf,
