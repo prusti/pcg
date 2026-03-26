@@ -5,7 +5,7 @@ use crate::{
     action::PcgActions,
     borrow_pcg::{graph::BorrowsGraph, state::BorrowsState},
     rustc_interface::middle::mir::BasicBlock,
-    utils::{CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt},
+    utils::{DebugCtxt, HasBorrowCheckerCtxt},
 };
 
 #[derive(Debug)]

@@ -5,9 +5,7 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     borrow_pcg::{
         FunctionData,
-        abstraction::{
-            CheckOutlivesError, FunctionShape, FunctionShapeDataSource, MakeFunctionShapeError,
-        },
+        abstraction::{CheckOutlivesError, FunctionShapeDataSource, MakeFunctionShapeError},
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
@@ -34,7 +32,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgPlace, Place,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
@@ -303,10 +301,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
 
         // If both map to the same normalized region, they represent the same
         // lifetime in the callee's signature — outlives holds.
-        if let (Some(s), Some(t)) = (sup_norm, sub_norm) {
-            if s == t {
-                return Ok(true);
-            }
+        if let (Some(s), Some(t)) = (sup_norm, sub_norm)
+            && s == t
+        {
+            return Ok(true);
         }
 
         // Map to callee identity regions for param_env checking.
@@ -389,18 +387,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> DefinedFnCallWithCallTys<'tcx> {
-    pub(crate) fn caller_def_id(&self) -> LocalDefId {
-        self.defined_fn_call.caller_def_id
-    }
-
+    #[must_use]
     pub fn fn_def_id(&self) -> DefId {
         self.defined_fn_call.function_data.def_id
     }
 
-    pub(crate) fn function_data(&self) -> FunctionData<'tcx> {
-        self.defined_fn_call.function_data
-    }
-
+    #[must_use]
     pub fn caller_substs(&self) -> GenericArgsRef<'tcx> {
         self.defined_fn_call.caller_substs
     }
@@ -435,7 +427,7 @@ impl<'tcx> DefinedFnCallWithCallTys<'tcx> {
             && let ty::TyKind::FnDef(def_id, substs) = func.ty(ctxt.body(), ctxt.tcx()).kind()
         {
             let defined_fn_call =
-                DefinedFnCall::new(FunctionData::new(*def_id), *substs, caller_def_id, fn_span);
+                DefinedFnCall::new(FunctionData::new(*def_id), substs, caller_def_id, fn_span);
             Some(Self {
                 defined_fn_call,
                 call_arg_tys: args
@@ -475,9 +467,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                     ],
                     &DisplayOutput::SPACE,
                 ),
-                format!("identity_sig: {}", identity_sig).into(),
+                format!("identity_sig: {identity_sig}").into(),
                 format!("caller_substs: {:?}", self.caller_substs).into(),
-                format!("subst_sig: {}", subst_sig).into(),
+                format!("subst_sig: {subst_sig}").into(),
                 format!("normalized_sig: {}", self.normalized_sig(ctxt)).into(),
                 format!("callee_param_env: {:?}", self.callee_param_env(ctxt)).into(),
                 format!("caller_def_id: {:?}", self.caller_def_id).into(),
@@ -571,16 +563,19 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     }
 }
 impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
+    #[must_use]
     pub fn location(&self) -> Location {
         self.location
     }
 
+    #[must_use]
     pub fn def_id(&self) -> Option<DefId> {
         self.defined_fn_call
             .as_ref()
             .map(|f| f.function_data.def_id)
     }
 
+    #[must_use]
     pub fn function_data(&self) -> Option<FunctionData<'tcx>> {
         self.defined_fn_call.as_ref().map(|f| f.function_data)
     }
@@ -691,9 +686,11 @@ impl<Ctxt: Copy, Metadata: DisplayWithCtxt<Ctxt>, Edge: DisplayWithCtxt<Ctxt>> D
 }
 
 impl<'tcx> FunctionCallAbstraction<'tcx> {
+    #[must_use]
     pub fn def_id(&self) -> Option<DefId> {
         self.metadata.function_data().as_ref().map(|f| f.def_id)
     }
+    #[must_use]
     pub fn substs(&self) -> Option<GenericArgsRef<'tcx>> {
         self.metadata
             .defined_fn_call
@@ -701,10 +698,12 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
             .map(|f| f.caller_substs)
     }
 
+    #[must_use]
     pub fn location(&self) -> Location {
         self.metadata.location
     }
 
+    #[must_use]
     pub fn edge(
         &self,
     ) -> &AbstractionBlockEdge<
@@ -715,6 +714,7 @@ impl<'tcx> FunctionCallAbstraction<'tcx> {
         &self.edge
     }
 
+    #[must_use]
     pub fn new(
         metadata: FunctionCallAbstractionEdgeMetadata<'tcx>,
         edge: AbstractionBlockEdge<

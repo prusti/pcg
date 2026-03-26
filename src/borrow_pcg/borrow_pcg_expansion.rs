@@ -39,8 +39,8 @@ use crate::{
         middle::{mir::PlaceElem, ty},
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent,
-        PcgPlace, Place, PlaceLike, PlaceProjectable,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent, PcgPlace,
+        Place, PlaceLike, PlaceProjectable,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
@@ -72,7 +72,7 @@ pub enum PlaceExpansion<'tcx> {
     Guided(RepackGuide),
 }
 
-impl<'tcx, Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for PlaceExpansion<'tcx> {
+impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for PlaceExpansion<'_> {
     fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         Ok(())
     }

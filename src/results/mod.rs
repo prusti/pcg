@@ -342,7 +342,7 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     #[must_use]
     pub fn debug_lines(
         &self,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Vec<Cow<'static, str>> {
         let mut result = Vec::new();
         for stmt in &self.statements {
@@ -371,7 +371,7 @@ pub struct PcgLocation<'a, 'tcx> {
     pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }
 
-impl<'tcx, Ctxt> DebugLines<Ctxt> for Vec<RepackOp<'tcx>> {
+impl<Ctxt> DebugLines<Ctxt> for Vec<RepackOp<'_>> {
     fn debug_lines(&self, _ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.iter().map(|r| Cow::Owned(format!("{r:?}"))).collect()
     }
@@ -440,7 +440,7 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
     pub(crate) fn debug_lines(
         &self,
         phase: EvalStmtPhase,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.states[phase].debug_lines(ctxt);
         for action in self.actions[phase].iter() {

@@ -16,7 +16,7 @@ use crate::{
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
+        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,

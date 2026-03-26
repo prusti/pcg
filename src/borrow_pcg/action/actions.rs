@@ -5,7 +5,7 @@ use crate::{
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::{CompilerCtxt, DebugCtxt},
+    utils::DebugCtxt,
 };
 
 use super::BorrowPcgActionKind;

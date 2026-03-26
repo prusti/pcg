@@ -4,9 +4,7 @@ use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
 use derive_more::{Display, From};
 
 use super::{
-    borrow_pcg_edge::LocalNode,
-    has_pcs_elem::LabelLifetimeProjection,
-    visitor::{GenericLifetime, extract_generic_lifetimes, extract_regions},
+    borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
     Sealed,

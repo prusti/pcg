@@ -125,13 +125,13 @@ type Block = usize;
 pub(crate) type PcgArenaStore = bumpalo::Bump;
 pub(crate) type PcgArena<'a> = &'a PcgArenaStore;
 
-impl<'eng, 'a, 'tcx: 'a> HasSettings<'a> for &'eng PcgEngine<'a, 'tcx> {
+impl<'a, 'tcx: 'a> HasSettings<'a> for &PcgEngine<'a, 'tcx> {
     fn settings(&self) -> &'a PcgSettings {
         self.settings
     }
 }
 
-impl<'eng, 'a, 'tcx: 'a> OverrideRegionDebugString for &'eng PcgEngine<'a, 'tcx> {
+impl<'a, 'tcx: 'a> OverrideRegionDebugString for &PcgEngine<'a, 'tcx> {
     fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
         self.ctxt
             .borrow_checker
@@ -139,7 +139,7 @@ impl<'eng, 'a, 'tcx: 'a> OverrideRegionDebugString for &'eng PcgEngine<'a, 'tcx>
     }
 }
 
-impl<'eng, 'a, 'tcx: 'a> DebugCtxt for &'eng PcgEngine<'a, 'tcx> {
+impl<'a, 'tcx: 'a> DebugCtxt for &PcgEngine<'a, 'tcx> {
     fn func_name(&self) -> String {
         self.ctxt.func_name()
     }

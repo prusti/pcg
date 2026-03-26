@@ -29,8 +29,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self},
     utils::{
-        CompilerCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
-        SnapshotLocation,
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         logging::{self, LogPredicate},
@@ -603,7 +602,7 @@ fn add_rp_block_edges<'mir, 'tcx>(
     expander: &mut AbsExpander<'_, 'mir, 'tcx>,
     blocked_place: MaybeRemoteCurrentPlace<'tcx>,
     blocker: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + DebugCtxt + HasSettings<'mir>,
+    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
 ) {
     let blocker_rps = blocker.lifetime_projections(ctxt);
     for blocked_rp in blocked_place.lifetime_projections(ctxt) {
@@ -666,7 +665,7 @@ fn add_block_edges<'mir, 'tcx>(
     expander: &mut AbsExpander<'_, 'mir, 'tcx>,
     blocked_place: MaybeRemoteCurrentPlace<'tcx>,
     blocker: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + DebugCtxt + HasSettings<'mir>,
+    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
 ) {
     assert_ne!(
         MaybeRemoteCurrentPlace::Local(blocker),

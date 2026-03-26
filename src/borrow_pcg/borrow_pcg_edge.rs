@@ -27,7 +27,7 @@ use crate::{
     error::PcgError,
     pcg::PcgNode,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
@@ -290,7 +290,7 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'tcx, Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for MaybeRemotePlace<'tcx> {
+impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for MaybeRemotePlace<'_> {
     fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         Ok(())
     }

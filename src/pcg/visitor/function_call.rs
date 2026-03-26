@@ -27,7 +27,7 @@ use crate::{
 use super::PcgError;
 use crate::{
     rustc_interface::middle::ty::{self},
-    utils::{self, DataflowCtxt, HasCompilerCtxt, SnapshotLocation},
+    utils::{self, DataflowCtxt, SnapshotLocation},
 };
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {

@@ -62,17 +62,20 @@ pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<RegionIdx, PcgRegion<'
 /// non-normalizable alias).
 ///
 /// See the _generic lifetime_ definition in the PCG docs (§ Function Shapes).
+#[allow(dead_code)]
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
 pub(crate) enum GenericLifetime<'tcx> {
     Region(PcgRegion<'tcx>),
     Ty(ty::Ty<'tcx>),
 }
 
+#[allow(dead_code)]
 struct GenericLifetimeExtractor<'tcx> {
     tcx: ty::TyCtxt<'tcx>,
     lifetimes: Vec<GenericLifetime<'tcx>>,
 }
 
+#[allow(dead_code)]
 impl<'tcx> GenericLifetimeExtractor<'tcx> {
     fn push_if_absent(&mut self, gl: GenericLifetime<'tcx>) {
         if !self.lifetimes.contains(&gl) {
@@ -124,6 +127,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GenericLifetimeExtractor<'tcx> {
 /// duplicates removed.
 ///
 /// See the `glfts(τ)` definition in the PCG docs (§ Function Shapes).
+#[allow(dead_code)]
 pub(crate) fn extract_generic_lifetimes<'tcx>(
     ty: ty::Ty<'tcx>,
     tcx: ty::TyCtxt<'tcx>,

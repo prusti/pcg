@@ -18,8 +18,7 @@ use crate::{
     },
     pcg_validity_assert,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        HasBorrowCheckerCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
 

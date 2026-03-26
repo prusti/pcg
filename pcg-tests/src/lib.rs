@@ -24,7 +24,10 @@ use pcg::{
         middle::ty::TyCtxt,
         span::source_map::FileLoader,
     },
-    utils::{PcgSettings, callbacks::{RustBorrowCheckerImpl, in_cargo_crate}},
+    utils::{
+        PcgSettings,
+        callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
+    },
 };
 
 use pcg::rustc_interface::driver::run_compiler;

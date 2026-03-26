@@ -397,9 +397,9 @@ fn function_shape_to_dot(
 
 /// Generate a DOT graph representing the function shape (bipartite graph of
 /// lifetime outlives relationships) for the callee at a call site.
-fn generate_function_shape_dot<'tcx>(
+fn generate_function_shape_dot(
     def_id: rustc_interface::hir::def_id::DefId,
-    ctxt: CompilerCtxt<'_, 'tcx>,
+    ctxt: CompilerCtxt<'_, '_>,
 ) -> Option<String> {
     use crate::borrow_pcg::abstraction::FunctionShape;
     let shape = FunctionShape::for_fn_sig(def_id, ctxt).ok()?;

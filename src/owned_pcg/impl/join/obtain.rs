@@ -5,7 +5,6 @@ use crate::{
     owned_pcg::{LocalExpansions, RepackOp, join::data::JoinOwnedData},
     pcg::{
         CompilerCtxtWithSettings,
-        ctxt::AnalysisCtxt,
         obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
         place_capabilities::SymbolicPlaceCapabilities,
     },

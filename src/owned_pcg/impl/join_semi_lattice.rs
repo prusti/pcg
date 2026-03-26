@@ -18,7 +18,7 @@ use crate::{
     pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },

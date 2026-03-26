@@ -11,7 +11,7 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike, CompilerCtxtWithSettings, SymbolicCapability,
+        CapabilityKind, CapabilityLike, SymbolicCapability,
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
@@ -20,9 +20,9 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        Place, PlaceLike, data_structures::HashSet, display::DisplayWithCompilerCtxt,
-        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -426,7 +426,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 
     pub(crate) fn debug_lines(
         &self,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
         result.sort();

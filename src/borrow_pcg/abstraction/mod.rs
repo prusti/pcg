@@ -21,7 +21,6 @@ use crate::{
         visitor::extract_regions,
     },
     coupling::{CoupleAbstractionError, CoupledEdgesData},
-    pcg_validity_assert,
     rustc_interface::{
         index::Idx,
         middle::{
@@ -31,7 +30,7 @@ use crate::{
         span::def_id::DefId,
     },
     utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
+        self, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -310,6 +309,7 @@ pub struct FunctionShape {
 impl FunctionShape {
     /// Constructs a `FunctionShape` from explicit inputs, outputs, and edges.
     /// Each input/output/edge endpoint is `(base, region_idx)`.
+    #[must_use]
     pub fn from_raw(
         inputs: Vec<(ArgIdx, usize)>,
         outputs: Vec<(ArgIdxOrResult, usize)>,
@@ -374,8 +374,8 @@ pub struct FunctionData<'tcx> {
 }
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for FunctionData<'tcx> {
-    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        format!("{}", ctxt.tcx().def_path_str(self.def_id)).into()
+    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        ctxt.tcx().def_path_str(self.def_id).clone().into()
     }
 }
 

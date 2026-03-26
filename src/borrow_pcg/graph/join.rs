@@ -21,7 +21,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},

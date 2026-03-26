@@ -16,7 +16,7 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace, pcg_node_like_wrapper},
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode, display_with_ctxt_node_wrapper},
         place::maybe_old::MaybeLabelledPlace,
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
