@@ -3,7 +3,7 @@ use crate::rustc_interface::{
     middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
 };
 
-use super::region_projection::{PcgRegion, RegionIdx};
+use super::region_projection::{Generic, PcgRegion, RegionIdx};
 
 struct LifetimeExtractor<'tcx> {
     lifetimes: Vec<ty::Region<'tcx>>,
@@ -56,4 +56,82 @@ pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<RegionIdx, PcgRegion<'
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
+}
+
+/// A generic lifetime: either a region or an opaque type (type parameter or
+/// non-normalizable alias).
+///
+/// See the _generic lifetime_ definition in the PCG docs (§ Function Shapes).
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+pub(crate) enum GenericLifetime<'tcx> {
+    Region(PcgRegion<'tcx>),
+    Ty(ty::Ty<'tcx>),
+}
+
+struct GenericLifetimeExtractor<'tcx> {
+    tcx: ty::TyCtxt<'tcx>,
+    lifetimes: Vec<GenericLifetime<'tcx>>,
+}
+
+impl<'tcx> GenericLifetimeExtractor<'tcx> {
+    fn push_if_absent(&mut self, gl: GenericLifetime<'tcx>) {
+        if !self.lifetimes.contains(&gl) {
+            self.lifetimes.push(gl);
+        }
+    }
+}
+
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GenericLifetimeExtractor<'tcx> {
+    fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
+        match ty.kind() {
+            ty::TyKind::Param(_) => {
+                self.push_if_absent(GenericLifetime::Ty(ty));
+            }
+            ty::TyKind::Alias(..) => {
+                let typing_env = ty::TypingEnv::fully_monomorphized();
+                if self
+                    .tcx
+                    .try_normalize_erasing_regions(typing_env, ty)
+                    .is_err()
+                {
+                    self.push_if_absent(GenericLifetime::Ty(ty));
+                } else {
+                    ty.super_visit_with(self);
+                }
+            }
+            ty::TyKind::Dynamic(_, region, ..) => {
+                self.visit_region(*region);
+            }
+            ty::TyKind::FnPtr(_, _) => {}
+            ty::TyKind::Closure(_, args) => {
+                let closure_args = args.as_closure();
+                for ty in closure_args.upvar_tys() {
+                    self.visit_ty(ty);
+                }
+            }
+            _ => {
+                ty.super_visit_with(self);
+            }
+        }
+    }
+    fn visit_region(&mut self, rr: ty::Region<'tcx>) {
+        self.push_if_absent(GenericLifetime::Region(rr.into()));
+    }
+}
+
+/// Returns the generic lifetime list for `ty`: all regions and opaque types
+/// (type parameters, non-normalizable aliases), in the order they appear, with
+/// duplicates removed.
+///
+/// See the `glfts(τ)` definition in the PCG docs (§ Function Shapes).
+pub(crate) fn extract_generic_lifetimes<'tcx>(
+    ty: ty::Ty<'tcx>,
+    tcx: ty::TyCtxt<'tcx>,
+) -> IndexVec<RegionIdx<Generic>, GenericLifetime<'tcx>> {
+    let mut visitor = GenericLifetimeExtractor {
+        tcx,
+        lifetimes: vec![],
+    };
+    ty.visit_with(&mut visitor);
+    visitor.lifetimes.into_iter().collect()
 }

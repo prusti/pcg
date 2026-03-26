@@ -4,7 +4,9 @@ use std::{borrow::Cow, fmt, hash::Hash, marker::PhantomData};
 use derive_more::{Display, From};
 
 use super::{
-    borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
+    borrow_pcg_edge::LocalNode,
+    has_pcs_elem::LabelLifetimeProjection,
+    visitor::{GenericLifetime, extract_generic_lifetimes, extract_regions},
 };
 use crate::{
     Sealed,
@@ -272,18 +274,6 @@ impl<Kind: RegionIdxKind> Idx for RegionIdx<Kind> {
 
     fn index(self) -> usize {
         self.0
-    }
-}
-
-impl RegionIdx<RegionOnly> {
-    /// Convert a region-only index to a generic index.
-    ///
-    /// This reuses the same numeric index, which is only correct when the
-    /// type's generic lifetime list contains no type parameters before
-    /// this region. Callers must ensure this precondition holds.
-    #[must_use]
-    pub fn to_generic(self) -> RegionIdx<Generic> {
-        RegionIdx(self.0, PhantomData)
     }
 }
 
