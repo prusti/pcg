@@ -58,8 +58,8 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
-    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for BorrowEdge<'tcx, P>
 {
     fn label_lifetime_projections(
         &mut self,

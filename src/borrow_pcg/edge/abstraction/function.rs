@@ -174,7 +174,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _call: DefinedFnCallWithCallTys<'tcx>,
-        _tcx: ty::TyCtxt<'tcx>,
+        _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
     }
@@ -456,6 +456,33 @@ pub struct DefinedFnCall<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for DefinedFnCall<'tcx>
 {
+    #[rustversion::before(2025-05-24)]
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let identity_sig = self.function_data.identity_fn_sig(ctxt.tcx());
+        let subst_sig = self.function_data.fn_sig(ctxt.tcx(), self.caller_substs);
+        DisplayOutput::join(
+            vec![
+                "--------------------------------".into(),
+                DisplayOutput::join(
+                    vec![
+                        self.function_data.display_output(ctxt, mode),
+                        "at".into(),
+                        format!("{:?}", self.span).into(),
+                    ],
+                    &DisplayOutput::SPACE,
+                ),
+                format!("identity_sig: {identity_sig}").into(),
+                format!("caller_substs: {:?}", self.caller_substs).into(),
+                format!("subst_sig: {subst_sig}").into(),
+                format!("caller_def_id: {:?}", self.caller_def_id).into(),
+                format!("span: {:?}", self.span).into(),
+                "--------------------------------".into(),
+            ],
+            &"\n".into(),
+        )
+    }
+
+    #[rustversion::since(2025-05-24)]
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let identity_sig = self.function_data.identity_fn_sig(ctxt.tcx());
         let subst_sig = self.function_data.fn_sig(ctxt.tcx(), self.caller_substs);
@@ -499,6 +526,7 @@ impl<'tcx> DefinedFnCall<'tcx> {
         }
     }
 
+    #[rustversion::since(2025-05-24)]
     pub(crate) fn callee_param_env<'a>(
         &self,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
@@ -510,6 +538,8 @@ impl<'tcx> DefinedFnCall<'tcx> {
             .with_post_analysis_normalized(ctxt.tcx())
             .param_env
     }
+
+    #[rustversion::since(2025-05-24)]
     pub(crate) fn normalized_sig<'a>(
         &self,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
@@ -587,7 +617,6 @@ impl<'tcx> FunctionCallAbstractionEdgeMetadata<'tcx> {
     pub fn function_data(&self) -> Option<FunctionData<'tcx>> {
         self.defined_fn_call.as_ref().map(|f| f.function_data)
     }
-
 }
 
 pub type FunctionCallAbstraction<'tcx, P = Place<'tcx>> = AbstractionBlockEdgeWithMetadata<

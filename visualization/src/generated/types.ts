@@ -90,7 +90,16 @@ export type MirEdge = { source: string; target: string; label: string };
 
 export type MirGraph = { nodes: MirNode[]; edges: MirEdge[] };
 
-export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator: MirStmt; sig_shape_dot: string | null; call_shape_dot: string | null };
+export type MirNode = { id: string; block: number; stmts: MirStmt[]; terminator: MirStmt; 
+/**
+ * DOT graph of the signature shape (from fn def signature), if this
+ * block's terminator is a call.
+ */
+sig_shape_dot: string | null; 
+/**
+ * DOT graph of the call shape derived solely from call-site operand types.
+ */
+call_shape_dot: string | null };
 
 export type MirStmt = { stmt: string; debug_stmt: string; span: MirStmtSpan; loans_invalidated_start: string[]; loans_invalidated_mid: string[]; borrows_in_scope_start: string[]; borrows_in_scope_mid: string[] };
 
