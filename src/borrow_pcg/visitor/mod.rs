@@ -3,7 +3,7 @@ use crate::rustc_interface::{
     middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
 };
 
-use super::region_projection::{Generalized, PcgRegion, LifetimeProjectionIdx};
+use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion};
 
 struct LifetimeExtractor<'tcx> {
     lifetimes: Vec<ty::Region<'tcx>>,

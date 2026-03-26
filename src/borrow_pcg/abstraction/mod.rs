@@ -16,7 +16,7 @@ use crate::{
             },
         },
         region_projection::{
-            HasTy, LifetimeProjection, OverrideRegionDebugString, PcgRegion, LifetimeProjectionIdx,
+            HasTy, LifetimeProjection, LifetimeProjectionIdx, OverrideRegionDebugString, PcgRegion,
         },
         visitor::extract_regions,
     },
@@ -592,12 +592,18 @@ mod tests {
         #[derive(Clone, Copy)]
         struct TestCtxt(PcgRegion<'static>);
         impl HasRegions<'static, TestCtxt> for ArgIdx {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
+            fn regions(
+                &self,
+                ctxt: TestCtxt,
+            ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }
         impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
-            fn regions(&self, ctxt: TestCtxt) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
+            fn regions(
+                &self,
+                ctxt: TestCtxt,
+            ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
                 IndexVec::from_raw(vec![ctxt.0])
             }
         }

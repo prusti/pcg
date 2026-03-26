@@ -5,8 +5,8 @@ use crate::{
         graph::Conditioned,
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
-            LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
-            PcgLifetimeProjectionBase, LifetimeProjectionIdx,
+            LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
+            OverrideRegionDebugString, PcgLifetimeProjectionBase,
         },
     },
     pcg::{

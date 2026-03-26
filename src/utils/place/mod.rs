@@ -42,7 +42,7 @@ use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{LifetimeProjection, PcgRegion, LifetimeProjectionIdx},
+        region_projection::{LifetimeProjection, LifetimeProjectionIdx, PcgRegion},
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},

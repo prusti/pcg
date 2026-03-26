@@ -519,11 +519,7 @@ impl<Base, Kind: RegionIdxKind> crate::Sealed for LifetimeProjection<'_, Base, K
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;
 
-pub(crate) trait PcgLifetimeProjectionLike<
-    'tcx,
-    P = PcgLifetimeProjectionBase<'tcx>,
-    Kind = Region,
->
+pub(crate) trait PcgLifetimeProjectionLike<'tcx, P = PcgLifetimeProjectionBase<'tcx>, Kind = Region>
 {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx, P, Kind>;
 }
