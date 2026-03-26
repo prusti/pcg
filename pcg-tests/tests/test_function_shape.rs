@@ -1,34 +1,49 @@
 #![feature(rustc_private)]
 
 extern crate rustc_hir;
+extern crate rustc_infer;
+extern crate rustc_span;
+extern crate rustc_trait_selection;
 
 use std::collections::HashSet;
 
 use pcg::{
-    borrow_pcg::{ArgIdx, ArgIdxOrResult, FunctionShape},
+    borrow_pcg::{
+        ArgIdx, ArgIdxOrResult, FunctionData, FunctionShape,
+        edge::abstraction::function::{DefinedFnCall, DefinedFnCallWithCallTys},
+    },
     rustc_interface::middle::{mir, ty},
-    utils::CompilerCtxt,
+    utils::{CompilerCtxt, HasCompilerCtxt},
 };
 use pcg_tests::run_pcg_on_str;
+use rustc_infer::{
+    infer::{RegionVariableOrigin, TyCtxtInferExt},
+    traits::{ObligationCause, ScrubbedTraitError, TraitEngine},
+};
+use rustc_span::DUMMY_SP;
+use rustc_trait_selection::traits::{
+    NormalizeExt, StructurallyNormalizeExt, TraitEngineExt, query::type_op::Normalize,
+};
 
 /// Extracts the `(DefId, GenericArgsRef)` for the first call to a function
 /// whose name contains `target_name` in the given MIR body.
-fn find_call<'tcx>(
-    body: &mir::Body<'tcx>,
-    tcx: ty::TyCtxt<'tcx>,
+fn find_call<'a, 'tcx: 'a>(
     target_name: &str,
-) -> (rustc_hir::def_id::DefId, ty::GenericArgsRef<'tcx>) {
-    body.basic_blocks
+    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+) -> DefinedFnCallWithCallTys<'tcx> {
+    ctxt.body()
+        .basic_blocks
         .iter()
         .find_map(|bb| {
             let term = bb.terminator();
-            if let mir::TerminatorKind::Call { ref func, .. } = term.kind {
-                let func_ty = func.ty(body, tcx);
-                if let ty::TyKind::FnDef(def_id, substs) = func_ty.kind() {
-                    if tcx.def_path_str(*def_id).contains(target_name) {
-                        return Some((*def_id, *substs));
-                    }
-                }
+            if let Some(defined_fn_call) =
+                DefinedFnCallWithCallTys::from_terminator(term, ctxt.ctxt().def_id(), ctxt)
+                && ctxt
+                    .tcx()
+                    .def_path_str(defined_fn_call.fn_def_id())
+                    .contains(target_name)
+            {
+                return Some(defined_fn_call);
             }
             None
         })
@@ -42,16 +57,14 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     ctxt: CompilerCtxt<'a, 'tcx>,
     callee_name: &str,
 ) -> (FunctionShape, FunctionShape) {
-    let body = ctxt.body();
-    let (def_id, caller_substs) = find_call(body, ctxt.tcx(), callee_name);
-    let identity_substs = ty::GenericArgs::identity_for_item(ctxt.tcx(), def_id);
+    let defined_fn_call = find_call(callee_name, ctxt);
 
-    let sig_shape = FunctionShape::for_fn(def_id, identity_substs, ctxt).unwrap();
-    let call_shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
+    let sig_shape = FunctionShape::for_fn_sig(defined_fn_call.fn_def_id(), ctxt).unwrap();
+    let call_shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
 
     assert_eq!(
         sig_shape, call_shape,
-        "sig-derived call shape should equal the sig shape"
+        "sig-derived call shape should equal the sig shape.\n\nSig shape: {sig_shape}\n\nCall shape: {call_shape}\n"
     );
 
     (sig_shape, call_shape)
@@ -170,8 +183,35 @@ fn test_deref_mut_alias_output() {
     run_pcg_on_str(input, false, |analysis| {
         let ctxt = analysis.ctxt();
         let body = ctxt.body();
-        let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "deref_mut");
-        let shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
+        let defined_fn_call = find_call("deref_mut", ctxt);
+        eprintln!("substs1: {:?}", defined_fn_call.caller_substs());
+        eprintln!("def_id1: {:?}", defined_fn_call.fn_def_id());
+        let sig = FunctionData::new(defined_fn_call.fn_def_id())
+            .fn_sig(ctxt.tcx(), defined_fn_call.caller_substs());
+        eprintln!("sig1: {:?}", sig);
+        let (infcx, param_env) = ctxt.tcx().infer_ctxt().build_with_typing_env(
+            ty::TypingEnv::post_analysis(ctxt.tcx(), ctxt.def_id())
+                .with_post_analysis_normalized(ctxt.tcx()),
+        );
+        for region in ctxt.borrow_checker().iter_region_vids() {
+            infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
+        }
+        eprintln!("param_env1: {:?}", param_env);
+        let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
+            ScrubbedTraitError,
+        >>::new(&infcx);
+        let normalized = infcx
+            .at(&ObligationCause::dummy(), param_env)
+            .deeply_normalize(sig, &mut *fulfill_cx)
+            .unwrap();
+        // let normalized_output = infcx
+        //     .at(&ObligationCause::dummy(), param_env)
+        //     .structurally_normalize_ty(sig.output(), &mut *fulfill_cx)
+        //     .unwrap();
+        eprintln!("normalized1: {:?}", normalized);
+        eprintln!("normalized1: {}", normalized);
+        let shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
+        eprintln!("shape: {}", shape);
 
         let expected = FunctionShape::from_raw(
             vec![(arg(0), 0), (arg(0), 1)],
@@ -202,9 +242,8 @@ fn test_vec_into_iter_shape() {
     "#;
     run_pcg_on_str(input, true, |analysis| {
         let ctxt = analysis.ctxt();
-        let body = ctxt.body();
-        let (def_id, caller_substs) = find_call(body, ctxt.tcx(), "into_iter");
-        let call_shape = FunctionShape::for_fn(def_id, caller_substs, ctxt).unwrap();
+        let defined_fn_call = find_call("into_iter", ctxt);
+        let call_shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
 
         let expected = FunctionShape::from_raw(
             vec![(arg(0), 0)],

@@ -402,8 +402,7 @@ fn generate_function_shape_dot<'tcx>(
     ctxt: CompilerCtxt<'_, 'tcx>,
 ) -> Option<String> {
     use crate::borrow_pcg::abstraction::FunctionShape;
-    let identity_substs = ty::GenericArgs::identity_for_item(ctxt.tcx(), def_id);
-    let shape = FunctionShape::for_fn(def_id, identity_substs, ctxt).ok()?;
+    let shape = FunctionShape::for_fn_sig(def_id, ctxt).ok()?;
     let fn_name = ctxt.tcx().def_path_str(def_id);
     function_shape_to_dot(shape, &fn_name)
 }

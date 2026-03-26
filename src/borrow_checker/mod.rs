@@ -277,6 +277,21 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
 
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
+
+    fn iter_region_vids<'slf>(&'slf self) -> Box<dyn Iterator<Item = RegionVid> + 'slf>
+    where
+        'tcx: 'slf,
+    {
+        Box::new(
+            self.rust_borrow_checker()
+                .unwrap()
+                .region_infer_ctxt()
+                .constraint_sccs()
+                .scc_indices()
+                .iter_enumerated()
+                .map(move |(region_vid, _)| region_vid),
+        )
+    }
 }
 
 #[rustversion::before(2025-03-02)]

@@ -1,5 +1,5 @@
 //! Function and loop abstractions
-pub(crate) mod function;
+pub mod function;
 pub(crate) mod r#loop;
 pub(crate) mod r#type;
 

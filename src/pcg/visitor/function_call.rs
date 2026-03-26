@@ -2,13 +2,14 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
+        FunctionData,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
         borrow_pcg_edge::BorrowPcgEdge,
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
             function::{
-                FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata, FunctionCallData,
+                DefinedFnCall, FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata,
             },
         },
         edge_data::LabelNodePredicate,
@@ -28,24 +29,6 @@ use crate::{
     rustc_interface::middle::ty::{self},
     utils::{self, DataflowCtxt, HasCompilerCtxt, SnapshotLocation},
 };
-
-fn get_function_call_data<'a, 'tcx: 'a>(
-    func: &Operand<'tcx>,
-    operand_tys: Vec<ty::Ty<'tcx>>,
-    call_span: Span,
-    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-) -> Option<FunctionCallData<'tcx>> {
-    match func.ty(ctxt.body(), ctxt.tcx()).kind() {
-        ty::TyKind::FnDef(def_id, substs) => Some(FunctionCallData::new(
-            *def_id,
-            substs,
-            operand_tys,
-            ctxt.ctxt().def_id(),
-            call_span,
-        )),
-        _ => None,
-    }
-}
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
     pub(crate) fn settings(&self) -> &'a PcgSettings {
@@ -102,7 +85,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 AbstractionBlockEdge::new_checked(
                     self.node_for_input(call, input),
                     self.node_for_output(call, output),
-                    self.ctxt
+                    self.ctxt,
                 )
             })
             .collect();
@@ -154,20 +137,19 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         destination: utils::Place<'tcx>,
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        let function_call_data: Option<FunctionCallData<'tcx>> = get_function_call_data(
-            func,
-            args.iter()
-                .map(|arg| arg.ty(self.ctxt.body(), self.ctxt.tcx()))
-                .collect(),
-            call_span,
-            self.ctxt,
-        );
-
         let call = FunctionCall::new(
             location,
             args,
             destination,
-            function_call_data.as_ref().map(|f| f.call),
+            match func.ty(self.ctxt.body(), self.ctxt.tcx()).kind() {
+                ty::TyKind::FnDef(def_id, substs) => Some(DefinedFnCall::new(
+                    FunctionData::new(*def_id),
+                    substs,
+                    self.ctxt.ctxt().def_id(),
+                    call_span,
+                )),
+                _ => None,
+            },
         );
 
         let ctxt = self.ctxt;

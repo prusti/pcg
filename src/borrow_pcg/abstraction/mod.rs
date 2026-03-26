@@ -11,8 +11,8 @@ use crate::{
         edge::abstraction::{
             AbstractionBlockEdge,
             function::{
-                DefinedFnCall, DefinedFnCallShapeDataSource, DefinedFnSigShapeDataSource,
-                FnCallDataSource,
+                DefinedFnCall, DefinedFnCallShapeDataSource, DefinedFnCallWithCallTys,
+                DefinedFnSigShapeDataSource, FnCallDataSource,
             },
         },
         region_projection::{
@@ -31,7 +31,7 @@ use crate::{
         span::def_id::DefId,
     },
     utils::{
-        self, CompilerCtxt, HasBorrowCheckerCtxt, HasTyCtxt,
+        self, CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -100,6 +100,25 @@ pub(crate) struct FunctionCall<'a, 'tcx> {
 }
 
 impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
+    pub(crate) fn defined_fn_call_with_call_tys<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<DefinedFnCallWithCallTys<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        self.defined.map(|defined| {
+            DefinedFnCallWithCallTys::new(
+                defined,
+                self.inputs
+                    .iter()
+                    .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
+                    .collect(),
+                self.output.ty(ctxt).ty,
+            )
+        })
+    }
+
     /// Computes the shape for this function call. For defined function calls,
     /// uses the sig-derived call shape: computes the signature shape using the
     /// instantiated signature types, then remaps region indices to the
@@ -111,35 +130,19 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
     where
         'tcx: 'a,
     {
-        match self.defined {
+        let input_tys = self
+            .inputs
+            .iter()
+            .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
+            .collect();
+        let output_ty = self.output.ty(ctxt).ty;
+        match self.defined_fn_call_with_call_tys(ctxt) {
             Some(defined) => {
-                let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt.tcx()).unwrap();
-                let sig_shape = FunctionShape::new(&data_source, ctxt).unwrap();
-                let call_input_tys: Vec<_> = self
-                    .inputs
-                    .iter()
-                    .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
-                    .collect();
-                let call_output_ty = self.output.ty(ctxt).ty;
-                let sig_input_tys = data_source.input_tys(ctxt);
-                let sig_output_ty = data_source.output_ty(ctxt);
-                sig_shape.remap_to_call_site(
-                    &call_input_tys,
-                    call_output_ty,
-                    &sig_input_tys,
-                    sig_output_ty,
-                    ctxt,
-                )
+                let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt).unwrap();
+                FunctionShape::new(&data_source, ctxt).unwrap()
             }
             None => FunctionShape::new(
-                &FnCallDataSource::new(
-                    self.location,
-                    self.inputs
-                        .iter()
-                        .map(|input| input.ty(ctxt.body(), ctxt.tcx()))
-                        .collect(),
-                    self.output.ty(ctxt).ty,
-                ),
+                &FnCallDataSource::new(self.location, input_tys, output_ty),
                 ctxt,
             )
             .unwrap(),
@@ -348,14 +351,22 @@ impl FunctionShape {
         (self.inputs, self.outputs)
     }
 
-    pub fn for_fn<'tcx>(
+    pub fn for_fn_sig<'tcx>(
         def_id: DefId,
-        caller_substs: GenericArgsRef<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
+        ctxt: impl HasTyCtxt<'tcx> + Copy,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        let data = FunctionData::new(def_id);
-        Self::new(&data.shape_data_source(caller_substs, ctxt.tcx())?, ctxt)
-            .map_err(MakeFunctionShapeError::CheckOutlivesError)
+        FunctionData::new(def_id).shape(ctxt)
+    }
+
+    pub fn for_fn_call<'a, 'tcx: 'a>(
+        call: DefinedFnCallWithCallTys<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + Copy,
+    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+        FunctionShape::new(
+            &DefinedFnCallShapeDataSource::new(call, ctxt)?,
+            ctxt,
+        )
+        .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 
@@ -363,6 +374,12 @@ impl FunctionShape {
 pub struct FunctionData<'tcx> {
     pub(crate) def_id: DefId,
     _marker: PhantomData<&'tcx ()>,
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for FunctionData<'tcx> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        format!("{}", ctxt.tcx().def_path_str(self.def_id)).into()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -399,21 +416,19 @@ impl<'tcx> FunctionData<'tcx> {
 
     pub(crate) fn shape_data_source<'a>(
         self,
-        caller_substs: GenericArgsRef<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<DefinedFnCallShapeDataSource<'a, 'tcx>, MakeFunctionShapeError<'tcx>>
+    ) -> Result<DefinedFnSigShapeDataSource<'tcx>, MakeFunctionShapeError<'tcx>>
     where
         'tcx: 'a,
     {
-        DefinedFnCallShapeDataSource::new(DefinedFnCall::new(self, caller_substs), tcx)
+        DefinedFnSigShapeDataSource::new(self.def_id, tcx)
     }
 
-    pub fn shape<'a>(
+    pub fn shape(
         self,
-        caller_substs: GenericArgsRef<'tcx>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasTyCtxt<'tcx> + Copy,
     ) -> Result<FunctionShape, MakeFunctionShapeError<'tcx>> {
-        FunctionShape::new(&self.shape_data_source(caller_substs, ctxt.tcx())?, ctxt)
+        FunctionShape::new(&self.shape_data_source(ctxt.tcx())?, ctxt)
             .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 
@@ -460,6 +475,56 @@ where
     }
 }
 
+impl std::fmt::Display for FunctionShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt_input(
+            f: &mut std::fmt::Formatter<'_>,
+            input: &FunctionShapeInput,
+        ) -> std::fmt::Result {
+            write!(f, "Arg({})|{}", *input.base, input.region_idx.index())
+        }
+
+        fn fmt_output(
+            f: &mut std::fmt::Formatter<'_>,
+            output: &FunctionShapeOutput,
+        ) -> std::fmt::Result {
+            match output.base {
+                ArgIdxOrResult::Argument(arg) => {
+                    write!(f, "Arg({})|{}", *arg, output.region_idx.index())
+                }
+                ArgIdxOrResult::Result => {
+                    write!(f, "Result|{}", output.region_idx.index())
+                }
+            }
+        }
+
+        write!(f, "Inputs: [")?;
+        for (i, input) in self.inputs.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            fmt_input(f, input)?;
+        }
+        write!(f, "]\nOutputs: [")?;
+        for (i, output) in self.outputs.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            fmt_output(f, output)?;
+        }
+        write!(f, "]\nEdges: [")?;
+        for (i, edge) in self.edges.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            fmt_input(f, &edge.input)?;
+            write!(f, " -> ")?;
+            fmt_output(f, &edge.output)?;
+        }
+        write!(f, "]")
+    }
+}
+
 impl FunctionShape {
     #[allow(unused)]
     pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
@@ -501,87 +566,6 @@ impl FunctionShape {
             outputs: shape_data.outputs(ctxt),
             edges: shape,
         })
-    }
-
-    /// Remaps region indices from signature types to call-site types.
-    ///
-    /// The signature shape is computed using the instantiated signature, which
-    /// may contain unnormalized alias types with extra regions not present in
-    /// the call-site types. This method finds the actual region for each sig
-    /// shape node and locates its index in the corresponding call-site type,
-    /// skipping edges whose regions exist only in the alias type.
-    /// Remaps region indices from signature types to call-site types.
-    ///
-    /// The sig type and call-site type for each argument/result have the same
-    /// structure, so the j-th region in the sig type corresponds to the j-th
-    /// region in the call-site type. When unnormalized alias types in the sig
-    /// introduce extra regions (out of bounds in the call-site type), the
-    /// corresponding edges are dropped.
-    fn remap_to_call_site<'a, 'tcx: 'a>(
-        self,
-        call_input_tys: &[ty::Ty<'tcx>],
-        call_output_ty: ty::Ty<'tcx>,
-        sig_input_tys: &[ty::Ty<'tcx>],
-        sig_output_ty: ty::Ty<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Self {
-        let remap_region_idx = |sig_ty: ty::Ty<'tcx>,
-                                call_ty: ty::Ty<'tcx>,
-                                sig_region_idx: RegionIdx|
-         -> Option<RegionIdx> {
-            let call_regions = extract_regions(call_ty);
-            if sig_region_idx.index() < call_regions.len() {
-                Some(sig_region_idx)
-            } else {
-                pcg_validity_assert!(
-                    false,
-                    [ctxt],
-                    "remap_to_call_site: dropping sig region idx {:?} (out of bounds for call type {:?} with {} regions, sig type {:?})",
-                    sig_region_idx,
-                    call_ty,
-                    call_regions.len(),
-                    sig_ty
-                );
-                None
-            }
-        };
-
-        let remap_input = |input: FunctionShapeInput| -> Option<FunctionShapeInput> {
-            remap_region_idx(
-                sig_input_tys[*input.base],
-                call_input_tys[*input.base],
-                input.region_idx,
-            )?;
-            Some(input)
-        };
-
-        let remap_output = |output: FunctionShapeOutput| -> Option<FunctionShapeOutput> {
-            let (sig_ty, call_ty) = match output.base {
-                ArgIdxOrResult::Argument(arg) => (sig_input_tys[*arg], call_input_tys[*arg]),
-                ArgIdxOrResult::Result => (sig_output_ty, call_output_ty),
-            };
-            remap_region_idx(sig_ty, call_ty, output.region_idx)?;
-            Some(output)
-        };
-
-        let edges = self
-            .edges
-            .into_iter()
-            .filter_map(|edge| {
-                let input = remap_input(edge.input)?;
-                let output = remap_output(edge.output)?;
-                Some(AbstractionBlockEdge::new(input, output))
-            })
-            .collect();
-
-        let inputs = self.inputs.into_iter().filter_map(remap_input).collect();
-        let outputs = self.outputs.into_iter().filter_map(remap_output).collect();
-
-        FunctionShape {
-            inputs,
-            outputs,
-            edges,
-        }
     }
 
     #[must_use]
