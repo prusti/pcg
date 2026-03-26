@@ -139,7 +139,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
     /// checker for outlives constraints between the regions in the call site
     /// operands and return place directly.
     ///
-    /// See https://prusti.github.io/pcg-docs/function-shapes.html for more info.
+    /// See <https://prusti.github.io/pcg-docs/function-shapes.html> for more info.
     pub(crate) fn shape<'a>(
         self,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
