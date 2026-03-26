@@ -1,24 +1,33 @@
 use crate::{
-    HasSettings, borrow_pcg::{
+    HasSettings,
+    borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::ConstructAbstractionGraphResult,
         region_projection::LifetimeProjectionLabel,
         validity_conditions::ValidityConditions,
-    }, error::{PcgError, PcgUnsupportedError}, r#loop::PlaceUsages, owned_pcg::OwnedPcg, pcg::{
+    },
+    error::{PcgError, PcgUnsupportedError},
+    r#loop::PlaceUsages,
+    owned_pcg::OwnedPcg,
+    pcg::{
         BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
         ctxt::AnalysisCtxt,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
-    }, pcg_validity_assert, rustc_interface::middle::mir::{self, BasicBlock}, utils::{
+    },
+    pcg_validity_assert,
+    rustc_interface::middle::mir::{self, BasicBlock},
+    utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
-    }, validity_checks_enabled
+    },
+    validity_checks_enabled,
 };
 
 #[cfg(feature = "visualization")]
@@ -87,7 +96,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         .label_lifetime_projections(
                             &LabelNodePredicate::equals_lifetime_projection(orig_rp),
                             Some(LifetimeProjectionLabel::Future),
-                            ctxt
+                            ctxt,
                         )
                         .to_filter_mut_result()
                 });
@@ -350,8 +359,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
-        let to_cut =
-            self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
+        let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
         to_cut.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),

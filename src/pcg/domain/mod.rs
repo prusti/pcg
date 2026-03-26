@@ -280,7 +280,7 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
                 &first.data.pcg.states.0.post_main,
                 ctxt.block,
                 first.ctxt.block,
-                result.ctxt
+                result.ctxt,
             )?;
         }
         for other in rest {
@@ -289,7 +289,7 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
                     &other.data.pcg.states.0.post_main,
                     ctxt.block,
                     other.ctxt.block,
-                    result.ctxt
+                    result.ctxt,
                 )?;
             }
         }

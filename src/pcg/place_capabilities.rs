@@ -249,8 +249,8 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt> HasValidityCheck<Ctxt>
-    for PlaceCapabilities<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt>
+    HasValidityCheck<Ctxt> for PlaceCapabilities<'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         for (place, cap) in self.iter() {
@@ -370,7 +370,10 @@ impl<'tcx, C: CapabilityLike> PlaceCapabilities<'tcx, C>
 where
     Self: PlaceCapabilitiesInterface<'tcx, C>,
 {
-    pub(crate) fn regain_loaned_capability<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
+    pub(crate) fn regain_loaned_capability<
+        'a,
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    >(
         &mut self,
         place: Place<'tcx>,
         capability: C,

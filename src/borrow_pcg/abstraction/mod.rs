@@ -362,11 +362,8 @@ impl FunctionShape {
         call: DefinedFnCallWithCallTys<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + Copy,
     ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
-        FunctionShape::new(
-            &DefinedFnCallShapeDataSource::new(call, ctxt)?,
-            ctxt,
-        )
-        .map_err(MakeFunctionShapeError::CheckOutlivesError)
+        FunctionShape::new(&DefinedFnCallShapeDataSource::new(call, ctxt)?, ctxt)
+            .map_err(MakeFunctionShapeError::CheckOutlivesError)
     }
 }
 

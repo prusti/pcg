@@ -5,17 +5,23 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    HasSettings, borrow_pcg::{
+    HasSettings,
+    borrow_pcg::{
         action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
         state::BorrowsStateLike,
-    }, error::PcgError, owned_pcg::{
+    },
+    error::PcgError,
+    owned_pcg::{
         ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
         join::{data::JoinOwnedData, obtain::JoinCtxt},
-    }, pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface}, pcg_validity_assert, pcg_validity_expect_some, utils::{
+    },
+    pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
+    pcg_validity_assert, pcg_validity_expect_some,
+    utils::{
         CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
-    }
+    },
 };
 use itertools::Itertools;
 

@@ -1,5 +1,8 @@
 use crate::{
-    HasSettings, action::{BorrowPcgAction, OwnedPcgAction}, borrow_checker::r#impl::get_reserve_location, borrow_pcg::{
+    HasSettings,
+    action::{BorrowPcgAction, OwnedPcgAction},
+    borrow_checker::r#impl::get_reserve_location,
+    borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
@@ -11,17 +14,22 @@ use crate::{
         graph::BorrowsGraph,
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
-    }, error::PcgError, owned_pcg::{ExpandedPlace, RepackOp}, pcg::{
+    },
+    error::PcgError,
+    owned_pcg::{ExpandedPlace, RepackOp},
+    pcg::{
         CapabilityKind, PcgNodeLike,
         obtain::{
             ActionApplier, HasSnapshotLocation, LabelForLifetimeProjection, ObtainType,
             RenderDebugGraph,
         },
         place_capabilities::BlockType,
-    }, rustc_interface::middle::mir, utils::{
+    },
+    rustc_interface::middle::mir,
+    utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
-    }
+    },
 };
 
 pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:

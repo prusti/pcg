@@ -33,7 +33,9 @@ use crate::{
     },
     rustc_interface::middle::mir::Location,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation, display::{DisplayWithCtxt, OutputMode}, html::Html
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        display::{DisplayWithCtxt, OutputMode},
+        html::Html,
     },
     visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
 };

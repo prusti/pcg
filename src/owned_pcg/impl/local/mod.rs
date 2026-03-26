@@ -9,9 +9,15 @@ pub(crate) mod join;
 use std::fmt::{Debug, Formatter, Result};
 
 use crate::{
-    HasSettings, borrow_pcg::borrow_pcg_expansion::PlaceExpansion, error::PcgUnsupportedError, owned_pcg::RepackGuide, pcg::place_capabilities::{
+    HasSettings,
+    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    error::PcgUnsupportedError,
+    owned_pcg::RepackGuide,
+    pcg::place_capabilities::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
-    }, rustc_interface::middle::mir::Local, utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet}
+    },
+    rustc_interface::middle::mir::Local,
+    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use itertools::Itertools;
 

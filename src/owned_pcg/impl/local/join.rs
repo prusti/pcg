@@ -468,7 +468,7 @@ fn copy_read_capabilities<'a, 'tcx: 'a>(
     cap_source: &impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
     cap_target: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
     place: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
 ) {
     cap_target.insert(place, CapabilityKind::Read, ctxt);
     for (p, c) in cap_source.capabilities_for_strict_postfixes_of(place) {

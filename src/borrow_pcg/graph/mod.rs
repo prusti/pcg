@@ -63,7 +63,9 @@ impl<EdgeKind, VC> Default for BorrowsGraph<'_, EdgeKind, VC> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt> for BorrowsGraph<'tcx> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt>
+    for BorrowsGraph<'tcx>
+{
     fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.edges()
             .map(|edge| edge.test_string(ctxt))

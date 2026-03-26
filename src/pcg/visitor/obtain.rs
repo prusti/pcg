@@ -1,5 +1,7 @@
 use crate::{
-    HasSettings, Weaken, action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction}, borrow_pcg::{
+    HasSettings, Weaken,
+    action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
+    borrow_pcg::{
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
@@ -11,7 +13,9 @@ use crate::{
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
         state::{BorrowStateMutRef, BorrowsStateLike},
-    }, owned_pcg::RepackOp, pcg::{
+    },
+    owned_pcg::RepackOp,
+    pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
@@ -22,10 +26,13 @@ use crate::{
             SymbolicPlaceCapabilities,
         },
         visitor::upgrade::AdjustCapabilityReason,
-    }, pcg_validity_assert, rustc_interface::middle::mir, utils::{
+    },
+    pcg_validity_assert,
+    rustc_interface::middle::mir,
+    utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-    }
+    },
 };
 use std::cmp::Ordering;
 
@@ -464,11 +471,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             action.debug_line(self.ctxt.bc_ctxt())
         );
         let result = match &action {
-            PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
-                action.clone(),
-                self.pcg.capabilities,
-                self.ctxt,
-            )?,
+            PcgAction::Borrow(action) => {
+                self.pcg
+                    .borrow
+                    .apply_action(action.clone(), self.pcg.capabilities, self.ctxt)?
+            }
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.pcg.capabilities.regain_loaned_capability(
@@ -480,11 +487,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Expand(expand) => {
-                    self.pcg.owned.perform_expand_action(
-                        expand,
-                        self.pcg.capabilities,
-                        self.ctxt,
-                    );
+                    self.pcg
+                        .owned
+                        .perform_expand_action(expand, self.pcg.capabilities, self.ctxt);
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::DerefShallowInit(from, to) => {
@@ -495,11 +500,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         PlaceExpansion::from_places(target_places.clone(), self.ctxt),
                     );
                     for target_place in target_places {
-                        self.pcg.capabilities.insert(
-                            target_place,
-                            CapabilityKind::Read,
-                            self.ctxt,
-                        );
+                        self.pcg
+                            .capabilities
+                            .insert(target_place, CapabilityKind::Read, self.ctxt);
                     }
                     ApplyActionResult::changed_no_display()
                 }

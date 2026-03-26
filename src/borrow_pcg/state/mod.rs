@@ -401,7 +401,9 @@ impl<'pcg, 'tcx> From<&'pcg mut BorrowsState<'_, 'tcx>> for BorrowStateMutRef<'p
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt> for BorrowsState<'_, 'tcx> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<Ctxt>
+    for BorrowsState<'_, 'tcx>
+{
     fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.graph.debug_lines(ctxt)
     }

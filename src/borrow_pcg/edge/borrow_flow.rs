@@ -4,7 +4,8 @@ use std::marker::PhantomData;
 use serde_derive::Serialize;
 
 use crate::{
-    HasSettings, borrow_pcg::{
+    HasSettings,
+    borrow_pcg::{
         borrow_pcg_edge::{BlockedNode, LocalNode},
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
@@ -19,12 +20,15 @@ use crate::{
             LifetimeProjection, LifetimeProjectionLabel, LifetimeProjectionWithPlace,
             LocalLifetimeProjection, PcgLifetimeProjectionBase,
         },
-    }, pcg::{PcgNode, PcgNodeLike}, rustc_interface::middle::{mir, ty}, utils::{
+    },
+    pcg::{PcgNode, PcgNodeLike},
+    rustc_interface::middle::{mir, ty},
+    utils::{
         DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::HasValidityCheck,
-    }
+    },
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

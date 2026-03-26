@@ -211,8 +211,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         // Use the callee's typing env for outlives checks, since after mapping
         // regions back to identity regions, we need the callee's param env
         // constraints (e.g. `'b: 'a`).
-        let callee_typing_env =
-            ty::TypingEnv::post_analysis(ctxt.tcx(), call.fn_def_id());
+        let callee_typing_env = ty::TypingEnv::post_analysis(ctxt.tcx(), call.fn_def_id());
         let (_, param_env) = ctxt
             .tcx()
             .infer_ctxt()
@@ -224,11 +223,8 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             HashSet::default(),
         );
         let normalized = call.defined_fn_call.normalized_sig(ctxt);
-        let region_map = Self::build_region_map(
-            &call.call_arg_tys,
-            call.call_result_ty,
-            &normalized,
-        );
+        let region_map =
+            Self::build_region_map(&call.call_arg_tys, call.call_result_ty, &normalized);
         Ok(Self {
             call,
             outlives,
@@ -323,12 +319,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         // lifetimes (doc § Signature Shape) where type parameters participate
         // in outlives relationships.
         // TODO: implement generic lifetimes to handle this correctly.
-        let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx()))
-        else {
+        let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return Ok(false);
         };
-        let Some(sub_id) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx()))
-        else {
+        let Some(sub_id) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return Ok(false);
         };
         if sup_id == sub_id {
@@ -464,7 +458,9 @@ pub struct DefinedFnCall<'tcx> {
     pub(crate) span: Span,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DefinedFnCall<'tcx> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for DefinedFnCall<'tcx>
+{
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let identity_sig = self.function_data.identity_fn_sig(ctxt.tcx());
         let subst_sig = self.function_data.fn_sig(ctxt.tcx(), self.caller_substs);

@@ -5,15 +5,19 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
-    HasSettings, owned_pcg::{LocalExpansions, OwnedPcgLocal}, pcg::{
+    HasSettings,
+    owned_pcg::{LocalExpansions, OwnedPcgLocal},
+    pcg::{
         CapabilityKind,
         place_capabilities::{
             PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
         },
         triple::{PlaceCondition, Triple},
-    }, pcg_validity_assert, utils::{
+    },
+    pcg_validity_assert,
+    utils::{
         HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike, display::DisplayWithCompilerCtxt,
-    }
+    },
 };
 
 use crate::rustc_interface::middle::mir::RETURN_PLACE;

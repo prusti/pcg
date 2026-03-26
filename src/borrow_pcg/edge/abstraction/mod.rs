@@ -6,7 +6,8 @@ pub(crate) mod r#type;
 use std::marker::PhantomData;
 
 use crate::{
-    HasSettings, borrow_pcg::{
+    HasSettings,
+    borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
         edge::{
@@ -22,12 +23,15 @@ use crate::{
             PlaceLabeller, SourceOrTarget,
         },
         region_projection::{LifetimeProjectionLabel, PlaceOrConst},
-    }, coupling::HyperEdge, pcg::PcgNodeLike, utils::{
+    },
+    coupling::HyperEdge,
+    pcg::PcgNodeLike,
+    utils::{
         DebugCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_remote::MaybeRemotePlace,
-    }
+    },
 };
 
 use crate::coupling::PcgCoupledEdgeKind;

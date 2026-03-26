@@ -1,6 +1,7 @@
 //! Borrow edges
 use crate::{
-    HasSettings, borrow_pcg::{
+    HasSettings,
+    borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
@@ -11,18 +12,21 @@ use crate::{
             SourceOrTarget,
         },
         region_projection::LifetimeProjectionLabel,
-    }, pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
+    },
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
         middle::{
             mir::{self, Location},
             ty::{self},
         },
-    }, utils::{
+    },
+    utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-    }
+    },
 };
 
 use crate::{

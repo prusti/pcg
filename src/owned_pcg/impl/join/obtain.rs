@@ -4,7 +4,10 @@ use crate::{
     error::PcgError,
     owned_pcg::{LocalExpansions, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CompilerCtxtWithSettings, ctxt::AnalysisCtxt, obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser}, place_capabilities::SymbolicPlaceCapabilities
+        CompilerCtxtWithSettings,
+        ctxt::AnalysisCtxt,
+        obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
+        place_capabilities::SymbolicPlaceCapabilities,
     },
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, Place, SnapshotLocation, data_structures::HashSet},
