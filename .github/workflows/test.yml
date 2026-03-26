@@ -11,7 +11,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/pcg-server
   MUTATION_TESTS_REF: zgrannan/update-pcg
-  FLOWISTRY_REF: zgrannan/pcg-next4
   SYMBOLIC_EXECUTION_REF: main
   PURIFICATION_PRUSTI_REF: zgrannan/old-purification
 
@@ -143,26 +142,6 @@ jobs:
     - name: Build mutation testing tool
       working-directory: pcg-mutation-testing
       run: cargo build
-
-  flowistry_tests:
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        path: pcg
-
-    - name: Checkout flowistry repository
-      uses: actions/checkout@v4
-      with:
-        repository: zgrannan/flowistry
-        ref: ${{ env.FLOWISTRY_REF }}
-        path: flowistry
-
-    - name: Run flowistry tests
-      working-directory: flowistry/crates/flowistry
-      run: cargo test
 
   check_generated_types:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}

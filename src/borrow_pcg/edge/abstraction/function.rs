@@ -262,11 +262,11 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
                 Some(region)
             }
             PcgRegion::RegionVid(_) => {
-                let index = self
-                    .call
-                    .caller_substs()
-                    .regions()
-                    .position(|r| PcgRegion::from(r) == region)?;
+                let caller_substs = self.call.caller_substs();
+                let index = caller_substs.iter().position(|arg| {
+                    arg.as_region()
+                        .is_some_and(|r| PcgRegion::from(r) == region)
+                })?;
                 let fn_ty = tcx.type_of(self.call.fn_def_id()).instantiate_identity();
                 let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
                     panic!("Expected a function type");
