@@ -11,7 +11,8 @@ use derive_more::From;
 
 use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
 use crate::{
-    BodyAndBorrows,
+    BodyAndBorrows, HasSettings,
+    borrow_pcg::region_projection::OverrideRegionDebugString,
     error::PcgError,
     r#loop::{LoopAnalysis, PlaceUsages},
     pcg::{
@@ -33,7 +34,7 @@ use crate::{
         mir_dataflow::{Forward, move_paths::MoveData},
     },
     utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, PcgSettings, arena::PcgArenaRef,
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, DebugCtxt, PcgSettings, arena::PcgArenaRef,
         visitor::FallableVisitor,
     },
 };
@@ -123,6 +124,29 @@ type Block = usize;
 
 pub(crate) type PcgArenaStore = bumpalo::Bump;
 pub(crate) type PcgArena<'a> = &'a PcgArenaStore;
+
+impl<'a, 'tcx: 'a> HasSettings<'a> for &PcgEngine<'a, 'tcx> {
+    fn settings(&self) -> &'a PcgSettings {
+        self.settings
+    }
+}
+
+impl<'a, 'tcx: 'a> OverrideRegionDebugString for &PcgEngine<'a, 'tcx> {
+    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
+        self.ctxt
+            .borrow_checker
+            .override_region_debug_string(region)
+    }
+}
+
+impl<'a, 'tcx: 'a> DebugCtxt for &PcgEngine<'a, 'tcx> {
+    fn func_name(&self) -> String {
+        self.ctxt.func_name()
+    }
+    fn num_basic_blocks(&self) -> usize {
+        self.ctxt.num_basic_blocks()
+    }
+}
 
 pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,

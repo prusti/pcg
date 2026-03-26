@@ -20,7 +20,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -195,9 +195,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
     for PcgRef<'_, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
-        self.capabilities
-            .to_concrete(ctxt)
-            .check_validity(ctxt.bc_ctxt())?;
+        self.capabilities.to_concrete(ctxt).check_validity(ctxt)?;
         self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
             .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
@@ -336,7 +334,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         &self.borrow
     }
 
-    pub(crate) fn ensure_triple<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+    pub(crate) fn ensure_triple<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         t: Triple<'tcx>,
         ctxt: Ctxt,
@@ -361,7 +359,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other: &Self,
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
     ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut slf = self.clone();
         let mut other = other.clone();
@@ -372,7 +370,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut other.capabilities,
             block: other_block,
         };
-        let mut repacks = slf_owned_data.join(other_owned_data, ctxt)?;
+        let mut repacks =
+            slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
         for (place, cap) in slf.capabilities.iter() {
             if !place.is_owned(ctxt) {
                 continue;
@@ -407,7 +406,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut other_capabilities,
             block: other_block,
         };
-        let repack_ops = self_owned_data.join(other_owned_data, ctxt.ctxt)?;
+        let repack_ops =
+            self_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
         // For edges in the other graph that actually belong to it,
         // add the path condition that leads them to this block
         let mut other = other.clone();
@@ -424,7 +424,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
-    pub(crate) fn debug_lines(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Vec<Cow<'static, str>> {
+    pub(crate) fn debug_lines(
+        &self,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
         result.sort();
         let mut capabilities = self.capabilities.debug_lines(ctxt);

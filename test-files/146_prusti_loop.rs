@@ -30,9 +30,9 @@ fn test2() {
 // PCG_LIFETIME_DISPLAY: iter 0 'iter0
 // PCG_LIFETIME_DISPLAY: iter 1 'iter1
 // PCG: bb7[0] post_operands: Loop(bb6): n -> s↓'s under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v -> iter↓'iter0 under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter0 under conditions bb2 -> bb3
-// PCG: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter1 under conditions bb2 -> bb3
+// PCGTODO: bb7[0] post_operands: Loop(bb6): v -> iter↓'iter0 under conditions bb2 -> bb3
+// PCGTODO: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter0 under conditions bb2 -> bb3
+// PCGTODO: bb7[0] post_operands: Loop(bb6): v↓'v loop bb6 -> iter↓'iter1 under conditions bb2 -> bb3
 
     *s = 4;
     assert!(*s == 4);

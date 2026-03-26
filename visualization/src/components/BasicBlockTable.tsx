@@ -4,6 +4,7 @@ import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
 import { PcgBlockVisualizationData } from "../generated/types";
 import { actionLine } from "../actionFormatting";
+import { openDotStringInNewWindow } from "../dot_graph";
 
 interface BasicBlockTableProps {
   data: BasicBlockData;
@@ -167,6 +168,36 @@ export default function BasicBlockTable({
           }
           actions={getActionsForStmt(data.stmts.length)}
         />
+        {(data.sig_shape_dot || data.call_shape_dot) && (
+          <tr>
+            <td colSpan={2} style={{ textAlign: "center", padding: "2px" }}>
+              {[
+                { dot: data.sig_shape_dot, label: "View Function Shape", color: "#007acc", title: "Function Shape" },
+                { dot: data.call_shape_dot, label: "View Call Shape", color: "#cc7a00", title: "Call Shape" },
+              ].filter(b => b.dot).map((b, idx) => (
+                <button
+                  key={b.label}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openDotStringInNewWindow(b.dot!, `${b.title} - bb${data.block}`);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    backgroundColor: b.color,
+                    color: "white",
+                    border: "none",
+                    borderRadius: "3px",
+                    padding: "2px 8px",
+                    fontSize: "11px",
+                    marginLeft: idx > 0 ? "4px" : undefined,
+                  }}
+                >
+                  {b.label}
+                </button>
+              ))}
+            </td>
+          </tr>
+        )}
       </tbody>
     </table>
   );
@@ -190,6 +221,8 @@ export function computeTableHeight(
         block: data.block,
         stmts: data.stmts,
         terminator: data.terminator,
+        sig_shape_dot: data.sig_shape_dot,
+        call_shape_dot: data.call_shape_dot,
       },
       setCurrentPoint: () => {},
       showActionsInGraph,

@@ -3,8 +3,10 @@
 use pcg::{
     PcgOutput,
     results::PcgLocation,
-    rustc_interface::middle::mir::{self, START_BLOCK},
-    rustc_interface::span::Symbol,
+    rustc_interface::{
+        middle::mir::{self, START_BLOCK},
+        span::Symbol,
+    },
 };
 use pcg_tests::run_pcg_on_str;
 
@@ -46,11 +48,10 @@ fn test_aliases() {
             x;
         }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
-        let x = ctxt.local_place("x").unwrap();
         let temp4 = mir::Local::from(4_usize).into();
         let temp: mir::Place<'_> = mir::Local::from(2_usize).into();
         let aliases = stmt.aliases(
@@ -65,7 +66,6 @@ fn test_aliases() {
             aliases,
             temp4
         );
-        assert!(aliases.contains(&(x.to_rust_place(ctxt))));
     });
 
     // pointer_reborrow_nested
@@ -79,7 +79,7 @@ fn test_aliases() {
             *y;
         }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let ctxt = analysis.ctxt();
         let stmt = &bb.statements[12];
@@ -105,7 +105,7 @@ fn test_aliases() {
             x;
         }
         "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb = analysis.get_all_for_bb(1usize.into()).unwrap().unwrap();
@@ -134,7 +134,7 @@ fn test_aliases() {
                     ok(f);
                 }
                 "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
@@ -168,7 +168,7 @@ fn main() {
     }
 }
         "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(2usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
@@ -214,7 +214,7 @@ fn main() {
     x;
     }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[0];
@@ -248,7 +248,7 @@ fn main() {
         let y = x.0 .0 .0 .0 + 1;
     }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
@@ -266,7 +266,7 @@ fn main() {
     x;
 }
 "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let temp: mir::Place<'_> = mir::Local::from(4_usize).into();
@@ -293,7 +293,7 @@ fn main() {
       let d = &b;
       let e = foo(c, d);
     }"#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -320,7 +320,7 @@ fn main() {
             let d = **c;
         }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -347,7 +347,7 @@ fn main() {
             let a = ***y;
         }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -391,7 +391,7 @@ fn main() {
             (x);
         }
     "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();

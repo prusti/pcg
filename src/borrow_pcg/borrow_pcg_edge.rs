@@ -27,7 +27,7 @@ use crate::{
     error::PcgError,
     pcg::PcgNode,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceProjectable,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         validity::HasValidityCheck,
@@ -84,7 +84,7 @@ impl<EdgeKind> Clone for BorrowPcgEdgeRef<'_, '_, EdgeKind> {
 pub type BorrowPcgEdge<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC = ValidityConditions> =
     Conditioned<EdgeKind, VC>;
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for BorrowPcgEdge<'tcx, BorrowPcgEdgeKind<'tcx, P>>
 where
     BorrowPcgEdgeKind<'tcx, P>: LabelEdgePlaces<'tcx, Ctxt, P>,
@@ -176,8 +176,10 @@ impl<'tcx, 'graph> BorrowPcgEdgeLike<'tcx> for BorrowPcgEdgeRef<'tcx, 'graph> {
     }
 }
 
-impl<'a, 'tcx: 'a, T: BorrowPcgEdgeLike<'tcx>> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for T {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt, T: BorrowPcgEdgeLike<'tcx>>
+    HasValidityCheck<Ctxt> for T
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.kind().check_validity(ctxt)
     }
 }
@@ -288,8 +290,8 @@ impl<'tcx> From<LifetimeProjection<'tcx, Place<'tcx>>> for LocalNode<'tcx> {
 /// by definition)
 pub type BlockingNode<'tcx> = LocalNode<'tcx>;
 
-impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for MaybeRemotePlace<'tcx> {
-    fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
+impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for MaybeRemotePlace<'_> {
+    fn check_validity(&self, _ctxt: Ctxt) -> Result<(), String> {
         Ok(())
     }
 }

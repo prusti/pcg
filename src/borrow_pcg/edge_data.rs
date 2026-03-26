@@ -5,8 +5,8 @@ use crate::{
         graph::Conditioned,
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
-            LifetimeProjection, LifetimeProjectionLabel, OverrideRegionDebugString,
-            PcgLifetimeProjectionBase, RegionIdx,
+            LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
+            OverrideRegionDebugString, PcgLifetimeProjectionBase,
         },
     },
     pcg::{
@@ -181,7 +181,7 @@ where
 pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     LifetimeProjectionLabelEquals(Option<LifetimeProjectionLabel>),
     PlaceLabelEquals(Option<SnapshotLocation>),
-    ProjectionRegionIdxEquals(RegionIdx),
+    ProjectionRegionIdxEquals(LifetimeProjectionIdx),
     Equals(PcgNodeWithPlace<'tcx, P>),
     /// The place associated with the node is exactly this place.
     PlaceEquals(P),
@@ -217,7 +217,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// the given base place and region index.
     pub(crate) fn all_non_future(
         place: crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
-        region_idx: RegionIdx,
+        region_idx: LifetimeProjectionIdx,
     ) -> Self {
         Self::And(vec![
             Self::PlaceEquals(place.place()),
@@ -447,7 +447,7 @@ macro_rules! label_edge_places_wrapper {
     (
         $ty:ty
     ) => {
-        impl<'tcx, Ctxt: DebugCtxt + Copy, P: $crate::utils::PcgPlace<'tcx, Ctxt>>
+        impl<'tcx, Ctxt: DebugCtxt, P: $crate::utils::PcgPlace<'tcx, Ctxt>>
             LabelEdgePlaces<'tcx, Ctxt, P> for $ty
         where
             <Self as std::ops::Deref>::Target: LabelEdgePlaces<'tcx, Ctxt, P>,
@@ -497,7 +497,7 @@ macro_rules! label_edge_lifetime_projections_wrapper {
     (
         $ty:ty
     ) => {
-        impl<'tcx, Ctxt: DebugCtxt + Copy, P> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $ty
+        impl<'tcx, Ctxt: DebugCtxt, P> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $ty
         where
             <Self as std::ops::Deref>::Target: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
         {
@@ -592,7 +592,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::edge_data::{LabelNodePredicate, NodeReplacement};
             use $crate::utils::data_structures::HashSet;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgePlaces<'tcx, Ctxt, P>,
             )+ {
                 fn label_blocked_places(
@@ -634,7 +634,7 @@ macro_rules! edgedata_enum {
             use $crate::borrow_pcg::region_projection::LifetimeProjectionLabel;
             use $crate::borrow_pcg::has_pcs_elem::LabelLifetimeProjectionResult;
 
-            impl<'tcx, Ctxt: $crate::DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
+            impl<'tcx, Ctxt: $crate::DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for $enum_name<'tcx, P> where $(
                 $inner_type: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
             )+ {
                 fn label_lifetime_projections(

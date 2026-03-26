@@ -7,7 +7,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
-    pcg::ctxt::AnalysisCtxt,
+    pcg::{CompilerCtxtWithSettings, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
@@ -155,7 +155,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         None
     }
 
-    pub(crate) fn def_id(&self) -> LocalDefId {
+    pub fn def_id(&self) -> LocalDefId {
         self.mir.source.def_id().expect_local()
     }
 }
@@ -349,7 +349,7 @@ impl ProjectionKind {
     }
 }
 
-pub trait DebugCtxt: OverrideRegionDebugString {
+pub trait DebugCtxt: OverrideRegionDebugString + Copy {
     fn func_name(&self) -> String;
     fn num_basic_blocks(&self) -> usize;
 }
@@ -380,6 +380,9 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
 {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
+    fn compiler_ctxt_with_settings(self) -> CompilerCtxtWithSettings<'a, 'tcx> {
+        CompilerCtxtWithSettings::new(self.bc_ctxt(), self.settings())
+    }
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
     HasCompilerCtxt<'a, 'tcx> + DebugCtxt

@@ -16,7 +16,7 @@ use crate::{
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
+        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
@@ -72,8 +72,10 @@ impl<'tcx> DerefEdge<'tcx> {
     }
 }
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for DerefEdge<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for DerefEdge<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.blocked_place.check_validity(ctxt)?;
         self.deref_place.check_validity(ctxt)?;
         self.blocked_lifetime_projection.check_validity(ctxt)?;
@@ -120,7 +122,7 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctx
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for DerefEdge<'tcx, P>
 where
     MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,

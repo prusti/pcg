@@ -1,5 +1,6 @@
 //! Borrow edges
 use crate::{
+    HasSettings,
     borrow_pcg::{
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
@@ -57,8 +58,8 @@ pub struct BorrowEdge<'tcx, P = Place<'tcx>> {
     assigned_lifetime_projection_label: Option<LifetimeProjectionLabel>,
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>>
-    LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowEdge<'tcx, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+    for BorrowEdge<'tcx, P>
 {
     fn label_lifetime_projections(
         &mut self,
@@ -78,7 +79,7 @@ impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>>
     }
 }
 
-impl<'tcx, Ctxt: DebugCtxt + Copy, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
+impl<'tcx, Ctxt: DebugCtxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgePlaces<'tcx, Ctxt, P>
     for BorrowEdge<'tcx, P>
 where
     MaybeLabelledPlace<'tcx, P>: LabelPlace<'tcx, Ctxt, P>,
@@ -228,7 +229,7 @@ impl<'tcx> BorrowEdge<'tcx> {
         kind: mir::BorrowKind,
         reservation_location: Location,
         region: ty::Region<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Self
     where
         'tcx: 'a,
@@ -243,7 +244,7 @@ impl<'tcx> BorrowEdge<'tcx> {
             assigned_lifetime_projection_label: None,
             borrow_index: ctxt.bc().region_to_borrow_index(region.into()),
         };
-        borrow.assert_validity(ctxt.bc_ctxt());
+        borrow.assert_validity(ctxt);
         borrow
     }
 

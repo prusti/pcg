@@ -1,11 +1,12 @@
 //! Function and loop abstractions
-pub(crate) mod function;
+pub mod function;
 pub(crate) mod r#loop;
 pub(crate) mod r#type;
 
 use std::marker::PhantomData;
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         borrow_pcg_edge::BlockedNode,
         domain::{AbstractionInputTarget, FunctionCallAbstractionInput},
@@ -109,7 +110,7 @@ pub struct AbstractionBlockEdge<'tcx, Input, Output> {
 }
 
 impl<Input: Copy, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
-    pub(crate) fn new(input: Input, output: Output) -> Self {
+    pub fn new(input: Input, output: Output) -> Self {
         Self {
             _phantom: PhantomData,
             input,
@@ -124,7 +125,7 @@ impl<Input: Copy, Output: Copy> AbstractionBlockEdge<'_, Input, Output> {
 
 impl<
     'tcx,
-    Ctxt: DebugCtxt + Copy,
+    Ctxt: DebugCtxt,
     P: PcgPlace<'tcx, Ctxt>,
     T: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
     U: LabelPlace<'tcx, Ctxt, P> + PcgNodeLike<'tcx, Ctxt, P>,
@@ -288,7 +289,7 @@ impl<Ctxt: Copy, Input: DisplayWithCtxt<Ctxt>, Output: DisplayWithCtxt<Ctxt>> Di
 }
 
 impl<
-    Ctxt: DebugCtxt + Copy,
+    Ctxt: DebugCtxt,
     Input: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
     Output: HasValidityCheck<Ctxt> + DisplayWithCtxt<Ctxt>,
 > HasValidityCheck<Ctxt> for AbstractionBlockEdge<'_, Input, Output>
@@ -307,7 +308,7 @@ impl<
 }
 
 impl<Input, Output> AbstractionBlockEdge<'_, Input, Output> {
-    pub(crate) fn new_checked<Ctxt: DebugCtxt + Copy>(
+    pub(crate) fn new_checked<'a, Ctxt: DebugCtxt + HasSettings<'a>>(
         input: Input,
         output: Output,
         ctxt: Ctxt,

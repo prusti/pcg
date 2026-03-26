@@ -42,7 +42,7 @@ use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
-        region_projection::{LifetimeProjection, PcgRegion, RegionIdx},
+        region_projection::{LifetimeProjection, LifetimeProjectionIdx, PcgRegion},
         visitor::extract_regions,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
@@ -547,7 +547,7 @@ impl<'tcx> Place<'tcx> {
     #[must_use]
     pub fn region_projection(
         &self,
-        idx: RegionIdx,
+        idx: LifetimeProjectionIdx,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> LifetimeProjection<'tcx, Self> {
         self.lifetime_projections(ctxt)[idx]
@@ -556,7 +556,7 @@ impl<'tcx> Place<'tcx> {
     pub fn regions<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, PcgRegion<'tcx>>
+    ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -566,7 +566,7 @@ impl<'tcx> Place<'tcx> {
     pub(crate) fn lifetime_projections<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<RegionIdx, LifetimeProjection<'tcx, Self>>
+    ) -> IndexVec<LifetimeProjectionIdx, LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
     {
@@ -582,7 +582,7 @@ impl<'tcx> Place<'tcx> {
         &self,
         region: PcgRegion<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Option<RegionIdx> {
+    ) -> Option<LifetimeProjectionIdx> {
         extract_regions(self.rust_ty(ctxt))
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)

@@ -16,7 +16,7 @@ use crate::{
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace, pcg_node_like_wrapper},
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode, display_with_ctxt_node_wrapper},
         place::maybe_old::MaybeLabelledPlace,
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
@@ -124,8 +124,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 
 pcg_node_like_wrapper!(LoopAbstractionOutput<'tcx, P>);
 
-impl<'a, 'tcx> HasValidityCheck<CompilerCtxt<'a, 'tcx>> for LoopAbstractionOutput<'tcx> {
-    fn check_validity(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> Result<(), String> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck<Ctxt>
+    for LoopAbstractionOutput<'tcx>
+{
+    fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         self.0.check_validity(ctxt)
     }
 }

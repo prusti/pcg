@@ -3,6 +3,7 @@ pub(crate) mod expand;
 use std::marker::PhantomData;
 
 use crate::{
+    HasSettings,
     action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
@@ -243,7 +244,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         place: Place<'tcx>,
         capability: CapabilityKind,
         context: String,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError<'tcx>> {
         let to_collapse = self
             .get_local_expansions(place.local)
@@ -288,7 +289,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     }
 
     /// Only for owned places.
-    fn create_aggregate_lifetime_projections<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt>(
+    fn create_aggregate_lifetime_projections<
+        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
+    >(
         &mut self,
         base: LocalLifetimeProjection<'tcx>,
         expansion: &[LocalLifetimeProjection<'tcx>],

@@ -19,7 +19,7 @@ let rx = s.x;
 *rx = 1;
 }
 "#;
-    run_pcg_on_str(input, |mut analysis| {
+    run_pcg_on_str(input, true, |mut analysis| {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let ctxt = analysis.ctxt();
         let stmt = &bb.statements[22];

@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use serde_derive::Serialize;
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         borrow_pcg_edge::{BlockedNode, LocalNode},
         edge::kind::BorrowPcgEdgeType,
@@ -92,7 +93,7 @@ where
     }
 }
 
-impl<'tcx, Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>
+impl<'a, 'tcx, Ctxt: Copy + DebugCtxt + HasSettings<'a>, P: PcgPlace<'tcx, Ctxt>>
     LabelEdgeLifetimeProjections<'tcx, Ctxt, P> for BorrowFlowEdge<'tcx, P>
 where
     Self: DisplayWithCtxt<Ctxt> + HasValidityCheck<Ctxt>,

@@ -205,7 +205,7 @@ fn emit_and_check_annotations(
     let emit_pcg_annotations = settings.emit_annotations;
     let check_pcg_annotations = settings.check_annotations;
 
-    let ctxt = output.ctxt();
+    let ctxt = output.results_ctxt();
 
     if emit_pcg_annotations || check_pcg_annotations {
         let mut debug_lines = Vec::new();
@@ -228,7 +228,7 @@ fn emit_and_check_annotations(
             }
         }
         if check_pcg_annotations {
-            if let Ok(source) = ctxt.source_lines() {
+            if let Ok(source) = ctxt.ctxt().source_lines() {
                 let debug_lines_set: FxHashSet<String> =
                     debug_lines.into_iter().map(|l| l.into_owned()).collect();
                 let expected_annotations = source

@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use crate::{
+    HasSettings,
     borrow_pcg::{
         action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
         state::BorrowsStateLike,
@@ -12,12 +13,12 @@ use crate::{
     error::PcgError,
     owned_pcg::{
         ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
-        join::data::JoinOwnedData,
+        join::{data::JoinOwnedData, obtain::JoinCtxt},
     },
     pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -34,7 +35,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         match (&mut self.owned, &mut other.owned) {
             (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
@@ -103,7 +104,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
-        ctxt: CompilerCtxt<'a, 'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
@@ -216,7 +217,7 @@ impl<'tcx> LocalExpansions<'tcx> {
 
     pub(crate) fn perform_collapse_action<
         'a,
-        Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
+        Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
         C: CapabilityLike,
     >(
         &mut self,

@@ -211,10 +211,12 @@ mod private {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct ResultsCtxt<'a, 'tcx> {
+    pub struct CompilerCtxtWithSettings<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
         pub(crate) settings: &'a PcgSettings,
     }
+
+    pub type ResultsCtxt<'a, 'tcx> = CompilerCtxtWithSettings<'a, 'tcx>;
 
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
         pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {

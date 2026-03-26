@@ -5,11 +5,7 @@ extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_middle;
 
-use std::{
-    fs, io,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{fs, io, path::{Path, PathBuf}, sync::Arc};
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
 use pcg::{
@@ -24,7 +20,10 @@ use pcg::{
         middle::ty::TyCtxt,
         span::source_map::FileLoader,
     },
-    utils::callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
+    utils::{
+        PcgSettings,
+        callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
+    },
 };
 
 use pcg::rustc_interface::driver::run_compiler;
@@ -44,6 +43,7 @@ impl FileLoader for StringLoader {
         Ok(fs::read(path)?.into())
     }
 
+    #[rustversion::since(2026-01-01)]
     fn current_directory(&self) -> io::Result<PathBuf> {
         std::env::current_dir()
     }
@@ -53,6 +53,7 @@ type TestCallback = dyn for<'a, 'tcx> Fn(PcgAnalysisResults<'a, 'tcx>) + Send + 
 
 struct TestCallbacks {
     input: String,
+    validity_checks: bool,
     callback: Option<Box<TestCallback>>,
 }
 
@@ -66,7 +67,7 @@ impl driver::Callbacks for TestCallbacks {
     fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
         tracing::info!("after_analysis");
         unsafe {
-            run_pcg_on_first_fn(tcx, self.callback.take().unwrap());
+            run_pcg_on_first_fn(tcx, self.validity_checks, self.callback.take().unwrap());
         }
         if in_cargo_crate() {
             Compilation::Continue
@@ -81,6 +82,7 @@ impl driver::Callbacks for TestCallbacks {
 /// Stored bodies must come from the same `tcx`.
 unsafe fn run_pcg_on_first_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
+    validity_checks: bool,
     callback: impl for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     let def_id = tcx
@@ -88,7 +90,9 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
         .find(|def_id| matches!(tcx.def_kind(*def_id), DefKind::Fn | DefKind::AssocFn))
         .unwrap();
     let body = unsafe { take_stored_body(tcx, def_id) };
-    let ctxt_creator = PcgCtxtCreator::new(tcx);
+    let mut settings = PcgSettings::new();
+    settings.validity_checks = validity_checks;
+    let ctxt_creator = PcgCtxtCreator::with_settings(tcx, settings);
     let bc = RustBorrowCheckerImpl::Polonius(PoloniusBorrowChecker::new(tcx, &body));
     let pcg_ctxt = ctxt_creator.new_ctxt(&body, &bc);
     let output = run_pcg(pcg_ctxt);
@@ -97,6 +101,7 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
 
 pub fn run_pcg_on_str(
     input: &str,
+    validity_checks: bool,
     callback: impl for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     run_compiler(
@@ -106,9 +111,11 @@ pub fn run_pcg_on_str(
             "--crate-type".to_string(),
             "lib".to_string(),
             "--edition=2021".to_string(),
+            "--cap-lints=allow".to_string(),
         ],
         &mut TestCallbacks {
             input: input.to_string(),
+            validity_checks,
             callback: Some(Box::new(callback)),
         },
     );

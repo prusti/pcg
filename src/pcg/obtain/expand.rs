@@ -1,4 +1,5 @@
 use crate::{
+    HasSettings,
     action::{BorrowPcgAction, OwnedPcgAction},
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
@@ -55,7 +56,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         place: Place<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError<'tcx>> {
         for (base, _) in place.iter_projections() {
             let base: crate::utils::Place = base.into();
@@ -164,7 +165,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<bool, PcgError<'tcx>> {
         let place_expansion = PlaceExpansion::from_places(expansion.expansion(), ctxt);
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
@@ -230,7 +231,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         base: Place<'tcx>,
         place_expansion: PlaceExpansion<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<bool, PcgError<'tcx>>
     where
         'tcx: 'a,
@@ -287,7 +288,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError<'tcx>> {
         for base_rp in base.lifetime_projections(ctxt) {
             if let Some(place_expansion) =
