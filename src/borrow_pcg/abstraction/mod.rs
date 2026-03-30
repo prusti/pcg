@@ -558,7 +558,7 @@ impl FunctionShape {
         let result_projections = shape_data.result_projections(ctxt);
         for input in arg_projections.iter().copied() {
             for output in arg_projections.iter().copied() {
-                if ctxt.region_is_invariant_in_type(output.region, output.ty)
+                if input != output && ctxt.region_is_invariant_in_type(output.region, output.ty)
                     && shape_data.outlives(input.region, output.region, ctxt)?
                 {
                     tracing::debug!("{} outlives {}", input, output);
