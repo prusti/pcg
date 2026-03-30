@@ -100,6 +100,12 @@ impl LoopAnalysis {
         self.bb_data[bb].iter()
     }
 
+    /// Returns an iterator over all loops in the body.
+    #[must_use]
+    pub fn all_loops(&self) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
+        self.loop_heads.iter_enumerated().map(|(idx, _)| idx)
+    }
+
     /// Returns the number of loops that `bb` is in.
     #[must_use]
     pub fn loop_depth(&self, bb: BasicBlock) -> usize {
@@ -124,6 +130,10 @@ impl LoopAnalysis {
     #[must_use]
     pub fn loop_head_of(&self, bb: BasicBlock) -> Option<LoopId> {
         self.loops(bb).find(|l| self[*l] == bb)
+    }
+
+    pub(crate) fn loop_head_block(&self, loop_id: LoopId) -> BasicBlock {
+        self.loop_heads[loop_id]
     }
 
     fn consistency_check(&self) {

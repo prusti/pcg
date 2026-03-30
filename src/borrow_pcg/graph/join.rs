@@ -125,7 +125,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
         let old_self = self.clone();
 
-        if let Some(used_places) = args.body_analysis.get_places_used_in_loop(self_block) {
+        if let Some(used_places) = args
+            .body_analysis
+            .get_places_used_in_loop_with_head(self_block)
+        {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
             #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))

@@ -14,7 +14,7 @@ use crate::{
     BodyAndBorrows, HasSettings,
     borrow_pcg::region_projection::OverrideRegionDebugString,
     error::PcgError,
-    r#loop::{LoopAnalysis, PlaceUsages},
+    r#loop::{LoopAnalysis, LoopId, PlaceUsages},
     pcg::{
         BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
         SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, triple::TripleWalker,
@@ -216,10 +216,21 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
     }
 
     #[must_use]
-    pub fn loop_place_usages(&self, block: BasicBlock) -> Option<&PlaceUsages<'tcx>> {
+    pub fn loop_place_usages_of_loop_with_head(
+        &self,
+        block: BasicBlock,
+    ) -> Option<&PlaceUsages<'tcx>> {
         self.body_analysis
             .loop_place_usage_analysis
             .get_used_places(block)
+    }
+
+    #[must_use]
+    pub fn loop_place_usages(&self, loop_id: LoopId) -> &PlaceUsages<'tcx> {
+        self.body_analysis
+            .loop_place_usage_analysis
+            .get_used_places(self.loop_analysis().loop_head_block(loop_id))
+            .unwrap()
     }
 
     pub(crate) fn analysis_ctxt(&self, block: BasicBlock) -> AnalysisCtxt<'a, 'tcx> {

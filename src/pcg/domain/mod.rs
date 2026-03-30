@@ -15,7 +15,7 @@ use crate::{
     AnalysisEngine,
     action::AppliedActions,
     error::PcgError,
-    r#loop::{LoopAnalysis, LoopPlaceUsageAnalysis, PlaceUsages},
+    r#loop::{LoopAnalysis, LoopId, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::SymbolicPlaceCapabilities,
@@ -115,11 +115,20 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         self.loop_place_usage_analysis.is_loop_head(block)
     }
 
-    pub(crate) fn get_places_used_in_loop(
+    pub(crate) fn get_places_used_in_loop(&self, loop_id: LoopId) -> &PlaceUsages<'tcx> {
+        let loop_head = self.loop_analysis.loop_head_block(loop_id);
+        self.loop_place_usage_analysis
+            .get_used_places(loop_head)
+            .unwrap()
+    }
+
+    pub(crate) fn get_places_used_in_loop_with_head(
         &self,
-        loop_head: BasicBlock,
+        block: BasicBlock,
     ) -> Option<&PlaceUsages<'tcx>> {
-        self.loop_place_usage_analysis.get_used_places(loop_head)
+        self.loop_analysis
+            .loop_head_of(block)
+            .map(|loop_id| self.get_places_used_in_loop(loop_id))
     }
 
     pub(crate) fn is_live_and_initialized_at(
