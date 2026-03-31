@@ -369,7 +369,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
         for (place, candidate_cap) in places_to_collapse {
             self.collapse_owned_places_and_lifetime_projections_to(
                 place,
-                candidate_cap.expect_concrete(),
+                candidate_cap,
                 format!(
                     "Collapse owned place {} (iteration {})",
                     place.display_string(self.ctxt.bc_ctxt()),
@@ -378,12 +378,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 self.ctxt,
             )?;
             if place.projection.is_empty()
-                && self
-                    .pcg
-                    .capabilities
-                    .get(place, self.ctxt)
-                    .map(super::capabilities::SymbolicCapability::expect_concrete)
-                    == Some(CapabilityKind::Read)
+                && self.pcg.capabilities.get(place, self.ctxt) == Some(CapabilityKind::Read)
             {
                 self.pcg
                     .capabilities

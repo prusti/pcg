@@ -6,7 +6,7 @@ use crate::{
     },
     owned_pcg::{OwnedPcg, OwnedPcgLocal},
     pcg::{
-        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef, SymbolicCapability,
+        CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
@@ -192,20 +192,14 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let node_type = NodeType::PlaceNode {
             owned: place.is_owned(self.ctxt),
             label,
-            capability: capability.and_then(|c| match c {
-                SymbolicCapability::Concrete(cap) => Some(cap),
-                _ => None,
-            }),
+            capability,
             location,
             ty: format!("{:?}", place_ty.ty),
         };
         let node = GraphNode { id, node_type };
         self.insert_node(node);
         if matches!(
-            capability.and_then(|c| match c {
-                SymbolicCapability::Concrete(cap) => Some(cap),
-                _ => None,
-            }),
+            capability,
             Some(CapabilityKind::Read | CapabilityKind::Exclusive)
         ) {
             for rp in place.lifetime_projections(self.ctxt) {
@@ -225,7 +219,7 @@ pub struct BorrowsGraphConstructor<'a, 'tcx, C> {
 
 impl<'a, 'tcx: 'a, C> BorrowsGraphConstructor<'a, 'tcx, C>
 where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    C: PlaceCapabilitiesReader<'tcx>,
 {
     pub fn new(
         borrows_graph: &'a BorrowsGraph<'tcx>,
@@ -253,7 +247,7 @@ where
 pub struct PcgGraphConstructor<'a, 'tcx> {
     summary: &'a OwnedPcg<'tcx>,
     borrows_domain: BorrowStateRef<'a, 'tcx>,
-    capabilities: &'a PlaceCapabilities<'tcx, SymbolicCapability>,
+    capabilities: &'a PlaceCapabilities<'tcx>,
     constructor: GraphConstructor<'a, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 }
@@ -265,9 +259,9 @@ struct PCGCapabilityGetter<'r, 'a, 'tcx, C> {
 
 impl<'a, 'tcx, C> CapabilityGetter<'a, 'tcx> for PCGCapabilityGetter<'_, 'a, 'tcx, C>
 where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    C: PlaceCapabilitiesReader<'tcx>,
 {
-    fn get(&self, place: Place<'tcx>) -> Option<SymbolicCapability> {
+    fn get(&self, place: Place<'tcx>) -> Option<CapabilityKind> {
         self.capabilities.get(place, self.ctxt)
     }
 }
@@ -291,7 +285,7 @@ impl<'a, 'tcx: 'a> Grapher<'a, 'tcx> for PcgGraphConstructor<'a, 'tcx> {
 
 impl<'a, 'tcx: 'a, C> Grapher<'a, 'tcx> for BorrowsGraphConstructor<'a, 'tcx, C>
 where
-    C: PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    C: PlaceCapabilitiesReader<'tcx>,
 {
     fn ctxt(&self) -> CompilerCtxt<'a, 'tcx> {
         self.ctxt

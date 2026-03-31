@@ -22,8 +22,7 @@ use crate::{
             RenderDebugGraph, expand::PlaceExpander,
         },
         place_capabilities::{
-            BlockType, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
-            SymbolicPlaceCapabilities,
+            BlockType, PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
         visitor::upgrade::AdjustCapabilityReason,
     },
@@ -70,7 +69,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
         self.pcg.borrow.as_mut_ref()
     }
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx> {
+    fn capabilities(&mut self) -> &mut PlaceCapabilities<'tcx> {
         self.pcg.capabilities
     }
 
@@ -104,11 +103,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if !self.pcg.owned.is_allocated(place.local) {
             return Ok(());
         }
-        let blocked_cap = self
-            .pcg
-            .capabilities
-            .get(place, self.ctxt)
-            .map(super::super::capabilities::SymbolicCapability::expect_concrete);
+        let blocked_cap = self.pcg.capabilities.get(place, self.ctxt);
 
         // TODO: If the place projects a shared ref, do we even need to restore a capability?
         let restore_cap = if place.place().projects_shared_ref(self.ctxt) {
@@ -268,10 +263,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             && let Some(place) = expansion.base().as_current_place()
         {
             matches!(
-                self.pcg
-                    .capabilities
-                    .get(place, self.ctxt)
-                    .map(super::super::capabilities::SymbolicCapability::expect_concrete),
+                self.pcg.capabilities.get(place, self.ctxt),
                 Some(CapabilityKind::Write) | None
             )
         } else {
@@ -340,7 +332,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     self.record_and_apply_action(
                         BorrowPcgAction::weaken(
                             place,
-                            existing_cap.expect_concrete(),
+                            existing_cap,
                             Some(CapabilityKind::Write),
                             "remove borrow edge",
                         )
@@ -391,13 +383,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .collect::<Vec<_>>();
         for (p, cap) in to_remove {
             self.record_and_apply_action(
-                BorrowPcgAction::weaken(
-                    p,
-                    cap.expect_concrete(),
-                    None,
-                    "Remove read permission downwards",
-                )
-                .into(),
+                BorrowPcgAction::weaken(p, cap, None, "Remove read permission downwards").into(),
             )?;
         }
         Ok(())
@@ -446,7 +432,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         let mut expand_root = place;
         loop {
             if let Some(cap) = self.pcg.capabilities.get(expand_root, self.ctxt) {
-                if cap.expect_concrete().is_read() {
+                if cap.is_read() {
                     self.upgrade_read_to_exclusive(expand_root)?;
                 }
                 return Ok(());
@@ -480,7 +466,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.pcg.capabilities.regain_loaned_capability(
                         regained_capability.place,
-                        regained_capability.capability.into(),
+                        regained_capability.capability,
                         self.pcg.borrow.as_mut_ref(),
                         self.ctxt,
                     );
@@ -624,20 +610,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // STEP 2
         if current_cap.is_none()
             || matches!(
-                current_cap
-                    .unwrap()
-                    .expect_concrete()
-                    .partial_cmp(&obtain_cap),
+                current_cap.unwrap().partial_cmp(&obtain_cap),
                 Some(Ordering::Less) | None
             )
         {
             // If we want to get e.g. write permission but we currently have
             // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step
-            let collapse_cap = if current_cap
-                .map(super::super::capabilities::SymbolicCapability::expect_concrete)
-                == Some(CapabilityKind::Read)
-            {
+            let collapse_cap = if current_cap == Some(CapabilityKind::Read) {
                 CapabilityKind::Read
             } else {
                 obtain_cap
@@ -794,11 +774,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
     ) -> CapabilityKind {
         obtain_type.capability_for_expand(
             base_place,
-            self.pcg
-                .capabilities
-                .get(base_place, ctxt)
-                .unwrap()
-                .expect_concrete(),
+            self.pcg.capabilities.get(base_place, ctxt).unwrap(),
             ctxt,
         )
     }

@@ -6,7 +6,7 @@ use crate::{
     pcg::{
         CompilerCtxtWithSettings,
         obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
-        place_capabilities::SymbolicPlaceCapabilities,
+        place_capabilities::PlaceCapabilities,
     },
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, Place, SnapshotLocation, data_structures::HashSet},
@@ -48,7 +48,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.data.capabilities.regain_loaned_capability(
                         regained_capability.place,
-                        regained_capability.capability.into(),
+                        regained_capability.capability,
                         self.data.borrows.as_mut_ref(),
                         self.ctxt,
                     );
@@ -70,7 +70,7 @@ impl<'a, 'tcx> PlaceCollapser<'a, 'tcx> for JoinObtainer<'_, '_, '_, 'a, 'tcx> {
         self.data.borrows.into()
     }
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx> {
+    fn capabilities(&mut self) -> &mut PlaceCapabilities<'tcx> {
         self.data.capabilities
     }
 

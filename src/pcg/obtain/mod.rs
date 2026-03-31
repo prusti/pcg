@@ -23,7 +23,7 @@ use crate::{
     pcg::{
         CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
-        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::middle::mir,
     utils::{
@@ -197,7 +197,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn borrows_state(&mut self) -> BorrowStateMutRef<'_, 'tcx>;
 
-    fn capabilities(&mut self) -> &mut SymbolicPlaceCapabilities<'tcx>;
+    fn capabilities(&mut self) -> &mut PlaceCapabilities<'tcx>;
 
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
 
@@ -212,7 +212,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             leaf_places.display_string(ctxt.bc_ctxt())
         );
         leaf_places.retain(|p| {
-            self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read.into())
+            self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read)
                 && !p.projects_shared_ref(ctxt)
                 && p.parent_place()
                     .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())

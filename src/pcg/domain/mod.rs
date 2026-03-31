@@ -18,7 +18,7 @@ use crate::{
     r#loop::{LoopAnalysis, LoopId, LoopPlaceUsageAnalysis, PlaceUsages},
     pcg::{
         ctxt::{AnalysisCtxt, HasSettings},
-        place_capabilities::SymbolicPlaceCapabilities,
+        place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
     rustc_interface::{
@@ -51,7 +51,7 @@ pub struct DataflowIterationDebugInfo {
 }
 
 #[derive(Clone, Eq, Debug)]
-pub struct PcgDomainData<'a, 'tcx, Capabilities = SymbolicPlaceCapabilities<'tcx>> {
+pub struct PcgDomainData<'a, 'tcx, Capabilities = PlaceCapabilities<'tcx>> {
     pub(crate) pcg: DomainData<PcgArenaRef<'a, Pcg<'a, 'tcx, Capabilities>>>,
     pub(crate) actions: EvalStmtData<AppliedActions<'tcx>>,
 }

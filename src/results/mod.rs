@@ -328,10 +328,7 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                     PlaceUsageType::Read => CapabilityKind::Read,
                     PlaceUsageType::Mutate => CapabilityKind::Exclusive,
                 };
-                if let Some(joined_capability) = initial_capability
-                    .expect_concrete()
-                    .minimum(usage_capability)
-                {
+                if let Some(joined_capability) = initial_capability.minimum(usage_capability) {
                     result.insert(place_usage.place, joined_capability);
                 }
             }

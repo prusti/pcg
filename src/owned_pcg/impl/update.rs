@@ -10,7 +10,7 @@ use crate::{
     pcg::{
         CapabilityKind,
         place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+            PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
         triple::{PlaceCondition, Triple},
     },
@@ -28,7 +28,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     fn check_pre_satisfied<'a>(
         &self,
         pre: PlaceCondition<'tcx>,
-        capabilities: &SymbolicPlaceCapabilities<'tcx>,
+        capabilities: &PlaceCapabilities<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) where
         'tcx: 'a,
@@ -85,7 +85,7 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::Return => {
                 pcg_validity_assert!(
                     capabilities.get(RETURN_PLACE.into(), ctxt).unwrap()
-                        == CapabilityKind::Exclusive.into(),
+                        == CapabilityKind::Exclusive,
                     [ctxt]
                 );
             }
@@ -95,7 +95,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         t: Triple<'tcx>,
-        place_capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
+        place_capabilities: &mut PlaceCapabilities<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,

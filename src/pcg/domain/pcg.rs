@@ -11,11 +11,9 @@ use crate::{
     error::PcgError,
     owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind, CapabilityLike, SymbolicCapability,
+        CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
-        place_capabilities::{
-            PlaceCapabilities, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
-        },
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
     rustc_interface::middle::mir,
@@ -33,7 +31,7 @@ use crate::visualization::{dot_graph::DotGraph, generate_pcg_dot_graph};
 pub struct Pcg<
     'a,
     'tcx,
-    Capabilities = SymbolicPlaceCapabilities<'tcx>,
+    Capabilities = PlaceCapabilities<'tcx>,
     EdgeKind: Eq + std::hash::Hash + PartialEq = BorrowPcgEdgeKind<'tcx>,
 > {
     pub(crate) owned: OwnedPcg<'tcx>,
@@ -53,7 +51,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
 pub struct PcgRef<'pcg, 'tcx> {
     pub(crate) owned: &'pcg OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowStateRef<'pcg, 'tcx>,
-    pub(crate) capabilities: &'pcg SymbolicPlaceCapabilities<'tcx>,
+    pub(crate) capabilities: &'pcg PlaceCapabilities<'tcx>,
 }
 
 impl<'tcx> PcgRef<'_, 'tcx> {
@@ -98,14 +96,14 @@ impl<'pcg, 'tcx> From<&'pcg PcgMutRef<'pcg, 'tcx>> for PcgRef<'pcg, 'tcx> {
 pub(crate) struct PcgMutRef<'pcg, 'tcx> {
     pub(crate) owned: &'pcg mut OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowStateMutRef<'pcg, 'tcx>,
-    pub(crate) capabilities: &'pcg mut SymbolicPlaceCapabilities<'tcx>,
+    pub(crate) capabilities: &'pcg mut PlaceCapabilities<'tcx>,
 }
 
 impl<'pcg, 'tcx> PcgMutRef<'pcg, 'tcx> {
     pub(crate) fn new(
         owned: &'pcg mut OwnedPcg<'tcx>,
         borrow: BorrowStateMutRef<'pcg, 'tcx>,
-        capabilities: &'pcg mut SymbolicPlaceCapabilities<'tcx>,
+        capabilities: &'pcg mut PlaceCapabilities<'tcx>,
     ) -> Self {
         Self {
             owned,
@@ -132,15 +130,11 @@ pub(crate) trait PcgRefLike<'tcx> {
         self.as_ref().borrow.graph
     }
 
-    fn place_capability_equals(
-        &self,
-        place: Place<'tcx>,
-        capability: impl Into<SymbolicCapability>,
-    ) -> bool {
+    fn place_capability_equals(&self, place: Place<'tcx>, capability: CapabilityKind) -> bool {
         self.as_ref()
             .capabilities
             .get(place, ())
-            .is_some_and(|c| c == capability.into())
+            .is_some_and(|c| c == capability)
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
@@ -195,10 +189,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
     for PcgRef<'_, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
-        self.capabilities.to_concrete(ctxt).check_validity(ctxt)?;
+        self.capabilities.check_validity(ctxt)?;
         self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
-            .check_validity(&self.capabilities.to_concrete(ctxt), ctxt.bc_ctxt())?;
+            .check_validity(self.capabilities, ctxt.bc_ctxt())?;
 
         if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
             return Err("PCG is not acyclic".to_owned());
@@ -213,7 +207,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
-        for (place, cap) in self.capabilities.to_concrete(ctxt).iter() {
+        for (place, cap) in self.capabilities.iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
                 && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
             {
@@ -249,10 +243,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = deref_edge.blocked_place
                         && let MaybeLabelledPlace::Current(deref_place) = deref_edge.deref_place
-                        && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) = self
-                            .capabilities
-                            .get(blocked_place, ctxt)
-                            .map(super::super::capabilities::SymbolicCapability::expect_concrete)
+                        && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) =
+                            self.capabilities.get(blocked_place, ctxt)
                         && self.capabilities.get(deref_place, ctxt).is_none()
                     {
                         return Err(format!(
@@ -305,18 +297,12 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
         self.capabilities
             .iter()
-            .filter_map(|(p, c)| {
-                if c == capability.into() {
-                    Some(p)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|(p, c)| if c == capability { Some(p) } else { None })
             .collect()
     }
 
     #[must_use]
-    pub fn capabilities(&self) -> &SymbolicPlaceCapabilities<'tcx> {
+    pub fn capabilities(&self) -> &PlaceCapabilities<'tcx> {
         &self.capabilities
     }
 
@@ -377,13 +363,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 continue;
             }
             if let Some(other_cap) = other.capabilities.get(place, ctxt)
-                && cap.expect_concrete() > other_cap.expect_concrete()
+                && cap > other_cap
             {
-                repacks.push(RepackOp::Weaken(Weaken::new(
-                    place,
-                    cap.expect_concrete(),
-                    other_cap.expect_concrete(),
-                )));
+                repacks.push(RepackOp::Weaken(Weaken::new(place, cap, other_cap)));
             }
         }
         Ok(repacks)
@@ -437,12 +419,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, C: CapabilityLike>
-    Pcg<'a, 'tcx, PlaceCapabilities<'tcx, C, Place<'tcx>>, BorrowPcgEdgeKind<'tcx>>
-{
+impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     pub(crate) fn start_block(analysis_ctxt: AnalysisCtxt<'a, 'tcx>) -> Self {
-        let mut capabilities: PlaceCapabilities<'tcx, C, Place<'tcx>> =
-            PlaceCapabilities::default();
+        let mut capabilities: PlaceCapabilities<'tcx> = PlaceCapabilities::default();
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {
