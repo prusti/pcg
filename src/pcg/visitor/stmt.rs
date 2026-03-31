@@ -61,13 +61,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // The permission to the target may have been Read originally.
                     // Now, because it's been made old, the non-old place should be a leaf,
                     // and its permission should be Exclusive.
-                    if self
-                        .pcg
-                        .capabilities
-                        .get(target, self.ctxt)
-                        .map(super::super::capabilities::SymbolicCapability::expect_concrete)
-                        == Some(CapabilityKind::Read)
-                    {
+                    if self.pcg.capabilities.get(target, self.ctxt) == Some(CapabilityKind::Read) {
                         self.record_and_apply_action(
                             BorrowPcgAction::restore_capability(
                                 target,
@@ -79,8 +73,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
 
-                if let Some(target_cap_sym) = self.pcg.capabilities.get(target, self.ctxt) {
-                    let target_cap = target_cap_sym.expect_concrete();
+                if let Some(target_cap) = self.pcg.capabilities.get(target, self.ctxt) {
                     pcg_validity_assert!(
                         target_cap >= CapabilityKind::Write,
                         "target_cap: {:?}",

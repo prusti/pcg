@@ -29,7 +29,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability,
+        CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike,
         obtain::ObtainType,
         place_capabilities::{BlockType, PlaceCapabilitiesReader},
     },
@@ -482,7 +482,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     /// labels.
     pub(crate) fn is_packable(
         &self,
-        capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+        capabilities: &impl PlaceCapabilitiesReader<'tcx>,
         ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) -> bool {
         let BorrowPcgExpansion::Place(place_expansion) = self else {

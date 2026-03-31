@@ -12,7 +12,7 @@ use crate::{
         },
     },
     pcg::{
-        CapabilityKind, CapabilityLike, SymbolicCapability,
+        CapabilityKind,
         obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
     },
@@ -79,14 +79,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         'tcx: 'a,
     {
         let base_place = other_expansion.place;
-        let self_cap = self
-            .capabilities
-            .get(base_place, ctxt)
-            .map(crate::pcg::capabilities::SymbolicCapability::expect_concrete);
-        let other_cap = other
-            .capabilities
-            .get(base_place, ctxt)
-            .map(crate::pcg::capabilities::SymbolicCapability::expect_concrete);
+        let self_cap = self.capabilities.get(base_place, ctxt);
+        let other_cap = other.capabilities.get(base_place, ctxt);
         if self_cap == Some(CapabilityKind::Read) && other_cap == Some(CapabilityKind::Read) {
             let action =
                 RepackExpand::new(base_place, other_expansion.guide(), CapabilityKind::Read);
@@ -127,7 +121,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
 
             pcg_validity_assert!(
                 self_obtainer.data.capabilities.get(base_place, ctxt)
-                    == Some(CapabilityKind::Write.into()),
+                    == Some(CapabilityKind::Write),
                 "Expected capability for {} to be Write",
                 base_place.display_string(ctxt)
             );
@@ -158,27 +152,27 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         expansion: &ExpandedPlace<'tcx>,
-        self_cap: SymbolicCapability,
-        other_cap: SymbolicCapability,
+        self_cap: CapabilityKind,
+        other_cap: CapabilityKind,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
-        if let Some(expand_cap) = self_cap.minimum(other_cap, ctxt) {
+        if let Some(expand_cap) = self_cap.minimum(other_cap) {
             tracing::debug!(
                 "Expanding from place {} with cap {:?}",
                 place.display_string(ctxt),
                 expand_cap
             );
-            let expand_action = RepackExpand::new(place, guide, expand_cap.expect_concrete());
+            let expand_action = RepackExpand::new(place, guide, expand_cap);
             self.owned
                 .perform_expand_action(expand_action, self.capabilities, ctxt);
             let mut actions = vec![RepackOp::Expand(expand_action)];
             actions.extend(self.join_all_places_in_expansion(other, expansion, ctxt)?);
             Ok(actions)
-        } else if self_cap == CapabilityKind::Read.into() {
-            pcg_validity_assert!(other_cap == CapabilityKind::Write.into());
+        } else if self_cap == CapabilityKind::Read {
+            pcg_validity_assert!(other_cap == CapabilityKind::Write);
             tracing::debug!(
                 "No join expansion from place {}",
                 place.display_string(ctxt)
@@ -249,8 +243,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion)
             } else {
                 // We might as well just expand our place
-                let expand_action =
-                    RepackExpand::new(place, other_expansion.guide(), self_cap.expect_concrete());
+                let expand_action = RepackExpand::new(place, other_expansion.guide(), self_cap);
                 self.owned
                     .perform_expand_action(expand_action, self.capabilities, ctxt);
                 Ok(JoinExpandedPlaceResult::CreatedExpansion(vec![
@@ -337,12 +330,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
-        pcg_validity_assert!(
-            self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read.into())
-        );
-        pcg_validity_assert!(
-            other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write.into())
-        );
+        pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
+        pcg_validity_assert!(other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write));
         let mut join_obtainer = JoinObtainer {
             ctxt,
             data: self,
@@ -376,7 +365,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         let Some(other_cap) = other.capabilities.get(place, ctxt) else {
             return Ok(vec![]);
         };
-        match (self_cap.expect_concrete(), other_cap.expect_concrete()) {
+        match (self_cap, other_cap) {
             (capability_gte!(Read), CapabilityKind::Read) => {
                 copy_read_capabilities(other.capabilities, self.capabilities, place, ctxt);
                 Ok(vec![])
@@ -443,7 +432,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     fn contains_descendent_leaf_node_without_capability<'a>(
         &self,
         place: Place<'tcx>,
-        place_capabilities: &impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
+        place_capabilities: &impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> bool
     where
@@ -464,14 +453,14 @@ impl<'tcx> LocalExpansions<'tcx> {
 }
 
 fn copy_read_capabilities<'a, 'tcx: 'a>(
-    cap_source: &impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
-    cap_target: &mut impl PlaceCapabilitiesInterface<'tcx, SymbolicCapability>,
+    cap_source: &impl PlaceCapabilitiesInterface<'tcx>,
+    cap_target: &mut impl PlaceCapabilitiesInterface<'tcx>,
     place: Place<'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
 ) {
     cap_target.insert(place, CapabilityKind::Read, ctxt);
     for (p, c) in cap_source.capabilities_for_strict_postfixes_of(place) {
-        pcg_validity_assert!(c.expect_concrete().is_read());
+        pcg_validity_assert!(c.is_read());
         cap_target.insert(p, c, ctxt);
     }
 }

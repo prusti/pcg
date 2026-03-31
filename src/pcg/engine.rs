@@ -17,7 +17,7 @@ use crate::{
     r#loop::{LoopAnalysis, LoopId, PlaceUsages},
     pcg::{
         BodyAnalysis, DataflowState, DomainDataWithCtxt, HasPcgDomainData, PcgDomainData,
-        SymbolicCapabilityCtxt, ctxt::AnalysisCtxt, triple::TripleWalker,
+        ctxt::AnalysisCtxt, triple::TripleWalker,
     },
     pcg_validity_assert,
     rustc_interface::{
@@ -150,7 +150,6 @@ impl<'a, 'tcx: 'a> DebugCtxt for &PcgEngine<'a, 'tcx> {
 
 pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
-    pub(crate) symbolic_capability_ctxt: SymbolicCapabilityCtxt<'a, 'tcx>,
     #[cfg(feature = "visualization")]
     pub(crate) debug_graphs: Option<crate::visualization::stmt_graphs::PcgEngineDebugData<'a>>,
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
@@ -238,7 +237,6 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             self.ctxt,
             block,
             self.body_analysis,
-            self.symbolic_capability_ctxt,
             self.arena,
             self.settings,
             #[cfg(feature = "visualization")]
@@ -360,7 +358,6 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             debug_graphs: debug_data,
             body_analysis: arena.alloc(BodyAnalysis::new(ctxt, move_data)),
             arena,
-            symbolic_capability_ctxt: SymbolicCapabilityCtxt::new(arena),
             analyzed_blocks: RefCell::new(analyzed_blocks),
             settings,
         }

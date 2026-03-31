@@ -28,9 +28,7 @@ use crate::{
         edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph,
         validity_conditions::ValidityConditions,
     },
-    pcg::{
-        CapabilityKind, PcgRef, SymbolicCapability, place_capabilities::PlaceCapabilitiesReader,
-    },
+    pcg::{CapabilityKind, PcgRef, place_capabilities::PlaceCapabilitiesReader},
     rustc_interface::middle::mir::Location,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
@@ -391,7 +389,7 @@ impl<'a> Graph<'a> {
 
 pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
     ctxt: CompilerCtxt<'a, 'tcx>,
-    capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx>,
     borrows_domain: &'a BorrowsGraph<'tcx>,
 ) -> io::Result<String> {
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());

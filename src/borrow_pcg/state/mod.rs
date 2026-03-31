@@ -15,8 +15,8 @@ use crate::{
         },
     },
     pcg::{
-        CapabilityLike, PcgNodeWithPlace,
-        place_capabilities::{PlaceCapabilitiesReader, SymbolicPlaceCapabilities},
+        PcgNodeWithPlace,
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
@@ -264,11 +264,10 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         'a,
         Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx> + HasSettings<'a>,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        C: CapabilityLike,
     >(
         &mut self,
         action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
         ctxt: Ctxt,
     ) -> Result<ApplyActionResult, PcgError<'tcx>>
     where
@@ -285,7 +284,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             BorrowPcgActionKind::Restore(restore) => {
                 let restore_place = restore.place();
                 if let Some(cap) = capabilities.get(restore_place, ctxt) {
-                    pcg_validity_assert!(cap.expect_concrete() < restore.capability());
+                    pcg_validity_assert!(cap < restore.capability());
                 }
                 if !capabilities.insert(restore_place, restore.capability(), ctxt) {
                     // panic!("Capability should have been updated")
@@ -302,17 +301,10 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             BorrowPcgActionKind::Weaken(weaken) => {
                 let weaken_place = weaken.place();
                 pcg_validity_assert!(
-                    capabilities
-                        .get(weaken_place, ctxt)
-                        .unwrap()
-                        .expect_concrete()
-                        == weaken.from,
+                    capabilities.get(weaken_place, ctxt).unwrap() == weaken.from,
                     [ctxt],
                     "Weakening from {:?} to {:?} is not valid",
-                    capabilities
-                        .get(weaken_place, ctxt)
-                        .unwrap()
-                        .expect_concrete(),
+                    capabilities.get(weaken_place, ctxt).unwrap(),
                     weaken.from
                 );
                 match weaken.to {
@@ -428,10 +420,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidity
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_initial_borrows<C: CapabilityLike>(
+    fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let arg_place: Place<'tcx> = local.into();
@@ -476,8 +468,8 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         }
     }
 
-    pub(crate) fn start_block<C: CapabilityLike>(
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, Place<'tcx>>,
+    pub(crate) fn start_block(
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Self {
         let mut borrow = Self::default();
@@ -545,7 +537,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         kind: BorrowKind,
         location: Location,
         region: ty::Region<'tcx>,
-        capabilities: &mut SymbolicPlaceCapabilities<'tcx>,
+        capabilities: &mut PlaceCapabilities<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
@@ -581,9 +573,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             let _ = capabilities.remove(blocked_place, ctxt);
         } else {
             let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-            match blocked_place_capability
-                .map(super::super::pcg::capabilities::SymbolicCapability::expect_concrete)
-            {
+            match blocked_place_capability {
                 Some(CapabilityKind::Exclusive) => {
                     assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
                 }

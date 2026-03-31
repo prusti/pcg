@@ -15,7 +15,7 @@ use crate::{
         ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
         join::{data::JoinOwnedData, obtain::JoinCtxt},
     },
-    pcg::{CapabilityKind, CapabilityLike, place_capabilities::PlaceCapabilitiesInterface},
+    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
         DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
@@ -65,15 +65,15 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 );
                 let mut repacks = vec![];
                 for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
-                    if k.expect_concrete() > CapabilityKind::Write {
+                    if *k > CapabilityKind::Write {
                         // Temporary: mark as for_storage_dead until
                         // https://github.com/prusti/pcg/issues/137 is resolved.
                         repacks.push(RepackOp::weaken_for_storage_dead(
                             place,
-                            k.expect_concrete(),
+                            *k,
                             CapabilityKind::Write,
                         ));
-                        *k = CapabilityKind::Write.into();
+                        *k = CapabilityKind::Write;
                     }
                 }
                 repacks.extend(expansions.collapse(
@@ -138,7 +138,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             PlaceExpansion::from_places(target_places.clone(), ctxt),
         );
         let source_cap = if expand.capability.is_read() {
-            expand.capability.into()
+            expand.capability
         } else {
             capabilities.get(expand.from, ctxt).unwrap_or_else(|| {
                 pcg_validity_assert!(
@@ -148,7 +148,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                 );
                 // panic!("no cap for {}", expand.from.display_string(ctxt));
                 // For debugging, assume exclusive, we can visualize the graph to see what's going on
-                CapabilityKind::Exclusive.into()
+                CapabilityKind::Exclusive
             })
         };
         for target_place in target_places {
@@ -191,10 +191,10 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn collapse_actions_for<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, C: CapabilityLike>(
+    pub(crate) fn collapse_actions_for<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
         place: Place<'tcx>,
-        capabilities: &impl PlaceCapabilitiesInterface<'tcx, C>,
+        capabilities: &impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) -> Vec<RepackCollapse<'tcx>>
     where
@@ -205,7 +205,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             HashMap::default();
         for child in children {
             let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
-            let child_cap = capabilities.get(child, ctxt).unwrap().expect_concrete();
+            let child_cap = capabilities.get(child, ctxt).unwrap();
             let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
             *entry = entry.minimum(child_cap).unwrap();
         }
@@ -218,36 +218,35 @@ impl<'tcx> LocalExpansions<'tcx> {
     pub(crate) fn perform_collapse_action<
         'a,
         Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
-        C: CapabilityLike,
     >(
         &mut self,
         collapse: RepackCollapse<'tcx>,
-        place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C>,
+        place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
     {
         let expansion_places = self.all_children_of(collapse.to, ctxt);
-        let retained_cap: C =
+        let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
-                .fold(CapabilityKind::Exclusive.into(), |acc, place| {
+                .fold(CapabilityKind::Exclusive, |acc, place| {
                     let removed_cap = place_capabilities.remove(*place, ctxt);
                     let removed_cap = pcg_validity_expect_some!(
                         removed_cap,
-                        fallback: CapabilityKind::Exclusive.into(),
+                        fallback: CapabilityKind::Exclusive,
                         [ctxt],
                         "Expected capability for {}",
                         place.display_string(ctxt.ctxt())
                     );
-                    let joined_cap = removed_cap.minimum(acc, ctxt);
+                    let joined_cap = removed_cap.minimum(acc);
                     pcg_validity_expect_some!(joined_cap,
-                        fallback: CapabilityKind::Exclusive.into(),
+                        fallback: CapabilityKind::Exclusive,
                         [ctxt],
                         "Cannot join capability {:?} of {} with min cap {:?}",
-                        removed_cap.expect_concrete(),
+                        removed_cap,
                         place.display_string(ctxt.ctxt()),
-                        acc.expect_concrete()
+                        acc
                     )
                 });
         self.remove_all_expansions_from(collapse.to, ctxt);

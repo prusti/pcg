@@ -9,7 +9,7 @@ use crate::{
         edge_data::LabelNodePredicate,
         state::{BorrowStateMutRef, BorrowsStateLike},
     },
-    pcg::{CapabilityKind, CapabilityLike, SymbolicCapability},
+    pcg::CapabilityKind,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
@@ -19,11 +19,13 @@ use crate::{
 };
 
 mod private {
-    use crate::{pcg::SymbolicCapability, rustc_interface::middle::mir};
+    use crate::rustc_interface::middle::mir;
 
     use crate::utils::{HasCompilerCtxt, Place, PlaceLike, PrefixRelation};
 
-    pub trait PlaceCapabilitiesReader<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>> {
+    use crate::pcg::CapabilityKind;
+
+    pub trait PlaceCapabilitiesReader<'tcx, C = CapabilityKind, P: Copy = Place<'tcx>> {
         fn get<Ctxt>(&self, place: P, ctxt: Ctxt) -> Option<C>;
 
         fn iter(&self) -> impl Iterator<Item = (P, C)> + '_;
@@ -47,7 +49,7 @@ mod private {
         }
     }
 
-    pub trait PlaceCapabilitiesInterface<'tcx, C = SymbolicCapability, P: Copy = Place<'tcx>>:
+    pub trait PlaceCapabilitiesInterface<'tcx, C = CapabilityKind, P: Copy = Place<'tcx>>:
         PlaceCapabilitiesReader<'tcx, C, P>
     where
         P: Copy + Eq + std::hash::Hash,
@@ -155,20 +157,7 @@ where
     }
 }
 
-pub(crate) type SymbolicPlaceCapabilities<'tcx> = PlaceCapabilities<'tcx, SymbolicCapability>;
-
-impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
-    pub(crate) fn to_concrete(
-        &self,
-        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> PlaceCapabilities<'tcx, CapabilityKind> {
-        let mut concrete = PlaceCapabilities::default();
-        for (place, cap) in self.iter() {
-            concrete.insert(place, cap.expect_concrete(), ctxt);
-        }
-        concrete
-    }
-
+impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
     pub(crate) fn update_for_deref<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         &mut self,
         ref_place: Place<'tcx>,
@@ -176,25 +165,17 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         ctxt: Ctxt,
     ) -> bool {
         if capability.is_read() || ref_place.is_shared_ref(ctxt.bc_ctxt()) {
-            self.insert(
-                ref_place,
-                SymbolicCapability::Concrete(CapabilityKind::Read),
-                ctxt,
-            );
+            self.insert(ref_place, CapabilityKind::Read, ctxt);
             self.insert(
                 ref_place.project_deref(ctxt.bc_ctxt()),
-                SymbolicCapability::Concrete(CapabilityKind::Read),
+                CapabilityKind::Read,
                 ctxt,
             );
         } else {
-            self.insert(
-                ref_place,
-                SymbolicCapability::Concrete(CapabilityKind::Write),
-                ctxt,
-            );
+            self.insert(ref_place, CapabilityKind::Write, ctxt);
             self.insert(
                 ref_place.project_deref(ctxt.bc_ctxt()),
-                SymbolicCapability::Concrete(CapabilityKind::Exclusive),
+                CapabilityKind::Exclusive,
                 ctxt,
             );
         }
@@ -215,9 +196,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
         let base = expansion.base;
         let base_capability = self.get(base.place(), ctxt);
         let expanded_capability = if let Some(capability) = base_capability {
-            let concrete_cap = capability.expect_concrete();
-            let expanded = block_type.expansion_capability(base.place(), concrete_cap, ctxt);
-            SymbolicCapability::Concrete(expanded)
+            block_type.expansion_capability(base.place(), capability, ctxt)
         } else {
             return true;
         };
@@ -238,11 +217,7 @@ impl<'a, 'tcx: 'a> SymbolicPlaceCapabilities<'tcx> {
     ) -> bool {
         let retained_capability = block_type.blocked_place_maximum_retained_capability();
         if let Some(capability) = retained_capability {
-            self.insert(
-                blocked_place,
-                SymbolicCapability::Concrete(capability),
-                ctxt,
-            )
+            self.insert(blocked_place, capability, ctxt)
         } else {
             self.remove(blocked_place, ctxt).is_some()
         }
@@ -313,16 +288,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt> DebugLines<Ctxt>
-    for SymbolicPlaceCapabilities<'tcx>
+    for PlaceCapabilities<'tcx>
 {
     fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
         self.iter()
             .map(|(node, capability)| {
-                Cow::Owned(format!(
-                    "{}: {:?}",
-                    node.display_string(ctxt),
-                    capability.expect_concrete()
-                ))
+                Cow::Owned(format!("{}: {:?}", node.display_string(ctxt), capability))
             })
             .sorted()
             .collect()
@@ -366,9 +337,9 @@ impl BlockType {
     }
 }
 
-impl<'tcx, C: CapabilityLike> PlaceCapabilities<'tcx, C>
+impl<'tcx> PlaceCapabilities<'tcx>
 where
-    Self: PlaceCapabilitiesInterface<'tcx, C>,
+    Self: PlaceCapabilitiesInterface<'tcx>,
 {
     pub(crate) fn regain_loaned_capability<
         'a,
@@ -376,15 +347,14 @@ where
     >(
         &mut self,
         place: Place<'tcx>,
-        capability: C,
+        capability: CapabilityKind,
         mut borrows: BorrowStateMutRef<'_, 'tcx>,
         ctxt: Ctxt,
     ) where
         'tcx: 'a,
-        C: 'static,
     {
         self.insert((*place).into(), capability, ctxt);
-        if capability == CapabilityKind::Exclusive.into() {
+        if capability == CapabilityKind::Exclusive {
             borrows.label_lifetime_projections(
                 &LabelNodePredicate::all_future_postfixes(place),
                 None,
@@ -402,13 +372,13 @@ where
     }
 }
 
-impl<C: CapabilityLike, P> PlaceCapabilities<'_, C, P>
+impl<C: Copy + PartialEq, P> PlaceCapabilities<'_, C, P>
 where
     P: Copy + Eq + std::hash::Hash,
 {
-    pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, ctxt: Ctxt) -> bool
+    pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, _ctxt: Ctxt) -> bool
     where
-        C: 'static,
+        C: PartialOrd,
     {
         let mut changed = false;
         self.map.retain(|place, _| other.map.contains_key(place));
@@ -416,9 +386,16 @@ where
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {
-                if let Some(c) = self_capability.minimum(other_capability, ctxt) {
-                    changed |= self.map.insert(place, c) != Some(c);
+                if let Some(std::cmp::Ordering::Greater) =
+                    self_capability.partial_cmp(&other_capability)
+                {
+                    changed |= self.map.insert(place, other_capability) != Some(other_capability);
+                } else if let Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) =
+                    self_capability.partial_cmp(&other_capability)
+                {
+                    // self is already minimum, no change needed
                 } else {
+                    // incomparable - remove
                     self.map.remove(&place);
                     changed = true;
                 }
@@ -457,10 +434,10 @@ impl<'tcx, C: Copy + PartialEq> PlaceCapabilities<'tcx, C> {
     }
 }
 
-impl<'tcx> PlaceCapabilities<'tcx, SymbolicCapability> {
+impl<'tcx> PlaceCapabilities<'tcx> {
     #[must_use]
     pub fn is_exclusive(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.get(place, ctxt)
-            .is_some_and(|c| c.expect_concrete() == CapabilityKind::Exclusive)
+            .is_some_and(|c| c == CapabilityKind::Exclusive)
     }
 }

@@ -5,7 +5,7 @@ use crate::{
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
-    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, SymbolicCapability},
+    pcg::{CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike},
     rustc_interface::middle::mir,
     utils::{CompilerCtxt, DebugRepr, Place, maybe_old::MaybeLabelledPlace},
 };
@@ -13,7 +13,7 @@ use crate::{
 use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
 
 pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
-    fn get(&self, node: Place<'tcx>) -> Option<SymbolicCapability>;
+    fn get(&self, node: Place<'tcx>) -> Option<CapabilityKind>;
 }
 
 pub(super) trait Grapher<'a, 'tcx: 'a> {

@@ -12,10 +12,10 @@ use crate::{
     r#loop::PlaceUsages,
     owned_pcg::OwnedPcg,
     pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
+        BodyAnalysis, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{
-            PlaceCapabilitiesInterface, PlaceCapabilitiesReader, SymbolicPlaceCapabilities,
+            PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
     },
     pcg_validity_assert,
@@ -39,7 +39,7 @@ pub(crate) struct JoinBorrowsArgs<'pcg, 'a, 'tcx> {
     pub(crate) self_block: BasicBlock,
     pub(crate) other_block: BasicBlock,
     pub(crate) body_analysis: &'pcg BodyAnalysis<'a, 'tcx>,
-    pub(crate) capabilities: &'pcg mut SymbolicPlaceCapabilities<'tcx>,
+    pub(crate) capabilities: &'pcg mut PlaceCapabilities<'tcx>,
     pub(crate) owned: &'pcg mut OwnedPcg<'tcx>,
 }
 
@@ -78,7 +78,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     fn apply_placeholder_labels<'mir>(
         &mut self,
-        _capabilities: &impl PlaceCapabilitiesReader<'tcx, SymbolicCapability>,
+        _capabilities: &impl PlaceCapabilitiesReader<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
     ) where
         'tcx: 'mir,
