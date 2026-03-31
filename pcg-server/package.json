@@ -20,6 +20,11 @@
     "@codemirror/view": "^6.23.0",
     "@replit/codemirror-vim": "^6.2.2",
     "codemirror": "^6.0.1"
+  },
+  "overrides": {
+    "minimatch": "^10.2.5",
+    "picomatch": "^4.0.4",
+    "serialize-javascript": "^7.0.5"
   }
 }
 
