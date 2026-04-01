@@ -302,7 +302,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             for rp in place.lifetime_projections(self.ctxt) {
                                 tracing::debug!(
                                     "labeling region projection: {}",
-                                    rp.display_string(self.ctxt.bc_ctxt())
+                                    rp.display_string(self.ctxt)
                                 );
                                 self.record_and_apply_action(
                                     BorrowPcgAction::label_lifetime_projection(
@@ -452,10 +452,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     where
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
-        tracing::debug!(
-            "Applying Action: {}",
-            action.debug_line(self.ctxt.bc_ctxt())
-        );
+        tracing::debug!("Applying Action: {}", action.debug_line(self.ctxt));
         let result = match &action {
             PcgAction::Borrow(action) => {
                 self.pcg

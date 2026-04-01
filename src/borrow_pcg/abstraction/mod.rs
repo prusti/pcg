@@ -16,7 +16,8 @@ use crate::{
             },
         },
         region_projection::{
-            HasTy, LifetimeProjection, LifetimeProjectionIdx, OverrideRegionDebugString, PcgRegion,
+            HasTy, LifetimeProjection, LifetimeProjectionIdx, PcgRegion,
+            default_region_display_output,
         },
         visitor::extract_regions,
     },
@@ -31,7 +32,7 @@ use crate::{
     },
     utils::{
         self, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
 
@@ -60,15 +61,19 @@ pub enum ArgIdxOrResult {
 
 impl crate::Sealed for ArgIdxOrResult {}
 
-impl<'tcx> OverrideRegionDebugString for (FunctionData<'tcx>, ty::TyCtxt<'tcx>) {
-    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
-        None
+impl<'tcx> DisplayWithCtxt<(FunctionData<'tcx>, ty::TyCtxt<'tcx>)> for ty::RegionVid {
+    fn display_output(
+        &self,
+        _ctxt: (FunctionData<'tcx>, ty::TyCtxt<'tcx>),
+        _mode: OutputMode,
+    ) -> DisplayOutput {
+        default_region_display_output(*self)
     }
 }
 
-impl<T, U: OverrideRegionDebugString> OverrideRegionDebugString for (T, U) {
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.1.override_region_debug_string(region)
+impl<T: Copy, U: Copy + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtxt<(T, U)> for ty::RegionVid {
+    fn display_output(&self, ctxt: (T, U), mode: OutputMode) -> DisplayOutput {
+        ctxt.1.display_value(self, mode)
     }
 }
 

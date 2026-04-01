@@ -5,7 +5,7 @@ use crate::{
         InScopeBorrows, RustBorrowCheckerInterface,
         r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
     },
-    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
+    borrow_pcg::region_projection::PcgRegion,
     pcg::{self},
     rustc_interface::{
         borrowck::{
@@ -14,6 +14,7 @@ use crate::{
         },
         middle::{mir::Location, ty::RegionVid},
     },
+    utils::display::{DisplayCtxtFor, DisplayOutput, OutputMode},
 };
 
 #[cfg(feature = "visualization")]
@@ -44,11 +45,11 @@ pub enum RustBorrowCheckerImpl<'mir, 'tcx> {
     Nll(NllBorrowCheckerImpl<'mir, 'tcx>),
 }
 
-impl<'mir, 'tcx: 'mir> OverrideRegionDebugString for RustBorrowCheckerImpl<'mir, 'tcx> {
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
+impl DisplayCtxtFor<RegionVid> for RustBorrowCheckerImpl<'_, '_> {
+    fn display_value(&self, value: &RegionVid, mode: OutputMode) -> DisplayOutput {
         match self {
-            RustBorrowCheckerImpl::Polonius(bc) => bc.override_region_debug_string(region),
-            RustBorrowCheckerImpl::Nll(bc) => bc.override_region_debug_string(region),
+            RustBorrowCheckerImpl::Polonius(bc) => bc.display_value(value, mode),
+            RustBorrowCheckerImpl::Nll(bc) => bc.display_value(value, mode),
         }
     }
 }

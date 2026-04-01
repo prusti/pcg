@@ -45,7 +45,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                         format!(
                             "{:?}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
                             reason,
-                            place.display_string(self.ctxt.bc_ctxt()),
+                            place.display_string(self.ctxt),
                         )
                     )
                     .into(),
@@ -59,7 +59,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     format!(
                         "{:?}: remove read permission upwards from base place {}",
                         reason,
-                        place.display_string(self.ctxt.bc_ctxt()),
+                        place.display_string(self.ctxt),
                     ),
                 )
                 .into(),
@@ -102,7 +102,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             format!(
                                 "{:?}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
                                 reason,
-                                place.display_string(self.ctxt.bc_ctxt())
+                                place.display_string(self.ctxt)
                             ),
                         )
                         .into(),
@@ -161,7 +161,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             format!(
                                 "{:?}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
                                 reason,
-                                current_rp.display_string(self.ctxt.bc_ctxt()),
+                                current_rp.display_string(self.ctxt),
                                 self.prev_snapshot_location()
                             ),
                         )

@@ -9,9 +9,8 @@ use crate::{
             label_lifetime_projection_wrapper, label_place_wrapper,
         },
         region_projection::{
-            LifetimeProjectionLabel, LocalLifetimeProjection, OverrideRegionDebugString,
-            PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike,
-            PlaceOrConst,
+            LifetimeProjectionLabel, LocalLifetimeProjection, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBaseLike, PcgLifetimeProjectionLike, PlaceOrConst,
         },
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace, pcg_node_like_wrapper},
@@ -81,10 +80,10 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LoopAbstractionInput<'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugString>
-    DisplayWithCtxt<Ctxt> for LoopAbstractionInput<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for LoopAbstractionInput<'tcx>
 {
-    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> crate::utils::display::DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         self.0.display_output(ctxt, mode)
     }
 }
@@ -117,7 +116,7 @@ label_place_wrapper!(LoopAbstractionOutput<'tcx, P>);
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     for LoopAbstractionOutput<'tcx>
 {
-    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> crate::utils::display::DisplayOutput {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         self.0.display_output(ctxt, mode)
     }
 }

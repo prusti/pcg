@@ -24,7 +24,7 @@ use crate::{
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
         PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,
@@ -66,34 +66,13 @@ pub enum PcgRegionInternalError {
     RegionIndexOutOfBounds(LifetimeProjectionIdx),
 }
 
-pub trait OverrideRegionDebugString {
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str>;
+pub(crate) fn default_region_display_output(region: RegionVid) -> DisplayOutput {
+    DisplayOutput::Text(format!("{region:?}").into())
 }
 
-impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for RegionVid {
-    fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(
-            if let Some(string) = ctxt.override_region_debug_string(*self) {
-                string.to_owned()
-            } else {
-                format!("{self:?}")
-            }
-            .into(),
-        )
-    }
-}
-
-struct NoOverride;
-
-impl OverrideRegionDebugString for NoOverride {
-    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str> {
-        None
-    }
-}
-
-impl OverrideRegionDebugString for () {
-    fn override_region_debug_string(&self, _region: RegionVid) -> Option<&str> {
-        None
+impl DisplayWithCtxt<()> for RegionVid {
+    fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
+        default_region_display_output(*self)
     }
 }
 
@@ -102,8 +81,7 @@ impl std::fmt::Display for PcgRegion<'_> {
         write!(
             f,
             "{}",
-            self.display_output(NoOverride, OutputMode::Normal)
-                .into_text()
+            self.display_output((), OutputMode::Normal).into_text()
         )
     }
 }
@@ -188,11 +166,11 @@ impl PcgRegion<'_> {
     }
 }
 
-impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PcgRegion<'_> {
+impl<Ctxt: Copy + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt> for PcgRegion<'_> {
     #[allow(unreachable_patterns)]
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
-            PcgRegion::RegionVid(vid) => vid.display_output(ctxt, mode),
+            PcgRegion::RegionVid(vid) => ctxt.display_value(vid, mode),
             PcgRegion::ReErased => "ReErased".into(),
             PcgRegion::ReStatic => "ReStatic".into(),
             PcgRegion::ReBound(debruijn_index, region) => {

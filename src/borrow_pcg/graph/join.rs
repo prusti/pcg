@@ -76,12 +76,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
     }
 
-    fn apply_placeholder_labels<'mir>(
+    fn apply_placeholder_labels<'mir, Ctxt>(
         &mut self,
         _capabilities: &impl PlaceCapabilitiesReader<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
+        ctxt: Ctxt,
     ) where
         'tcx: 'mir,
+        Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
     {
         let nodes = self.nodes(ctxt.bc_ctxt());
         for node in nodes {

@@ -19,10 +19,7 @@ use crate::{
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::{
-        data_structures::fx::FxHashSet,
-        middle::mir::{self},
-    },
+    rustc_interface::{data_structures::fx::FxHashSet, middle::mir},
     utils::{
         CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt,
         HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place, PlaceLike,
@@ -112,7 +109,7 @@ where
                 && let Some(place) = e.base().as_current_place()
                 && place.projects_shared_ref(ctxt)
             {
-                edge.check_validity(ctxt.bc_ctxt())?;
+                edge.check_validity(ctxt)?;
             }
         }
         Ok(())

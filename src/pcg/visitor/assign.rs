@@ -15,11 +15,10 @@ use crate::{
         place_capabilities::PlaceCapabilitiesInterface,
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
-    utils::Place,
-};
-
-use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
+    utils::{
+        self, AnalysisLocation, DataflowCtxt, Place, SnapshotLocation,
+        maybe_old::MaybeLabelledPlace,
+    },
 };
 
 use super::{PcgError, PcgUnsupportedError};

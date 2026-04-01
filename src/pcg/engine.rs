@@ -12,7 +12,6 @@ use derive_more::From;
 use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
 use crate::{
     BodyAndBorrows, HasSettings,
-    borrow_pcg::region_projection::OverrideRegionDebugString,
     error::PcgError,
     r#loop::{LoopAnalysis, LoopId, PlaceUsages},
     pcg::{
@@ -34,7 +33,9 @@ use crate::{
         mir_dataflow::{Forward, move_paths::MoveData},
     },
     utils::{
-        AnalysisLocation, CompilerCtxt, DataflowCtxt, DebugCtxt, PcgSettings, arena::PcgArenaRef,
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, DebugCtxt, PcgSettings,
+        arena::PcgArenaRef,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         visitor::FallableVisitor,
     },
 };
@@ -131,11 +132,9 @@ impl<'a, 'tcx: 'a> HasSettings<'a> for &PcgEngine<'a, 'tcx> {
     }
 }
 
-impl<'a, 'tcx: 'a> OverrideRegionDebugString for &PcgEngine<'a, 'tcx> {
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.ctxt
-            .borrow_checker
-            .override_region_debug_string(region)
+impl<'a, 'tcx: 'a> DisplayWithCtxt<&PcgEngine<'a, 'tcx>> for ty::RegionVid {
+    fn display_output(&self, ctxt: &PcgEngine<'a, 'tcx>, mode: OutputMode) -> DisplayOutput {
+        self.display_output(ctxt.ctxt, mode)
     }
 }
 

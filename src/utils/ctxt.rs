@@ -3,7 +3,7 @@ use crate::{
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{OverrideRegionDebugString, PcgRegion, TyVarianceVisitor},
+        region_projection::{PcgRegion, TyVarianceVisitor, default_region_display_output},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -22,7 +22,12 @@ use crate::{
         mir_dataflow,
         span::{Span, SpanSnippetError, def_id::LocalDefId},
     },
-    utils::{PlaceLike, place::Place, validity::HasValidityCheck},
+    utils::{
+        PlaceLike,
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
+        place::Place,
+        validity::HasValidityCheck,
+    },
     validity_checks_enabled,
 };
 
@@ -35,17 +40,21 @@ pub struct CompilerCtxt<'a, 'tcx, T = &'a dyn BorrowCheckerInterface<'tcx>> {
 
 impl<T> Sealed for CompilerCtxt<'_, '_, T> {}
 
-impl<BC: OverrideRegionDebugString + ?Sized> OverrideRegionDebugString
-    for CompilerCtxt<'_, '_, &BC>
+impl<'a, 'tcx, BC: BorrowCheckerInterface<'tcx> + ?Sized>
+    DisplayWithCtxt<CompilerCtxt<'a, 'tcx, &'a BC>> for ty::RegionVid
 {
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.borrow_checker.override_region_debug_string(region)
+    fn display_output(
+        &self,
+        ctxt: CompilerCtxt<'a, 'tcx, &'a BC>,
+        mode: OutputMode,
+    ) -> DisplayOutput {
+        ctxt.borrow_checker.display_value(self, mode)
     }
 }
 
-impl OverrideRegionDebugString for CompilerCtxt<'_, '_, ()> {
-    fn override_region_debug_string(&self, _region: ty::RegionVid) -> Option<&str> {
-        None
+impl DisplayWithCtxt<CompilerCtxt<'_, '_, ()>> for ty::RegionVid {
+    fn display_output(&self, _ctxt: CompilerCtxt<'_, '_, ()>, _mode: OutputMode) -> DisplayOutput {
+        default_region_display_output(*self)
     }
 }
 
@@ -55,9 +64,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> LocalTys<'tcx> for Ctxt {
     }
 }
 
-impl<'a, 'tcx, T: Copy> DebugCtxt for CompilerCtxt<'a, 'tcx, T>
+impl<T: Copy> DebugCtxt for CompilerCtxt<'_, '_, T>
 where
-    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+    Self: DisplayCtxtFor<ty::RegionVid>,
 {
     fn func_name(&self) -> String {
         self.tcx
@@ -219,7 +228,7 @@ impl<'a, 'tcx, T: Copy> HasCompilerCtxt<'a, 'tcx> for CompilerCtxt<'a, 'tcx, T> 
 
 impl<'a, 'tcx, T: Copy> HasBorrowCheckerCtxt<'a, 'tcx, T> for CompilerCtxt<'a, 'tcx, T>
 where
-    CompilerCtxt<'a, 'tcx, T>: OverrideRegionDebugString,
+    Self: DisplayCtxtFor<ty::RegionVid>,
 {
     fn bc(&self) -> T {
         self.borrow_checker
@@ -349,7 +358,7 @@ impl ProjectionKind {
     }
 }
 
-pub trait DebugCtxt: OverrideRegionDebugString + Copy {
+pub trait DebugCtxt: Copy + DisplayCtxtFor<ty::RegionVid> {
     fn func_name(&self) -> String;
     fn num_basic_blocks(&self) -> usize;
 }
