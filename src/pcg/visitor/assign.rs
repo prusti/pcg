@@ -7,14 +7,12 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{borrow_flow::{
             AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
-        }, delegation::DelegationEdge},
+        }, delegation::DelegationEdge, kind::BorrowPcgEdgeKind},
         edge_data::LabelNodePredicate,
         region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
-        CapabilityKind, EvalStmtPhase,
-        obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
-        place_capabilities::PlaceCapabilitiesInterface,
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike, obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander}, place_capabilities::PlaceCapabilitiesInterface
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
     utils::{
@@ -109,7 +107,36 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
             }
             Rvalue::Use(operand) => {
-                self.assignment_projections(operand, target, None)?;
+                let p = operand.place();
+                if p != None {
+                    let p: utils::Place = p.unwrap().into();
+                    if p.ty(self.ctxt).ty.is_raw_ptr() {
+                    let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
+                    let node = PcgNode::from(p);
+                    let edges = self.pcg.borrows_graph().edges_blocked_by(node, self.ctxt.bc_ctxt());
+                    let alias_edges = edges.into_iter().filter_map(|e| match e.kind {
+                        BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                        _ => None
+                    }).collect::<Vec<_>>();
+                    if alias_edges.len() > 0 {
+                        self.record_and_apply_action(BorrowPcgAction::add_edge(
+                                    BorrowPcgEdge::new(
+                                            DelegationEdge{
+                                                rawptr_place: target.project_deref(ctxt).into(),
+                                                aliased_place: alias_edges[0].aliased_place.into()
+                                            }.into()
+                                        ,
+                                        self.pcg.borrow.validity_conditions.clone(),
+                                    ),
+                                    "assign_post_main",
+                                )
+                                .into(),
+                        )?;
+                        return Ok(());
+                    }
+                    }
+                }
+                    self.assignment_projections(operand, target, None)?;
             }
             Rvalue::Cast(kind, operand, ty) => {
                 self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
