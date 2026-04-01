@@ -308,10 +308,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         _location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         if place.contains_unsafe_deref(self.ctxt) {
-            tracing::error!(
-                "DerefUnsafePtr: {}",
-                place.display_string(self.ctxt.bc_ctxt())
-            );
+            tracing::error!("DerefUnsafePtr: {}", place.display_string(self.ctxt));
             return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
         }
         Ok(())
@@ -330,15 +327,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
     }
 }
 
-impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
+impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
+    PlaceObtainer<'state, 'a, 'tcx, Ctxt>
+{
     fn collapse_iteration<'slf>(
         &'slf mut self,
         local: mir::Local,
         iteration: usize,
-    ) -> Result<bool, PcgError<'tcx>>
-    where
-        Ctxt: DataflowCtxt<'a, 'tcx>,
-    {
+    ) -> Result<bool, PcgError<'tcx>> {
         let local_expansions = self.pcg.owned[local].get_allocated();
         let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
         let parent_places = leaf_expansions
@@ -372,7 +368,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt> PlaceObtainer<'state, 'a, 'tcx, Ctxt> {
                 candidate_cap,
                 format!(
                     "Collapse owned place {} (iteration {})",
-                    place.display_string(self.ctxt.bc_ctxt()),
+                    place.display_string(self.ctxt),
                     iteration
                 ),
                 self.ctxt,
@@ -420,7 +416,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         tracing::info!(
             "{:?} activate twophase borrow: {}",
             self.location(),
-            borrow.display_string(self.ctxt.bc_ctxt())
+            borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
         self.place_obtainer()

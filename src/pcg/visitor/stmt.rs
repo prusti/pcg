@@ -8,9 +8,8 @@ use crate::{
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesReader},
     pcg_validity_assert,
     rustc_interface::middle::mir::{Statement, StatementKind},
+    utils::{self, DataflowCtxt, visitor::FallableVisitor},
 };
-
-use crate::utils::{self, DataflowCtxt, visitor::FallableVisitor};
 
 use super::{EvalStmtPhase, PcgError};
 

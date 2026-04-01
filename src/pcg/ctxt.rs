@@ -33,13 +33,15 @@ pub trait HasSettings<'a> {
 
 mod private {
     use crate::{
-        borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::{BodyAnalysis, PcgArena},
         rustc_interface::{
             RustBitSet,
             middle::{mir, ty},
         },
-        utils::{CompilerCtxt, DebugCtxt, HasLocals, PcgSettings},
+        utils::{
+            CompilerCtxt, DebugCtxt, HasLocals, PcgSettings,
+            display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        },
     };
 
     #[derive(Copy, Clone)]
@@ -54,11 +56,9 @@ mod private {
             Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
     }
 
-    impl<'a, 'tcx: 'a> OverrideRegionDebugString for AnalysisCtxt<'a, 'tcx> {
-        fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-            self.ctxt
-                .borrow_checker
-                .override_region_debug_string(region)
+    impl<'a, 'tcx: 'a> DisplayWithCtxt<AnalysisCtxt<'a, 'tcx>> for ty::RegionVid {
+        fn display_output(&self, ctxt: AnalysisCtxt<'a, 'tcx>, mode: OutputMode) -> DisplayOutput {
+            self.display_output(ctxt.ctxt, mode)
         }
     }
 

@@ -170,11 +170,11 @@ mod private {
 
     use crate::{
         borrow_checker::BorrowCheckerInterface,
-        borrow_pcg::region_projection::OverrideRegionDebugString,
         pcg::DomainDataWithCtxt,
         rustc_interface::middle::ty::{self, TyCtxt},
         utils::{
             CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
+            display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         },
     };
 
@@ -233,6 +233,12 @@ mod private {
         }
     }
 
+    impl<'a, 'tcx: 'a> DisplayWithCtxt<ResultsCtxt<'a, 'tcx>> for ty::RegionVid {
+        fn display_output(&self, ctxt: ResultsCtxt<'a, 'tcx>, mode: OutputMode) -> DisplayOutput {
+            self.display_output(ctxt.ctxt, mode)
+        }
+    }
+
     impl<'a, 'tcx: 'a> DebugCtxt for ResultsCtxt<'a, 'tcx> {
         fn func_name(&self) -> String {
             self.ctxt.func_name()
@@ -245,14 +251,6 @@ mod private {
     impl<'a, 'tcx: 'a> HasTyCtxt<'tcx> for ResultsCtxt<'a, 'tcx> {
         fn tcx(&self) -> TyCtxt<'tcx> {
             self.ctxt.tcx
-        }
-    }
-
-    impl<'a, 'tcx: 'a> OverrideRegionDebugString for ResultsCtxt<'a, 'tcx> {
-        fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-            self.ctxt
-                .borrow_checker
-                .override_region_debug_string(region)
         }
     }
 

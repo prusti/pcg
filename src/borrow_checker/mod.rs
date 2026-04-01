@@ -6,7 +6,7 @@ use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::{OverrideRegionDebugString, PcgRegion},
+    borrow_pcg::region_projection::PcgRegion,
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -19,7 +19,12 @@ use crate::{
             ty::RegionVid,
         },
     },
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, Place,
+        display::{
+            DisplayCtxtFor, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
+        },
+    },
 };
 
 pub mod r#impl;
@@ -44,7 +49,7 @@ impl<'tcx> HasPcgRegion<'tcx> for BorrowData<'tcx> {
     }
 }
 
-impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
+impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     BorrowCheckerInterface<'tcx> for T
 {
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool {
@@ -198,7 +203,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + OverrideRegionDebugString>
     }
 }
 
-pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
+pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
     /// Answers the question: Does `node` contain borrow extents that are not
@@ -300,6 +305,16 @@ pub trait BorrowCheckerInterface<'tcx>: OverrideRegionDebugString {
                 .iter_enumerated()
                 .map(move |(region_vid, _)| region_vid),
         )
+    }
+}
+
+impl<'a, 'tcx> DisplayWithCtxt<&'a dyn BorrowCheckerInterface<'tcx>> for RegionVid {
+    fn display_output(
+        &self,
+        ctxt: &'a dyn BorrowCheckerInterface<'tcx>,
+        mode: OutputMode,
+    ) -> DisplayOutput {
+        ctxt.display_value(self, mode)
     }
 }
 

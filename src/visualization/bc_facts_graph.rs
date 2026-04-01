@@ -5,7 +5,7 @@ use petgraph::graph::NodeIndex;
 
 use crate::{
     borrow_checker::{RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker},
-    borrow_pcg::{region_projection::OverrideRegionDebugString, visitor::extract_regions},
+    borrow_pcg::{region_projection::default_region_display_output, visitor::extract_regions},
     rustc_interface::{
         borrowck::{PoloniusRegionVid, RegionInferenceContext},
         middle::{
@@ -16,7 +16,9 @@ use crate::{
     utils::{
         CompilerCtxt,
         callbacks::RustBorrowCheckerImpl,
-        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
+        display::{
+            DisplayCtxtFor, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
+        },
     },
 };
 
@@ -25,10 +27,10 @@ use super::{
     node::IdLookup,
 };
 
-impl<Ctxt: OverrideRegionDebugString> DisplayWithCtxt<Ctxt> for PoloniusRegionVid {
+impl<Ctxt: Copy + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt> for PoloniusRegionVid {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let region: RegionVid = (*self).into();
-        region.display_output(ctxt, mode)
+        ctxt.display_value(&region, mode)
     }
 }
 
@@ -85,11 +87,13 @@ pub struct RegionPrettyPrinter<'bc, 'tcx> {
     region_infer_ctxt: &'bc RegionInferenceContext<'tcx>,
 }
 
-impl OverrideRegionDebugString for RegionPrettyPrinter<'_, '_> {
-    fn override_region_debug_string(&self, region: RegionVid) -> Option<&str> {
-        self.region_to_string
-            .get(&region)
-            .map(std::string::String::as_str)
+impl DisplayCtxtFor<RegionVid> for &RegionPrettyPrinter<'_, '_> {
+    fn display_value(&self, value: &RegionVid, _mode: OutputMode) -> DisplayOutput {
+        if let Some(string) = self.region_to_string.get(value) {
+            DisplayOutput::Text(string.clone().into())
+        } else {
+            default_region_display_output(*value)
+        }
     }
 }
 

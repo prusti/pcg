@@ -201,7 +201,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         pre_rp.label(),
                         format!(
                             "Function call:Label Pre version of {}",
-                            rp.display_string(self.ctxt.bc_ctxt()),
+                            rp.display_string(self.ctxt),
                         ),
                     )
                     .into(),

@@ -406,9 +406,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(repack_ops)
     }
 
-    pub(crate) fn debug_lines(
+    pub(crate) fn debug_lines<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &self,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+        ctxt: Ctxt,
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
         result.sort();

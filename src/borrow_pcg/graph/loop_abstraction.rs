@@ -29,7 +29,7 @@ use crate::{
         place_capabilities::PlaceCapabilities,
     },
     pcg_validity_assert,
-    rustc_interface::middle::mir::{self},
+    rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
@@ -583,11 +583,11 @@ impl HasSnapshotLocation for AbsExpander<'_, '_, '_> {
     }
 }
 
-fn add_block_edge<'tcx, 'mir>(
+fn add_block_edge<'tcx, 'mir, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>>(
     expander: &mut AbsExpander<'_, 'mir, 'tcx>,
     long: PcgNode<'tcx>,
     short: LocalNode<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
+    ctxt: Ctxt,
 ) {
     let long_edge = AbstractionBlockEdge::new_checked(long.into(), short.into(), ctxt);
     let loop_edge = LoopAbstraction::new(long_edge, expander.loop_head_block);
@@ -600,11 +600,11 @@ fn add_block_edge<'tcx, 'mir>(
     );
 }
 
-fn add_rp_block_edges<'mir, 'tcx>(
+fn add_rp_block_edges<'mir, 'tcx, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>>(
     expander: &mut AbsExpander<'_, 'mir, 'tcx>,
     blocked_place: MaybeRemoteCurrentPlace<'tcx>,
     blocker: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
+    ctxt: Ctxt,
 ) {
     let blocker_rps = blocker.lifetime_projections(ctxt);
     for blocked_rp in blocked_place.lifetime_projections(ctxt) {
@@ -663,11 +663,11 @@ fn add_rp_block_edges<'mir, 'tcx>(
     }
 }
 
-fn add_block_edges<'mir, 'tcx>(
+fn add_block_edges<'mir, 'tcx, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>>(
     expander: &mut AbsExpander<'_, 'mir, 'tcx>,
     blocked_place: MaybeRemoteCurrentPlace<'tcx>,
     blocker: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'mir, 'tcx> + HasSettings<'mir>,
+    ctxt: Ctxt,
 ) {
     assert_ne!(
         MaybeRemoteCurrentPlace::Local(blocker),

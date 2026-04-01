@@ -159,6 +159,25 @@ pub trait DisplayWithCtxt<Ctxt> {
     }
 }
 
+/// Trait indicating that `Self` is a valid display context for `T`.
+///
+/// This is the reverse of [`DisplayWithCtxt`]: `Ctxt: DisplayCtxtFor<T>` is
+/// equivalent to `T: DisplayWithCtxt<Ctxt>`, but expressible as a regular
+/// trait bound on the context type.
+///
+/// The `display_value` method allows displaying a value of type `T` using
+/// this context without needing a `T: DisplayWithCtxt<Self>` bound at the
+/// call site.
+pub trait DisplayCtxtFor<T> {
+    fn display_value(&self, value: &T, mode: OutputMode) -> DisplayOutput;
+}
+
+impl<T: DisplayWithCtxt<Ctxt>, Ctxt: Copy> DisplayCtxtFor<T> for Ctxt {
+    fn display_value(&self, value: &T, mode: OutputMode) -> DisplayOutput {
+        value.display_output(*self, mode)
+    }
+}
+
 macro_rules! display_with_ctxt_node_wrapper {
     ($ty:ty) => {
         impl<'tcx, Ctxt: Copy, P> DisplayWithCtxt<Ctxt> for $ty

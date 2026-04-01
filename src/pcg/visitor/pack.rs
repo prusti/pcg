@@ -256,7 +256,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",
-                            expansion.display_string(self.ctxt.bc_ctxt())
+                            expansion.display_string(self.ctxt)
                         )
                         .into(),
                     }
@@ -265,17 +265,17 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             } else {
                 let mut why_killed_reasons = Vec::new();
-                for node in edge.blocked_by_nodes(self.ctxt.bc_ctxt()) {
+                for node in edge.blocked_by_nodes(self.ctxt) {
                     if let ShouldKillNode::Yes { reason } = should_kill_node(node, &fg) {
                         why_killed_reasons.push(format!(
                             "{}: {}",
-                            node.display_string(self.ctxt.bc_ctxt()),
+                            node.display_string(self.ctxt),
                             reason
                         ));
                     } else {
                         tracing::debug!(
                             "Node {} will not be killed",
-                            node.display_string(self.ctxt.bc_ctxt())
+                            node.display_string(self.ctxt)
                         );
                         return ShouldPackEdge::No;
                     }
@@ -293,7 +293,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         for edge in leaf_edges.into_iter().map(BorrowPcgEdgeLike::to_owned_edge) {
             tracing::debug!(
                 "Checking leaf edge: {}",
-                edge.value.display_string(self.ctxt.bc_ctxt())
+                edge.value.display_string(self.ctxt)
             );
             if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
                 edges_to_remove.push(&edge, reason);

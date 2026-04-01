@@ -6,7 +6,7 @@ use crate::{
         has_pcs_elem::{LabelNodeContext, LabelPlace, PlaceLabeller, SourceOrTarget},
         region_projection::{
             LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
-            OverrideRegionDebugString, PcgLifetimeProjectionBase,
+            PcgLifetimeProjectionBase,
         },
     },
     pcg::{
@@ -253,8 +253,8 @@ impl<'tcx, P: PcgNodeComponent> LabelNodePredicate<'tcx, P> {
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + OverrideRegionDebugString>
-    DisplayWithCtxt<Ctxt> for LabelNodePredicate<'tcx>
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for LabelNodePredicate<'tcx>
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {

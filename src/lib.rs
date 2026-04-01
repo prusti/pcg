@@ -369,11 +369,9 @@ pub struct PcgCtxt<'a, 'tcx> {
     pub(crate) arena: bumpalo::Bump,
 }
 
-impl<'a, 'mir: 'a, 'tcx: 'mir> OverrideRegionDebugString for &'a PcgCtxt<'mir, 'tcx> {
-    fn override_region_debug_string(&self, region: ty::RegionVid) -> Option<&str> {
-        self.compiler_ctxt
-            .borrow_checker
-            .override_region_debug_string(region)
+impl<'a, 'mir: 'a, 'tcx: 'mir> DisplayWithCtxt<&'a PcgCtxt<'mir, 'tcx>> for ty::RegionVid {
+    fn display_output(&self, ctxt: &'a PcgCtxt<'mir, 'tcx>, mode: OutputMode) -> DisplayOutput {
+        self.display_output(ctxt.compiler_ctxt, mode)
     }
 }
 
@@ -758,7 +756,6 @@ pub(crate) use pcg_validity_expect_some;
 use crate::{
     action::{AppliedActionDebugRepr, PcgActionDebugRepr},
     borrow_checker::r#impl::NllBorrowCheckerImpl,
-    borrow_pcg::region_projection::OverrideRegionDebugString,
     utils::{
         DebugCtxt, DebugRepr, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},

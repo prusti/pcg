@@ -9,7 +9,7 @@ use crate::{
         borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        region_projection::PcgLifetimeProjectionBase,
         validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
@@ -192,7 +192,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     fn label_place_and_update_related_capabilities<
         'a,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
-        Ctxt: Copy + OverrideRegionDebugString + HasCompilerCtxt<'a, 'tcx>,
+        Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>,
         C,
     >(
         &mut self,
