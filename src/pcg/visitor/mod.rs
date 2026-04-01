@@ -304,14 +304,10 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 
     fn visit_place_fallable(
         &mut self,
-        place: utils::Place<'tcx>,
+        _place: utils::Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        if place.contains_unsafe_deref(self.ctxt) {
-            tracing::error!("DerefUnsafePtr: {}", place.display_string(self.ctxt));
-            return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
-        }
         Ok(())
     }
 

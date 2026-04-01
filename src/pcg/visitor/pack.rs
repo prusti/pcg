@@ -3,14 +3,10 @@ use std::borrow::Cow;
 use super::PcgError;
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
-        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
-        edge_data::EdgeData,
-        graph::{Conditioned, frozen::FrozenGraphRef},
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode}, edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind}, edge_data::EdgeData, graph::{Conditioned, frozen::FrozenGraphRef}
     },
     pcg::{
-        PcgNode,
-        obtain::{PlaceCollapser, PlaceObtainer},
+        PcgNode, PcgRefLike, obtain::{PlaceCollapser, PlaceObtainer}
     },
     utils::{
         DataflowCtxt, DebugCtxt, HasPlace, Place,
@@ -204,6 +200,17 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 PcgNode::LifetimeProjection(rp) => rp.base(),
             };
             if !ancestor_predicate_allows_killing(p) {
+                return ShouldKillNode::No;
+            }
+
+            let node = PcgNode::from(p);
+            let edges = self.pcg.borrows_graph().edges_blocked_by(node, ctxt);
+            let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
+                crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
+                _ => None
+            }).filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location)).count();
+
+            if alias_edges_cnt > 0 {
                 return ShouldKillNode::No;
             }
 

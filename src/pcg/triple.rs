@@ -288,9 +288,6 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         _context: mir::visit::PlaceContext,
         _location: mir::Location,
     ) -> Result<(), PcgError<'tcx>> {
-        if place.contains_unsafe_deref(self.ctxt) {
-            return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
-        }
         Ok(())
     }
 }

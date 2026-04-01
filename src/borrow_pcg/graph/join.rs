@@ -12,7 +12,8 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
-    r#loop::{PlaceUsageType, PlaceUsages},
+    r#loop::{PlaceUsageType, PlaceUsage, PlaceUsages},
+    owned_pcg::OwnedPcg,
     pcg::{
         BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
@@ -260,6 +261,20 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 p.place,
             )
         });
+
+        let live_loop_places = live_loop_places.iter().map(|p| {
+            if p.place.contains_unsafe_deref(ctxt.ctxt) {
+                let edges = self.edges_blocking(p.place.into(), ctxt);
+                let raw_ptr_edge = edges.into_iter().filter_map(|e| match e.kind {
+                crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
+                    _ => None
+                }).collect::<Vec<_>>();
+                assert!(raw_ptr_edge.len() == 1);
+                PlaceUsage { place: raw_ptr_edge[0].aliased_place.place(), usage: p.usage }
+            } else {
+                p
+            }
+        }).collect::<PlaceUsages<'_>>();
 
         if !live_loop_places
             .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))

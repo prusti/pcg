@@ -400,6 +400,7 @@ edgedata_enum!(
     BorrowFlow(crate::borrow_pcg::edge::borrow_flow::BorrowFlowEdge<'tcx, P>),
     Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx, P>),
     Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx, P>),
+    Delegation(crate::borrow_pcg::edge::delegation::DelegationEdge<'tcx, P>),
 );
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>

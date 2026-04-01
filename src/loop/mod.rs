@@ -335,6 +335,12 @@ impl<'tcx> PlaceUsages<'tcx> {
     }
 }
 
+impl<'tcx> FromIterator<PlaceUsage<'tcx>> for PlaceUsages<'tcx> {
+    fn from_iter<T: IntoIterator<Item = PlaceUsage<'tcx>>>(iter: T) -> Self {
+        PlaceUsages(iter.into_iter().map(|u| (u.place, u.usage)).collect::<HashMap<Place, PlaceUsageType>>())
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct LoopPlaceUsageAnalysis<'tcx> {
     /// This map contains, for each loop head, the set of places that are used in the loop.

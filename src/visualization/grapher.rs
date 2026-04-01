@@ -131,6 +131,11 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     }
                 }
             }
+            BorrowPcgEdgeKind::Delegation(delegation_edge) => {
+                let raw_ptr_place = self.insert_maybe_labelled_place(delegation_edge.rawptr_place);
+                let aliased_place = self.insert_maybe_labelled_place(delegation_edge.aliased_place);
+                self.constructor().edges.insert(GraphEdge::Delegation { source: raw_ptr_place, target: aliased_place });
+            },
         }
     }
 }

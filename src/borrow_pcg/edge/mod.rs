@@ -6,3 +6,4 @@ pub mod borrow;
 pub mod borrow_flow;
 pub mod deref;
 pub mod kind;
+pub mod delegation;

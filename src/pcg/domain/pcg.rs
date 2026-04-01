@@ -240,6 +240,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
         for (place, cap) in self.place_capabilities.iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
                 && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
+                && !place.contains_unsafe_deref(ctxt)
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",

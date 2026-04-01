@@ -5,9 +5,9 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::borrow_flow::{
+        edge::{borrow_flow::{
             AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
-        },
+        }, delegation::DelegationEdge},
         edge_data::LabelNodePredicate,
         region_projection::{HasRegions, PlaceOrConst},
     },
@@ -135,6 +135,23 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     self.ctxt,
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
+            }
+            Rvalue::RawPtr(_kind, p) => {
+                let p: utils::Place<'tcx> = (*p).into();
+                let p = p.with_inherent_region(self.ctxt);
+                self.record_and_apply_action(BorrowPcgAction::add_edge(
+                            BorrowPcgEdge::new(
+                                    DelegationEdge{
+                                        rawptr_place: target.project_deref(ctxt).into(),
+                                        aliased_place: p.into()
+                                    }.into()
+                                ,
+                                self.pcg.borrow.validity_conditions.clone(),
+                            ),
+                            "assign_post_main",
+                        )
+                        .into(),
+                    )?;
             }
             _ => {}
         }
