@@ -16,11 +16,37 @@ env:
   PURIFICATION_PRUSTI_REF: zgrannan/old-purification
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v3
+      id: filter
+      with:
+        filters: |
+          rust:
+            - '**/*.rs'
+            - '**/Cargo.toml'
+            - '**/Cargo.lock'
+            - 'rust-toolchain'
+
   check_warnings:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-check-
     - name: Check for warnings
       env:
         RUSTFLAGS: "-D warnings"
@@ -31,6 +57,16 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-clippy-
     - name: Run Clippy
       run: cargo clippy -- -D warnings
 
@@ -47,6 +83,16 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-test-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-test-
     - name: Run unit tests and pcg-tests with coverage
       run: ./scripts/coverage.sh --html
     - name: Upload coverage report
@@ -61,6 +107,16 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-server-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-server-
     - name: Build pcg-bin (required by pcg-server)
       run: cd pcg-bin && cargo build --release
     - name: Run pcg-server tests
@@ -71,6 +127,16 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-build2025-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-build2025-
     - name: Build using Rust Nightly 2025-07-21
       run: cp rust-toolchain-2025-07-21 rust-toolchain && cargo build --no-default-features
 
@@ -79,10 +145,22 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-doc-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-doc-
     - name: Run unit tests
       run: cargo test -p pcg --doc
 
   prusti_purification_tests:
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.rust == 'true' }}
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
@@ -112,6 +190,17 @@ jobs:
         components: rustc-dev, llvm-tools-preview
         override: true
 
+    - name: Cache Prusti Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          prusti-dev/target
+        key: ${{ runner.os }}-cargo-prusti-${{ env.PURIFICATION_PRUSTI_REF }}-${{ env.SYMBOLIC_EXECUTION_REF }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-prusti-${{ env.PURIFICATION_PRUSTI_REF }}-
+
     - name: Install Java
       uses: actions/setup-java@v4
       with:
@@ -123,6 +212,8 @@ jobs:
       run: ./x.py setup && python3 test-rpe.py --no-server
 
   mutation_tests:
+    needs: changes
+    if: ${{ github.event_name == 'push' || needs.changes.outputs.rust == 'true' }}
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
@@ -138,6 +229,17 @@ jobs:
         ref: ${{ env.MUTATION_TESTS_REF }}
         path: pcg-mutation-testing
 
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          pcg-mutation-testing/target
+        key: ${{ runner.os }}-cargo-mutation-${{ env.MUTATION_TESTS_REF }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-mutation-
+
     - name: Build mutation testing tool
       working-directory: pcg-mutation-testing
       run: cargo build
@@ -147,6 +249,16 @@ jobs:
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
     steps:
     - uses: actions/checkout@v4
+    - name: Cache Cargo registry and build artifacts
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-typegen-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-typegen-
     - name: Generate TypeScript types
       run: cargo test
     - name: Check generated types are up-to-date
