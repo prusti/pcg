@@ -18,7 +18,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -149,8 +149,14 @@ pub(crate) trait PcgRefLike<'tcx> {
     where
         'tcx: 'a,
     {
-        let mut leaf_places = self.owned_pcg().leaf_places(ctxt);
-        leaf_places.retain(|p| !self.borrows_graph().places(ctxt.bc_ctxt()).contains(p));
+        let borrows_places = self.borrows_graph().places(ctxt.bc_ctxt());
+        let mut leaf_places: HashSet<Place<'tcx>> = self
+            .owned_pcg()
+            .leaf_places(ctxt)
+            .into_iter()
+            .map(Into::into)
+            .filter(|p| !borrows_places.contains(p))
+            .collect();
         leaf_places.extend(self.borrows_graph().leaf_places(ctxt));
         leaf_places
     }
@@ -258,7 +264,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                 }
                 BorrowPcgEdgeKind::Borrow(borrow_edge) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = borrow_edge.blocked_place
-                        && blocked_place.is_owned(ctxt)
+                        && blocked_place.as_owned_place(ctxt).is_some()
                         && !self.owned.contains_place(blocked_place, ctxt.bc_ctxt())
                     {
                         return Err(format!(
@@ -290,7 +296,10 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             return false;
         }
 
-        return !place.is_owned(ctxt) || self.owned.leaf_places(ctxt).contains(&place);
+        match place.as_owned_place(ctxt) {
+            Some(owned) => self.owned.leaf_places(ctxt).contains(&owned),
+            None => true,
+        }
     }
 
     #[must_use]
@@ -359,9 +368,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut repacks =
             slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
         for (place, cap) in slf.capabilities.iter() {
-            if !place.is_owned(ctxt) {
+            let Some(_owned) = place.as_owned_place(ctxt) else {
                 continue;
-            }
+            };
             if let Some(other_cap) = other.capabilities.get(place, ctxt)
                 && cap > other_cap
             {

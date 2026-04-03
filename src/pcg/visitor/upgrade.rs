@@ -19,8 +19,7 @@ use crate::{
         place_capabilities::BlockType,
     },
     utils::{
-        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        DataflowCtxt, DebugCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -169,7 +168,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     )?;
                     // If the place is owned, we will never regain access to it,
                     // therefore future nodes aren't necessary
-                    if !current.is_owned(self.ctxt) {
+                    if current.as_borrowed_place(self.ctxt).is_some() {
                         let future_rp = current_rp.with_placeholder_label(self.ctxt);
                         self.record_and_apply_action(
                             BorrowPcgAction::add_edge(

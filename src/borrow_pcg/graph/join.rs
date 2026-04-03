@@ -21,7 +21,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
@@ -393,7 +393,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
         let self_places = self.places(ctxt.ctxt);
         for place in to_cut.places(ctxt.ctxt) {
-            if !place.is_owned(ctxt.ctxt)
+            if place.as_borrowed_place(ctxt.ctxt).is_some()
                 && capabilities.get(place, ctxt.ctxt).is_some()
                 && !self_places.contains(&place)
             {

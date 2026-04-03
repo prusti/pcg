@@ -439,7 +439,8 @@ impl<'tcx> LocalExpansions<'tcx> {
         'tcx: 'a,
     {
         self.leaf_places(ctxt).into_iter().any(|p| {
-            if place.is_prefix_of(p) && place_capabilities.get(p, ctxt).is_none() {
+            let p_place: Place<'tcx> = p.into();
+            if place.is_prefix_of(p_place) && place_capabilities.get(p_place, ctxt).is_none() {
                 tracing::debug!(
                     "Place {} is a leaf node without capability",
                     p.display_string(ctxt)

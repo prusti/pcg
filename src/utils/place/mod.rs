@@ -33,12 +33,15 @@ use crate::{
         },
     },
     utils::{
-        HasCompilerCtxt, data_structures::HashSet, json::ToJsonWithCtxt,
+        HasCompilerCtxt,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
     },
 };
 
-use super::{CompilerCtxt, display::DisplayWithCompilerCtxt};
+use super::CompilerCtxt;
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::LocalNode,
@@ -61,6 +64,124 @@ pub struct Place<'tcx>(
 );
 
 impl Sealed for Place<'_> {}
+
+/// A place behind a dereference of a reference (i.e. not owned).
+#[derive(Clone, Copy, Deref, Debug, PartialEq, Eq, Hash)]
+pub struct BorrowedPlace<'tcx>(Place<'tcx>);
+
+impl<'tcx> BorrowedPlace<'tcx> {
+    pub(crate) fn place(self) -> Place<'tcx> {
+        self.0
+    }
+}
+
+impl<'tcx> From<BorrowedPlace<'tcx>> for Place<'tcx> {
+    fn from(bp: BorrowedPlace<'tcx>) -> Self {
+        bp.0
+    }
+}
+
+impl Sealed for BorrowedPlace<'_> {}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for BorrowedPlace<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.0.rust_ty(ctxt)
+    }
+}
+
+impl PartialOrd for BorrowedPlace<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BorrowedPlace<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
+impl PrefixRelation for BorrowedPlace<'_> {
+    fn is_prefix_of(self, other: Self) -> bool {
+        self.0.is_prefix_of(other.0)
+    }
+    fn is_strict_prefix_of(self, other: Self) -> bool {
+        self.0.is_strict_prefix_of(other.0)
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
+    for BorrowedPlace<'tcx>
+{
+    fn project_deeper(
+        &self,
+        elem: PlaceElem<'tcx>,
+        ctxt: Ctxt,
+    ) -> std::result::Result<Self, PcgError<'tcx>> {
+        Ok(Self(PlaceProjectable::project_deeper(&self.0, elem, ctxt)?))
+    }
+
+    fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
+        self.0
+            .iter_projections(ctxt)
+            .into_iter()
+            .map(|(p, e)| (Self(p), e))
+            .collect()
+    }
+}
+
+impl<'tcx, Ctxt: Copy> DisplayWithCtxt<Ctxt> for BorrowedPlace<'tcx>
+where
+    Place<'tcx>: DisplayWithCtxt<Ctxt>,
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.place().display_output(ctxt, mode)
+    }
+}
+
+/// A place that is owned (not behind a dereference of a reference).
+#[derive(Clone, Copy, Deref, Debug, PartialEq, Eq, Hash)]
+pub struct OwnedPlace<'tcx>(Place<'tcx>);
+
+impl<'tcx> OwnedPlace<'tcx> {
+    pub(crate) fn place(self) -> Place<'tcx> {
+        self.0
+    }
+    #[allow(dead_code)]
+    pub(crate) fn parent_place(self) -> Option<Self> {
+        self.0.parent_place().map(Self)
+    }
+}
+
+impl<'tcx> From<OwnedPlace<'tcx>> for Place<'tcx> {
+    fn from(op: OwnedPlace<'tcx>) -> Self {
+        op.0
+    }
+}
+
+impl From<Local> for OwnedPlace<'_> {
+    fn from(local: Local) -> Self {
+        Self(local.into())
+    }
+}
+
+impl serde::Serialize for OwnedPlace<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        serializer.serialize_str(&format!("{:?}", self.0))
+    }
+}
+
+impl<'tcx, Ctxt: Copy> DisplayWithCtxt<Ctxt> for OwnedPlace<'tcx>
+where
+    Place<'tcx>: DisplayWithCtxt<Ctxt>,
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.place().display_output(ctxt, mode)
+    }
+}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
@@ -320,6 +441,54 @@ impl<'tcx> Place<'tcx> {
     pub(crate) fn parent_place(self) -> Option<Self> {
         let (prefix, _) = self.last_projection()?;
         Some(Place::new(prefix.local, prefix.projection))
+    }
+
+    /// Converts this place into an `OwnedPlace` if it is owned.
+    pub(crate) fn as_owned_place<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<OwnedPlace<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        if self.is_owned(ctxt) {
+            Some(OwnedPlace(self))
+        } else {
+            None
+        }
+    }
+
+    /// Converts this place into a `BorrowedPlace` if it is borrowed.
+    pub(crate) fn as_borrowed_place<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<BorrowedPlace<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        if self.is_owned(ctxt) {
+            None
+        } else {
+            Some(BorrowedPlace(self))
+        }
+    }
+
+    /// Converts this place into a `BorrowedPlace`, panicking if owned.
+    #[allow(dead_code)]
+    pub(crate) fn expect_borrowed_place<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> BorrowedPlace<'tcx>
+    where
+        'tcx: 'a,
+    {
+        self.as_borrowed_place(ctxt).unwrap_or_else(|| {
+            unreachable!(
+                "Expected borrowed place, got owned place {:?} with type {:?}",
+                self,
+                self.rust_ty(ctxt)
+            )
+        })
     }
 }
 
@@ -824,13 +993,13 @@ impl<'tcx> Place<'tcx> {
     }
 
     #[must_use]
-    pub fn nearest_owned_place(self, ctxt: CompilerCtxt<'_, 'tcx>) -> Self {
-        if self.is_owned(ctxt) {
-            return self;
+    pub fn nearest_owned_place(self, ctxt: CompilerCtxt<'_, 'tcx>) -> OwnedPlace<'tcx> {
+        if let Some(owned) = self.as_owned_place(ctxt) {
+            return owned;
         }
         for (place, _) in self.iter_projections(ctxt).into_iter().rev() {
-            if place.is_owned(ctxt) {
-                return place;
+            if let Some(owned) = place.as_owned_place(ctxt) {
+                return owned;
             }
         }
         unreachable!()

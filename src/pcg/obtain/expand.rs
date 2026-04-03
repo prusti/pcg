@@ -27,7 +27,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, PlaceLike, ProjectionKind,
+        CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, OwnedPlace, Place, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
     },
 };
@@ -117,7 +117,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn expand_owned_place_one_level(
         &mut self,
-        base: Place<'tcx>,
+        base: OwnedPlace<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -125,7 +125,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(
                 "Already contains owned expansion from {}",
-                base.display_string(ctxt.ctxt())
+                base.place().display_string(ctxt.ctxt())
             );
             return Ok(false);
         }
@@ -134,7 +134,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.ctxt())
         );
         if expansion.kind.is_deref_box()
-            && obtain_type.capability(base, ctxt).is_shallow_exclusive()
+            && obtain_type
+                .capability(base.place(), ctxt)
+                .is_shallow_exclusive()
         {
             self.apply_action(
                 OwnedPcgAction::new(
@@ -213,8 +215,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 )?;
             }
             Ok(true)
-        } else if base.is_owned(ctxt) {
-            self.expand_owned_place_one_level(base, expansion, obtain_type, ctxt)
+        } else if let Some(owned_base) = base.as_owned_place(ctxt) {
+            self.expand_owned_place_one_level(owned_base, expansion, obtain_type, ctxt)
         } else {
             self.add_borrow_pcg_expansion(base, place_expansion, obtain_type, ctxt)
         }
@@ -331,7 +333,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     )?;
 
                     // Don't add placeholder edges for owned expansions, unless its a deref
-                    if !base.is_owned(ctxt) || base.is_mut_ref(ctxt) {
+                    if base.as_borrowed_place(ctxt).is_some() || base.is_mut_ref(ctxt) {
                         let old_rp_base = base_rp.with_label(Some(label.into()), ctxt);
                         let expansion_rps = expansion
                             .expansion()

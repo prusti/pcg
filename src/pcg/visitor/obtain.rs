@@ -77,8 +77,15 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
         &self,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> crate::utils::data_structures::HashSet<Place<'tcx>> {
-        let mut leaf_places = self.pcg.owned.leaf_places(ctxt);
-        leaf_places.retain(|p| !self.pcg.borrow.graph().owned_places(ctxt).contains(p));
+        let owned_places = self.pcg.borrow.graph().owned_places(ctxt);
+        let mut leaf_places: crate::utils::data_structures::HashSet<Place<'tcx>> = self
+            .pcg
+            .owned
+            .leaf_places(ctxt)
+            .into_iter()
+            .map(Into::into)
+            .filter(|p| !owned_places.contains(p))
+            .collect();
         leaf_places.extend(
             self.pcg
                 .borrow

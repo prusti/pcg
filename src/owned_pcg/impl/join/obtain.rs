@@ -76,8 +76,13 @@ impl<'a, 'tcx> PlaceCollapser<'a, 'tcx> for JoinObtainer<'_, '_, '_, 'a, 'tcx> {
 
     /// Owned leaf places that are not borrowed.
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
-        let mut leaf_places = self.data.owned.leaf_places(ctxt);
-        leaf_places.retain(|p| !self.data.borrows.graph().owned_places(ctxt).contains(p));
-        leaf_places
+        let owned_places = self.data.borrows.graph().owned_places(ctxt);
+        self.data
+            .owned
+            .leaf_places(ctxt)
+            .into_iter()
+            .map(Into::into)
+            .filter(|p| !owned_places.contains(p))
+            .collect()
     }
 }

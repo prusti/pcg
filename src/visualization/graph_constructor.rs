@@ -11,7 +11,7 @@ use crate::{
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
     utils::{
-        CompilerCtxt, Place, PlaceLike, SnapshotLocation,
+        CompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
     },
 };
@@ -190,7 +190,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
         let label = place.to_short_string(self.ctxt);
         let place_ty = place.ty(self.ctxt);
         let node_type = NodeType::PlaceNode {
-            owned: place.is_owned(self.ctxt),
+            owned: place.as_owned_place(self.ctxt).is_some(),
             label,
             capability,
             location,
