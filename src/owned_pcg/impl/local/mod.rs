@@ -24,7 +24,7 @@ use itertools::Itertools;
 use crate::{
     owned_pcg::RepackOp,
     pcg::CapabilityKind,
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, OwnedPlace, Place, display::DisplayWithCompilerCtxt},
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -186,20 +186,26 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        self.leaf_places(ctxt).contains(&place)
+        place
+            .as_owned_place(ctxt)
+            .is_some_and(|p| self.leaf_places(ctxt).contains(&p))
     }
 
-    pub fn leaf_places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>
+    pub fn leaf_places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<OwnedPlace<'tcx>>
     where
         'tcx: 'a,
     {
         if self.expansions.is_empty() {
-            return vec![self.local.into()].into_iter().collect();
+            return vec![OwnedPlace::from(self.local)].into_iter().collect();
         }
         self.expansions
             .iter()
             .flat_map(|e| e.expansion_places(ctxt).unwrap())
             .filter(|p| !self.contains_expansion_from(*p))
+            .map(|p| {
+                p.as_owned_place(ctxt)
+                    .expect("owned PCG leaf places are always owned")
+            })
             .collect::<HashSet<_>>()
     }
 
@@ -249,9 +255,11 @@ impl<'tcx> LocalExpansions<'tcx> {
         if !self.contains_expansion_from(place) {
             return vec![];
         }
+        let leaf_places: HashSet<Place<'tcx>> =
+            self.leaf_places(ctxt).into_iter().map(Into::into).collect();
         let mut places = self
             .all_descendants_of(place, ctxt)
-            .difference(&self.leaf_places(ctxt))
+            .difference(&leaf_places)
             .sorted_by_key(|place| place.projection().len())
             .rev()
             .copied()

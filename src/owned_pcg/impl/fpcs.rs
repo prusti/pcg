@@ -15,7 +15,7 @@ use crate::{
         index::{Idx, IndexVec},
         middle::mir::{self, Local, RETURN_PLACE},
     },
-    utils::{HasCompilerCtxt, HasLocals, Place, PlaceLike, data_structures::HashSet},
+    utils::{HasCompilerCtxt, HasLocals, OwnedPlace, Place, PlaceLike, data_structures::HashSet},
 };
 use derive_more::{Deref, DerefMut};
 
@@ -85,7 +85,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     pub(crate) fn leaf_places<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> HashSet<Place<'tcx>>
+    ) -> HashSet<OwnedPlace<'tcx>>
     where
         'tcx: 'a,
     {

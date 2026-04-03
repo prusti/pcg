@@ -15,9 +15,7 @@ use crate::{
         triple::{PlaceCondition, Triple},
     },
     pcg_validity_assert,
-    utils::{
-        HasBorrowCheckerCtxt, LocalMutationIsAllowed, PlaceLike, display::DisplayWithCompilerCtxt,
-    },
+    utils::{HasBorrowCheckerCtxt, LocalMutationIsAllowed, display::DisplayWithCompilerCtxt},
 };
 
 use crate::rustc_interface::middle::mir::RETURN_PLACE;
@@ -63,7 +61,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     }
                     CapabilityKind::ShallowExclusive => unreachable!(),
                 }
-                if place.is_owned(ctxt) {
+                if place.as_owned_place(ctxt).is_some() {
                     if capabilities.get(place, ctxt).is_some() {
                         // pcg_validity_assert!(
                         //     matches!(
