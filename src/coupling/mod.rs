@@ -8,7 +8,7 @@ use std::borrow::Cow;
 pub use coupled_edge::{
     CoupledEdges, CoupledEdgesData, MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges,
 };
-use derive_more::{Deref, DerefMut, From};
+use derive_more::{Deref, DerefMut};
 pub(crate) use hyper_edge::HyperEdge;
 
 use crate::{
@@ -71,10 +71,22 @@ impl<SourceData> CouplingError<SourceData> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum CoupleAbstractionError<'tcx> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CoupleAbstractionError {
     CoupleInput(CoupleInputError),
-    MakeFunctionShape(MakeFunctionShapeError<'tcx>),
+    MakeFunctionShape(String),
+}
+
+impl From<CoupleInputError> for CoupleAbstractionError {
+    fn from(e: CoupleInputError) -> Self {
+        Self::CoupleInput(e)
+    }
+}
+
+impl From<MakeFunctionShapeError> for CoupleAbstractionError {
+    fn from(e: MakeFunctionShapeError) -> Self {
+        Self::MakeFunctionShape(format!("{e:?}"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

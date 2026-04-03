@@ -46,16 +46,25 @@ impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
                 name: Cow::Borrowed("graph"),
                 nodes,
                 edges,
+                subgraphs: Vec::new(),
             },
             edge_ctxt,
         }
     }
 }
 
+/// A named cluster subgraph containing its own nodes.
+pub struct DotSubgraph {
+    pub(crate) name: Cow<'static, str>,
+    pub(crate) label: Cow<'static, str>,
+    pub(crate) nodes: Vec<DotNode>,
+}
+
 pub struct DotGraph {
     pub(crate) name: Cow<'static, str>,
     pub(crate) nodes: Vec<DotNode>,
     pub(crate) edges: Vec<DotEdge>,
+    pub(crate) subgraphs: Vec<DotSubgraph>,
 }
 
 impl DotGraph {
@@ -121,12 +130,26 @@ impl Display for RankAnnotation {
     }
 }
 
+impl Display for DotSubgraph {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "  subgraph \"cluster_{}\" {{", self.name)?;
+        writeln!(f, "    label=\"{}\";", self.label)?;
+        for node in &self.nodes {
+            writeln!(f, "    {node}")?;
+        }
+        writeln!(f, "  }}")
+    }
+}
+
 impl Display for DotGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "digraph \"{}\" {{", self.name)?;
         writeln!(f)?;
         writeln!(f, "layout=dot")?;
         writeln!(f, "node [shape=rect]")?;
+        for subgraph in &self.subgraphs {
+            writeln!(f, "{subgraph}")?;
+        }
         for node in &self.nodes {
             writeln!(f, "{node}")?;
         }

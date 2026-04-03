@@ -12,7 +12,6 @@ use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
 use crate::{
-    // borrow_checker::BorrowCheckerInterface,
     compute_fixpoint,
     r#loop::loop_set::LoopSet,
     rustc_interface::{
