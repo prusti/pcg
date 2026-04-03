@@ -60,7 +60,8 @@ macro_rules! capability_gte {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub enum CapabilityKind {
     /// For borrowed places only: permits reads from the location, but not writes or
     /// drops.

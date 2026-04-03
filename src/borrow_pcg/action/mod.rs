@@ -31,7 +31,8 @@ pub mod actions;
 
 /// The result of applying an action to the PCG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct ApplyActionResult<Summary = DisplayOutput> {
     /// Whether the action had any effect on the PCG state.
     pub changed: bool,
@@ -324,7 +325,19 @@ use private::LabelLifetimeProjectionAction;
 
 #[derive(Clone, Debug, PartialEq, Eq, strum_macros::EnumDiscriminants)]
 #[strum_discriminants(derive(Serialize))]
-#[cfg_attr(feature = "type-export", strum_discriminants(derive(specta::Type)))]
+#[cfg_attr(
+    feature = "type-export",
+    strum_discriminants(derive(ts_rs::TS), ts(export))
+)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "type-export",
+    ts(
+        as = "BorrowPcgActionKindDebugRepr",
+        bound = "EdgeKind: ts_rs::TS, P: ts_rs::TS, VC: ts_rs::TS",
+        concrete(EdgeKind = String, P = String, VC = String)
+    )
+)]
 pub enum BorrowPcgActionKind<
     'tcx,
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
@@ -364,7 +377,8 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgActionKind<'tcx, BorrowPcgEdgeKind<
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct BorrowPcgActionKindDebugRepr {
     r#type: BorrowPcgActionKindDiscriminants,
     data: String,

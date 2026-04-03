@@ -11,8 +11,7 @@ import {
   PcgBlockVisualizationData,
   DotFileAtPhase,
   AppliedAction,
-  ApplyActionResult,
-} from "../generated/types";
+} from "../generated_types";
 import { actionLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
@@ -34,7 +33,7 @@ type NavigationItem =
       type: "action";
       phase: EvalStmtPhase;
       index: number;
-      action: AppliedAction<PcgAction, ApplyActionResult<string>>;
+      action: AppliedAction;
     };
 
 export const NAVIGATOR_DEFAULT_WIDTH = 200;

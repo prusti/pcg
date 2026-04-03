@@ -15,18 +15,33 @@ use std::{
 
 #[derive(Clone, Serialize, Debug, From, Deref)]
 #[serde(transparent)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 pub(crate) struct PathToDotFile(PathBuf);
 
+#[cfg(feature = "type-export")]
+impl ts_rs::TS for PathToDotFile {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+
+    fn name(_: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
+
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
+}
+
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(PhaseKey = String)))]
 pub(crate) struct StmtGraphs<PhaseKey = StringOf<DataflowStmtPhase>> {
     at_phase: Vec<DotFileAtPhase<PhaseKey>>,
     actions: EvalStmtData<Vec<PathToDotFile>>,
 }
 
 #[derive(Clone, Serialize, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub(crate) struct DotFileAtPhase<PhaseKey> {
     phase: PhaseKey,
     filename: PathToDotFile,

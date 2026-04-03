@@ -6,7 +6,7 @@ import { Api } from "../api";
 import {
   PcgBlockVisualizationData,
   ValidityConditionsDebugRepr,
-} from "../generated/types";
+} from "../generated_types";
 import { assert } from "../util";
 
 interface PcgGraphProps {
