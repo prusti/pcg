@@ -86,7 +86,8 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(Place = String, Guide = String)))]
 pub struct RepackExpand<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) from: Place,
     pub(crate) guide: Option<Guide>,
@@ -150,7 +151,8 @@ impl<'tcx> RepackExpand<'tcx> {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(Place = String, Guide = String)))]
 pub struct RepackCollapse<'tcx, Place = crate::utils::Place<'tcx>, Guide = RepackGuide> {
     pub(crate) to: Place,
     pub(crate) capability: CapabilityKind,
@@ -215,7 +217,11 @@ impl<'tcx> RepackCollapse<'tcx> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(
+    feature = "type-export",
+    ts(export, concrete(Local = String, Place = String, Guide = String))
+)]
 #[serde(tag = "type", content = "data")]
 pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, Guide = RepackGuide>
 {
@@ -267,7 +273,8 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub struct RegainedCapability<Place> {
     pub(crate) place: Place,
     pub(crate) capability: CapabilityKind,

@@ -65,7 +65,7 @@ export type ReactFlowNodeData = BasicBlockData & {
 
 export type PcgAction = GenericPcgAction<
   ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>,
-  ActionKindWithDebugInfo<RepackOp<string, string, string>, string | null>
+  ActionKindWithDebugInfo<RepackOp, string | null>
 >;
 
 export type PcgActions = PcgAction[];
@@ -97,7 +97,7 @@ import type {
   PcgSuccessorVisualizationData,
   RepackOp,
   SourcePos,
-} from "./generated/types";
+} from "./generated_types";
 export type {
   EvalStmtPhase,
   FunctionMetadata,

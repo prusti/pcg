@@ -74,11 +74,12 @@ pub struct BranchChoices {
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub struct BranchChoicesDebugRepr {
-    #[cfg_attr(feature = "type-export", specta(type = String))]
+    #[cfg_attr(feature = "type-export", ts(type = "string"))]
     pub from: StringOf<BasicBlock>,
-    #[cfg_attr(feature = "type-export", specta(type = std::collections::HashSet<String>))]
+    #[cfg_attr(feature = "type-export", ts(type = "string[]"))]
     pub chosen: HashSet<StringOf<BasicBlock>>,
 }
 
@@ -193,7 +194,8 @@ pub type PathConditions = ValidityConditions;
 pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub struct ValidityConditionsDebugRepr {
     pub branch_choices: Vec<BranchChoicesDebugRepr>,
 }

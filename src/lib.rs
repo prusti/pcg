@@ -84,7 +84,8 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
 /// If `_.2` is `None`, the capability is removed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(Place = String)))]
 pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
     pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
@@ -260,14 +261,16 @@ use utils::eval_stmt_data::EvalStmtData;
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgStmtVisualizationData {
     actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
 }
 
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgSuccessorVisualizationData {
     actions: Vec<PcgActionDebugRepr>,
 }
@@ -450,7 +453,8 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
@@ -458,7 +462,8 @@ struct PcgBlockVisualizationData {
 
 #[cfg(feature = "visualization")]
 #[derive(Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 struct PcgVisualizationData(std::collections::HashMap<BasicBlock, PcgBlockVisualizationData>);
 
 #[cfg(feature = "visualization")]
@@ -770,12 +775,6 @@ pub(crate) fn validity_checks_enabled() -> bool {
 
 pub(crate) fn validity_checks_warn_only() -> bool {
     *VALIDITY_CHECKS_WARN_ONLY
-}
-
-#[cfg(feature = "type-export")]
-#[must_use]
-pub fn type_collection() -> specta::TypeCollection {
-    specta::export()
 }
 
 pub(crate) trait Sealed {}

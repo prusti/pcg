@@ -2,7 +2,7 @@ import {
   BorrowPcgActionKindDebugRepr,
   CapabilityKind,
   RepackOp,
-} from "./generated/types";
+} from "./generated_types";
 
 export function capabilityLetter(capability: CapabilityKind): string {
   switch (capability) {
@@ -18,7 +18,7 @@ export function capabilityLetter(capability: CapabilityKind): string {
 }
 
 export function actionLine(
-  action: RepackOp<string, string, string> | BorrowPcgActionKindDebugRepr
+  action: RepackOp | BorrowPcgActionKindDebugRepr
 ): string {
   switch (action.type) {
     case "Expand":

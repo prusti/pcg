@@ -5,7 +5,8 @@ use crate::{
 use serde_derive::Serialize;
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub struct EvalStmtData<T> {
     pub(crate) pre_operands: T,
     pub(crate) post_operands: T,

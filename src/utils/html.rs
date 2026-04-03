@@ -3,7 +3,8 @@ use serde_derive::Serialize;
 use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub enum Html {
     Text(Cow<'static, str>),
     Subscript(Cow<'static, str>),

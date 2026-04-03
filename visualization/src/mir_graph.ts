@@ -1,4 +1,4 @@
-import { MirEdge, MirNode } from "./generated/types";
+import { MirEdge, MirNode } from "./generated_types";
 import { computeTableHeight } from "./components/BasicBlockTable";
 import {
   BasicBlockData,

@@ -1,4 +1,4 @@
-import { MirGraph, PcgVisualizationData } from "./generated/types";
+import { MirGraph, PcgVisualizationData } from "./generated_types";
 import { FunctionsMetadata, GetFunctionsResult } from "./types";
 import * as JSZip from "jszip";
 

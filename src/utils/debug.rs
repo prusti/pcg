@@ -7,11 +7,23 @@ pub(crate) trait DebugRepr<Ctxt = ()> {
 }
 
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-#[cfg_attr(feature = "type-export", specta(export = false))]
 pub struct StringOf<T> {
     value: String,
     _marker: PhantomData<T>,
+}
+
+#[cfg(feature = "type-export")]
+impl<T: 'static> ts_rs::TS for StringOf<T> {
+    type WithoutGenerics = StringOf<ts_rs::Dummy>;
+    type OptionInnerType = Self;
+
+    fn name(_: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
+
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_owned()
+    }
 }
 
 impl<T> serde::Serialize for StringOf<T> {

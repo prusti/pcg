@@ -2,7 +2,7 @@ import React from "react";
 import { BasicBlockData, CurrentPoint } from "../types";
 import ReactDOMServer from "react-dom/server";
 import { MirStmt } from "../types";
-import { PcgBlockVisualizationData } from "../generated/types";
+import { PcgBlockVisualizationData } from "../generated_types";
 import { actionLine } from "../actionFormatting";
 import { openDotStringInNewWindow } from "../dot_graph";
 

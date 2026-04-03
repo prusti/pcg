@@ -24,7 +24,7 @@ import { toBasicBlock } from "../util";
 import { filterNodesAndEdges } from "../mir_graph";
 import { addKeyDownListener } from "../effects";
 import PCGNavigator, { NAVIGATOR_MIN_WIDTH } from "./PCGNavigator";
-import { MirNode, MirStmt } from "../generated/types";
+import { MirNode, MirStmt } from "../generated_types";
 import SourceCodeViewer from "./SourceCodeViewer";
 import Settings from "./Settings";
 import MirGraph from "./MirGraph";
