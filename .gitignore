@@ -8,6 +8,9 @@ visualization/data
 target
 .envrc
 
+# Coverage
+coverage/
+
 # Nix
 .direnv
 result
