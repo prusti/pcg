@@ -151,17 +151,11 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
                     borrow_index,
                     location
                 );
-                if blocking_place.regions(ctxt).iter().any(|region| {
-                    let result = self.origin_contains_loan_at(*region, borrow_index, location);
-                    tracing::debug!(
-                        "{} contains {:?} at {:?} = {}",
-                        region,
-                        borrow_index,
-                        location,
-                        result
-                    );
-                    result
-                }) {
+                if blocking_place
+                    .regions(ctxt)
+                    .iter()
+                    .any(|region| self.origin_contains_loan_at(*region, borrow_index, location))
+                {
                     conflict = true;
                     ControlFlow::Break(())
                 } else {

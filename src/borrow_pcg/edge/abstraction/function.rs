@@ -4,8 +4,8 @@ use derive_more::{Deref, DerefMut};
 
 use crate::{
     borrow_pcg::{
-        FunctionData,
-        abstraction::{CheckOutlivesError, FunctionShapeDataSource, MakeFunctionShapeError},
+        ArgIdxOrResult, FunctionData,
+        abstraction::{ArgIdx, FunctionShapeDataSource, MakeFunctionShapeError, ProjectionData},
         borrow_pcg_edge::{BlockedNode, LocalNode},
         domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
         edge::abstraction::AbstractionBlockEdge,
@@ -14,7 +14,8 @@ use crate::{
             NodeReplacement,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
-        region_projection::{LifetimeProjectionLabel, PcgRegion},
+        region_projection::{LifetimeProjectionLabel, PcgRegion, region_is_invariant_in_type},
+        visitor::{GeneralizedLifetime, OpaqueTy, extract_generalized_lifetimes_with_bounds},
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNodeWithPlace,
@@ -54,9 +55,13 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
     }
 }
 
-impl<'tcx, Ctxt: HasTyCtxt<'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> FunctionShapeDataSource<'tcx, Ctxt>
     for DefinedFnSigShapeDataSource<'tcx>
+where
+    PcgRegion<'tcx>: DisplayWithCtxt<Ctxt>,
 {
+    type Lifetime = GeneralizedLifetime<'tcx>;
+
     fn input_tys(&self, ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.sig(ctxt.tcx()).inputs().to_vec()
     }
@@ -67,27 +72,71 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
 
     fn outlives(
         &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
         ctxt: Ctxt,
-    ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        if sup.is_static() || sup == sub {
-            return Ok(true);
+    ) -> bool {
+        if sup == sub {
+            return true;
         }
-        // TODO: Check whether it is possible for either `sub` or `sup` to be a
-        // `RegionVid`.
-        match (sup, sub) {
-            (PcgRegion::RegionVid(_), PcgRegion::RegionVid(_) | PcgRegion::ReStatic) => {
-                Err(CheckOutlivesError::CannotCompareRegions { sup, sub })
+        let sig = self.sig(ctxt.tcx());
+        generalized_outlives(sup, sub, &self.outlives, sig.inputs(), ctxt.tcx())
+    }
+
+    fn is_invariant(
+        &self,
+        lifetime: GeneralizedLifetime<'tcx>,
+        ty: ty::Ty<'tcx>,
+        ctxt: Ctxt,
+    ) -> bool {
+        match lifetime {
+            GeneralizedLifetime::RegionsIn(_) => true,
+            GeneralizedLifetime::Region(r) => region_is_invariant_in_type(ctxt.tcx(), r, ty),
+        }
+    }
+
+    fn input_arg_projections(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<ProjectionData<'tcx, ArgIdx, GeneralizedLifetime<'tcx>>> {
+        let tbr = TraitBoundRegions::new(self.outlives.param_env);
+        self.input_tys(ctxt)
+            .into_iter()
+            .enumerate()
+            .flat_map(|(i, ty)| {
+                let lifetimes = extract_generalized_lifetimes_with_bounds(ty, tbr.as_map());
+                ProjectionData::nodes_for_extracted(i.into(), ty, lifetimes)
+            })
+            .collect()
+    }
+
+    fn result_projections(
+        &self,
+        ctxt: Ctxt,
+    ) -> Vec<ProjectionData<'tcx, ArgIdxOrResult, GeneralizedLifetime<'tcx>>> {
+        let tbr = TraitBoundRegions::new(self.outlives.param_env);
+        let mut lifetimes =
+            extract_generalized_lifetimes_with_bounds(self.output_ty(ctxt), tbr.as_map());
+
+        // For type parameters in the result, we cannot know which lifetimes
+        // they will capture at the call site. Add all signature lifetimes as
+        // projections so that edges from any input lifetime can reach the
+        // result through the type parameter.
+        if matches!(self.output_ty(ctxt).kind(), ty::TyKind::Param(_)) {
+            let sig = self.sig(ctxt.tcx());
+            let tbr_map = tbr.as_map();
+            for input_ty in sig.inputs() {
+                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                    if matches!(gl, GeneralizedLifetime::Region(_))
+                        && !lifetimes.iter().any(|l| *l == gl)
+                    {
+                        lifetimes.push(gl);
+                    }
+                }
             }
-            (PcgRegion::ReLateParam(_), PcgRegion::RegionVid(_)) => Ok(false),
-            (PcgRegion::RegionVid(_), PcgRegion::ReLateParam(_)) => Ok(true),
-            _ => Ok(self.outlives.free_region_map().sub_free_regions(
-                ctxt.tcx(),
-                sub.rust_region(ctxt.tcx()),
-                sup.rust_region(ctxt.tcx()),
-            )),
         }
+
+        ProjectionData::nodes_for_extracted(ArgIdxOrResult::Result, self.output_ty(ctxt), lifetimes)
     }
 }
 
@@ -96,7 +145,7 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
     pub(crate) fn new(
         _def_id: DefId,
         _tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
     }
 
@@ -105,7 +154,7 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
     pub(crate) fn new(
         def_id: DefId,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<Self, MakeFunctionShapeError> {
         let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
         let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
         let outlives = OutlivesEnvironment::from_normalized_bounds(
@@ -115,6 +164,214 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
             HashSet::default(),
         );
         Ok(Self { def_id, outlives })
+    }
+}
+
+/// Checks whether `sup` outlives `sub` among generalized lifetimes by
+/// computing reachability in the outlives graph derived from:
+///
+/// 1. **Region ⇒ Region**: the free-region map (explicit `'a: 'b` bounds).
+/// 2. **RegionsIn(T) ⇒ Region(r)**: `T: 'r` type-outlives bounds from
+///    the param env, implied bounds from reference types in the signature,
+///    or regions appearing directly in `T` itself (after substitution).
+/// 3. **RegionsIn(T) ⇒ RegionsIn(T)**: reflexivity — `RegionsIn(T)`
+///    represents *all* regions in `T`, so it trivially outlives itself.
+///
+/// Trait bounds like `T: Foo<'r>` produce **neither** `RegionsIn(T) ⇒
+/// Region(r)` nor `Region(r) ⇒ RegionsIn(T)` edges. The bound constrains
+/// the implementation but does not imply `T: 'r`, nor that `'r` is a
+/// region "in" `T`.
+fn generalized_outlives<'tcx>(
+    sup: GeneralizedLifetime<'tcx>,
+    sub: GeneralizedLifetime<'tcx>,
+    outlives_env: &OutlivesEnvironment<'tcx>,
+    input_tys: &[ty::Ty<'tcx>],
+    tcx: ty::TyCtxt<'tcx>,
+) -> bool {
+    use crate::borrow_pcg::visitor::extract_regions;
+
+    let param_env = outlives_env.param_env;
+    let implied_type_outlives = collect_implied_type_outlives(input_tys);
+
+    // BFS over the outlives graph starting from `sup`.
+    let mut visited: HashSet<GeneralizedLifetime<'tcx>> = HashSet::default();
+    let mut queue: Vec<GeneralizedLifetime<'tcx>> = vec![sup];
+
+    while let Some(current) = queue.pop() {
+        if current == sub {
+            return true;
+        }
+        if !visited.insert(current) {
+            continue;
+        }
+        match current {
+            GeneralizedLifetime::Region(_) => {
+                // No outgoing edges from Region nodes in the BFS.
+                // Region → Region edges are handled after the BFS via
+                // the free-region map.
+            }
+            GeneralizedLifetime::RegionsIn(opaque_ty) => {
+                // RegionsIn(T) -> Region(r): T: 'r type-outlives bounds
+                // (explicit from param env)
+                let ty = opaque_ty.ty(tcx);
+                for clause in param_env.caller_bounds() {
+                    if let Some(bound) = clause.as_type_outlives_clause()
+                        && let Some(outlives) = bound.no_bound_vars()
+                        && outlives.0 == ty
+                    {
+                        let gl = GeneralizedLifetime::Region(outlives.1.into());
+                        if !visited.contains(&gl) {
+                            queue.push(gl);
+                        }
+                    }
+                }
+                // RegionsIn(T) -> Region(r): implied bounds from reference
+                // types (e.g. &'b mut T implies T: 'b)
+                if let Some(regions) = implied_type_outlives.get(&opaque_ty) {
+                    for &r in regions {
+                        let gl = GeneralizedLifetime::Region(r);
+                        if !visited.contains(&gl) {
+                            queue.push(gl);
+                        }
+                    }
+                }
+                // RegionsIn(T) -> Region(r): regions appearing in T itself
+                // (e.g. if T is `A<'a>` which was substituted for Self)
+                for r in extract_regions(ty) {
+                    let gl = GeneralizedLifetime::Region(r);
+                    if !visited.contains(&gl) {
+                        queue.push(gl);
+                    }
+                }
+            }
+        }
+    }
+
+    // Handle Region -> Region: check the free_region_map for all visited
+    // regions against the sub target.
+    if let GeneralizedLifetime::Region(sub_r) = sub {
+        let sub_rust = sub_r.rust_region(tcx);
+        for &v in &visited {
+            if let GeneralizedLifetime::Region(r) = v
+                && (r.is_static()
+                    || (sub_rust.is_free()
+                        && r.rust_region(tcx).is_free()
+                        && outlives_env.free_region_map().sub_free_regions(
+                            tcx,
+                            sub_rust,
+                            r.rust_region(tcx),
+                        )))
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Per-type-parameter collection of regions that appear in trait bounds.
+///
+/// For bounds like `T: Foo<'a, 'b>` and `T: Bar<'c>`, stores
+/// `T -> {'a, 'b, 'c}`. These are used to create additional lifetime
+/// projections in the function signature (see
+/// [`extract_generalized_lifetimes_with_bounds`]) and to determine
+/// trait-bound region invariance, but do **not** produce edges in the
+/// generalized outlives graph. The bound `T: Foo<'a>` does not imply
+/// `T: 'a`, nor that `'a` is a region "in" `T`.
+pub(crate) struct TraitBoundRegions<'tcx> {
+    map: HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>,
+}
+
+impl<'tcx> TraitBoundRegions<'tcx> {
+    pub(crate) fn new(param_env: ty::ParamEnv<'tcx>) -> Self {
+        use crate::rustc_interface::middle::ty::{TypeSuperVisitable, TypeVisitable};
+
+        let mut map: HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>> = HashMap::default();
+
+        for clause in param_env.caller_bounds() {
+            if let Some(trait_pred) = clause.as_trait_clause() {
+                let trait_pred = trait_pred.skip_binder();
+                let self_ty = trait_pred.trait_ref.self_ty();
+                let Ok(opaque_ty) = OpaqueTy::try_from(self_ty) else {
+                    continue;
+                };
+                struct RegionCollector<'tcx>(Vec<ty::Region<'tcx>>);
+                impl<'tcx> ty::TypeVisitor<ty::TyCtxt<'tcx>> for RegionCollector<'tcx> {
+                    fn visit_region(&mut self, r: ty::Region<'tcx>) {
+                        self.0.push(r);
+                    }
+                    fn visit_ty(&mut self, t: ty::Ty<'tcx>) {
+                        t.super_visit_with(self);
+                    }
+                }
+                let mut collector = RegionCollector(Vec::new());
+                for arg in trait_pred.trait_ref.args.iter().skip(1) {
+                    arg.visit_with(&mut collector);
+                }
+                let entry = map.entry(opaque_ty).or_default();
+                for r in collector.0 {
+                    if !entry.contains(&r) {
+                        entry.push(r);
+                    }
+                }
+            }
+        }
+
+        Self { map }
+    }
+
+    pub(crate) fn as_map(&self) -> &HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>> {
+        &self.map
+    }
+}
+
+/// Collects implied `T: 'r` bounds from reference types in the function
+/// signature. For `&'r T` or `&'r mut T` where `T` is a type parameter
+/// (or non-normalizable alias), well-formedness implies `T: 'r`.
+fn collect_implied_type_outlives<'tcx>(
+    input_tys: &[ty::Ty<'tcx>],
+) -> HashMap<OpaqueTy<'tcx>, Vec<PcgRegion<'tcx>>> {
+    let mut result: HashMap<OpaqueTy<'tcx>, Vec<PcgRegion<'tcx>>> = HashMap::default();
+    for &ty in input_tys {
+        collect_implied_bounds_from_ty(ty, &mut result);
+    }
+    result
+}
+
+/// Recursively extracts implied `T: 'r` bounds from a type.
+///
+/// For `&'r T` or `&'r mut T`:
+/// - If `T` is a type parameter or non-normalizable alias, record `T: 'r`
+/// - Recurses into `T` for nested references
+fn collect_implied_bounds_from_ty<'tcx>(
+    ty: ty::Ty<'tcx>,
+    result: &mut HashMap<OpaqueTy<'tcx>, Vec<PcgRegion<'tcx>>>,
+) {
+    match ty.kind() {
+        ty::TyKind::Ref(region, referent, _) => {
+            let r: PcgRegion<'tcx> = (*region).into();
+            if let Ok(opaque) = OpaqueTy::try_from(*referent) {
+                let entry = result.entry(opaque).or_default();
+                if !entry.contains(&r) {
+                    entry.push(r);
+                }
+            }
+            collect_implied_bounds_from_ty(*referent, result);
+        }
+        ty::TyKind::Adt(_, args) => {
+            for arg in *args {
+                if let Some(ty) = arg.as_type() {
+                    collect_implied_bounds_from_ty(ty, result);
+                }
+            }
+        }
+        ty::TyKind::Tuple(tys) => {
+            for ty in *tys {
+                collect_implied_bounds_from_ty(ty, result);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -143,19 +400,16 @@ impl<'a, 'tcx: 'a> FnCallDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for FnCallDataSource<'a, 'tcx>
 {
+    type Lifetime = PcgRegion<'tcx>;
+
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
     }
     fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.output_ty
     }
-    fn outlives(
-        &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
-        ctxt: Ctxt,
-    ) -> Result<bool, CheckOutlivesError<'tcx>> {
-        Ok(ctxt.bc().outlives(sup, sub, self.location))
+    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
+        ctxt.bc().outlives(sup, sub, self.location)
     }
 }
 
@@ -164,6 +418,12 @@ pub(crate) struct DefinedFnCallShapeDataSource<'a, 'tcx> {
     /// Maps call-site regions to their corresponding normalized sig regions.
     /// Built by walking call-site types and normalized sig types in parallel.
     region_map: HashMap<PcgRegion<'tcx>, PcgRegion<'tcx>>,
+    /// Maps normalized sig regions to generalized lifetimes in the callee's
+    /// identity signature. Built by structurally walking normalized and identity
+    /// types in parallel. When the identity type has a type parameter `T`, all
+    /// regions from the corresponding concrete type in the normalized sig map
+    /// to `RegionsIn(T)`.
+    norm_to_generalized_map: HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
     _marker: PhantomData<&'a ()>,
 }
@@ -173,8 +433,12 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     pub(crate) fn new(
         _call: DefinedFnCallWithCallTys<'tcx>,
         _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
+    }
+
+    fn identity_input_tys(&self, tcx: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
+        self.call.identity_input_tys(tcx)
     }
 
     /// Builds a mapping from call-site regions to normalized sig regions by
@@ -201,12 +465,107 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         map
     }
 
+    /// Builds a mapping from normalized sig regions to generalized lifetimes
+    /// in the callee's identity signature by structurally walking the
+    /// normalized and identity types in parallel.
+    ///
+    /// When the identity type has a type parameter (e.g. `Self`), the
+    /// corresponding position in the normalized type contains the concrete
+    /// substitute (e.g. `A<'a>`). All regions extracted from that concrete
+    /// type map to `RegionsIn(Self)`.
+    fn build_norm_to_generalized_map(
+        normalized_sig: &ty::FnSig<'tcx>,
+        identity_sig: &ty::FnSig<'tcx>,
+    ) -> HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>> {
+        let mut map = HashMap::default();
+        for (norm_ty, id_ty) in normalized_sig
+            .inputs()
+            .iter()
+            .zip(identity_sig.inputs().iter())
+        {
+            Self::align_regions_to_generalized(*norm_ty, *id_ty, &mut map);
+        }
+        Self::align_regions_to_generalized(
+            normalized_sig.output(),
+            identity_sig.output(),
+            &mut map,
+        );
+        map
+    }
+
+    /// Recursively walks a normalized type and an identity type in parallel,
+    /// mapping each region in the normalized type to the corresponding
+    /// `GeneralizedLifetime` in the identity type.
+    fn align_regions_to_generalized(
+        norm_ty: ty::Ty<'tcx>,
+        id_ty: ty::Ty<'tcx>,
+        map: &mut HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>>,
+    ) {
+        use crate::borrow_pcg::visitor::extract_regions;
+        match (norm_ty.kind(), id_ty.kind()) {
+            // Identity type is a type parameter or non-normalizable alias: all
+            // regions from the concrete normalized type map to RegionsIn(T).
+            (_, ty::TyKind::Param(param_ty)) => {
+                let opaque = OpaqueTy::Param(*param_ty);
+                for r in extract_regions(norm_ty) {
+                    map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
+                }
+            }
+            (_, ty::TyKind::Alias(_, alias_ty)) => {
+                let opaque = OpaqueTy::Alias(*alias_ty);
+                for r in extract_regions(norm_ty) {
+                    map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
+                }
+            }
+            (ty::TyKind::Ref(norm_r, norm_referent, _), ty::TyKind::Ref(id_r, id_referent, _)) => {
+                map.insert(
+                    (*norm_r).into(),
+                    GeneralizedLifetime::Region((*id_r).into()),
+                );
+                Self::align_regions_to_generalized(*norm_referent, *id_referent, map);
+            }
+            (ty::TyKind::Adt(norm_def, norm_args), ty::TyKind::Adt(id_def, id_args))
+                if norm_def.did() == id_def.did() =>
+            {
+                for (norm_arg, id_arg) in norm_args.iter().zip(id_args.iter()) {
+                    if let Some(norm_r) = norm_arg.as_region() {
+                        if let Some(id_r) = id_arg.as_region() {
+                            map.insert(norm_r.into(), GeneralizedLifetime::Region(id_r.into()));
+                        }
+                    } else if let Some(norm_inner) = norm_arg.as_type()
+                        && let Some(id_inner) = id_arg.as_type()
+                    {
+                        Self::align_regions_to_generalized(norm_inner, id_inner, map);
+                    }
+                }
+            }
+            (ty::TyKind::Tuple(norm_tys), ty::TyKind::Tuple(id_tys)) => {
+                for (norm_inner, id_inner) in norm_tys.iter().zip(id_tys.iter()) {
+                    Self::align_regions_to_generalized(norm_inner, id_inner, map);
+                }
+            }
+            (ty::TyKind::Slice(norm_inner), ty::TyKind::Slice(id_inner))
+            | (ty::TyKind::Array(norm_inner, _), ty::TyKind::Array(id_inner, _))
+            | (ty::TyKind::RawPtr(norm_inner, _), ty::TyKind::RawPtr(id_inner, _)) => {
+                Self::align_regions_to_generalized(*norm_inner, *id_inner, map);
+            }
+            // Dynamic types: map the region.
+            (ty::TyKind::Dynamic(_, norm_r, ..), ty::TyKind::Dynamic(_, id_r, ..)) => {
+                map.insert(
+                    (*norm_r).into(),
+                    GeneralizedLifetime::Region((*id_r).into()),
+                );
+            }
+            _ => {}
+        }
+    }
+
     #[rustversion::since(2025-05-24)]
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         call: DefinedFnCallWithCallTys<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, MakeFunctionShapeError<'tcx>> {
+    ) -> Result<Self, MakeFunctionShapeError> {
         // Use the callee's typing env for outlives checks, since after mapping
         // regions back to identity regions, we need the callee's param env
         // constraints (e.g. `'b: 'a`).
@@ -222,12 +581,18 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             HashSet::default(),
         );
         let normalized = call.defined_fn_call.normalized_sig(ctxt);
+        let identity = call
+            .defined_fn_call
+            .function_data
+            .identity_fn_sig(ctxt.tcx());
         let region_map =
             Self::build_region_map(&call.call_arg_tys, call.call_result_ty, &normalized);
+        let norm_to_generalized_map = Self::build_norm_to_generalized_map(&normalized, &identity);
         Ok(Self {
             call,
             outlives,
             region_map,
+            norm_to_generalized_map,
             _marker: PhantomData,
         })
     }
@@ -250,17 +615,29 @@ impl<'tcx> FunctionData<'tcx> {
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
-    /// Maps a normalized sig region to the callee's identity region.
+    /// Maps a normalized sig region to a generalized lifetime in the callee's
+    /// identity signature.
+    ///
+    /// First checks the pre-built `norm_to_generalized_map` (which handles
+    /// both late-bound regions and regions hidden inside type parameters),
+    /// then falls back to searching `caller_substs` for early-bound region
+    /// variables.
     fn normalized_to_identity(
         &self,
         region: PcgRegion<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
-    ) -> Option<PcgRegion<'tcx>> {
+    ) -> Option<GeneralizedLifetime<'tcx>> {
         match region {
             PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
-                Some(region)
+                Some(GeneralizedLifetime::Region(region))
             }
             PcgRegion::RegionVid(_) => {
+                // First try the structural map, which captures late-bound
+                // regions and regions inside type parameters.
+                if let Some(&gl) = self.norm_to_generalized_map.get(&region) {
+                    return Some(gl);
+                }
+                // Fall back to searching caller_substs for early-bound regions.
                 let caller_substs = self.call.caller_substs();
                 let index = caller_substs.iter().position(|arg| {
                     arg.as_region()
@@ -270,7 +647,9 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
                 let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
                     panic!("Expected a function type");
                 };
-                Some(identity_substs.region_at(index).into())
+                Some(GeneralizedLifetime::Region(
+                    identity_substs.region_at(index).into(),
+                ))
             }
             _ => None,
         }
@@ -280,6 +659,8 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for DefinedFnCallShapeDataSource<'a, 'tcx>
 {
+    type Lifetime = PcgRegion<'tcx>;
+
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.call.call_arg_tys.clone()
     }
@@ -287,14 +668,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         self.call.call_result_ty
     }
 
-    fn outlives(
-        &self,
-        sup: PcgRegion<'tcx>,
-        sub: PcgRegion<'tcx>,
-        ctxt: Ctxt,
-    ) -> Result<bool, CheckOutlivesError<'tcx>> {
+    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
         if sup.is_static() || sup == sub {
-            return Ok(true);
+            return true;
         }
 
         // Map call-site regions to normalized sig regions.
@@ -306,34 +682,85 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         if let (Some(s), Some(t)) = (sup_norm, sub_norm)
             && s == t
         {
-            return Ok(true);
+            return true;
         }
 
-        // Map to callee identity regions for param_env checking.
-        // A region that can't be mapped to an identity region is nested inside
-        // a type argument in caller_substs (e.g. 'a in Self = RefMut<'a, i32>).
-        // Such regions are invisible to the callee's identity signature, so we
-        // cannot check outlives precisely. Returning false here is imprecise —
-        // the hidden region could flow to the result (e.g. deref_mut returns
-        // data borrowed through 'a). The correct fix is implementing
-        // generalized lifetimes where type parameters
-        // participate in outlives relationships.
-        // See https://prusti.github.io/pcg-docs/function-shapes.html for more info.
-        // TODO: implement generalized lifetimes to handle this correctly.
-        let Some(sup_id) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
-            return Ok(false);
+        // Map to generalized lifetimes in the identity signature and check
+        // outlives using the generalized lifetime graph (which handles trait
+        // bounds, type parameters, and implied bounds).
+        let Some(sup_gl) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
+            return false;
         };
-        let Some(sub_id) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
-            return Ok(false);
+        let Some(sub_gl) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
+            return false;
         };
-        if sup_id == sub_id {
-            return Ok(true);
+        if sup_gl == sub_gl {
+            return true;
         }
-        Ok(self.outlives.free_region_map().sub_free_regions(
+        let identity_input_tys = self.identity_input_tys(ctxt.tcx());
+        if generalized_outlives(
+            sup_gl,
+            sub_gl,
+            &self.outlives,
+            &identity_input_tys,
             ctxt.tcx(),
-            sub_id.rust_region(ctxt.tcx()),
-            sup_id.rust_region(ctxt.tcx()),
-        ))
+        ) {
+            return true;
+        }
+
+        // When the identity result type is a type parameter T and `sub`
+        // maps to `RegionsIn(T)`, the concrete call-site region is "inside"
+        // T at the call site. Since T could contain borrows under any
+        // signature lifetime, check whether `sup_gl` outlives any of them.
+        //
+        // This only applies when T IS the identity result type — not when
+        // RegionsIn(T) arises from an input type parameter like Self.
+        let identity_result_ty = self
+            .call
+            .defined_fn_call
+            .function_data
+            .identity_fn_sig(ctxt.tcx())
+            .output();
+        if let GeneralizedLifetime::RegionsIn(opaque_ty) = sub_gl
+            && opaque_ty.is_param()
+            && opaque_ty.ty(ctxt.tcx()) == identity_result_ty
+        {
+            let param_ty = opaque_ty.ty(ctxt.tcx());
+            let tbr = TraitBoundRegions::new(self.outlives.param_env);
+            let tbr_map = tbr.as_map();
+            let bound_regions = extract_generalized_lifetimes_with_bounds(param_ty, tbr_map);
+            for gl in bound_regions {
+                if matches!(gl, GeneralizedLifetime::Region(_))
+                    && generalized_outlives(
+                        sup_gl,
+                        gl,
+                        &self.outlives,
+                        &identity_input_tys,
+                        ctxt.tcx(),
+                    )
+                {
+                    return true;
+                }
+            }
+            // Also check against all signature lifetimes (since T could
+            // contain borrows under any of them).
+            for input_ty in &identity_input_tys {
+                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                    if matches!(gl, GeneralizedLifetime::Region(_))
+                        && generalized_outlives(
+                            sup_gl,
+                            gl,
+                            &self.outlives,
+                            &identity_input_tys,
+                            ctxt.tcx(),
+                        )
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 }
 
@@ -390,6 +817,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> DefinedFnCallWithCallTys<'tcx> {
+    pub(crate) fn identity_input_tys(&self, tcx: ty::TyCtxt<'tcx>) -> Vec<ty::Ty<'tcx>> {
+        self.defined_fn_call
+            .function_data
+            .identity_fn_sig(tcx)
+            .inputs()
+            .to_vec()
+    }
+
     #[must_use]
     pub fn fn_def_id(&self) -> DefId {
         self.defined_fn_call.function_data.def_id

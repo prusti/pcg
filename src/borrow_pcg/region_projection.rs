@@ -31,6 +31,12 @@ use crate::{
     },
 };
 
+impl DisplayWithCtxt<ty::TyCtxt<'_>> for RegionVid {
+    fn display_output(&self, _ctxt: ty::TyCtxt<'_>, _mode: OutputMode) -> DisplayOutput {
+        default_region_display_output(*self)
+    }
+}
+
 /// A region occuring in region projections
 #[rustversion::since(2025-12-01)]
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
@@ -78,11 +84,7 @@ impl DisplayWithCtxt<()> for RegionVid {
 
 impl std::fmt::Display for PcgRegion<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.display_output((), OutputMode::Normal).into_text()
-        )
+        write!(f, "{self:?}")
     }
 }
 
@@ -166,7 +168,32 @@ impl PcgRegion<'_> {
     }
 }
 
-impl<Ctxt: Copy + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt> for PcgRegion<'_> {
+/// Display a `ReLateParam` region using the version-specific API.
+#[rustversion::before(2025-03-01)]
+fn display_late_param(_p: &ty::LateParamRegion, _tcx: ty::TyCtxt<'_>) -> DisplayOutput {
+    todo!()
+}
+
+/// Display a `ReLateParam` region using the version-specific API.
+#[rustversion::since(2025-03-01)]
+fn display_late_param(p: &ty::LateParamRegion, tcx: ty::TyCtxt<'_>) -> DisplayOutput {
+    p.kind.get_name(tcx).map_or_else(
+        || {
+            let fallback = match p.kind {
+                ty::LateParamRegionKind::Named(def_id) => tcx.item_name(def_id).to_string(),
+                ty::LateParamRegionKind::Anon(idx) => format!("'anon{idx}"),
+                ty::LateParamRegionKind::NamedAnon(_, name) => name.to_string(),
+                ty::LateParamRegionKind::ClosureEnv => "'env".to_owned(),
+            };
+            DisplayOutput::Text(fallback.into())
+        },
+        |s| s.to_string().into(),
+    )
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt>
+    for PcgRegion<'tcx>
+{
     #[allow(unreachable_patterns)]
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
@@ -176,7 +203,7 @@ impl<Ctxt: Copy + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt> for PcgRegion
             PcgRegion::ReBound(debruijn_index, region) => {
                 format!("ReBound({debruijn_index:?}, {region:?})").into()
             }
-            PcgRegion::ReLateParam(p) => format!("ReLateParam({p:?})").into(),
+            PcgRegion::ReLateParam(p) => display_late_param(p, ctxt.tcx()),
             PcgRegion::PcgInternalError(pcg_region_internal_error) => {
                 format!("{pcg_region_internal_error:?}").into()
             }
@@ -184,7 +211,7 @@ impl<Ctxt: Copy + DisplayCtxtFor<RegionVid>> DisplayWithCtxt<Ctxt> for PcgRegion
                 format!("RePlaceholder({placeholder:?})").into()
             }
             PcgRegion::ReEarlyParam(early_param_region) => {
-                format!("ReEarlyParam({early_param_region:?})").into()
+                early_param_region.name.to_string().into()
             }
             _ => unreachable!(),
         }
@@ -846,7 +873,7 @@ where
 
 impl<T: std::fmt::Display, Kind: RegionIdxKind> fmt::Display for LifetimeProjection<'_, T, Kind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}↓{:?}", self.base, self.region_idx)
+        write!(f, "{}↓{}", self.base, self.region_idx.index())
     }
 }
 
@@ -929,7 +956,7 @@ impl<
         )
         .ok_or_else(|| {
             PcgError::internal(format!(
-                "Region {region} not found in place {base:?}",
+                "Region {region:?} not found in place {base:?}",
                 region = self.region(ctxt),
                 base = self.base,
             ))

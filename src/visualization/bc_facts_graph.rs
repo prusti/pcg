@@ -56,6 +56,7 @@ pub fn subset_anywhere<'a, 'tcx: 'a, 'bc>(
     let mut graph = DotGraph {
         nodes: vec![],
         edges: vec![],
+        subgraphs: vec![],
         name: "bcfacts".into(),
     };
     let mut nodes = IdLookup::new('n');
@@ -198,6 +199,7 @@ pub fn subset_at_location<'a, 'tcx: 'a, 'bc>(
     let mut graph = DotGraph {
         nodes: vec![],
         edges: vec![],
+        subgraphs: vec![],
         name: "bcfacts".into(),
     };
     let mut nodes = IdLookup::new('n');

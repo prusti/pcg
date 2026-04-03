@@ -1,15 +1,20 @@
 use crate::{
+    borrow_pcg::{
+        abstraction::{ArgIdx, ArgIdxOrResult, FunctionShapeInput, FunctionShapeOutput},
+        region_projection::RegionIdxKind,
+        visitor::extract_regions,
+    },
     rustc_interface::{
         self,
+        index::Idx,
         middle::ty::{self, TyCtxt},
         span::{BytePos, Span},
     },
-    utils::{CompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 use serde_derive::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
-    fmt::Write,
     fs::File,
     io::{self},
     path::Path,
@@ -117,7 +122,7 @@ fn format_bin_op(op: BinOp) -> &'static str {
     }
 }
 
-fn format_local<'tcx>(local: Local, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+fn format_local<'a, 'tcx: 'a>(local: Local, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> String {
     let place: Place<'tcx> = local.into();
     place.display_string(ctxt)
 }
@@ -363,35 +368,325 @@ fn resolve_callee<'tcx>(
     }
 }
 
+/// Resolves region names for all region projections within a set of input types
+/// and an output type, together with optional argument names.
+///
+/// Used to produce human-readable labels for DOT nodes in function/call shape
+/// graphs.
+pub struct ShapeLabelFormatter {
+    /// Per-argument region label lists (indexed by `ArgIdx`, then by
+    /// `LifetimeProjectionIdx`).
+    input_regions: Vec<Vec<String>>,
+    /// Region labels for the output type.
+    output_regions: Vec<String>,
+    /// Actual parameter names when available (indexed by `ArgIdx`).
+    arg_labels: Option<Vec<String>>,
+}
+
+impl ShapeLabelFormatter {
+    /// Build a formatter from the types at a call site (lifetime projections).
+    fn new<'tcx>(
+        input_tys: &[ty::Ty<'tcx>],
+        output_ty: ty::Ty<'tcx>,
+        arg_labels: Vec<String>,
+        tcx: TyCtxt<'tcx>,
+    ) -> Self {
+        let input_regions = input_tys
+            .iter()
+            .map(|ty| {
+                extract_regions(*ty)
+                    .iter()
+                    .map(|r| r.to_short_string(tcx))
+                    .collect()
+            })
+            .collect();
+        let output_regions = extract_regions(output_ty)
+            .iter()
+            .map(|r| r.to_short_string(tcx))
+            .collect();
+        Self {
+            input_regions,
+            output_regions,
+            arg_labels: Some(arg_labels),
+        }
+    }
+
+    /// Build a formatter from the types at a fn sig (generalized lifetime
+    /// projections), which includes `RegionsIn(T)` entries for type parameters.
+    #[must_use]
+    pub fn for_generalized<'tcx>(
+        input_tys: &[ty::Ty<'tcx>],
+        output_ty: ty::Ty<'tcx>,
+        arg_labels: Vec<String>,
+        tcx: TyCtxt<'tcx>,
+    ) -> Self {
+        use crate::borrow_pcg::visitor::{GeneralizedLifetime, extract_generalized_lifetimes};
+
+        let format_gl = |gl: &GeneralizedLifetime<'tcx>| match gl {
+            GeneralizedLifetime::Region(r) => r.to_short_string(tcx),
+            GeneralizedLifetime::RegionsIn(opaque) => format!("RegionsIn({opaque})"),
+        };
+
+        let input_regions = input_tys
+            .iter()
+            .map(|ty| {
+                extract_generalized_lifetimes(*ty)
+                    .iter()
+                    .map(format_gl)
+                    .collect()
+            })
+            .collect();
+        let output_regions = extract_generalized_lifetimes(output_ty)
+            .iter()
+            .map(format_gl)
+            .collect();
+        Self {
+            input_regions,
+            output_regions,
+            arg_labels: Some(arg_labels),
+        }
+    }
+
+    /// Format a function-shape input node as a human-readable label.
+    #[must_use]
+    pub fn format_input<Kind: RegionIdxKind>(&self, input: &FunctionShapeInput<Kind>) -> String {
+        let base_name = self.arg_base_name(input.base);
+        let region_name = self.resolve_input_region(input.base, input.region_idx.index());
+        format!("{base_name}↓{region_name}")
+    }
+
+    /// Format a function-shape output node as a human-readable label.
+    #[must_use]
+    pub fn format_output<Kind: RegionIdxKind>(&self, output: &FunctionShapeOutput<Kind>) -> String {
+        let (base_name, region_name) = match output.base {
+            ArgIdxOrResult::Argument(arg) => {
+                let name = self.arg_base_name(arg);
+                let region = self.resolve_input_region(arg, output.region_idx.index());
+                (name, region)
+            }
+            ArgIdxOrResult::Result => {
+                let region = self
+                    .output_regions
+                    .get(output.region_idx.index())
+                    .cloned()
+                    .unwrap_or_else(|| format!("i{}", output.region_idx.index()));
+                ("result".to_owned(), region)
+            }
+        };
+        format!("{base_name}↓{region_name}")
+    }
+
+    /// Returns the human-readable name for the given argument, falling back to
+    /// the `ArgIdx` display format when no names are available.
+    fn arg_base_name(&self, arg: ArgIdx) -> String {
+        self.arg_labels
+            .as_ref()
+            .and_then(|names| names.get(*arg).cloned())
+            .unwrap_or_else(|| format!("{arg}"))
+    }
+
+    /// Build a formatter for a function's generalized sig shape, looking up
+    /// argument names, types, and trait-bound regions from the `def_id`.
+    #[must_use]
+    pub fn for_fn_sig<'tcx>(
+        def_id: rustc_interface::hir::def_id::DefId,
+        tcx: TyCtxt<'tcx>,
+    ) -> Self {
+        use crate::borrow_pcg::{
+            edge::abstraction::function::TraitBoundRegions,
+            visitor::{GeneralizedLifetime, extract_generalized_lifetimes_with_bounds},
+        };
+
+        let sig = crate::borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
+        let arg_labels = callee_arg_labels(def_id, tcx);
+        let param_env = tcx.param_env(def_id);
+        let tbr = TraitBoundRegions::new(param_env);
+        let tbr_map = tbr.as_map();
+
+        let format_gl = |gl: &GeneralizedLifetime<'tcx>| match gl {
+            GeneralizedLifetime::Region(r) => r.to_short_string(tcx),
+            GeneralizedLifetime::RegionsIn(opaque) => format!("RegionsIn({opaque})"),
+        };
+
+        let input_regions = sig
+            .inputs()
+            .iter()
+            .map(|ty| {
+                extract_generalized_lifetimes_with_bounds(*ty, tbr_map)
+                    .iter()
+                    .map(&format_gl)
+                    .collect()
+            })
+            .collect();
+        let mut output_gls = extract_generalized_lifetimes_with_bounds(sig.output(), tbr_map)
+            .into_iter()
+            .collect::<Vec<_>>();
+
+        // Mirror the logic in result_projections: for type parameter return
+        // types, include all signature lifetimes.
+        if matches!(
+            sig.output().kind(),
+            rustc_interface::middle::ty::TyKind::Param(_)
+        ) {
+            for input_ty in sig.inputs() {
+                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                    if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {
+                        output_gls.push(gl);
+                    }
+                }
+            }
+        }
+
+        let output_regions = output_gls.iter().map(&format_gl).collect();
+        Self {
+            input_regions,
+            output_regions,
+            arg_labels: Some(arg_labels),
+        }
+    }
+
+    /// Returns `(raw_display, pretty_label)` pairs for every input and output
+    /// node in `shape`. The raw display matches the format used by
+    /// [`FunctionShape`]'s `Display` impl (e.g. `Arg(0)|2`), and the pretty
+    /// label uses visualization-style names (e.g. `self↓'a`).
+    #[must_use]
+    pub fn node_labels<Kind: RegionIdxKind>(
+        &self,
+        shape: &crate::borrow_pcg::abstraction::FunctionShape<Kind>,
+    ) -> Vec<(String, String)> {
+        use crate::borrow_pcg::abstraction::{FunctionShapeInput, FunctionShapeOutput};
+
+        fn raw_input<K: RegionIdxKind>(input: &FunctionShapeInput<K>) -> String {
+            format!("Arg({})↓{}", *input.base, input.region_idx.index())
+        }
+        fn raw_output<K: RegionIdxKind>(output: &FunctionShapeOutput<K>) -> String {
+            match output.base {
+                ArgIdxOrResult::Argument(arg) => {
+                    format!("Arg({})↓{}", *arg, output.region_idx.index())
+                }
+                ArgIdxOrResult::Result => format!("Result↓{}", output.region_idx.index()),
+            }
+        }
+
+        let mut labels = Vec::new();
+        let shape_clone = shape.clone();
+        let (inputs, outputs) = shape_clone.take_inputs_and_outputs();
+        for input in &inputs {
+            labels.push((raw_input(input), self.format_input(input)));
+        }
+        for output in &outputs {
+            labels.push((raw_output(output), self.format_output(output)));
+        }
+        labels
+    }
+
+    /// Resolves the lifetime name for the given region index within an argument
+    /// type, falling back to the debug format when out of bounds.
+    fn resolve_input_region(&self, arg: ArgIdx, idx: usize) -> String {
+        self.input_regions
+            .get(*arg)
+            .and_then(|regions| regions.get(idx))
+            .cloned()
+            .unwrap_or_else(|| format!("i{idx}"))
+    }
+}
+
 /// Render a [`FunctionShape`] as a DOT bipartite graph with the given name.
-fn function_shape_to_dot(
-    shape: crate::borrow_pcg::abstraction::FunctionShape,
+///
+/// When `formatter` is provided, nodes display human-readable labels (e.g.
+/// `x↓'a`). Otherwise falls back to the `Display` impl (e.g. `a0↓0`).
+fn function_shape_to_dot<Kind: RegionIdxKind>(
+    shape: crate::borrow_pcg::abstraction::FunctionShape<Kind>,
     graph_name: &str,
-) -> Option<String> {
-    let edges: Vec<_> = shape.edges().collect();
+    formatter: Option<&ShapeLabelFormatter>,
+) -> String {
+    use super::dot_graph::{DotEdge, DotGraph, DotNode, DotSubgraph, EdgeDirection, EdgeOptions};
+
+    let shape_edges: Vec<_> = shape.edges().collect();
     let (inputs, outputs) = shape.take_inputs_and_outputs();
 
-    let mut dot = String::new();
-    writeln!(dot, "digraph \"{graph_name}\" {{").ok()?;
-    writeln!(dot, "  rankdir=LR;").ok()?;
-    writeln!(dot, "  node [shape=box fontname=monospace fontsize=12];").ok()?;
-    writeln!(dot, "  subgraph cluster_inputs {{").ok()?;
-    writeln!(dot, "    label=\"Inputs\";").ok()?;
-    for input in &inputs {
-        writeln!(dot, "    \"in_{input}\" [label=\"{input}\"];").ok()?;
+    let fmt_input = |input: &FunctionShapeInput<Kind>| -> String {
+        formatter.map_or_else(|| format!("{input}"), |f| f.format_input(input))
+    };
+    let fmt_output = |output: &FunctionShapeOutput<Kind>| -> String {
+        formatter.map_or_else(|| format!("{output}"), |f| f.format_output(output))
+    };
+
+    let input_node_id = |input: &FunctionShapeInput<Kind>| format!("in_{input}");
+    let output_node_id = |output: &FunctionShapeOutput<Kind>| format!("out_{output}");
+
+    let input_nodes = inputs
+        .iter()
+        .map(|input| DotNode::simple(input_node_id(input), fmt_input(input)))
+        .collect();
+
+    // Collect explicit output nodes plus any edge targets that reference
+    // argument positions (e.g. self-loops like Arg(0)|1 -> Arg(0)|1). These
+    // get their own node in the outputs cluster with the same label as the
+    // corresponding input.
+    let mut output_node_ids: Vec<String> = Vec::new();
+    let mut output_nodes: Vec<DotNode> = outputs
+        .iter()
+        .map(|output| {
+            let id = output_node_id(output);
+            output_node_ids.push(id.clone());
+            DotNode::simple(id, fmt_output(output))
+        })
+        .collect();
+    for edge in &shape_edges {
+        let id = output_node_id(&edge.output);
+        if !output_node_ids.contains(&id) {
+            output_node_ids.push(id.clone());
+            output_nodes.push(DotNode::simple(id, fmt_output(&edge.output)));
+        }
     }
-    writeln!(dot, "  }}").ok()?;
-    writeln!(dot, "  subgraph cluster_outputs {{").ok()?;
-    writeln!(dot, "    label=\"Outputs\";").ok()?;
-    for output in &outputs {
-        writeln!(dot, "    \"out_{output}\" [label=\"{output}\"];").ok()?;
-    }
-    writeln!(dot, "  }}").ok()?;
-    for edge in &edges {
-        writeln!(dot, "  \"in_{}\" -> \"out_{}\";", edge.input, edge.output).ok()?;
-    }
-    writeln!(dot, "}}").ok()?;
-    Some(dot)
+
+    let edges = shape_edges
+        .iter()
+        .map(|edge| DotEdge {
+            id: None,
+            from: input_node_id(&edge.input),
+            to: output_node_id(&edge.output),
+            options: EdgeOptions::directed(EdgeDirection::Forward),
+        })
+        .collect();
+
+    let graph = DotGraph {
+        name: Cow::Owned(graph_name.to_owned()),
+        nodes: Vec::new(),
+        edges,
+        subgraphs: vec![
+            DotSubgraph {
+                name: "inputs".into(),
+                label: "Inputs".into(),
+                nodes: input_nodes,
+            },
+            DotSubgraph {
+                name: "outputs".into(),
+                label: "Outputs".into(),
+                nodes: output_nodes,
+            },
+        ],
+    };
+    graph.to_string()
+}
+
+/// Returns the argument names for a function, using `"_"` for unnamed args.
+#[must_use]
+pub fn callee_arg_labels(
+    def_id: rustc_interface::hir::def_id::DefId,
+    tcx: TyCtxt<'_>,
+) -> Vec<String> {
+    tcx.fn_arg_idents(def_id)
+        .iter()
+        .map(|ident| {
+            if let Some(ident) = ident {
+                ident.to_string()
+            } else {
+                "_".to_owned()
+            }
+        })
+        .collect()
 }
 
 /// Generate a DOT graph representing the function shape (bipartite graph of
@@ -403,7 +698,9 @@ fn generate_function_shape_dot(
     use crate::borrow_pcg::abstraction::FunctionShape;
     let shape = FunctionShape::for_fn_sig(def_id, ctxt).ok()?;
     let fn_name = ctxt.tcx().def_path_str(def_id);
-    function_shape_to_dot(shape, &fn_name)
+
+    let formatter = ShapeLabelFormatter::for_fn_sig(def_id, ctxt.tcx());
+    Some(function_shape_to_dot(shape, &fn_name, Some(&formatter)))
 }
 
 /// Generate a DOT graph representing the call shape derived solely from the
@@ -414,14 +711,19 @@ fn generate_call_shape_dot<'tcx>(
     output_ty: ty::Ty<'tcx>,
     location: mir::Location,
     ctxt: CompilerCtxt<'_, 'tcx>,
-) -> Option<String> {
+    callee_def_id: Option<rustc_interface::hir::def_id::DefId>,
+) -> String {
     use crate::borrow_pcg::{
         abstraction::FunctionShape, edge::abstraction::function::FnCallDataSource,
     };
 
+    let arg_labels = callee_def_id.map(|did| callee_arg_labels(did, ctxt.tcx()));
+    let formatter =
+        ShapeLabelFormatter::new(&input_tys, output_ty, arg_labels.unwrap(), ctxt.tcx());
+
     let data_source = FnCallDataSource::new(location, input_tys, output_ty);
-    let shape = FunctionShape::new(&data_source, ctxt).ok()?;
-    function_shape_to_dot(shape, "call_shape")
+    let shape = FunctionShape::new(&data_source, ctxt);
+    function_shape_to_dot(shape, "call_shape", Some(&formatter))
 }
 
 fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
@@ -466,16 +768,22 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
             ..
         } = &data.terminator().kind
         {
-            let sig_shape = resolve_callee(func, ctxt.body(), ctxt.tcx())
-                .and_then(|def_id| generate_function_shape_dot(def_id, ctxt));
+            let callee_def_id = resolve_callee(func, ctxt.body(), ctxt.tcx());
+            let sig_shape =
+                callee_def_id.and_then(|def_id| generate_function_shape_dot(def_id, ctxt));
             let input_tys = args
                 .iter()
                 .map(|arg| arg.node.ty(ctxt.body(), ctxt.tcx()))
                 .collect();
             let output_ty = destination.ty(ctxt.body(), ctxt.tcx()).ty;
-            let call_shape =
-                generate_call_shape_dot(input_tys, output_ty, terminator_location, ctxt);
-            (sig_shape, call_shape)
+            let call_shape = generate_call_shape_dot(
+                input_tys,
+                output_ty,
+                terminator_location,
+                ctxt,
+                callee_def_id,
+            );
+            (sig_shape, Some(call_shape))
         } else {
             (None, None)
         };

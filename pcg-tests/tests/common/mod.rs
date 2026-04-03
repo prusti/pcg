@@ -70,6 +70,11 @@ fn find_workspace_base_dir() -> PathBuf {
     manifest_dir.parent().unwrap().to_path_buf()
 }
 
+/// Returns the target directory name, respecting `CARGO_TARGET_DIR`.
+fn target_dir_name() -> String {
+    std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string())
+}
+
 #[allow(dead_code)]
 #[must_use]
 pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
@@ -97,7 +102,10 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
         ));
 
     assert!(cargo_build.success(), "Failed to build pcg_bin");
-    let pcg_exe = pcg_bin_dir.join("target").join(target).join(pcg_bin_name());
+    let pcg_exe = pcg_bin_dir
+        .join(target_dir_name())
+        .join(target)
+        .join(pcg_bin_name());
     println!("Running PCG on directory: {}", dir.display());
     let mut command = Command::new("cargo");
     command
@@ -143,7 +151,7 @@ pub fn run_pcg_on_file(file: &Path) {
     let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
     let pcg_exe = pcg_bin_dir
-        .join("target")
+        .join(target_dir_name())
         .join("debug")
         .join(pcg_bin_name());
     println!("Running PCG on file: {}", file.display());

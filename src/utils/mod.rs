@@ -228,7 +228,7 @@ impl PcgSettings {
             tracing::info!("Using user path for {var_name}: {:?}", user_path);
             match user_path.canonicalize() {
                 Ok(path) => tracing::info!("Absolute path: {:?}", path),
-                Err(e) => tracing::error!(
+                Err(e) => tracing::warn!(
                     "User path {} cannot be canonicalized from current directory {}: {e}",
                     user_path.display(),
                     std::env::current_dir().unwrap().display()
