@@ -14,11 +14,12 @@ use crate::{
     pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike, obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander}, place_capabilities::PlaceCapabilitiesInterface
     },
-    rustc_interface::middle::mir::{self, Operand, Rvalue},
-    utils::{
-        self, AnalysisLocation, DataflowCtxt, Place, SnapshotLocation,
-        maybe_old::MaybeLabelledPlace,
-    },
+    rustc_interface::middle::mir::{self, Operand, Rvalue, CastKind},
+    utils::Place,
+};
+
+use crate::utils::{
+    self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
 };
 
 use super::{PcgError, PcgUnsupportedError};
@@ -139,7 +140,33 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     self.assignment_projections(operand, target, None)?;
             }
             Rvalue::Cast(kind, operand, ty) => {
-                self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
+                if let CastKind::PtrToPtr = kind {
+                    let p = operand.place().unwrap();
+                    let p: utils::Place = p.into();
+                    let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
+                    let edges = self.pcg.borrows_graph().edges_blocked_by(p.into(), ctxt);
+                    let alies_edges = edges.into_iter().filter_map(|e| match e.kind {
+                        BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                        _ => None
+                    }).collect::<Vec<_>>();
+                    if alies_edges.len() > 0 {
+                        assert!(alies_edges.len() == 1);
+                        self.record_and_apply_action(BorrowPcgAction::add_edge(
+                                    BorrowPcgEdge::new(
+                                            DelegationEdge{
+                                                rawptr_place: target.project_deref(ctxt).into(),
+                                                aliased_place: alies_edges[0].aliased_place.into()
+                                            }.into()
+                                        ,
+                                        self.pcg.borrow.validity_conditions.clone(),
+                                    ),
+                                    "assign_post_main",
+                                ).into(),
+                        )?;
+                    }
+                } else {
+                    self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
+                }
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
                 let blocked_place: utils::Place<'tcx> = (*blocked_place).into();

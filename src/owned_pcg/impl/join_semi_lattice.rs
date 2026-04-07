@@ -236,6 +236,9 @@ impl<'tcx> LocalExpansions<'tcx> {
     ) where
         'tcx: 'a,
     {
+        if collapse.to.is_raw_ptr(ctxt) {
+            return; // In case of raw pointer deref, we don't have to collapse anything to give permission back to raw pointer itself
+        }
         let expansion_places = self.all_children_of(collapse.to, ctxt);
         let retained_cap: CapabilityKind =
             expansion_places
