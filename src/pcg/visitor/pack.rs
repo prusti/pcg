@@ -203,6 +203,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 return ShouldKillNode::No;
             }
 
+            // Do not kill if there is still a rawptr delegation to this node
             let node = PcgNode::from(p);
             let edges = self.pcg.borrows_graph().edges_blocked_by(node, ctxt);
             let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
@@ -270,6 +271,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 } else {
                     ShouldPackEdge::No
                 }
+            } else if let BorrowPcgEdgeKind::Delegation(..) = edge {
+                ShouldPackEdge::No
             } else {
                 let mut why_killed_reasons = Vec::new();
                 for node in edge.blocked_by_nodes(self.ctxt) {
