@@ -259,7 +259,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             block_type
         );
         if base.is_raw_ptr(ctxt) {
-            return Ok(true); // We have no aliasing information, PCG should not extend anything
+            return Ok(true); // We have no aliasing information, PCG should not expand anything
         }
         let expansion: BorrowPcgExpansion<'tcx> =
             BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
@@ -301,7 +301,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             {
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
                 if base.is_raw_ptr(ctxt) {
-                    return Ok(()); // We have no aliasing information, PCG should not extend anything
+                    return Ok(()); // We have no aliasing information, PCG should not expand anything
                 }
                 let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
                     base_rp,
