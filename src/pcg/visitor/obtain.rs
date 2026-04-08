@@ -717,7 +717,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     }
                 } else {
                     let cap = self.pcg.capabilities.get(place, self.ctxt);
-                    self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, cap.unwrap().expect_concrete(), kind)), None)))?;
+                    if cap.is_some() && cap.unwrap().expect_concrete() > kind {
+                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, cap.unwrap().expect_concrete(), kind)), None)))?;
+                    }
                 }
             }
 
