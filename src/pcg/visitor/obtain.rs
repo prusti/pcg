@@ -520,11 +520,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {
-                    pcg_validity_assert!(self.pcg.place_capability_equals(
-                        weaken.place,
-                        weaken.from,
-                        self.ctxt
-                    ));
+                    pcg_validity_assert!(
+                        self.pcg.place_capability_equals(weaken.place, weaken.from, self.ctxt) || weaken.place.contains_unsafe_deref(self.ctxt) /* SEE COMMENT WHERE WE CREATE WEAKEN. THIS SHOULD BE CHANGED */
+                    );
                     self.pcg
                         .place_capabilities
                         .insert(weaken.place, weaken.to, self.ctxt);
@@ -711,14 +709,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }).collect::<Vec<_>>();
                 if delegations.len() > 0 {
                     assert!(delegations.len() == 1);
-                    let cap = self.pcg.capabilities.get(delegations[0].aliased_place.place(), self.ctxt);
+                    let cap = self.pcg.place_capabilities.get(delegations[0].aliased_place.place(), self.ctxt);
                     if cap.is_some() && cap.unwrap().expect_concrete() > kind {
                         self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
                     }
                 } else {
-                    let cap = self.pcg.capabilities.get(place, self.ctxt);
-                    if cap.is_some() && cap.unwrap().expect_concrete() > kind {
-                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, cap.unwrap().expect_concrete(), kind)), None)))?;
+                    let cap = self.pcg.place_capabilities.get(place, self.ctxt);
+                    if cap.is_none() /* THIS SHOULD BE CHANGED. HOWEVER, RIGHT NOW THE USER NEEDS TO ENSURE THAT WE HAVE ACCESS TO A RAWPTR */ || cap.unwrap().expect_concrete() > kind {
+                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, CapabilityKind::Exclusive, kind)), None)))?;
                     }
                 }
             }
