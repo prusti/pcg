@@ -9,9 +9,7 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
-            borrow_flow::private::FutureEdgeKind,
-            deref::DerefEdge,
-            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
+            borrow_flow::private::FutureEdgeKind, deref::DerefEdge, kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType}
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
@@ -703,6 +701,24 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
 
         self.expand_to(place, obtain_type, self.ctxt)?;
+
+        if place.contains_unsafe_deref(self.ctxt) {
+            if let ObtainType::Capability(kind) = obtain_type {
+                let edges = self.pcg.borrows_graph().edges_blocked_by(place.into(), self.ctxt);
+                let delegations = edges.filter_map(|e| match e.kind {
+                    BorrowPcgEdgeKind::Delegation(delegation) => Some(delegation),
+                    _ => None,
+                }).collect::<Vec<_>>();
+                if delegations.len() > 0 {
+                    assert!(delegations.len() == 1);
+                    let cap = self.pcg.capabilities.get(delegations[0].aliased_place.place(), self.ctxt);
+                    if cap.is_some() && cap.unwrap().expect_concrete() > kind {
+                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new_for_storage_dead(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
+                    }
+                }
+            }
+
+        } 
 
         if let ObtainType::ForStorageDead = obtain_type
             && self
