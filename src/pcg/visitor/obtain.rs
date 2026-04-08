@@ -713,7 +713,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     assert!(delegations.len() == 1);
                     let cap = self.pcg.capabilities.get(delegations[0].aliased_place.place(), self.ctxt);
                     if cap.is_some() && cap.unwrap().expect_concrete() > kind {
-                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new_for_storage_dead(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
+                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
                     }
                 }
             }
