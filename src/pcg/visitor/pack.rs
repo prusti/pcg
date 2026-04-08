@@ -205,7 +205,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
 
             // Do not kill if there is still a rawptr delegation to this node
             let node = PcgNode::from(p);
-            let edges = self.pcg.borrows_graph().edges_blocked_by(node, ctxt);
+            let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
             let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
                 crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
                 _ => None
@@ -224,6 +224,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             if p.is_place()
                 && !place.place().projection.is_empty()
                 && !fg.has_edge_blocking(place.into(), ctxt)
+                && !place.place().contains_unsafe_deref(ctxt)
             {
                 return ShouldKillNode::Yes {
                     reason:
@@ -231,7 +232,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             .into(),
                 };
             }
-
             if ctxt.bc().is_dead(p.into(), location) {
                 return ShouldKillNode::Yes {
                     reason: "Borrow-checker reports node as dead".into(),
@@ -271,8 +271,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 } else {
                     ShouldPackEdge::No
                 }
-            } else if let BorrowPcgEdgeKind::Delegation(..) = edge {
-                ShouldPackEdge::No
             } else {
                 let mut why_killed_reasons = Vec::new();
                 for node in edge.blocked_by_nodes(self.ctxt) {
@@ -305,7 +303,15 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 "Checking leaf edge: {}",
                 edge.value.display_string(self.ctxt)
             );
-            if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
+            if let BorrowPcgEdgeKind::Delegation(delegation) = edge.value {
+                if let ShouldKillNode::Yes { reason } = should_kill_node(delegation.rawptr_place.into(), &fg) {
+                    edges_to_remove.push(&edge, reason);
+                    let edges = self.pcg.borrows_graph().edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
+                    for edge_to_remove in edges {
+                        edges_to_remove.push(&edge_to_remove.to_owned_edge(), "Delegation edge is removed".into());
+                    }
+                }
+            } else if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
                 edges_to_remove.push(&edge, reason);
             }
         }

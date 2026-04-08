@@ -145,7 +145,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 )
                 .into(),
             )?;
-        } else {
+        } else if !base.is_raw_ptr(ctxt) {
             self.apply_action(
                 OwnedPcgAction::new(
                     RepackOp::expand(
