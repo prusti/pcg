@@ -715,6 +715,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     if cap.is_some() && cap.unwrap().expect_concrete() > kind {
                         self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
                     }
+                } else {
+                    let cap = self.pcg.capabilities.get(place, self.ctxt);
+                    self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, cap.unwrap().expect_concrete(), kind)), None)))?;
                 }
             }
 
