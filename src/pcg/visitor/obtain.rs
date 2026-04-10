@@ -700,29 +700,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         self.expand_to(place, obtain_type, self.ctxt)?;
 
-        if place.contains_unsafe_deref(self.ctxt) {
-            if let ObtainType::Capability(kind) = obtain_type {
-                let edges = self.pcg.borrows_graph().edges_blocked_by(place.into(), self.ctxt);
-                let delegations = edges.filter_map(|e| match e.kind {
-                    BorrowPcgEdgeKind::Delegation(delegation) => Some(delegation),
-                    _ => None,
-                }).collect::<Vec<_>>();
-                if delegations.len() > 0 {
-                    assert!(delegations.len() == 1);
-                    let cap = self.pcg.place_capabilities.get(delegations[0].aliased_place.place(), self.ctxt);
-                    if cap.is_some() && cap.unwrap().expect_concrete() > kind {
-                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(delegations[0].aliased_place.place(), cap.unwrap().expect_concrete(), kind)), None)))?;
-                    }
-                } else {
-                    let cap = self.pcg.place_capabilities.get(place, self.ctxt);
-                    if cap.is_none() /* THIS SHOULD BE CHANGED. HOWEVER, RIGHT NOW THE USER NEEDS TO ENSURE THAT WE HAVE ACCESS TO A RAWPTR */ || cap.unwrap().expect_concrete() > kind {
-                        self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(RepackOp::Weaken(Weaken::new(place, CapabilityKind::Exclusive, kind)), None)))?;
-                    }
-                }
-            }
-
-        } 
-
         if let ObtainType::ForStorageDead = obtain_type
             && self
                 .pcg
