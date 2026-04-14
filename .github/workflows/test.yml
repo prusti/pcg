@@ -11,7 +11,6 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/pcg-server
-  MUTATION_TESTS_REF: zgrannan/update-pcg
   SYMBOLIC_EXECUTION_REF: main
   PURIFICATION_PRUSTI_REF: zgrannan/old-purification
 
@@ -210,39 +209,6 @@ jobs:
     - name: Run Prusti tests
       working-directory: prusti-dev
       run: ./x.py setup && python3 test-rpe.py --no-server
-
-  mutation_tests:
-    needs: changes
-    if: ${{ github.event_name == 'push' || needs.changes.outputs.rust == 'true' }}
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        path: pcg
-
-    - name: Checkout mutation testing repository
-      uses: actions/checkout@v4
-      with:
-        repository: prusti/pcg-mutation-testing
-        ref: ${{ env.MUTATION_TESTS_REF }}
-        path: pcg-mutation-testing
-
-    - name: Cache Cargo registry and build artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          pcg-mutation-testing/target
-        key: ${{ runner.os }}-cargo-mutation-${{ env.MUTATION_TESTS_REF }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-mutation-
-
-    - name: Build mutation testing tool
-      working-directory: pcg-mutation-testing
-      run: cargo build
 
   check_generated_types:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
