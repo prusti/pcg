@@ -9,6 +9,7 @@ import {
 } from "../types";
 import {
   PcgBlockVisualizationData,
+  PcgLoopDebugData,
   DotFileAtPhase,
   AppliedAction,
 } from "../generated_types";
@@ -18,7 +19,7 @@ import {
   useLocalStorageNumber,
 } from "../hooks/useLocalStorageState";
 import { Api } from "../api";
-import { openDotGraphInNewWindow } from "../dot_graph";
+import { openDotGraphInNewWindow, openDotStringInNewWindow } from "../dot_graph";
 import { toBasicBlock } from "../util";
 
 type NavigationItem =
@@ -40,6 +41,183 @@ export const NAVIGATOR_DEFAULT_WIDTH = 200;
 export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
+
+function DotGraphButton({
+  label,
+  dotContent,
+  title,
+}: {
+  label: string;
+  dotContent: string;
+  title: string;
+}) {
+  return (
+    <button
+      style={{
+        display: "block",
+        marginTop: "6px",
+        marginBottom: "6px",
+        padding: "4px 8px",
+        cursor: "pointer",
+        backgroundColor: "#007acc",
+        color: "white",
+        border: "none",
+        borderRadius: "4px",
+        fontSize: "12px",
+      }}
+      onClick={() => openDotStringInNewWindow(dotContent, title)}
+    >
+      {label}
+    </button>
+  );
+}
+
+function CollapsiblePlaceUsages({
+  title,
+  usages,
+}: {
+  title: string;
+  usages: { [key: string]: string };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const keys = Object.keys(usages);
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "\u25BC" : "\u25B6"} {title} ({keys.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {keys.map((k) => (
+            <div key={k}>
+              {k}: {usages[k]}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CollapsibleNestedList<T>({
+  title,
+  entries,
+  renderItem,
+}: {
+  title: string;
+  entries: Array<[string, Array<T>]>;
+  renderItem: (item: T, index: number) => React.ReactNode;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedEntries, setExpandedEntries] = useState<Set<number>>(
+    new Set()
+  );
+  const toggleEntry = (index: number) => {
+    setExpandedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+  return (
+    <div style={{ marginTop: "6px" }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          cursor: "pointer",
+          userSelect: "none",
+          fontWeight: "bold",
+          fontSize: "12px",
+        }}
+      >
+        {expanded ? "\u25BC" : "\u25B6"} {title} ({entries.length})
+      </div>
+      {expanded && (
+        <div style={{ paddingLeft: "12px", fontSize: "12px" }}>
+          {entries.map(([label, items], i) => (
+            <div key={i} style={{ marginTop: "4px" }}>
+              <div
+                onClick={() => toggleEntry(i)}
+                style={{ cursor: "pointer", userSelect: "none" }}
+              >
+                {expandedEntries.has(i) ? "\u25BC" : "\u25B6"} {label} (
+                {items.length})
+              </div>
+              {expandedEntries.has(i) && (
+                <div style={{ paddingLeft: "12px" }}>
+                  {items.map(renderItem)}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoopDebugPanel({ loopData }: { loopData: PcgLoopDebugData }) {
+  return (
+    <div style={{ marginBottom: "12px" }}>
+      <b>Loop Head</b>
+      {loopData.dot_graphs.map(([name, dotContent]) => (
+        <DotGraphButton
+          key={name}
+          label={name}
+          dotContent={dotContent}
+          title={`${name} Graph`}
+        />
+      ))}
+      <CollapsiblePlaceUsages
+        title="Used Places"
+        usages={loopData.used_places.usages}
+      />
+      <CollapsiblePlaceUsages
+        title="Live Loop Places"
+        usages={loopData.live_loop_places.usages}
+      />
+      <CollapsiblePlaceUsages
+        title="Loop Blocked Places"
+        usages={loopData.loop_blocked_places.usages}
+      />
+      <CollapsiblePlaceUsages
+        title="Loop Blocker Places"
+        usages={loopData.loop_blocker_places.usages}
+      />
+      <CollapsibleNestedList
+        title="Ancestors of Live Places"
+        entries={loopData.ancestors_of_live_places}
+        renderItem={(item, j) => <div key={j}>{item}</div>}
+      />
+      <CollapsibleNestedList
+        title="Root Places"
+        entries={loopData.root_places}
+        renderItem={(item, j) => <div key={j}>{item}</div>}
+      />
+      <CollapsibleNestedList
+        title="Place Labels"
+        entries={loopData.place_labels}
+        renderItem={(r, j) => (
+          <div key={j}>
+            {r.from} &rarr; {r.to}
+          </div>
+        )}
+      />
+    </div>
+  );
+}
 
 const getPCGDotGraphFilename = (
   currentPoint: CurrentPoint,
@@ -442,6 +620,9 @@ export default function PCGNavigator({
               padding: "15px",
             }}
           >
+            {pcgData.loop_data ? (
+              <LoopDebugPanel loopData={pcgData.loop_data} />
+            ) : null}
             {renderItems()}
           </div>
           <button

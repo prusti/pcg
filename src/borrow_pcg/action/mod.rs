@@ -169,6 +169,8 @@ pub enum LabelPlaceReason {
     JoinOwnedReadAndWriteCapabilities,
     Write,
     Collapse,
+    /// Label lifetime projections of places that are mutated in a loop.
+    JoinLoop,
 }
 
 impl LabelPlaceReason {
@@ -180,6 +182,10 @@ impl LabelPlaceReason {
         ctxt: Ctxt,
     ) -> HashSet<NodeReplacement<'tcx, P>> {
         let predicate: LabelNodePredicate<'tcx, P> = match self {
+            LabelPlaceReason::JoinLoop => LabelNodePredicate::And(vec![
+                LabelNodePredicate::PlaceIsPostfixOf(place),
+                LabelNodePredicate::NodeType(PcgNodeType::LifetimeProjection),
+            ]),
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
             | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {

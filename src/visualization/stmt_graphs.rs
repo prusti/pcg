@@ -1,4 +1,5 @@
 use crate::{
+    r#loop::PlaceUsageType,
     pcg::{DataflowStmtPhase, EvalStmtPhase, PcgArena, PcgEngine, PcgRef, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{index::IndexVec, middle::mir},
@@ -115,6 +116,12 @@ fn dot_filename_for(output_dir: &Path, relative_filename: &PathToDotFile) -> Pat
 }
 
 impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
+    pub(crate) fn set_debug_loop_data(self, loop_data: PcgLoopDebugData) {
+        if let Some(graphs) = self.graphs {
+            graphs.dot_graphs.borrow_mut().set_loop_data(loop_data);
+        }
+    }
+
     pub(crate) fn generate_pcg_debug_visualization_graph<'pcg>(
         self,
         location: mir::Location,
@@ -151,8 +158,56 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
     }
 }
 
+/// Serializable representation of place usages for visualization.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
+pub(crate) struct PlaceUsagesDebugRepr {
+    usages: std::collections::HashMap<String, PlaceUsageType>,
+}
+
+impl PlaceUsagesDebugRepr {
+    pub(crate) fn new(usages: std::collections::HashMap<String, PlaceUsageType>) -> Self {
+        Self { usages }
+    }
+}
+
+/// A place label replacement from→to for debug visualization.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
+pub(crate) struct PlaceLabelReplacement {
+    from: String,
+    to: String,
+}
+
+impl PlaceLabelReplacement {
+    pub(crate) fn new(from: String, to: String) -> Self {
+        Self { from, to }
+    }
+}
+
+/// Debug data collected during loop shape construction, shown
+/// when a loop head is selected in the visualization.
+#[derive(Clone, Debug, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
+pub(crate) struct PcgLoopDebugData {
+    pub(crate) used_places: PlaceUsagesDebugRepr,
+    pub(crate) live_loop_places: PlaceUsagesDebugRepr,
+    /// `(graph_name, dot_output)` pairs for debug dot graphs.
+    pub(crate) dot_graphs: Vec<(String, String)>,
+    pub(crate) loop_blocked_places: PlaceUsagesDebugRepr,
+    pub(crate) ancestors_of_live_places: Vec<(String, Vec<String>)>,
+    pub(crate) root_places: Vec<(String, Vec<String>)>,
+    pub(crate) loop_blocker_places: PlaceUsagesDebugRepr,
+    /// `(place, replacements)` for place labeling debug info.
+    pub(crate) place_labels: Vec<(String, Vec<PlaceLabelReplacement>)>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct PcgDotGraphsForBlock {
+    pub(crate) loop_data: Option<PcgLoopDebugData>,
     pub(crate) graphs: Vec<StmtGraphs>,
     #[serde(skip)]
     block: mir::BasicBlock,
@@ -163,8 +218,13 @@ impl PcgDotGraphsForBlock {
         let num_statements = ctxt.body().basic_blocks[block].statements.len();
         Self {
             block,
+            loop_data: None,
             graphs: vec![StmtGraphs::default(); num_statements + 1],
         }
+    }
+
+    pub(crate) fn set_loop_data(&mut self, loop_data: PcgLoopDebugData) {
+        self.loop_data = Some(loop_data);
     }
 
     pub(crate) fn insert_for_action(

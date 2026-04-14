@@ -1,18 +1,21 @@
 use crate::{
     HasSettings,
     borrow_pcg::{
+        action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::ConstructAbstractionGraphResult,
+        has_pcs_elem::SetLabel,
         region_projection::LifetimeProjectionLabel,
+        state::BorrowStateRef,
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
-    r#loop::PlaceUsages,
+    r#loop::{PlaceUsageType, PlaceUsages},
     owned_pcg::OwnedPcg,
     pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike,
+        BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
@@ -31,7 +34,11 @@ use crate::{
 };
 
 #[cfg(feature = "visualization")]
-use crate::visualization::{dot_graph::DotGraph, generate_borrows_dot_graph};
+use crate::visualization::{
+    dot_graph::DotGraph,
+    generate_borrows_dot_graph,
+    stmt_graphs::{PcgLoopDebugData, PlaceLabelReplacement},
+};
 
 use super::{BorrowsGraph, borrows_imgcat_debug};
 
@@ -74,6 +81,19 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 eprintln!("Error rendering self graph: {e}");
             });
         }
+    }
+
+    /// Generate a DOT graph string for the borrows graph state (for debug visualization).
+    #[cfg(feature = "visualization")]
+    fn debug_graph<'a>(
+        &self,
+        capabilities: &impl PlaceCapabilitiesReader<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> String
+    where
+        'tcx: 'a,
+    {
+        generate_borrows_dot_graph(ctxt.bc_ctxt(), capabilities, self).unwrap_or_default()
     }
 
     fn apply_placeholder_labels<'mir, Ctxt>(
@@ -220,6 +240,16 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "used places: {}",
             used_places.display_string(ctxt.ctxt)
         );
+
+        #[cfg(feature = "visualization")]
+        let mut dot_graphs: Vec<(String, String)> = vec![];
+
+        #[cfg(feature = "visualization")]
+        dot_graphs.push((
+            "Pre-Loop".to_owned(),
+            self.debug_graph(args.capabilities, ctxt),
+        ));
+
         // p_loop
         let live_loop_places = used_places.usages_where(|p| {
             args.body_analysis.is_live_and_initialized_at(
@@ -273,6 +303,48 @@ impl<'tcx> BorrowsGraph<'tcx> {
             loop_blocker_places.display_string(ctxt.ctxt)
         );
 
+        // Label mutated places before expansion
+        #[cfg(feature = "visualization")]
+        let mut place_labels: Vec<(String, Vec<PlaceLabelReplacement>)> = Vec::new();
+        for pu in used_places.iter() {
+            let pcg_ref = PcgRef {
+                owned: args.owned,
+                borrow: BorrowStateRef::new(self, validity_conditions),
+                capabilities: args.capabilities,
+            };
+            if !pcg_ref.is_leaf_place(pu.place, ctxt) && pu.usage == PlaceUsageType::Mutate {
+                let replacements = self.label_place(
+                    pu.place,
+                    LabelPlaceReason::JoinLoop,
+                    &SetLabel(SnapshotLocation::BeforeJoin(loop_head)),
+                    ctxt,
+                );
+                #[cfg(feature = "visualization")]
+                if !replacements.is_empty() {
+                    place_labels.push((
+                        pu.place.display_string(ctxt),
+                        replacements
+                            .into_iter()
+                            .map(|r| {
+                                PlaceLabelReplacement::new(
+                                    r.from.display_string(ctxt),
+                                    r.to.display_string(ctxt),
+                                )
+                            })
+                            .collect(),
+                    ));
+                }
+                #[cfg(not(feature = "visualization"))]
+                let _ = replacements;
+            }
+        }
+
+        #[cfg(feature = "visualization")]
+        dot_graphs.push((
+            "Place-Label".to_owned(),
+            self.debug_graph(args.capabilities, ctxt),
+        ));
+
         let expand_places = loop_blocker_places.joined_with(&loop_blocked_places);
 
         self.expand_places_for_abstraction(
@@ -291,11 +363,25 @@ impl<'tcx> BorrowsGraph<'tcx> {
             ctxt.ctxt,
         );
 
-        // p_roots
-        let live_roots = live_loop_places
+        #[cfg(feature = "visualization")]
+        dot_graphs.push((
+            "Post-Expand".to_owned(),
+            self.debug_graph(capabilities, ctxt),
+        ));
+
+        // p_roots: compute per-place ancestors
+        let ancestors_of_live_places: Vec<_> = live_loop_places
             .iter()
-            .flat_map(|p| self.get_borrow_roots(p.place, loop_head, ctxt.ctxt))
-            .collect::<HashSet<_>>();
+            .map(|p| {
+                let roots = self.get_borrow_roots(p.place, loop_head, ctxt.ctxt);
+                (p, roots)
+            })
+            .collect();
+
+        let live_roots: HashSet<_> = ancestors_of_live_places
+            .iter()
+            .flat_map(|(_, roots)| roots.iter().copied())
+            .collect();
 
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -364,6 +450,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
         let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
+
+        #[cfg(feature = "visualization")]
+        dot_graphs.push((
+            "Abstraction".to_owned(),
+            abstraction_graph.debug_graph(capabilities, ctxt),
+        ));
+        #[cfg(feature = "visualization")]
+        dot_graphs.push(("To Cut".to_owned(), to_cut.debug_graph(capabilities, ctxt)));
+
         to_cut.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),
@@ -378,6 +473,34 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Self before cut",
             ctxt.ctxt,
         );
+
+        // Store the loop debug data for the visualization
+        #[cfg(feature = "visualization")]
+        ctxt.set_debug_loop_data(PcgLoopDebugData {
+            used_places: used_places.to_debug_repr(ctxt),
+            live_loop_places: live_loop_places.to_debug_repr(ctxt),
+            loop_blocked_places: loop_blocked_places.to_debug_repr(ctxt),
+            loop_blocker_places: loop_blocker_places.to_debug_repr(ctxt),
+            ancestors_of_live_places: ancestors_of_live_places
+                .iter()
+                .map(|(p, ancestors)| {
+                    (
+                        p.display_string(ctxt),
+                        ancestors
+                            .iter()
+                            .map(|n| n.display_string(ctxt))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .collect::<Vec<_>>(),
+            root_places: root_places
+                .iter()
+                .map(|p| (p.display_string(ctxt), Vec::<String>::new()))
+                .collect::<Vec<_>>(),
+            dot_graphs,
+            place_labels,
+        });
+
         for edge in to_cut.edges() {
             self.remove(edge.kind());
         }

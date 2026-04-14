@@ -458,6 +458,7 @@ impl<'a, 'tcx> PcgCtxt<'a, 'tcx> {
 struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
+    loop_data: Option<visualization::stmt_graphs::PcgLoopDebugData>,
 }
 
 #[cfg(feature = "visualization")]
@@ -535,10 +536,11 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 continue;
             };
             let ctxt = analysis_results.analysis().analysis_ctxt(block);
-            let debug_graphs = if let Some(graphs) = ctxt.graphs {
-                graphs.dot_graphs.borrow().graphs.clone()
+            let (loop_data, debug_graphs) = if let Some(graphs) = ctxt.graphs {
+                let block_data = graphs.dot_graphs.borrow();
+                (block_data.loop_data.clone(), block_data.graphs.clone())
             } else {
-                Vec::new()
+                (None, Vec::new())
             };
 
             let statements = pcg_block
@@ -573,6 +575,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 PcgBlockVisualizationData {
                     statements,
                     successors,
+                    loop_data,
                 },
             );
         }

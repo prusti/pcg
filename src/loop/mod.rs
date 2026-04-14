@@ -192,7 +192,9 @@ impl JoinSemiLattice for LoopPlaceUsageDomain<'_> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde_derive::Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export))]
 pub enum PlaceUsageType {
     Read,
     Mutate,
@@ -307,6 +309,24 @@ impl<'tcx> PlaceUsages<'tcx> {
             place: *p,
             usage: *usage,
         })
+    }
+
+    /// Convert to a serializable debug representation with string place keys.
+    #[cfg(feature = "visualization")]
+    pub(crate) fn to_debug_repr<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
+        &self,
+        ctxt: Ctxt,
+    ) -> crate::visualization::stmt_graphs::PlaceUsagesDebugRepr
+    where
+        'tcx: 'a,
+    {
+        use crate::utils::display::DisplayWithCtxt;
+        crate::visualization::stmt_graphs::PlaceUsagesDebugRepr::new(
+            self.0
+                .iter()
+                .map(|(p, usage)| (p.to_short_string(ctxt), *usage))
+                .collect(),
+        )
     }
 }
 
