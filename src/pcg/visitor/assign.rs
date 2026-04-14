@@ -190,7 +190,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
-            Rvalue::RawPtr(_kind, p) => {
+            Rvalue::RawPtr(kind, p) => if !kind.is_fake() {
                 let p: utils::Place<'tcx> = (*p).into();
                 let p = p.with_inherent_region(self.ctxt);
                 self.record_and_apply_action(BorrowPcgAction::add_edge(
