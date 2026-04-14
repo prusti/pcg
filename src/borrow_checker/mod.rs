@@ -185,16 +185,6 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     fn rust_borrow_checker(&self) -> Option<&dyn RustBorrowCheckerInterface<'tcx>> {
         Some(self)
     }
-
-    fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
-        match (sup, sub) {
-            (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
-                self.region_infer_ctxt().eval_outlives(sup, sub)
-            }
-            (PcgRegion::ReStatic, _) => true,
-            _ => false,
-        }
-    }
 }
 
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
@@ -221,11 +211,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
 
     /// Returns true iff `sup` is required to outlive `sub` at `location`.
     fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, location: Location) -> bool;
-
-    /// Returns true iff `sup` is required to outlive `sub` everywhere. This can be
-    /// useful e.g. for determining outlives relations of arguments to a function based
-    /// on its signature
-    fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool;
 
     fn borrows_blocking(
         &self,
@@ -423,6 +408,19 @@ pub trait RustBorrowCheckerInterface<'tcx> {
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx>;
 
     fn location_table(&self) -> &LocationTable;
+
+    /// Returns true iff `sup` is required to outlive `sub` everywhere.
+    /// This can be useful e.g. for determining outlives relations of
+    /// arguments to a function based on its signature.
+    fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
+        match (sup, sub) {
+            (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
+                self.region_infer_ctxt().eval_outlives(sup, sub)
+            }
+            (PcgRegion::ReStatic, _) => true,
+            _ => false,
+        }
+    }
 }
 
 trait BorrowSetLike<'tcx> {
