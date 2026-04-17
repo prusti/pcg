@@ -323,14 +323,23 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
             self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
         let mut result = HashMap::default();
         for place_usage in place_usages.iter() {
-            if let Some(initial_capability) = initial_capabilities.get(place_usage.place, ctxt) {
-                let usage_capability = match place_usage.usage {
-                    PlaceUsageType::Read => CapabilityKind::Read,
-                    PlaceUsageType::Mutate => CapabilityKind::Exclusive,
-                };
-                if let Some(joined_capability) = initial_capability.minimum(usage_capability) {
-                    result.insert(place_usage.place, joined_capability);
+            let mut pl = place_usage.place;
+            loop {
+                if let Some(initial_capability) = initial_capabilities.get(pl, ctxt) {
+                    let usage_capability = match place_usage.usage {
+                        PlaceUsageType::Read => CapabilityKind::Read,
+                        PlaceUsageType::Mutate => CapabilityKind::Exclusive,
+                    };
+                    if let Some(joined_capability) = initial_capability.minimum(usage_capability) {
+                        result.insert(pl, joined_capability);
+                    }
+                    break;
                 }
+                let parent = pl.parent_place();
+                if parent.is_none() {
+                    break;
+                }
+                pl = parent.unwrap();
             }
         }
         result
