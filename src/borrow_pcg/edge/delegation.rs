@@ -1,12 +1,13 @@
+use std::collections::HashSet;
+
 use crate::{
     borrow_pcg::{
-        edge_data::{
-            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces
-        },
-        has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace},
+        edge::kind::BorrowPcgEdgeType, edge_data::{
+            EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, conditionally_label_places
+        }, has_pcs_elem::{LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, SourceOrTarget}
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, data_structures::HashSet,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -81,11 +82,17 @@ where
     {
         fn label_blocked_places(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
-        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
-        _ctxt: Ctxt,
+        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
+        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
+        ctxt: Ctxt,
     ) -> crate::utils::data_structures::HashSet<crate::borrow_pcg::edge_data::NodeReplacement<'tcx, P>> {
-        HashSet::default()
+        conditionally_label_places(
+            vec![&mut self.aliased_place],
+            predicate,
+            labeller,
+            LabelNodeContext::new(SourceOrTarget::Target, BorrowPcgEdgeType::Delegation),
+            ctxt,
+        )
     }
     
         fn label_blocked_by_places(
