@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "pcg-bin-utils"
+version = "0.1.0"
+authors = ["Prusti Devs <prusti_developers@sympa.ethz.ch>"]
+edition = "2024"
+description = "Shared helpers for locating and building the pcg_bin executable."
+
+[dependencies]

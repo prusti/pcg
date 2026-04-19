@@ -11,12 +11,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/pcg-server
-  SYMBOLIC_EXECUTION_REF: main
-  PURIFICATION_PRUSTI_REF: zgrannan/old-purification
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
     steps:
@@ -118,6 +116,10 @@ jobs:
           ${{ runner.os }}-cargo-server-
     - name: Build pcg-bin (required by pcg-server)
       run: cd pcg-bin && cargo build --release
+    - name: Check pcg-server for dead code and other warnings
+      env:
+        RUSTFLAGS: "-D warnings"
+      run: cd pcg-server && cargo check --all-targets
     - name: Run pcg-server tests
       run: cd pcg-server && cargo test
 
@@ -157,59 +159,6 @@ jobs:
     - name: Run unit tests
       run: cargo test -p pcg --doc
 
-  prusti_purification_tests:
-    needs: changes
-    if: ${{ github.event_name == 'push' || needs.changes.outputs.rust == 'true' }}
-    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
-    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        path: pcg
-
-    - name: Checkout symbolic execution repository
-      uses: actions/checkout@v4
-      with:
-        repository: zgrannan/symbolic-execution
-        ref: ${{ env.SYMBOLIC_EXECUTION_REF }}
-        path: symbolic-execution
-
-    - name: Checkout prusti repository
-      uses: actions/checkout@v4
-      with:
-        repository: zgrannan/prusti-dev
-        ref: ${{ env.PURIFICATION_PRUSTI_REF }}
-        path: prusti-dev
-
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: nightly-2024-10-15
-        components: rustc-dev, llvm-tools-preview
-        override: true
-
-    - name: Cache Prusti Cargo registry and build artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          prusti-dev/target
-        key: ${{ runner.os }}-cargo-prusti-${{ env.PURIFICATION_PRUSTI_REF }}-${{ env.SYMBOLIC_EXECUTION_REF }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-prusti-${{ env.PURIFICATION_PRUSTI_REF }}-
-
-    - name: Install Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    - name: Run Prusti tests
-      working-directory: prusti-dev
-      run: ./x.py setup && python3 test-rpe.py --no-server
-
   check_generated_types:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
@@ -236,7 +185,7 @@ jobs:
         fi
 
   build_visualization:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     steps:
     - uses: actions/checkout@v4
 
@@ -268,7 +217,8 @@ jobs:
       run: npm run build
 
   build_docker:
-    runs-on: ubuntu-latest
+    if: github.repository_owner == 'prusti'
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write

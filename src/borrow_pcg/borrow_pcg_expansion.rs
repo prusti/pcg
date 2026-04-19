@@ -27,7 +27,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::PlaceUsageType,
-    owned_pcg::RepackGuide,
+    owned_pcg::{RepackGuide, RequiredGuide},
     pcg::{
         CapabilityKind, LocalNodeLike, MaybeHasLocation, PcgNode, PcgNodeLike,
         obtain::ObtainType,
@@ -55,7 +55,7 @@ use crate::{
 /// storing the place elements in a `Vec` could lead to different representations
 /// for the same expansion, e.g. `{*x.f.a, *x.f.b}` and `{*x.f.b, *x.f.a}`.
 #[derive(PartialEq, Eq, Clone, Debug, Hash, From)]
-pub enum PlaceExpansion<'tcx> {
+pub enum PlaceExpansion<'tcx, D = ()> {
     /// Fields from e.g. a struct or tuple, e.g. `{*x.f} -> {*x.f.a, *x.f.b}`
     /// Note that for region projections, not every field of the base type may
     /// be included. For example consider the following:
@@ -66,10 +66,10 @@ pub enum PlaceExpansion<'tcx> {
     /// ```
     /// The projection of `s↓'a` contains only `{s.x↓'a}` because nothing under
     /// `'a` is accessible via `s.y`.
-    Fields(BTreeMap<FieldIdx, ty::Ty<'tcx>>),
+    Fields(BTreeMap<FieldIdx, (ty::Ty<'tcx>, D)>),
     /// See [`PlaceElem::Deref`]
-    Deref,
-    Guided(RepackGuide),
+    Deref(D),
+    Guided(RequiredGuide<D>),
 }
 
 impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for PlaceExpansion<'_> {
@@ -78,10 +78,28 @@ impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for PlaceExpansion<'_> {
     }
 }
 
-impl<'tcx> PlaceExpansion<'tcx> {
+impl<D> PlaceExpansion<'_, D> {
     pub(crate) fn is_enum_expansion(&self) -> bool {
-        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(_, _)))
+        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(..)))
     }
+
+    pub(crate) fn is_deref(&self) -> bool {
+        matches!(self, PlaceExpansion::Deref(_))
+    }
+}
+
+impl<'tcx> PlaceExpansion<'tcx> {
+    /// Construct a `Fields` variant from the simple map that callers
+    /// conventionally build (without per-child data).
+    pub(crate) fn fields(map: BTreeMap<FieldIdx, ty::Ty<'tcx>>) -> Self {
+        PlaceExpansion::Fields(map.into_iter().map(|(idx, ty)| (idx, (ty, ()))).collect())
+    }
+
+    /// Construct a `Deref` variant with no per-child data.
+    pub(crate) fn deref() -> Self {
+        PlaceExpansion::Deref(())
+    }
+
     pub(crate) fn block_type<'a>(
         &self,
         base_place: Place<'tcx>,
@@ -101,7 +119,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
                 }
         ) {
             BlockType::Read
-        } else if matches!(self, PlaceExpansion::Deref) {
+        } else if self.is_deref() {
             if base_place.is_shared_ref(ctxt) {
                 BlockType::DerefSharedRef
             } else if base_place.is_mut_ref(ctxt) {
@@ -117,9 +135,10 @@ impl<'tcx> PlaceExpansion<'tcx> {
             BlockType::Other
         }
     }
+
     pub(crate) fn guide(&self) -> Option<RepackGuide> {
         match self {
-            PlaceExpansion::Guided(guide) => Some(*guide),
+            PlaceExpansion::Guided(guide) => Some(RepackGuide::from(*guide)),
             _ => None,
         }
     }
@@ -139,14 +158,18 @@ impl<'tcx> PlaceExpansion<'tcx> {
             if let Some(elem) = last_projection {
                 match *elem {
                     PlaceElem::Field(field_idx, ty) => {
-                        fields.insert(field_idx, ty);
+                        fields.insert(field_idx, (ty, ()));
                     }
-                    PlaceElem::Deref => return PlaceExpansion::Deref,
+                    PlaceElem::Deref => return PlaceExpansion::Deref(()),
                     other => {
                         let repack_guide: RepackGuide = other
                             .try_into()
                             .unwrap_or_else(|()| todo!("unsupported place elem: {:?}", other));
-                        return PlaceExpansion::Guided(repack_guide);
+                        // Default variant is excluded by construction from TryFrom above.
+                        let required = repack_guide
+                            .into_non_default()
+                            .expect("TryFrom<PlaceElem> never yields RepackGuide::Default");
+                        return PlaceExpansion::Guided(required);
                     }
                 }
             }
@@ -164,10 +187,10 @@ impl<'tcx> PlaceExpansion<'tcx> {
             PlaceExpansion::Fields(fields) => fields
                 .iter()
                 .sorted_by_key(|(idx, _)| *idx)
-                .map(|(idx, ty)| PlaceElem::Field(*idx, *ty))
+                .map(|(idx, (ty, ()))| PlaceElem::Field(*idx, *ty))
                 .collect(),
-            PlaceExpansion::Deref => vec![PlaceElem::Deref],
-            PlaceExpansion::Guided(RepackGuide::ConstantIndex(c)) => {
+            PlaceExpansion::Deref(()) => vec![PlaceElem::Deref],
+            PlaceExpansion::Guided(RepackGuide::ConstantIndex(c, ())) => {
                 let mut elems = vec![(*c).into()];
                 elems.extend(c.other_elems());
                 elems
@@ -531,7 +554,7 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
             return Err(PcgUnsupportedError::DerefUnsafePtr.into());
         }
         pcg_validity_assert!(
-            !(base.is_place() && base.place().is_ref(ctxt) && expansion == &PlaceExpansion::Deref),
+            !(base.is_place() && base.place().is_ref(ctxt) && expansion.is_deref()),
             [ctxt],
             "Deref expansion of {} should be a Deref edge, not an expansion",
             base.place().display_string(ctxt)

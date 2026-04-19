@@ -507,9 +507,12 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         if let Some(guide) = guide {
-            guide.into()
+            let required = guide
+                .into_non_default()
+                .expect("RepackGuide::Default is not a valid expansion guide here");
+            PlaceExpansion::Guided(required)
         } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::Deref
+            PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
                 ty::TyKind::Adt(adt_def, substs) => {
@@ -517,7 +520,7 @@ impl<'tcx> Place<'tcx> {
                         Some(v) => adt_def.variant(v),
                         None => adt_def.non_enum_variant(),
                     };
-                    PlaceExpansion::Fields(
+                    PlaceExpansion::fields(
                         variant
                             .fields
                             .iter()
@@ -526,7 +529,7 @@ impl<'tcx> Place<'tcx> {
                             .collect(),
                     )
                 }
-                ty::TyKind::Tuple(tys) => PlaceExpansion::Fields(
+                ty::TyKind::Tuple(tys) => PlaceExpansion::fields(
                     tys.iter()
                         .enumerate()
                         .map(|(i, ty)| (i.into(), ty))

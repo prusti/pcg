@@ -6,6 +6,7 @@ edition = "2024"
 
 [dependencies]
 pcg = { path = "..", features = ["visualization"] }
+pcg-bin-utils = { path = "../pcg-bin-utils" }
 borrowck-body-storage = { path = "../borrowck-body-storage" }
 chrono = "0.4"
 derive_more = { version = "2.0.1", features = ["full"] }

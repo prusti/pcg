@@ -71,23 +71,12 @@ fn run_pcg_analysis(
 ) -> Result<(), String> {
     use std::process::Command;
 
-    // Determine the path to the pcg_bin executable
-    // In development: ../pcg-bin/target/release/pcg_bin (pcg-bin has its own workspace)
-    // In Docker: ../target/release/pcg_bin (built in shared workspace)
-    let pcg_bin_path = std::env::var("PCG_BIN_PATH").unwrap_or_else(|_| {
-        // Try development path first, fall back to Docker path
-        let dev_path = "../pcg-bin/target/release/pcg_bin";
-        let docker_path = "../target/release/pcg_bin";
-        if std::path::Path::new(dev_path).exists() {
-            dev_path.to_string()
-        } else {
-            docker_path.to_string()
-        }
-    });
+    let pcg_bin_path = pcg_bin_utils::find_pcg_bin_for_server();
 
     info!(
         "Running PCG analysis using pcg-bin at: {} (polonius={})",
-        pcg_bin_path, use_polonius
+        pcg_bin_path.display(),
+        use_polonius
     );
 
     let mut cmd = Command::new(&pcg_bin_path);
@@ -103,7 +92,7 @@ fn run_pcg_analysis(
 
     let output = cmd
         .output()
-        .map_err(|e| format!("Failed to execute pcg-bin at {}: {}", pcg_bin_path, e))?;
+        .map_err(|e| format!("Failed to execute pcg-bin at {}: {}", pcg_bin_path.display(), e))?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -115,36 +104,6 @@ fn run_pcg_analysis(
         return Err(combined);
     }
 
-    Ok(())
-}
-
-fn zip_directory(src_dir: &PathBuf, dst_file: &PathBuf) -> Result<(), String> {
-    let file = fs::File::create(dst_file).map_err(|e| e.to_string())?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-
-    let walkdir = walkdir::WalkDir::new(src_dir);
-    let it = walkdir.into_iter().filter_map(|e| e.ok());
-
-    for entry in it {
-        let path = entry.path();
-        let name = path.strip_prefix(src_dir).map_err(|e| e.to_string())?;
-
-        if path.is_file() {
-            debug!("Adding file to zip: {:?}", name);
-            zip.start_file(name.to_string_lossy().to_string(), options)
-                .map_err(|e| e.to_string())?;
-            let mut f = fs::File::open(path).map_err(|e| e.to_string())?;
-            std::io::copy(&mut f, &mut zip).map_err(|e| e.to_string())?;
-        } else if !name.as_os_str().is_empty() {
-            debug!("Adding directory to zip: {:?}", name);
-            zip.add_directory(name.to_string_lossy().to_string(), options)
-                .map_err(|e| e.to_string())?;
-        }
-    }
-
-    zip.finish().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -222,17 +181,10 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
     let file_path = unique_dir.join("input.rs");
 
-    // Debug: Print the submitted code
     debug!("Submitted Rust code:\n{}", code);
 
-    // Write the code to file
     fs::write(&file_path, &code).map_err(|e| e.to_string())?;
 
-    // Debug: Verify file contents
-    let saved_contents = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
-    debug!("Saved file contents:\n{}", saved_contents);
-
-    // Get absolute paths for both input file and data directory
     let abs_file_path = file_path.canonicalize().map_err(|e| e.to_string())?;
     let abs_data_dir = data_dir.canonicalize().map_err(|e| e.to_string())?;
     info!("Using absolute file path: {:?}", abs_file_path);

@@ -14,6 +14,7 @@ mod successor;
 pub(crate) mod capabilities;
 pub(crate) mod ctxt;
 pub(crate) mod obtain;
+pub(crate) mod owned_state;
 pub mod place_capabilities;
 pub(crate) mod triple;
 pub(crate) mod visitor;

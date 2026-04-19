@@ -4,17 +4,7 @@ use std::process::Command;
 
 // Test helper to run pcg-bin on a file
 fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String> {
-    // Use the same logic as the main server to find pcg_bin
-    let pcg_bin_path = std::env::var("PCG_BIN_PATH")
-        .unwrap_or_else(|_| {
-            let dev_path = "../pcg-bin/target/release/pcg_bin";
-            let docker_path = "../target/release/pcg_bin";
-            if std::path::Path::new(dev_path).exists() {
-                dev_path.to_string()
-            } else {
-                docker_path.to_string()
-            }
-        });
+    let pcg_bin_path = pcg_bin_utils::find_pcg_bin_for_server();
 
     let output = Command::new(&pcg_bin_path)
         .arg(&file_path)
@@ -22,7 +12,7 @@ fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String>
         .env("PCG_VISUALIZATION", "false")
         .env("PCG_VISUALIZATION_DATA_DIR", &data_dir)
         .output()
-        .map_err(|e| format!("Failed to execute pcg-bin at {}: {}", pcg_bin_path, e))?;
+        .map_err(|e| format!("Failed to execute pcg-bin at {}: {}", pcg_bin_path.display(), e))?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);

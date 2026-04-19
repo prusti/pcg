@@ -29,6 +29,25 @@ PROFRAW_DIR="$COVERAGE_DIR/profraw"
 
 OUTPUT_FORMAT="${1:---lcov}"
 
+# Resolve cargo target dirs, respecting CARGO_TARGET_DIR.
+# If CARGO_TARGET_DIR is absolute, both the root workspace and the
+# pcg-bin workspace write to the same directory. If it is unset or
+# relative, each workspace gets its own target/ tree rooted at its
+# own Cargo.toml.
+resolve_target_dir() {
+    local workspace_root="$1"
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        case "$CARGO_TARGET_DIR" in
+            /*) printf '%s\n' "$CARGO_TARGET_DIR" ;;
+            *)  printf '%s/%s\n' "$workspace_root" "$CARGO_TARGET_DIR" ;;
+        esac
+    else
+        printf '%s/target\n' "$workspace_root"
+    fi
+}
+ROOT_TARGET_DIR="$(resolve_target_dir "$PROJECT_DIR")"
+PCG_BIN_TARGET_DIR="$(resolve_target_dir "$PROJECT_DIR/pcg-bin")"
+
 rm -rf "$COVERAGE_DIR"
 mkdir -p "$PROFRAW_DIR"
 
@@ -70,14 +89,14 @@ echo "Merging $PROFRAW_COUNT profile files"
     -o "$COVERAGE_DIR/coverage.profdata"
 
 # Collect all instrumented binaries for the report.
-PCG_BIN="$PROJECT_DIR/pcg-bin/target/debug/pcg_bin"
+PCG_BIN="$PCG_BIN_TARGET_DIR/debug/pcg_bin"
 OBJECT_ARGS=()
 if [ -f "$PCG_BIN" ]; then
     OBJECT_ARGS+=("--object" "$PCG_BIN")
 fi
 while IFS= read -r bin; do
     OBJECT_ARGS+=("--object" "$bin")
-done < <(find "$PROJECT_DIR/target/debug/deps" \
+done < <(find "$ROOT_TARGET_DIR/debug/deps" \
     -name 'pcg-*' -type f -executable 2>/dev/null)
 
 if [ ${#OBJECT_ARGS[@]} -eq 0 ]; then
