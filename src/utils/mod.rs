@@ -145,7 +145,7 @@ impl PcgSettings {
 
     #[must_use]
     pub fn new() -> Self {
-        // Hack just to ensure that we dont raise an error when seeing a global var
+        // Hack just to ensure that we don't raise an error when seeing a global var
         let mut processed_vars = GlobalPcgSettings::new_returning_vars().1;
 
         // Process all known settings

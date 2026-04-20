@@ -188,7 +188,7 @@ impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
         block_type: BlockType,
         ctxt: Ctxt,
     ) -> bool {
-        // We dont change if only expanding region projections
+        // We don't change if only expanding region projections
         let BorrowPcgExpansion::Place(expansion) = expansion else {
             return false;
         };
