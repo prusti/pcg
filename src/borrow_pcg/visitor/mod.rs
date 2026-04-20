@@ -112,10 +112,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 /// The resulting list does not contain duplicates, e.g. T<'a, 'a> will return
 /// `['a]`. Note that the order of the returned regions is arbitrary, but
 /// consistent between calls to types with the same "shape". E.g T<'a, 'b> and
-/// T<'c, 'd> will return the same list of regions will return `['a, 'b]` and
-/// `['c, 'd]` respectively. This enables substitution of regions to handle
-/// moves in the PCG e.g for the statement `let x: T<'a, 'b> = move c: T<'c,
-/// 'd>`.
+/// T<'c, 'd> will return `['a, 'b]` and `['c, 'd]` respectively. This enables
+/// substitution of regions to handle moves in the PCG e.g for the statement
+/// `let x: T<'a, 'b> = move c: T<'c, 'd>`.
 pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'_>> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
