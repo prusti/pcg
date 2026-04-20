@@ -238,14 +238,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         match operand {
-            Operand::Copy(place) => {
-                let place: Place<'tcx> = (*place).into();
-                if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                    return Err(PcgError::unsupported(
-                        PcgUnsupportedError::MoveUnsafePtrWithNestedLifetime(e),
-                    ));
-                }
-            }
             Operand::Move(place) => {
                 if self.phase() == EvalStmtPhase::PostOperands {
                     let snapshot_location = self.prev_snapshot_location();
@@ -280,16 +272,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 ..
             } = &terminator.kind
         {
-            for operand in args {
-                if let Some(place) = operand.node.place() {
-                    let place: utils::Place<'tcx> = place.into();
-                    if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                        return Err(
-                            PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(e).into()
-                        );
-                    }
-                }
-            }
             let destination: utils::Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,

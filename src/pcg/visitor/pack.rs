@@ -215,6 +215,21 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 return ShouldKillNode::No;
             }
 
+            if let Ok(lifetime_proj) = p.try_into_lifetime_projection() {
+                let base = lifetime_proj.base();
+                    // Do not kill if there is still a rawptr delegation to this node
+                    let node = PcgNode::from(base);
+                    let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
+                    let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
+                        crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
+                        _ => None
+                    }).filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location)).count();
+
+                    if alias_edges_cnt > 0 {
+                        return ShouldKillNode::No;
+                }
+            }
+
             if place.is_old() {
                 return ShouldKillNode::Yes {
                     reason: "Place is old".into(),
