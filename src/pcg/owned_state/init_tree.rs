@@ -22,7 +22,7 @@ use super::OwnedCapability;
 /// An initialisation state for a single owned local (or for any subtree
 /// rooted at an owned place).
 #[derive(Clone, PartialEq, Eq)]
-pub(crate) enum InitialisationTree<'tcx> {
+pub enum InitialisationTree<'tcx> {
     /// A leaf carrying an [`OwnedCapability`]. No further expansion has
     /// been tracked for the subtree rooted here.
     Leaf(OwnedCapability),

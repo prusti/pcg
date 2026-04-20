@@ -26,20 +26,30 @@ use crate::{
 use itertools::Itertools;
 
 use crate::{
-    owned_pcg::{LocalExpansions, OwnedPcg, OwnedPcgLocal},
+    owned_pcg::LocalExpansions,
+    pcg::owned_state::{LocalInitState, OwnedPcg},
     rustc_interface::middle::mir,
 };
 
-impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>> {
+impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx>> {
     #[tracing::instrument(skip(self, other, ctxt), fields(self.block = ?self.block, other.block = ?other.block), level = "warn")]
     pub(crate) fn join(
         &mut self,
-        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcgLocal<'tcx>>,
+        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
         match (&mut self.owned, &mut other.owned) {
-            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Unallocated) => Ok(vec![]),
-            (OwnedPcgLocal::Allocated(to_places), OwnedPcgLocal::Allocated(from_places)) => {
+            (LocalInitState::Unallocated, LocalInitState::Unallocated) => Ok(vec![]),
+            (
+                LocalInitState::Allocated {
+                    expansions: to_places,
+                    ..
+                },
+                LocalInitState::Allocated {
+                    expansions: from_places,
+                    ..
+                },
+            ) => {
                 let self_allocated = JoinOwnedData {
                     owned: to_places,
                     borrows: self.borrows,
@@ -55,7 +65,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                 };
                 self_allocated.join(other_allocated, ctxt)
             }
-            (OwnedPcgLocal::Allocated(expansions), OwnedPcgLocal::Unallocated) => {
+            (LocalInitState::Allocated { expansions, .. }, LocalInitState::Unallocated) => {
                 self.borrows.label_place_and_update_related_capabilities(
                     expansions.local.into(),
                     LabelPlaceReason::StorageDead,
@@ -83,10 +93,10 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcgLocal<'tcx>
                     ctxt,
                 ));
                 repacks.push(RepackOp::StorageDead(expansions.local));
-                *self.owned = OwnedPcgLocal::Unallocated;
+                *self.owned = LocalInitState::Unallocated;
                 Ok(repacks)
             }
-            (OwnedPcgLocal::Unallocated, OwnedPcgLocal::Allocated(expansions)) => {
+            (LocalInitState::Unallocated, LocalInitState::Allocated { expansions, .. }) => {
                 other.borrows.label_place_and_update_related_capabilities(
                     expansions.local.into(),
                     LabelPlaceReason::StorageDead,
@@ -109,8 +119,8 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
         let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
             let local: mir::Local = local.into();
-            let mut owned_local_data = self.map_owned(|owned| owned.get_mut(local).unwrap());
-            let other_owned_local_data = other.map_owned(|owned| owned.get(local).unwrap());
+            let mut owned_local_data = self.map_owned(|owned| &mut owned[local]);
+            let other_owned_local_data = other.map_owned(|owned| &owned[local]);
             actions.extend(owned_local_data.join(other_owned_local_data, ctxt)?);
         }
         Ok(actions)

@@ -68,11 +68,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // We should change this logic once we start keeping capabilities for
         // labelled places.
         if target.is_ref(ctxt) {
-            self.pcg.capabilities.remove_all_postfixes(target, ctxt);
+            self.pcg
+                .place_capabilities
+                .remove_all_postfixes(target, ctxt);
         }
 
         self.pcg
-            .capabilities
+            .place_capabilities
             .insert(target, CapabilityKind::Exclusive, self.ctxt);
         match rvalue {
             Rvalue::Aggregate(
@@ -127,7 +129,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     *kind,
                     self.location(),
                     *borrow_region,
-                    &mut self.pcg.capabilities,
+                    &mut self.pcg.place_capabilities,
                     self.ctxt,
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;

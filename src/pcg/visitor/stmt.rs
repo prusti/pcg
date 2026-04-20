@@ -5,7 +5,7 @@ use crate::{
     borrow_pcg::{
         action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdgeLike, edge::kind::BorrowPcgEdgeKind,
     },
-    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesReader},
+    pcg::{CapabilityKind, PcgRefLike},
     pcg_validity_assert,
     rustc_interface::middle::mir::{Statement, StatementKind},
     utils::{self, DataflowCtxt, visitor::FallableVisitor},
@@ -60,7 +60,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // The permission to the target may have been Read originally.
                     // Now, because it's been made old, the non-old place should be a leaf,
                     // and its permission should be Exclusive.
-                    if self.pcg.capabilities.get(target, self.ctxt) == Some(CapabilityKind::Read) {
+                    if self.pcg.capability_of(target, self.ctxt) == Some(CapabilityKind::Read) {
                         self.record_and_apply_action(
                             BorrowPcgAction::restore_capability(
                                 target,
@@ -72,7 +72,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
 
-                if let Some(target_cap) = self.pcg.capabilities.get(target, self.ctxt) {
+                if let Some(target_cap) = self.pcg.capability_of(target, self.ctxt) {
                     pcg_validity_assert!(
                         target_cap >= CapabilityKind::Write,
                         "target_cap: {:?}",

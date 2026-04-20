@@ -13,10 +13,10 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::{PlaceUsageType, PlaceUsages},
-    owned_pcg::OwnedPcg,
     pcg::{
         BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
+        owned_state::OwnedPcg,
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
@@ -307,10 +307,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
         #[cfg(feature = "visualization")]
         let mut place_labels: Vec<(String, Vec<PlaceLabelReplacement>)> = Vec::new();
         for pu in used_places.iter() {
+            let owned: &_ = args.owned;
             let pcg_ref = PcgRef {
-                owned: args.owned,
                 borrow: BorrowStateRef::new(self, validity_conditions),
-                capabilities: args.capabilities,
+                place_capabilities: args.capabilities,
+                owned,
             };
             if !pcg_ref.is_leaf_place(pu.place, ctxt) && pu.usage == PlaceUsageType::Mutate {
                 let replacements = self.label_place(

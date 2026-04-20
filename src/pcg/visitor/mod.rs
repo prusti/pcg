@@ -8,12 +8,13 @@ use crate::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
     },
-    owned_pcg::{OwnedPcg, RepackExpand},
+    owned_pcg::RepackExpand,
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
-        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
+        owned_state::OwnedPcg,
+        place_capabilities::PlaceCapabilitiesInterface,
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
@@ -26,7 +27,7 @@ use crate::utils::{
     maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
-use super::{AnalysisObject, EvalStmtPhase, Pcg, PcgNode};
+use super::{AnalysisObject, EvalStmtPhase, Pcg, PcgNode, PcgRefLike};
 use crate::error::{PcgError, PcgUnsupportedError};
 
 mod assign;
@@ -113,7 +114,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
-                && self.pcg.capabilities.get(place, self.ctxt).is_none()
+                && self.pcg.capability_of(place, self.ctxt).is_none()
             {
                 let action = PcgAction::restore_capability(
                     place,
@@ -335,7 +336,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         local: mir::Local,
         iteration: usize,
     ) -> Result<bool, PcgError<'tcx>> {
-        let local_expansions = self.pcg.owned[local].get_allocated();
+        let local_expansions = self.pcg.owned[local].expansions();
         let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
         let parent_places = leaf_expansions
             .iter()
@@ -350,7 +351,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .all(|p| !self.pcg.borrow.graph.contains(*p, self.ctxt.bc_ctxt()))
                     && let Some(candidate_cap) = self
                         .pcg
-                        .capabilities
+                        .place_capabilities
                         .uniform_capability(expansion_places.into_iter(), self.ctxt)
                 {
                     Some((place, candidate_cap))
@@ -374,10 +375,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 self.ctxt,
             )?;
             if place.projection.is_empty()
-                && self.pcg.capabilities.get(place, self.ctxt) == Some(CapabilityKind::Read)
+                && self.pcg.capability_of(place, self.ctxt) == Some(CapabilityKind::Read)
             {
                 self.pcg
-                    .capabilities
+                    .place_capabilities
                     .insert(place, CapabilityKind::Exclusive, self.ctxt);
             }
         }
@@ -437,7 +438,7 @@ impl<'tcx> OwnedPcg<'tcx> {
     ) where
         'tcx: 'a,
     {
-        let expansions = self[expand.local()].get_allocated_mut();
+        let expansions = self[expand.local()].expansions_mut();
         expansions.perform_expand_action(expand, capabilities, ctxt);
     }
 }

@@ -4,7 +4,7 @@ use crate::{
         region_projection::{LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
-    owned_pcg::{OwnedPcg, OwnedPcgLocal},
+    pcg::owned_state::{LocalInitState, OwnedPcg},
     pcg::{
         CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
@@ -245,7 +245,7 @@ where
 }
 
 pub struct PcgGraphConstructor<'a, 'tcx> {
-    summary: &'a OwnedPcg<'tcx>,
+    owned: &'a OwnedPcg<'tcx>,
     borrows_domain: BorrowStateRef<'a, 'tcx>,
     capabilities: &'a PlaceCapabilities<'tcx>,
     constructor: GraphConstructor<'a, 'tcx>,
@@ -311,9 +311,9 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
         location: mir::Location,
     ) -> Self {
         Self {
-            summary: pcg.owned,
+            owned: pcg.owned,
             borrows_domain: pcg.borrow,
-            capabilities: pcg.capabilities,
+            capabilities: pcg.place_capabilities,
             constructor: GraphConstructor::new(ctxt, Some(location)),
             ctxt,
         }
@@ -354,10 +354,13 @@ impl<'a, 'tcx: 'a> PcgGraphConstructor<'a, 'tcx> {
             capabilities: self.capabilities,
             ctxt: self.ctxt,
         };
-        for (local, capability) in self.summary.iter_enumerated() {
+        for (local, capability) in self.owned.iter_enumerated() {
             match capability {
-                OwnedPcgLocal::Unallocated => {}
-                OwnedPcgLocal::Allocated(projections) => {
+                LocalInitState::Unallocated => {}
+                LocalInitState::Allocated {
+                    expansions: projections,
+                    ..
+                } => {
                     self.insert_place_and_previous_projections(
                         local.into(),
                         None,

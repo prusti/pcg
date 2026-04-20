@@ -360,7 +360,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let borrow = BorrowStateMutRef::new(self, validity_conditions);
-        let pcg = PcgMutRef::new(args.owned, borrow, args.capabilities);
+        let pcg = PcgMutRef::new(borrow, args.capabilities, args.owned);
         let snapshot_location = SnapshotLocation::Loop(args.self_block);
         let mut obtainer = PlaceObtainer::new(
             pcg,

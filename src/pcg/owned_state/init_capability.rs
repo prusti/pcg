@@ -17,7 +17,7 @@ use crate::{
 /// for the authoritative definition. The total order is
 /// `Deep > Shallow > Uninit`.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize)]
-pub(crate) enum OwnedCapability {
+pub enum OwnedCapability {
     /// `D`: fully initialised. All memory reachable from this place
     /// (including through dereferences) is valid and accessible.
     Deep,

@@ -6,9 +6,9 @@
 
 use crate::{
     HasSettings,
-    owned_pcg::{LocalExpansions, OwnedPcgLocal},
     pcg::{
         CapabilityKind,
+        owned_state::{OwnedCapability, OwnedPcg},
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
@@ -19,8 +19,6 @@ use crate::{
 };
 
 use crate::rustc_interface::middle::mir::RETURN_PLACE;
-
-use super::OwnedPcg;
 
 impl<'tcx> OwnedPcg<'tcx> {
     fn check_pre_satisfied<'a>(
@@ -35,8 +33,8 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::ExpandTwoPhase(_place) => {}
             PlaceCondition::Unalloc(local) => {
                 pcg_validity_assert!(
-                    self[local].is_unallocated(),
-                    "local: {local:?}, fpcs: {self:?}\n"
+                    !self.is_allocated(local),
+                    "local: {local:?}, owned: {self:?}\n"
                 );
             }
             PlaceCondition::AllocateOrDeallocate(_local) => {}
@@ -46,13 +44,11 @@ impl<'tcx> OwnedPcg<'tcx> {
                         // TODO
                     }
                     CapabilityKind::Write => {
-                        // Cannot get write on a shared ref
                         pcg_validity_assert!(
                             place.is_mutable(LocalMutationIsAllowed::Yes, ctxt).is_ok()
                         );
                     }
                     CapabilityKind::Exclusive => {
-                        // Cannot get exclusive on a shared ref
                         pcg_validity_assert!(
                             !place.projects_shared_ref(ctxt),
                             "Cannot get exclusive on projection of shared ref {}",
@@ -63,13 +59,6 @@ impl<'tcx> OwnedPcg<'tcx> {
                 }
                 if place.as_owned_place(ctxt).is_some() {
                     if capabilities.get(place, ctxt).is_some() {
-                        // pcg_validity_assert!(
-                        //     matches!(
-                        //         current_cap.partial_cmp(&required_cap),
-                        //         Some(Ordering::Equal) | Some(Ordering::Greater)
-                        //     ),
-                        //     "Capability {current_cap:?} is not >= {required_cap:?} for {place:?}"
-                        // )
                     } else {
                         pcg_validity_assert!(
                             false,
@@ -90,6 +79,8 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::RemoveCapability(_) => unreachable!(),
         }
     }
+
+    /// Apply the post-condition of a [`Triple`] to this state.
     pub(crate) fn ensures<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         &mut self,
         t: Triple<'tcx>,
@@ -105,11 +96,11 @@ impl<'tcx> OwnedPcg<'tcx> {
         match post {
             PlaceCondition::Return => unreachable!(),
             PlaceCondition::Unalloc(local) => {
-                self[local] = OwnedPcgLocal::Unallocated;
+                self.deallocate(local);
                 place_capabilities.remove_all_for_local(local, ctxt);
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
-                self[local] = OwnedPcgLocal::Allocated(LocalExpansions::new(local));
+                self.allocate(local, OwnedCapability::Uninit);
                 place_capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
             }
             PlaceCondition::Capability(place, cap) => {
@@ -126,12 +117,18 @@ impl<'tcx> OwnedPcg<'tcx> {
                         place_capabilities.insert(p, CapabilityKind::Read, ctxt);
                     }
                 }
+                if let Some(owned) = place.as_owned_place(ctxt) {
+                    self.apply_capability_change(owned, cap, ctxt);
+                }
             }
             PlaceCondition::ExpandTwoPhase(place) => {
                 place_capabilities.insert(place, CapabilityKind::Read, ctxt);
             }
             PlaceCondition::RemoveCapability(place) => {
                 place_capabilities.remove(place, ctxt);
+                if let Some(owned) = place.as_owned_place(ctxt) {
+                    self.remove(owned);
+                }
             }
         }
     }

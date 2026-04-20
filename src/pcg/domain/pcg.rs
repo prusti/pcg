@@ -9,10 +9,11 @@ use crate::{
     },
     borrows_imgcat_debug,
     error::PcgError,
-    owned_pcg::{OwnedPcg, RepackOp, join::data::JoinOwnedData},
+    owned_pcg::{RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
+        owned_state::OwnedPcg,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
@@ -34,9 +35,13 @@ pub struct Pcg<
     Capabilities = PlaceCapabilities<'tcx>,
     EdgeKind: Eq + std::hash::Hash + PartialEq = BorrowPcgEdgeKind<'tcx>,
 > {
-    pub(crate) owned: OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowsState<'a, 'tcx, EdgeKind>,
-    pub(crate) capabilities: Capabilities,
+
+    /// Capabilities for all places in the PCG.
+    /// TODO[capability-refactor]: This map will be removed, ultimately capabilities should be
+    /// computed based on the initialisation tree in the Owned PCG and the `BorrowState`
+    pub(crate) place_capabilities: Capabilities,
+    pub(crate) owned: OwnedPcg<'tcx>,
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasValidityCheck<Ctxt>
@@ -49,9 +54,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
 
 #[derive(Clone, Copy)]
 pub struct PcgRef<'pcg, 'tcx> {
-    pub(crate) owned: &'pcg OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowStateRef<'pcg, 'tcx>,
-    pub(crate) capabilities: &'pcg PlaceCapabilities<'tcx>,
+    pub(crate) place_capabilities: &'pcg PlaceCapabilities<'tcx>,
+    pub(crate) owned: &'pcg OwnedPcg<'tcx>,
 }
 
 impl<'tcx> PcgRef<'_, 'tcx> {
@@ -75,9 +80,9 @@ impl<'tcx> PcgRef<'_, 'tcx> {
 impl<'pcg, 'tcx> From<&'pcg Pcg<'_, 'tcx>> for PcgRef<'pcg, 'tcx> {
     fn from(pcg: &'pcg Pcg<'_, 'tcx>) -> Self {
         Self {
-            owned: &pcg.owned,
             borrow: pcg.borrow.as_ref(),
-            capabilities: &pcg.capabilities,
+            place_capabilities: &pcg.place_capabilities,
+            owned: &pcg.owned,
         }
     }
 }
@@ -86,29 +91,29 @@ impl<'pcg, 'tcx> From<&'pcg PcgMutRef<'pcg, 'tcx>> for PcgRef<'pcg, 'tcx> {
     fn from(pcg: &'pcg PcgMutRef<'pcg, 'tcx>) -> Self {
         let borrow = pcg.borrow.as_ref();
         Self {
-            owned: &*pcg.owned,
             borrow,
-            capabilities: &*pcg.capabilities,
+            place_capabilities: &*pcg.place_capabilities,
+            owned: &*pcg.owned,
         }
     }
 }
 
 pub(crate) struct PcgMutRef<'pcg, 'tcx> {
-    pub(crate) owned: &'pcg mut OwnedPcg<'tcx>,
     pub(crate) borrow: BorrowStateMutRef<'pcg, 'tcx>,
-    pub(crate) capabilities: &'pcg mut PlaceCapabilities<'tcx>,
+    pub(crate) place_capabilities: &'pcg mut PlaceCapabilities<'tcx>,
+    pub(crate) owned: &'pcg mut OwnedPcg<'tcx>,
 }
 
 impl<'pcg, 'tcx> PcgMutRef<'pcg, 'tcx> {
     pub(crate) fn new(
-        owned: &'pcg mut OwnedPcg<'tcx>,
         borrow: BorrowStateMutRef<'pcg, 'tcx>,
-        capabilities: &'pcg mut PlaceCapabilities<'tcx>,
+        place_capabilities: &'pcg mut PlaceCapabilities<'tcx>,
+        owned: &'pcg mut OwnedPcg<'tcx>,
     ) -> Self {
         Self {
-            owned,
             borrow,
-            capabilities,
+            place_capabilities,
+            owned,
         }
     }
 }
@@ -116,9 +121,9 @@ impl<'pcg, 'tcx> PcgMutRef<'pcg, 'tcx> {
 impl<'pcg, 'tcx> From<&'pcg mut Pcg<'_, 'tcx>> for PcgMutRef<'pcg, 'tcx> {
     fn from(pcg: &'pcg mut Pcg<'_, 'tcx>) -> Self {
         Self::new(
-            &mut pcg.owned,
             (&mut pcg.borrow).into(),
-            &mut pcg.capabilities,
+            &mut pcg.place_capabilities,
+            &mut pcg.owned,
         )
     }
 }
@@ -130,18 +135,37 @@ pub(crate) trait PcgRefLike<'tcx> {
         self.as_ref().borrow.graph
     }
 
-    fn place_capability_equals(&self, place: Place<'tcx>, capability: CapabilityKind) -> bool {
-        self.as_ref()
-            .capabilities
-            .get(place, ())
+    fn place_capability_equals<'b>(
+        &self,
+        place: Place<'tcx>,
+        capability: CapabilityKind,
+        ctxt: impl HasBorrowCheckerCtxt<'b, 'tcx>,
+    ) -> bool
+    where
+        'tcx: 'b,
+    {
+        self.capability_of(place, ctxt)
             .is_some_and(|c| c == capability)
+    }
+
+    // TODO[capability-refactor]: This method will be removed, ultimately capabilities will be
+    // computed based on the initialisation tree in the Owned PCG and the BorrowState.
+    fn capability_of<'b>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'b, 'tcx>,
+    ) -> Option<CapabilityKind>
+    where
+        'tcx: 'b,
+    {
+        self.as_ref().place_capabilities.get(place, ctxt)
     }
 
     fn is_acyclic(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         self.borrows_graph().frozen_graph().is_acyclic(ctxt)
     }
 
-    fn owned_pcg(&self) -> &OwnedPcg<'tcx> {
+    fn owned(&self) -> &OwnedPcg<'tcx> {
         self.as_ref().owned
     }
 
@@ -151,7 +175,7 @@ pub(crate) trait PcgRefLike<'tcx> {
     {
         let borrows_places = self.borrows_graph().places(ctxt.bc_ctxt());
         let mut leaf_places: HashSet<Place<'tcx>> = self
-            .owned_pcg()
+            .owned()
             .leaf_places(ctxt)
             .into_iter()
             .map(Into::into)
@@ -195,10 +219,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
     for PcgRef<'_, 'tcx>
 {
     fn check_validity(&self, ctxt: Ctxt) -> std::result::Result<(), String> {
-        self.capabilities.check_validity(ctxt)?;
+        self.place_capabilities.check_validity(ctxt)?;
         self.borrow.check_validity(ctxt.bc_ctxt())?;
         self.owned
-            .check_validity(self.capabilities, ctxt.bc_ctxt())?;
+            .check_validity(self.place_capabilities, ctxt.bc_ctxt())?;
 
         if ctxt.settings().check_cycles && !self.is_acyclic(ctxt.bc_ctxt()) {
             return Err("PCG is not acyclic".to_owned());
@@ -213,7 +237,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
-        for (place, cap) in self.capabilities.iter() {
+        for (place, cap) in self.place_capabilities.iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
                 && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
             {
@@ -225,33 +249,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
-        // For now we don't do this, due to interactions with future nodes: we
-        // detect that a node is no longer blocked but still technically not a
-        // leaf due to previous reborrows that could have changed the value in
-        // its lifetime projections. See format_fields in tracing-subscriber
-        //
-        // In the future we might want to change how this works
-        //
-        // let leaf_places = self.leaf_places(ctxt);
-        // for place in self.places(ctxt) {
-        //     if self.capabilities.get(place, ctxt) == Some(CapabilityKind::Exclusive)
-        //         && !leaf_places.contains(&place)
-        //     {
-        //         return Err(format!(
-        //             "Place {} has exclusive capability but is not a leaf place",
-        //             place.display_string(ctxt)
-        //         ));
-        //     }
-        // }
-
         for edge in self.borrow.graph.edges() {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = deref_edge.blocked_place
                         && let MaybeLabelledPlace::Current(deref_place) = deref_edge.deref_place
                         && let Some(c @ (CapabilityKind::Read | CapabilityKind::Exclusive)) =
-                            self.capabilities.get(blocked_place, ctxt)
-                        && self.capabilities.get(deref_place, ctxt).is_none()
+                            self.place_capabilities.get(blocked_place, ctxt)
+                        && self.place_capabilities.get(deref_place, ctxt).is_none()
                     {
                         return Err(format!(
                             "Deref edge {} blocked place {} has capability {:?} but deref place {} has no capability",
@@ -304,7 +309,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 
     #[must_use]
     pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
-        self.capabilities
+        self.place_capabilities
             .iter()
             .filter_map(|(p, c)| if c == capability { Some(p) } else { None })
             .collect()
@@ -312,12 +317,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 
     #[must_use]
     pub fn capabilities(&self) -> &PlaceCapabilities<'tcx> {
-        &self.capabilities
-    }
-
-    #[must_use]
-    pub fn owned_pcg(&self) -> &OwnedPcg<'tcx> {
-        &self.owned
+        &self.place_capabilities
     }
 
     pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
@@ -334,7 +334,32 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         t: Triple<'tcx>,
         ctxt: Ctxt,
     ) {
-        self.owned.ensures(t, &mut self.capabilities, ctxt);
+        self.owned.ensures(t, &mut self.place_capabilities, ctxt);
+    }
+
+    /// Compute the [`CapabilityKind`] of the owned place `place` from
+    /// the initialisation tree alone (i.e. ignoring borrowing). See
+    /// <https://prusti.github.io/pcg-docs/computing-place-capabilities.html>.
+    #[must_use]
+    pub fn computed_owned_capability<'b>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'b, 'tcx>,
+    ) -> Option<CapabilityKind>
+    where
+        'tcx: 'b,
+    {
+        let owned = place.as_owned_place(ctxt)?;
+        self.owned.owned_capability(owned)
+    }
+
+    // Unified capability lookup `capability_of` is provided as a
+    // default method on [`PcgRefLike`] — see that trait's definition.
+
+    /// View the maintained per-local owned-PCG state.
+    #[must_use]
+    pub fn owned(&self) -> &OwnedPcg<'tcx> {
+        &self.owned
     }
 
     pub(crate) fn join_owned_data(
@@ -344,7 +369,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         JoinOwnedData {
             owned: &mut self.owned,
             borrows: &mut self.borrow,
-            capabilities: &mut self.capabilities,
+            capabilities: &mut self.place_capabilities,
             block,
         }
     }
@@ -362,16 +387,16 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let other_owned_data = JoinOwnedData {
             owned: &other.owned,
             borrows: &mut other.borrow,
-            capabilities: &mut other.capabilities,
+            capabilities: &mut other.place_capabilities,
             block: other_block,
         };
         let mut repacks =
             slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
-        for (place, cap) in slf.capabilities.iter() {
+        for (place, cap) in slf.place_capabilities.iter() {
             let Some(_owned) = place.as_owned_place(ctxt) else {
                 continue;
             };
-            if let Some(other_cap) = other.capabilities.get(place, ctxt)
+            if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
                 && cap > other_cap
             {
                 repacks.push(RepackOp::Weaken(Weaken::new(place, cap, other_cap)));
@@ -388,7 +413,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other_block: mir::BasicBlock,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> std::result::Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
-        let mut other_capabilities = other.capabilities.clone();
+        let mut other_capabilities = other.place_capabilities.clone();
         let mut other_borrows = other.borrow.clone();
         let mut self_owned_data = self.join_owned_data(self_block);
         let other_owned_data = JoinOwnedData {
@@ -403,12 +428,13 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         // add the path condition that leads them to this block
         let mut other = other.clone();
         other.borrow.add_cfg_edge(other_block, self_block, ctxt);
-        self.capabilities.join(&other_capabilities, ctxt);
+        self.place_capabilities.join(&other_capabilities, ctxt);
+        self.owned.join_capabilities(&other.owned);
         let borrow_args = JoinBorrowsArgs {
             self_block,
             other_block,
             body_analysis: ctxt.body_analysis,
-            capabilities: &mut self.capabilities,
+            capabilities: &mut self.place_capabilities,
             owned: &mut self.owned,
         };
         self.borrow.join(&other_borrows, borrow_args, ctxt)?;
@@ -421,7 +447,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) -> Vec<Cow<'static, str>> {
         let mut result = self.borrow.debug_lines(ctxt);
         result.sort();
-        let mut capabilities = self.capabilities.debug_lines(ctxt);
+        let mut capabilities = self.place_capabilities.debug_lines(ctxt);
         capabilities.sort();
         result.extend(capabilities);
         result
@@ -434,9 +460,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let owned = OwnedPcg::start_block(&mut capabilities, analysis_ctxt);
         let borrow = BorrowsState::start_block(&mut capabilities, analysis_ctxt);
         Pcg {
-            owned,
             borrow,
-            capabilities,
+            place_capabilities: capabilities,
+            owned,
         }
     }
 }

@@ -252,7 +252,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: "Expansion is old or dead".into(),
                     }
-                } else if expansion.is_packable(self.pcg.capabilities, self.ctxt) {
+                } else if expansion.is_packable(self.pcg.place_capabilities, self.ctxt) {
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",

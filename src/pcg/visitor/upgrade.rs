@@ -81,7 +81,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut current = place;
         while self
             .pcg
-            .place_capability_equals(current, CapabilityKind::Read)
+            .place_capability_equals(current, CapabilityKind::Read, self.ctxt)
         {
             self.weaken_capability_from_read(current, reason)?;
             let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
@@ -91,7 +91,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     && leaf_nodes.contains(&place.into())
                     && self
                         .pcg
-                        .place_capability_equals(place, CapabilityKind::Read)
+                        .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
                     && !place.projects_shared_ref(self.ctxt)
                 {
                     self.record_and_apply_action(

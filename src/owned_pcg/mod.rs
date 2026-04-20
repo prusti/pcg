@@ -8,7 +8,7 @@
 mod r#impl;
 mod results;
 
-pub use r#impl::*;
+pub(crate) use r#impl::*;
 pub use results::*;
 
 #[deprecated(note = "Use `crate::pcg::CapabilityKind` instead")]

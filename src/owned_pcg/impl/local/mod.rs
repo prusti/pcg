@@ -6,7 +6,7 @@
 
 pub(crate) mod join;
 
-use std::fmt::{Debug, Formatter, Result};
+use std::fmt::Debug;
 
 use crate::{
     HasSettings,
@@ -27,53 +27,7 @@ use crate::{
     utils::{CompilerCtxt, OwnedPlace, Place, display::DisplayWithCompilerCtxt},
 };
 
-#[derive(Clone, PartialEq, Eq)]
-/// The permissions of a local, each key in the hashmap is a "root" projection of the local
-/// Examples of root projections are: `_1`, `*_1.f`, `*(*_.f).g` (i.e. either a local or a deref)
-pub enum OwnedPcgLocal<'tcx> {
-    Unallocated,
-    Allocated(LocalExpansions<'tcx>),
-}
-
-impl Debug for OwnedPcgLocal<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::Unallocated => write!(f, "U"),
-            Self::Allocated(cps) => write!(f, "{cps:?}"),
-        }
-    }
-}
-
-impl<'tcx> OwnedPcgLocal<'tcx> {
-    pub(crate) fn check_validity(
-        &self,
-        capabilities: &PlaceCapabilities<'tcx>,
-        ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), String> {
-        match self {
-            Self::Unallocated => Ok(()),
-            Self::Allocated(cps) => cps.check_validity(capabilities, ctxt),
-        }
-    }
-    pub fn get_allocated(&self) -> &LocalExpansions<'tcx> {
-        match self {
-            Self::Allocated(cps) => cps,
-            Self::Unallocated => panic!("Expected allocated local"),
-        }
-    }
-    pub fn get_allocated_mut(&mut self) -> &mut LocalExpansions<'tcx> {
-        match self {
-            Self::Allocated(cps) => cps,
-            Self::Unallocated => panic!("Expected allocated local"),
-        }
-    }
-    pub fn new(local: Local) -> Self {
-        Self::Allocated(LocalExpansions::new(local))
-    }
-    pub fn is_unallocated(&self) -> bool {
-        matches!(self, Self::Unallocated)
-    }
-}
+// Former `OwnedPcgLocal` is now `pcg::owned_state::state::LocalInitState`.
 
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
 pub(crate) struct ExpandedPlace<'tcx, P = Place<'tcx>> {
