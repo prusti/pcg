@@ -357,8 +357,8 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     }
 
     /// Performs bookkeeping for future nodes in the case where capability from
-    /// (generally lablled) `origin_rp` is is temporarily transferred to
-    /// (unlablled) `expansion_rps`, but will eventually be transferred back to
+    /// (generally labelled) `origin_rp` is temporarily transferred to
+    /// (unlabelled) `expansion_rps`, but will eventually be transferred back to
     /// `origin_rp`.
     ///
     /// This happens in the case of borrows and expansions of borrowed places,
@@ -366,7 +366,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     /// We also use this for constructing loop abstractions where `origin_rp`
     /// is unlabelled (the labels are added in a later stage).
     ///
-    /// The logic as as follows:
+    /// The logic is as follows:
     ///
     /// Adds a node `future_rp` which is the future node for `origin_rp`.
     ///
