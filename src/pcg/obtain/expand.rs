@@ -332,7 +332,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                         .into(),
                     )?;
 
-                    // Don't add placeholder edges for owned expansions, unless its a deref
+                    // Don't add placeholder edges for owned expansions, unless it's a deref
                     if base.as_borrowed_place(ctxt).is_some() || base.is_mut_ref(ctxt) {
                         let old_rp_base = base_rp.with_label(Some(label.into()), ctxt);
                         let expansion_rps = expansion

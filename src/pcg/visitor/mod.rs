@@ -108,7 +108,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             })
             .collect::<HashSet<_>>();
         for place in leaf_future_node_places {
-            // If the place is a leaf, and its not borrowed, then we remove the future label
+            // If the place is a leaf, and it's not borrowed, then we remove the future label
             if self.pcg.is_expansion_leaf(place, self.ctxt)
                 && !self
                     .ctxt
