@@ -274,26 +274,17 @@ impl PcgSettings {
     fn process_debug_imgcat(processed: &mut HashSet<String>) -> Vec<DebugImgcat> {
         processed.insert("PCG_DEBUG_IMGCAT".to_owned());
         match std::env::var("PCG_DEBUG_IMGCAT") {
-            Ok(val) => {
-                let vec: Vec<DebugImgcat> = val
-                    .split(',')
-                    .map(str::trim)
-                    .flat_map(|s| {
-                        if s.to_lowercase() == "true" || s.to_lowercase() == "all" {
-                            DebugImgcat::all()
-                        } else if s.to_lowercase() == "join_loop" {
-                            vec![DebugImgcat::JoinLoop]
-                        } else if s.to_lowercase() == "join_owned" {
-                            vec![DebugImgcat::JoinOwned]
-                        } else if s.to_lowercase() == "join_borrows" {
-                            vec![DebugImgcat::JoinBorrows]
-                        } else {
-                            panic!("Unexpected value for PCG_DEBUG_IMGCAT: {s}");
-                        }
-                    })
-                    .collect();
-                vec
-            }
+            Ok(val) => val
+                .split(',')
+                .map(str::trim)
+                .flat_map(|s| match s.to_lowercase().as_str() {
+                    "true" | "all" => DebugImgcat::all(),
+                    "join_loop" => vec![DebugImgcat::JoinLoop],
+                    "join_owned" => vec![DebugImgcat::JoinOwned],
+                    "join_borrows" => vec![DebugImgcat::JoinBorrows],
+                    _ => panic!("Unexpected value for PCG_DEBUG_IMGCAT: {s}"),
+                })
+                .collect(),
             Err(_) => vec![],
         }
     }
