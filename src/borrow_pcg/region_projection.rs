@@ -37,7 +37,7 @@ impl DisplayWithCtxt<ty::TyCtxt<'_>> for RegionVid {
     }
 }
 
-/// A region occuring in region projections
+/// A region occurring in region projections
 #[rustversion::since(2025-12-01)]
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
 pub enum PcgRegion<'tcx> {
@@ -51,7 +51,7 @@ pub enum PcgRegion<'tcx> {
     ReEarlyParam(ty::EarlyParamRegion),
 }
 
-/// A region occuring in region projections
+/// A region occurring in region projections
 #[rustversion::before(2025-12-01)]
 #[derive(PartialEq, Eq, Clone, Copy, Hash, From, Debug)]
 pub enum PcgRegion<'tcx> {
