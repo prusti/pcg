@@ -455,7 +455,7 @@ pub struct FunctionData<'tcx> {
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for FunctionData<'tcx> {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        ctxt.tcx().def_path_str(self.def_id).clone().into()
+        ctxt.tcx().def_path_str(self.def_id).into()
     }
 }
 

@@ -195,7 +195,7 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     let result = run_pcg_analysis(abs_file_path, abs_data_dir, use_polonius);
 
     if let Err(e) = result {
-        return Ok((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response());
+        return Ok((StatusCode::INTERNAL_SERVER_ERROR, e).into_response());
     }
 
     // Redirect to local visualization with data source URL
