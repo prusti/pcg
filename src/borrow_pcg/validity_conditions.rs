@@ -165,18 +165,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Br
                     successors[self.chosen.iter().next().unwrap()]
                 )
             } else {
-                let chosen_successors = successors
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| self.chosen.contains(*i))
-                    .map(|(_, s)| s)
-                    .collect::<Vec<_>>();
                 format!(
                     "{:?} -> {{ {} }}",
                     self.from,
-                    chosen_successors
+                    successors
                         .iter()
-                        .map(|s| format!("{s:?}"))
+                        .enumerate()
+                        .filter(|(i, _)| self.chosen.contains(*i))
+                        .map(|(_, s)| format!("{s:?}"))
                         .join(", ")
                 )
             }
@@ -255,7 +251,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Va
         DisplayOutput::Text(
             self.all_branch_choices()
                 .map(|bc| bc.display_string(ctxt))
-                .collect::<Vec<_>>()
                 .join(", ")
                 .into(),
         )
