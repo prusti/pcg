@@ -180,7 +180,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt, T: BorrowPc
     HasValidityCheck<Ctxt> for T
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
-        self.kind().check_validity(ctxt)
+        self.kind().check_validity(ctxt.bc_ctxt())
     }
 }
 

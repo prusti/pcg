@@ -13,7 +13,6 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     r#loop::{PlaceUsageType, PlaceUsage, PlaceUsages},
-    owned_pcg::OwnedPcg,
     pcg::{
         BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
