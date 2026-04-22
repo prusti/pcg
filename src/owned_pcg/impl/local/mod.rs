@@ -150,7 +150,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         'tcx: 'a,
     {
         if self.expansions.is_empty() {
-            return vec![OwnedPlace::from(self.local)].into_iter().collect();
+            return std::iter::once(OwnedPlace::from(self.local)).collect();
         }
         self.expansions
             .iter()
