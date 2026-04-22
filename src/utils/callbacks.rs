@@ -35,7 +35,7 @@ pub fn in_cargo_crate() -> bool {
 /// a build script.
 #[must_use]
 pub fn in_cargo() -> bool {
-    std::env::var("CARGO").ok().is_some()
+    std::env::var("CARGO").is_ok()
 }
 
 #[derive(From)]
