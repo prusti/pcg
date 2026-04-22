@@ -171,7 +171,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for Dere
         'tcx: 'slf,
     {
         Box::new(
-            vec![
+            [
                 self.blocked_place.to_pcg_node(ctxt),
                 self.blocked_lifetime_projection.to_pcg_node(ctxt),
             ]
@@ -186,6 +186,6 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for Dere
     where
         'tcx: 'slf,
     {
-        Box::new(vec![self.deref_place.to_local_node(ctxt)].into_iter())
+        Box::new(std::iter::once(self.deref_place.to_local_node(ctxt)))
     }
 }
