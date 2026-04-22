@@ -265,8 +265,8 @@ impl Display for DotNode {
         ]
         .into_iter()
         .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>();
-        write!(f, "\"{}\" [{}]", self.id, attrs.join(", "))
+        .join(", ");
+        write!(f, "\"{}\" [{}]", self.id, attrs)
     }
 }
 
