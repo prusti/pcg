@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeRef,
-        edge::kind::BorrowPcgEdgeKind,
+        edge::{kind::BorrowPcgEdgeKind},
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
@@ -136,6 +136,11 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                 let aliased_place = self.insert_maybe_labelled_place(delegation_edge.aliased_place);
                 self.constructor().edges.insert(GraphEdge::Delegation { source: raw_ptr_place, target: aliased_place });
             },
+            BorrowPcgEdgeKind::ConditionalLifetimeProjection(conditional_lifetime_projection) => {
+                let raw_ptr_place = self.insert_maybe_labelled_place(conditional_lifetime_projection.rawptr_place);
+                let proj = self.insert_pcg_node(conditional_lifetime_projection.proj.into());
+                self.constructor().edges.insert(GraphEdge::ConditionalLifetimeProjection { source: raw_ptr_place, target: proj });
+            }
         }
     }
 }

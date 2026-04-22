@@ -181,6 +181,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 },
                 BorrowPcgEdgeKind::Delegation(rawptr_edge) =>{
                     extend(rawptr_edge.aliased_place.into(), seen, &mut result, direct);
+                },
+                BorrowPcgEdgeKind::ConditionalLifetimeProjection(rawptr_edge) =>{
+                    extend(rawptr_edge.proj.into(), seen, &mut result, direct);
                 } 
             }
         }

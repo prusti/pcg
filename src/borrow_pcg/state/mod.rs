@@ -5,24 +5,16 @@ use std::borrow::Cow;
 use crate::{
     HasSettings,
     borrow_pcg::{
-        action::ApplyActionResult,
-        borrow_pcg_edge::{BlockingNode, LocalNode},
-        edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
-        graph::join::JoinBorrowsArgs,
-        region_projection::PcgLifetimeProjectionBase,
-        validity_conditions::{
+        action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge::{conditional_lifetime_projection::ConditionalLifetimeProjectionEdge}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
-        },
+        }
     },
     pcg::{
         PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
-        data_structures::HashSet,
-        display::{DisplayWithCtxt, OutputMode},
-        maybe_remote::MaybeRemotePlace,
+        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike, data_structures::HashSet, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
     },
 };
 
@@ -51,7 +43,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::{
         mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
-        ty::{self},
+        ty::{self, TyKind},
     },
     utils::{
         CompilerCtxt, Place, display::DebugLines, place::maybe_old::MaybeLabelledPlace,
@@ -419,6 +411,42 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidity
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
+    fn introduce_conditional_lifetime_projections(
+        &mut self,
+        local: mir::Local, 
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        let mut place: Place<'tcx> = local.into();
+        let mut ty = place.ty(ctxt).ty;
+        loop {
+            if ty.is_any_ptr() {
+                place = place.project_deref(ctxt);
+            }
+            match ty.kind() {
+                TyKind::RawPtr(_, _) => {
+                    let regions = place.regions(ctxt);
+                    for region in regions {
+                        assert!(
+                            self.apply_action(
+                                BorrowPcgAction::add_edge(BorrowPcgEdge::new(ConditionalLifetimeProjectionEdge {rawptr_place: MaybeLabelledPlace::Current(place), proj: LifetimeProjection::new(place.into(), region, Some(LifetimeProjectionLabel::Location(crate::utils::SnapshotLocation::Before(AnalysisLocation::new(Location::START, crate::pcg::EvalStmtPhase::PreOperands)))), ctxt).unwrap()}.into(), ValidityConditions::new()), "Introduce conditional lifetime projections")
+                        , capabilities, ctxt)
+                    .unwrap()
+                    .changed);
+                    }
+                    break;
+                },
+                TyKind::Ref(_, inner_ty, _) => {
+                    ty = *inner_ty;
+                },
+                _ => {
+                    // TODO or break
+                    break;
+                }
+            }
+        }
+    }
+
     fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
@@ -473,6 +501,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
             borrow.introduce_initial_borrows(arg, capabilities, ctxt);
+            borrow.introduce_conditional_lifetime_projections(arg, capabilities, ctxt);
         }
         borrow
     }

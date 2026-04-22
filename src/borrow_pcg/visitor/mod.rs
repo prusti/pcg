@@ -88,7 +88,8 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
                 for ty in upvar_tys {
                     self.visit_ty(ty);
                 }
-            }
+            },
+            ty::TyKind::RawPtr(_, _) => {},
             _ => {
                 ty.super_visit_with(self);
             }

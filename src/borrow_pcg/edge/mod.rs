@@ -7,3 +7,4 @@ pub mod borrow_flow;
 pub mod deref;
 pub mod kind;
 pub mod delegation;
+pub mod conditional_lifetime_projection;
