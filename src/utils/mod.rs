@@ -35,6 +35,7 @@ pub(crate) mod data_structures;
 pub(crate) mod domain_data;
 use crate::rustc_interface::middle::mir::BasicBlock;
 
+use itertools::Itertools;
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -303,8 +304,8 @@ impl PcgSettings {
         assert!(
             unknown_vars.is_empty(),
             "Unknown PCG_ environment variable(s) found: {}. Known variables are: {}",
-            unknown_vars.join(", "),
-            processed.iter().cloned().collect::<Vec<_>>().join(", ")
+            unknown_vars.iter().join(", "),
+            processed.iter().join(", ")
         );
     }
 }

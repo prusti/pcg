@@ -8,6 +8,7 @@ use std::{
     process::{Command, Stdio},
 };
 
+use itertools::Itertools;
 use serde_derive::Serialize;
 
 use crate::{
@@ -125,7 +126,7 @@ impl Display for RankAnnotation {
             f,
             "{{ rank = {}; {}; }}",
             self.rank_type,
-            self.nodes.iter().cloned().collect::<Vec<_>>().join("; ")
+            self.nodes.iter().join("; ")
         )
     }
 }
