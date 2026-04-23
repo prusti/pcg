@@ -414,7 +414,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let mut to_cut = HashSet::default();
         let mut paths: Vec<Path<'tcx, 'graph>> = abstraction_graph_nodes
             .iter()
-            .flat_map(|node| self.edges_blocking(*node, ctxt).collect::<Vec<_>>())
+            .flat_map(|node| self.edges_blocking(*node, ctxt))
             .map(|edge| vec![edge])
             .collect::<Vec<_>>();
         'outer: while let Some(path) = paths.pop() {
