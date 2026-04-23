@@ -201,6 +201,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
 
+    // `?` propagates errors from inner `apply_action` calls; the lint walks
+    // explicit returns but not `?`, so it wrongly flags this as always-`Ok`.
+    #[allow(unknown_lints, redundant_enum_variant)]
     fn restore_capability_to_leaf_places(
         &mut self,
         parent_place: Option<Place<'tcx>>,
@@ -239,6 +242,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     }
 
     /// Collapses owned places and performs appropriate updates to lifetime projections.
+    // `?` propagates errors from inner `apply_action` calls; the lint walks
+    // explicit returns but not `?`, so it wrongly flags this as always-`Ok`.
+    #[allow(unknown_lints, redundant_enum_variant)]
     fn collapse_owned_places_and_lifetime_projections_to(
         &mut self,
         place: Place<'tcx>,
@@ -289,6 +295,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     }
 
     /// Only for owned places.
+    // `?` propagates errors from inner `apply_action` calls; the lint walks
+    // explicit returns but not `?`, so it wrongly flags this as always-`Ok`.
+    #[allow(unknown_lints, redundant_enum_variant)]
     fn create_aggregate_lifetime_projections<
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
     >(

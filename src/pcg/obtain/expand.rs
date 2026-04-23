@@ -425,6 +425,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         self.redirect_source_of_future_edges(origin_rp, future_rp, ctxt)
     }
 
+    // `?` propagates errors from inner `apply_action` calls; the lint walks
+    // explicit returns but not `?`, so it wrongly flags this as always-`Ok`.
+    #[allow(unknown_lints, redundant_enum_variant)]
     fn redirect_source_of_future_edges(
         &mut self,
         old_source: LocalLifetimeProjection<'tcx>,

@@ -473,11 +473,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     {
         tracing::debug!("Applying Action: {}", action.debug_line(self.ctxt));
         let result = match &action {
-            PcgAction::Borrow(action) => self.pcg.borrow.apply_action(
-                action.clone(),
-                self.pcg.place_capabilities,
-                self.ctxt,
-            )?,
+            PcgAction::Borrow(action) => {
+                self.pcg
+                    .borrow
+                    .apply_action(action.clone(), self.pcg.place_capabilities, self.ctxt)
+            }
             PcgAction::Owned(owned_action) => match owned_action.kind {
                 RepackOp::RegainLoanedCapability(regained_capability) => {
                     self.pcg.place_capabilities.regain_loaned_capability(

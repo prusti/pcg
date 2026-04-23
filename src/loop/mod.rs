@@ -13,6 +13,9 @@ use std::cmp;
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs;
+
 use crate::{
     compute_fixpoint,
     r#loop::loop_set::LoopSet,
@@ -318,11 +321,11 @@ impl<'tcx> PlaceUsages<'tcx> {
     pub(crate) fn to_debug_repr<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &self,
         ctxt: Ctxt,
-    ) -> crate::visualization::stmt_graphs::PlaceUsagesDebugRepr
+    ) -> stmt_graphs::PlaceUsagesDebugRepr
     where
         'tcx: 'a,
     {
-        use crate::{utils::display::DisplayWithCtxt, visualization::stmt_graphs};
+        use crate::utils::display::DisplayWithCtxt;
         stmt_graphs::PlaceUsagesDebugRepr::new(
             self.0
                 .iter()

@@ -75,6 +75,82 @@ jobs:
     - name: Check code formatting
       run: cargo fmt --all -- --check
 
+  rust_lints:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check out rust-lints
+      uses: actions/checkout@v4
+      with:
+        repository: zgrannan/rust-lints
+        # actions/checkout needs a full 40-char SHA to check out a commit
+        # directly (short SHAs are interpreted as branch/tag patterns).
+        ref: 30f27729f15e030bd3f508df31adfd4906127430
+        path: rust-lints
+    - name: Run rust-lints
+      id: run_lints
+      run: |
+        set -o pipefail
+        (
+          set -euxo pipefail
+          # -- diagnostics --
+          echo "HOME=$HOME"
+          id
+          for t in cargo rustc git rustup curl jq; do
+            printf "%s -> %s\n" "$t" "$(command -v "$t" || echo '<missing>')"
+          done
+          cargo --version
+          rustc --version
+          rustc -vV
+          cat rust-toolchain
+          ls -la
+          ls -la rust-lints
+          # -- build the dylint libraries --
+          (cd rust-lints && cargo build --release)
+          # -- install cargo-dylint if not already on PATH --
+          if ! command -v cargo-dylint >/dev/null; then
+            cargo install cargo-dylint dylint-link --locked --version 5.0.0
+          fi
+          # -- stage the .so files with the name dylint expects --
+          channel="$(awk -F'"' '/^channel/ {print $2}' rust-toolchain)"
+          host="$(rustc -vV | awk '/^host:/ {print $2}')"
+          toolchain="${channel}-${host}"
+          (
+            cd rust-lints/target/release
+            for lib in libcollect_join.so liblong_path.so libok_is_some.so libredundant_enum_variant.so; do
+              name="${lib%.so}"
+              name="${name#lib}"
+              ln -sf "$lib" "lib${name}@${toolchain}.so"
+            done
+            ls lib*@*.so
+          )
+          # -- run the pack and fail on any warning --
+          export DYLINT_LIBRARY_PATH="$PWD/rust-lints/target/release"
+          export DYLINT_RUSTFLAGS="-D collect_join -D long_path -D ok_is_some -D redundant_enum_variant"
+          cargo dylint --all
+        ) 2>&1 | tee /tmp/rust-lints-run.log
+    - name: Upload run log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: rust-lints-log
+        path: /tmp/rust-lints-run.log
+        if-no-files-found: warn
+    - name: Post log tail as check-run annotation on failure
+      if: failure()
+      run: |
+        if [ -f /tmp/rust-lints-run.log ]; then
+          tail -n 100 /tmp/rust-lints-run.log | while IFS= read -r line; do
+            printf '::error::%s\n' "$line"
+          done
+        else
+          echo '::error::rust-lints run log missing'
+        fi
+
   tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}

@@ -527,6 +527,10 @@ macro_rules! edgedata_enum {
         $enum_name:ident<'tcx, P>,
         $( $variant_name:ident($inner_type:ty) ),+ $(,)?
     ) => {
+            // Fully-qualified paths in the invocation are unavoidable: the
+            // macro expansion uses them inside a generated submodule that
+            // doesn't have the outer module's imports in scope.
+            #[allow(unknown_lints, long_path)]
             mod generated_impls {
                 use $enum_path;
                 use $crate::borrow_pcg::borrow_pcg_edge::{BlockedNode, LocalNode};

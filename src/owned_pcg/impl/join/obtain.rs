@@ -30,11 +30,9 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
     fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError<'tcx>> {
         match action {
             PcgAction::Borrow(action) => {
-                self.data.borrows.apply_action(
-                    action.clone(),
-                    self.data.capabilities,
-                    self.ctxt,
-                )?;
+                self.data
+                    .borrows
+                    .apply_action(action.clone(), self.data.capabilities, self.ctxt);
             }
             PcgAction::Owned(action) => match action.kind {
                 RepackOp::Collapse(collapse) => {

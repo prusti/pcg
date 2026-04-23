@@ -269,7 +269,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
         ctxt: Ctxt,
-    ) -> Result<ApplyActionResult, PcgError<'tcx>>
+    ) -> ApplyActionResult
     where
         'tcx: 'a,
         VC: ValidityConditionOps<Ctxt>,
@@ -280,7 +280,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             + std::hash::Hash,
         MaybeRemotePlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
     {
-        let result = match action.kind {
+        match action.kind {
             BorrowPcgActionKind::Restore(restore) => {
                 let restore_place = restore.place();
                 if let Some(cap) = capabilities.get(restore_place, ctxt) {
@@ -339,8 +339,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                     ctxt,
                 ))
             }
-        };
-        Ok(result)
+        }
     }
 
     fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt>(
@@ -462,7 +461,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                     capabilities,
                     ctxt
                 )
-                .unwrap()
                 .changed
             );
         }
