@@ -374,9 +374,8 @@ impl ValidityConditions {
         );
         let bc_index = self
             .all_branch_choices()
-            .enumerate()
-            .find(|(_, bc)| bc.from > pc.from)
-            .map_or(self.all_branch_choices().count(), |(i, _)| i);
+            .position(|bc| bc.from > pc.from)
+            .unwrap_or(self.0.len());
         let mut bc = BranchChoices::new(pc.from, successors.len());
         bc.insert(successors.iter().position(|s| *s == pc.to).unwrap());
         self.0.insert(bc_index, bc);
