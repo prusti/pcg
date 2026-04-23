@@ -127,8 +127,7 @@ where
             let tbr_map = tbr.as_map();
             for input_ty in sig.inputs() {
                 for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
-                    if matches!(gl, GeneralizedLifetime::Region(_))
-                        && !lifetimes.iter().any(|l| *l == gl)
+                    if matches!(gl, GeneralizedLifetime::Region(_)) && !lifetimes.raw.contains(&gl)
                     {
                         lifetimes.push(gl);
                     }

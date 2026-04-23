@@ -643,7 +643,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for TyVarianceVisitor<'tcx> {
                 }
             }
             TyKind::RawPtr(ty, mutbl) | TyKind::Ref(_, ty, mutbl) => {
-                if mutbl.is_mut() && extract_regions(*ty).iter().any(|r| self.target == *r) {
+                if mutbl.is_mut() && extract_regions(*ty).raw.contains(&self.target) {
                     self.found = true;
                 }
                 // Otherwise, this is an immutable reference, don't check under
