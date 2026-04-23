@@ -618,15 +618,11 @@ impl<'tcx> Place<'tcx> {
                     if ty.is_box() {
                         vec![substs.first().unwrap().expect_ty()]
                     } else {
-                        def.all_fields()
-                            .map(|f| f.ty(ctxt.tcx(), substs))
-                            .collect::<Vec<_>>()
+                        def.all_fields().map(|f| f.ty(ctxt.tcx(), substs)).collect()
                     }
                 }
-                TyKind::Tuple(slice) => slice.iter().collect::<Vec<_>>(),
-                TyKind::Closure(_, substs) => {
-                    substs.as_closure().upvar_tys().iter().collect::<Vec<_>>()
-                }
+                TyKind::Tuple(slice) => slice.iter().collect(),
+                TyKind::Closure(_, substs) => substs.as_closure().upvar_tys().iter().collect(),
                 TyKind::Coroutine(_, _) | TyKind::CoroutineClosure(_, _) | TyKind::FnDef(_, _) => {
                     vec![]
                 }

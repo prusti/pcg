@@ -487,17 +487,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 .map(|(p, ancestors)| {
                     (
                         p.display_string(ctxt),
-                        ancestors
-                            .iter()
-                            .map(|n| n.display_string(ctxt))
-                            .collect::<Vec<_>>(),
+                        ancestors.iter().map(|n| n.display_string(ctxt)).collect(),
                     )
                 })
-                .collect::<Vec<_>>(),
+                .collect(),
             root_places: root_places
                 .iter()
                 .map(|p| (p.display_string(ctxt), Vec::<String>::new()))
-                .collect::<Vec<_>>(),
+                .collect(),
             dot_graphs,
             place_labels,
         });
