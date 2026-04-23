@@ -236,11 +236,6 @@ fn emit_and_check_annotations(
                     .flat_map(|l| l.split("// PCG: ").nth(1))
                     .map(|l| l.trim())
                     .collect::<Vec<_>>();
-                let not_expected_annotations = source
-                    .iter()
-                    .flat_map(|l| l.split("// ~PCG: ").nth(1))
-                    .map(|l| l.trim())
-                    .collect::<Vec<_>>();
                 let missing_annotations = expected_annotations
                     .iter()
                     .filter(|a| !debug_lines_set.contains(**a))
@@ -248,7 +243,11 @@ fn emit_and_check_annotations(
                 if !missing_annotations.is_empty() {
                     panic!("Missing annotations: {missing_annotations:?}");
                 }
-                for not_expected_annotation in not_expected_annotations {
+                for not_expected_annotation in source
+                    .iter()
+                    .flat_map(|l| l.split("// ~PCG: ").nth(1))
+                    .map(|l| l.trim())
+                {
                     if debug_lines_set.contains(not_expected_annotation) {
                         panic!("Unexpected annotation: {not_expected_annotation}");
                     }
