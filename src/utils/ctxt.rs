@@ -153,7 +153,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
     pub fn local_place(&self, var_name: &str) -> Option<Place<'tcx>> {
         for info in &self.mir.var_debug_info {
             if let VarDebugInfoContents::Place(place) = info.value
-                && info.name.to_string() == var_name
+                && info.name.as_str() == var_name
             {
                 return Some(place.into());
             }
