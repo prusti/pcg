@@ -9,6 +9,7 @@ may already be stabilized */
 
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
+#![deny(clippy::set_contains_or_insert)]
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::implicit_hasher)]
 #![allow(clippy::struct_excessive_bools)]
