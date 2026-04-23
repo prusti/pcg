@@ -186,7 +186,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind<'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
-        for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
+        for target_proj in target.lifetime_projections(self.ctxt) {
             if self.outlives(
                 source_proj.region(ctxt.ctxt()),
                 target_proj.region(ctxt.ctxt()),

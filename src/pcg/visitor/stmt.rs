@@ -90,7 +90,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         )?;
                     }
                 }
-                for rp in target.lifetime_projections(self.ctxt).into_iter() {
+                for rp in target.lifetime_projections(self.ctxt) {
                     let blocked_edges = self
                         .pcg
                         .borrow

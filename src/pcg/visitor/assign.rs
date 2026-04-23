@@ -186,7 +186,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         kind: mir::BorrowKind,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
-        for source_proj in blocked_place.lifetime_projections(self.ctxt).into_iter() {
+        for source_proj in blocked_place.lifetime_projections(self.ctxt) {
             let mut obtainer = self.place_obtainer();
             let source_proj = if kind.mutability().is_mut() {
                 let label = obtainer.prev_snapshot_location();
@@ -209,7 +209,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             };
             let source_region = source_proj.region(self.ctxt.ctxt());
             let mut nested_ref_mut_targets = vec![];
-            for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
+            for target_proj in target.lifetime_projections(self.ctxt) {
                 let target_region = target_proj.region(self.ctxt.ctxt());
                 if self
                     .ctxt
