@@ -10,6 +10,8 @@ use std::{
     fmt::{Debug, Formatter, Result},
 };
 
+use itertools::Itertools;
+
 use rustc_interface::{
     data_structures::fx::FxHashSet,
     middle::{
@@ -106,7 +108,6 @@ impl DisplayOutput {
             DisplayOutput::Seq(display_outputs) => display_outputs
                 .into_iter()
                 .map(DisplayOutput::into_text)
-                .collect::<Vec<_>>()
                 .join("")
                 .into(),
         }

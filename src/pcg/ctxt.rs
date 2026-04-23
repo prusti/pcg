@@ -1,3 +1,5 @@
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs;
 use crate::{
     borrow_checker::BorrowCheckerInterface,
     borrow_pcg::validity_conditions::effective_successors,
@@ -32,6 +34,8 @@ pub trait HasSettings<'a> {
 }
 
 mod private {
+    #[cfg(feature = "visualization")]
+    use crate::visualization::stmt_graphs;
     use crate::{
         pcg::{BodyAnalysis, PcgArena},
         rustc_interface::{
@@ -52,8 +56,7 @@ mod private {
         pub(crate) block: mir::BasicBlock,
         pub(crate) arena: PcgArena<'a>,
         #[cfg(feature = "visualization")]
-        pub(crate) graphs:
-            Option<crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
+        pub(crate) graphs: Option<stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>>,
     }
 
     impl<'a, 'tcx: 'a> DisplayWithCtxt<AnalysisCtxt<'a, 'tcx>> for ty::RegionVid {
@@ -126,7 +129,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
         arena: PcgArena<'a>,
         settings: &'a PcgSettings,
         #[cfg(feature = "visualization")] graphs: Option<
-            crate::visualization::stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>,
+            stmt_graphs::PcgBlockDebugVisualizationGraphs<'a>,
         >,
     ) -> Self {
         Self {

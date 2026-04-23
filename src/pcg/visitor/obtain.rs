@@ -1,7 +1,10 @@
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs;
 use crate::{
     HasSettings, Weaken,
     action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
+        self,
         action::{ApplyActionResult, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
@@ -547,7 +550,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
                 analysis_ctxt.generate_pcg_debug_visualization_graph(
                     location,
-                    crate::visualization::stmt_graphs::ToGraph::Action(phase, actions.len()),
+                    stmt_graphs::ToGraph::Action(phase, actions.len()),
                     pcg_ref,
                 );
             }
@@ -733,11 +736,11 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
             .contains_expansion_to(target, self.ctxt)
     }
 
-    fn borrows_graph(&self) -> &crate::borrow_pcg::graph::BorrowsGraph<'tcx> {
+    fn borrows_graph(&self) -> &borrow_pcg::graph::BorrowsGraph<'tcx> {
         self.pcg.borrow.graph
     }
 
-    fn path_conditions(&self) -> crate::borrow_pcg::validity_conditions::ValidityConditions {
+    fn path_conditions(&self) -> borrow_pcg::validity_conditions::ValidityConditions {
         self.pcg.borrow.validity_conditions.clone()
     }
 
@@ -746,11 +749,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>> {
-        Ok(self
-            .pcg
+    ) -> bool {
+        self.pcg
             .place_capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt))
+            .update_for_expansion(expansion, block_type, self.ctxt)
     }
 
     fn location(&self) -> mir::Location {
@@ -762,11 +764,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>> {
-        Ok(self
-            .pcg
+    ) -> bool {
+        self.pcg
             .place_capabilities
-            .update_for_deref(ref_place, capability, self.ctxt))
+            .update_for_deref(ref_place, capability, self.ctxt)
     }
 
     fn capability_for_expand(

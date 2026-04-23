@@ -1,5 +1,8 @@
+use std::convert;
+
 use crate::{
     borrow_pcg::{
+        self,
         borrow_pcg_edge::BorrowPcgEdgeRef,
         edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         graph::Conditioned,
@@ -18,6 +21,7 @@ use crate::{
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
+        place,
     },
 };
 
@@ -69,7 +73,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(std::convert::Into::into)),
+                .chain(self.blocked_by_nodes(ctxt).map(convert::Into::into)),
         )
     }
 
@@ -132,7 +136,7 @@ where
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(std::convert::Into::into)),
+                .chain(self.blocked_by_nodes(ctxt).map(convert::Into::into)),
         )
     }
 
@@ -216,7 +220,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches all non-future lifetime projections with
     /// the given base place and region index.
     pub(crate) fn all_non_future(
-        place: crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
+        place: place::maybe_old::MaybeLabelledPlace<'tcx>,
         region_idx: LifetimeProjectionIdx,
     ) -> Self {
         Self::And(vec![
@@ -230,9 +234,9 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches lifetime projections that are postfixes
     /// of the given projection (same region, same label, and base is a postfix).
     pub(crate) fn postfix_lifetime_projection(
-        projection: crate::borrow_pcg::region_projection::LifetimeProjection<
+        projection: borrow_pcg::region_projection::LifetimeProjection<
             'tcx,
-            crate::utils::place::maybe_old::MaybeLabelledPlace<'tcx>,
+            place::maybe_old::MaybeLabelledPlace<'tcx>,
         >,
     ) -> Self {
         Self::And(vec![
@@ -311,8 +315,8 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
         label_context: LabelNodeContext,
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
-        let related_place = related_maybe_labelled_place
-            .map(super::super::utils::place::maybe_old::MaybeLabelledPlace::place);
+        let related_place =
+            related_maybe_labelled_place.map(place::maybe_old::MaybeLabelledPlace::place);
         match self {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {

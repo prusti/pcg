@@ -610,7 +610,7 @@ impl<'tcx> Place<'tcx> {
             #[rustversion::since(2025-03-01)]
             let is_raw_ptr = ty.is_raw_ptr();
             if is_raw_ptr {
-                return std::result::Result::Err(vec![ty]);
+                return Err(vec![ty]);
             }
             let field_tys: Vec<Ty<'tcx>> = match ty.kind() {
                 TyKind::Array(ty, _) | TyKind::Slice(ty) | TyKind::Ref(_, ty, _) => vec![*ty],

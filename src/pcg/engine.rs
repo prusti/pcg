@@ -10,6 +10,8 @@ use bit_set::BitSet;
 use derive_more::From;
 
 use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, visitor::PcgVisitor};
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs;
 use crate::{
     BodyAndBorrows, HasSettings,
     error::PcgError,
@@ -150,7 +152,7 @@ impl<'a, 'tcx: 'a> DebugCtxt for &PcgEngine<'a, 'tcx> {
 pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) ctxt: CompilerCtxt<'a, 'tcx>,
     #[cfg(feature = "visualization")]
-    pub(crate) debug_graphs: Option<crate::visualization::stmt_graphs::PcgEngineDebugData<'a>>,
+    pub(crate) debug_graphs: Option<stmt_graphs::PcgEngineDebugData<'a>>,
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: RefCell<BitSet<Block>>,
     pub(crate) analyzed_blocks: RefCell<BitSet<Block>>,
@@ -341,9 +343,8 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         #[cfg(feature = "visualization")] debug_output_dir: Option<PathBuf>,
     ) -> Self {
         #[cfg(feature = "visualization")]
-        let debug_data = debug_output_dir.map(|dir_path| {
-            crate::visualization::stmt_graphs::PcgEngineDebugData::new(dir_path, arena, ctxt)
-        });
+        let debug_data = debug_output_dir
+            .map(|dir_path| stmt_graphs::PcgEngineDebugData::new(dir_path, arena, ctxt));
         let mut reachable_blocks = BitSet::default();
         reachable_blocks.reserve_len(ctxt.body().basic_blocks.len());
         reachable_blocks.insert(START_BLOCK.index());

@@ -18,7 +18,8 @@ use crate::{
     },
     pcg_validity_assert,
     utils::{
-        HasBorrowCheckerCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        self, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -315,7 +316,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     {
         self.borrows.graph.render_debug_graph(
             self.block,
-            Some(crate::utils::DebugImgcat::JoinOwned),
+            Some(utils::DebugImgcat::JoinOwned),
             self.capabilities,
             comment,
             ctxt.bc_ctxt(),

@@ -39,17 +39,17 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
+        expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>>;
+    ) -> bool;
 
     fn update_capabilities_for_deref(
         &mut self,
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>>;
+    ) -> bool;
 
     #[tracing::instrument(skip(self, obtain_type, ctxt))]
     fn expand_to(
@@ -197,7 +197,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 base,
                 obtain_type.capability(base, ctxt),
                 ctxt.bc_ctxt(),
-            )?;
+            );
             self.render_debug_graph(
                 None,
                 "expand_place_one_level: after update_capabilities_for_deref",
@@ -268,7 +268,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.display_string(ctxt.bc_ctxt())
             ),
         );
-        self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt())?;
+        self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt());
         self.render_debug_graph(
             None,
             "add_borrow_pcg_expansion: after update_capabilities_for_borrow_expansion",

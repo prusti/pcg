@@ -175,7 +175,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         for edge in self
             .edges()
-            .map(super::super::borrow_pcg_edge::BorrowPcgEdgeLike::to_owned_edge)
+            .map(BorrowPcgEdgeLike::to_owned_edge)
             .collect::<Vec<_>>()
         {
             if let BorrowPcgEdgeKind::Abstraction(_) = edge.kind() {

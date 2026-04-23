@@ -6,7 +6,7 @@ pub(crate) mod loop_abstraction;
 pub(crate) mod materialize;
 mod mutate;
 
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, convert, marker::PhantomData};
 
 use crate::{
     borrow_pcg::{
@@ -154,11 +154,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
             .flat_map(|edge| {
                 edge.kind
                     .blocked_nodes(ctxt)
-                    .chain(
-                        edge.kind
-                            .blocked_by_nodes(ctxt)
-                            .map(std::convert::Into::into),
-                    )
+                    .chain(edge.kind.blocked_by_nodes(ctxt).map(convert::Into::into))
                     .collect::<Vec<_>>()
             })
             .collect()

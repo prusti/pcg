@@ -1,3 +1,5 @@
+use std::convert;
+
 use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
@@ -204,7 +206,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 source_proj.with_label(
                     obtainer
                         .label_for_shared_expansion_of_rp(source_proj, obtainer.ctxt)
-                        .map(std::convert::Into::into),
+                        .map(convert::Into::into),
                     self.ctxt,
                 )
             };

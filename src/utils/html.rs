@@ -1,6 +1,7 @@
 use dot::escape_html;
+use itertools::Itertools;
 use serde_derive::Serialize;
-use std::borrow::Cow;
+use std::{borrow::Cow, string};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
@@ -24,12 +25,7 @@ impl Html {
     pub(crate) fn text(&self) -> Cow<'static, str> {
         match self {
             Html::Text(text) | Html::Subscript(text) => text.clone(),
-            Html::Seq(seq) => seq
-                .iter()
-                .map(Html::text)
-                .collect::<Vec<_>>()
-                .join("")
-                .into(),
+            Html::Seq(seq) => seq.iter().map(Html::text).join("").into(),
             Html::Font(_, html) => html.text(),
         }
     }
@@ -56,7 +52,7 @@ impl std::fmt::Display for Html {
                 f,
                 "{}",
                 seq.iter()
-                    .map(std::string::ToString::to_string)
+                    .map(string::ToString::to_string)
                     .collect::<String>()
             ),
             Html::Font(face, html) => {

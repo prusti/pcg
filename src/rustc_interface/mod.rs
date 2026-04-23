@@ -20,18 +20,20 @@ pub mod dataflow;
 
 #[rustversion::since(2025-03-02)]
 mod aliases {
-    pub(crate) type PlaceTy<'tcx> = crate::rustc_interface::middle::mir::PlaceTy<'tcx>;
-    pub(crate) type FieldIdx = crate::rustc_interface::abi::FieldIdx;
-    pub(crate) type VariantIdx = crate::rustc_interface::abi::VariantIdx;
-    pub(crate) type RustBitSet<T> = crate::rustc_interface::index::bit_set::DenseBitSet<T>;
+    use crate::rustc_interface::{abi, index, middle};
+    pub(crate) type PlaceTy<'tcx> = middle::mir::PlaceTy<'tcx>;
+    pub(crate) type FieldIdx = abi::FieldIdx;
+    pub(crate) type VariantIdx = abi::VariantIdx;
+    pub(crate) type RustBitSet<T> = index::bit_set::DenseBitSet<T>;
 }
 
 #[rustversion::before(2025-03-02)]
 mod aliases {
-    pub(crate) type PlaceTy<'tcx> = crate::rustc_interface::middle::mir::tcx::PlaceTy<'tcx>;
-    pub(crate) type FieldIdx = crate::rustc_interface::target::abi::FieldIdx;
-    pub(crate) type VariantIdx = crate::rustc_interface::target::abi::VariantIdx;
-    pub(crate) type RustBitSet<T> = crate::rustc_interface::index::bit_set::BitSet<T>;
+    use crate::rustc_interface::{index, middle, target};
+    pub(crate) type PlaceTy<'tcx> = middle::mir::tcx::PlaceTy<'tcx>;
+    pub(crate) type FieldIdx = target::abi::FieldIdx;
+    pub(crate) type VariantIdx = target::abi::VariantIdx;
+    pub(crate) type RustBitSet<T> = index::bit_set::BitSet<T>;
 }
 
 pub(crate) use aliases::*;

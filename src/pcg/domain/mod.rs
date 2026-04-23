@@ -11,6 +11,8 @@ use std::{
 
 use derive_more::From;
 
+#[cfg(feature = "visualization")]
+use crate::visualization::stmt_graphs;
 use crate::{
     AnalysisEngine,
     action::AppliedActions,
@@ -518,7 +520,7 @@ pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
         };
         ctxt.generate_pcg_debug_visualization_graph(
             location,
-            crate::visualization::stmt_graphs::ToGraph::Phase(phase),
+            stmt_graphs::ToGraph::Phase(phase),
             self.pcg(index).into(),
         );
     }

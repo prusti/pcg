@@ -1,3 +1,5 @@
+use std::convert;
+
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
@@ -59,7 +61,7 @@ impl<'tcx> DerefEdge<'tcx> {
             .base_lifetime_projection(ctxt)
             .unwrap()
             .with_label(
-                blocked_lifetime_projection_label.map(std::convert::Into::into),
+                blocked_lifetime_projection_label.map(convert::Into::into),
                 ctxt,
             )
             .into();

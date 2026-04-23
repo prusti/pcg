@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, cmp, collections::HashMap, marker::PhantomData};
 
 use itertools::Itertools;
 
@@ -386,11 +386,10 @@ where
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {
-                if let Some(std::cmp::Ordering::Greater) =
-                    self_capability.partial_cmp(&other_capability)
+                if let Some(cmp::Ordering::Greater) = self_capability.partial_cmp(&other_capability)
                 {
                     changed |= self.map.insert(place, other_capability) != Some(other_capability);
-                } else if let Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal) =
+                } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
                     self_capability.partial_cmp(&other_capability)
                 {
                     // self is already minimum, no change needed

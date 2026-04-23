@@ -4,6 +4,7 @@ use crate::{
     HasSettings,
     action::PcgAction,
     borrow_pcg::{
+        self,
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
         edge::{
@@ -20,7 +21,7 @@ use crate::{
     },
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
+        self, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
@@ -548,19 +549,19 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
 
     fn update_capabilities_for_borrow_expansion(
         &mut self,
-        _expansion: &crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
-        _block_type: crate::pcg::place_capabilities::BlockType,
+        _expansion: &borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
+        _block_type: pcg::place_capabilities::BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, crate::error::PcgError<'tcx>> {
-        Ok(true)
+    ) -> bool {
+        true
     }
     fn update_capabilities_for_deref(
         &mut self,
         _ref_place: Place<'tcx>,
         _capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Result<bool, crate::error::PcgError<'tcx>> {
-        Ok(true)
+    ) -> bool {
+        true
     }
 
     fn location(&self) -> mir::Location {

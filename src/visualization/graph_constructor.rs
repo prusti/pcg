@@ -24,6 +24,7 @@ use super::{
 use crate::{
     borrow_pcg::edge::abstraction::AbstractionEdge, utils::place::maybe_old::MaybeLabelledPlace,
 };
+use itertools::Itertools;
 use std::collections::{BTreeSet, HashSet};
 
 pub(super) struct GraphConstructor<'a, 'tcx> {
@@ -107,7 +108,6 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                         loans
                             .iter()
                             .map(|l| format!("{:?}", self.ctxt.borrow_set().unwrap()[*l].region()))
-                            .collect::<Vec<_>>()
                             .join(", ")
                     )
                 } else {

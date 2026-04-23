@@ -1,3 +1,5 @@
+use std::borrow;
+
 use crate::{
     HasSettings, Sealed,
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
@@ -130,7 +132,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         let source = self.source()?;
         Ok(source
             .lines()
-            .map(std::borrow::ToOwned::to_owned)
+            .map(borrow::ToOwned::to_owned)
             .collect::<Vec<_>>())
     }
 

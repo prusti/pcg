@@ -1,5 +1,6 @@
 use crate::{
     borrow_pcg::{
+        self,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionShapeInput, FunctionShapeOutput},
         region_projection::RegionIdxKind,
         visitor::extract_regions,
@@ -12,6 +13,7 @@ use crate::{
     },
     utils::{CompilerCtxt, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt},
 };
+use itertools::Itertools;
 use serde_derive::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
@@ -23,6 +25,7 @@ use std::{
 use rustc_interface::middle::mir::{
     self, BinOp, Local, Operand, Rvalue, Statement, TerminatorKind, UnwindAction,
 };
+use rustc_interface::{hir, middle};
 
 #[rustversion::since(2025-03-02)]
 use rustc_interface::middle::mir::RawPtrKind;
@@ -207,10 +210,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             format!(
                 "Aggregate {:?} {}",
                 kind,
-                ops.iter()
-                    .map(|op| format_operand(op, ctxt))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                ops.iter().map(|op| format_operand(op, ctxt)).join(", ")
             )
         }
         Rvalue::ShallowInitBox(operand, _) => format!("Box({})", format_operand(operand, ctxt)),
@@ -249,7 +249,6 @@ fn format_terminator<'tcx>(
                 format_operand(func, ctxt),
                 args.iter()
                     .map(|arg| format_operand(&arg.node, ctxt))
-                    .collect::<Vec<_>>()
                     .join(", ")
             )
         }
@@ -365,7 +364,7 @@ fn resolve_callee<'tcx>(
     func: &Operand<'tcx>,
     body: &mir::Body<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> Option<rustc_interface::hir::def_id::DefId> {
+) -> Option<hir::def_id::DefId> {
     let func_ty = func.ty(body, tcx);
     if let ty::TyKind::FnDef(def_id, _) = func_ty.kind() {
         Some(*def_id)
@@ -494,16 +493,13 @@ impl ShapeLabelFormatter {
     /// Build a formatter for a function's generalized sig shape, looking up
     /// argument names, types, and trait-bound regions from the `def_id`.
     #[must_use]
-    pub fn for_fn_sig<'tcx>(
-        def_id: rustc_interface::hir::def_id::DefId,
-        tcx: TyCtxt<'tcx>,
-    ) -> Self {
+    pub fn for_fn_sig<'tcx>(def_id: hir::def_id::DefId, tcx: TyCtxt<'tcx>) -> Self {
         use crate::borrow_pcg::{
             edge::abstraction::function::TraitBoundRegions,
             visitor::{GeneralizedLifetime, extract_generalized_lifetimes_with_bounds},
         };
 
-        let sig = crate::borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
+        let sig = borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
         let arg_labels = callee_arg_labels(def_id, tcx);
         let param_env = tcx.param_env(def_id);
         let tbr = TraitBoundRegions::new(param_env);
@@ -530,10 +526,7 @@ impl ShapeLabelFormatter {
 
         // Mirror the logic in result_projections: for type parameter return
         // types, include all signature lifetimes.
-        if matches!(
-            sig.output().kind(),
-            rustc_interface::middle::ty::TyKind::Param(_)
-        ) {
+        if matches!(sig.output().kind(), middle::ty::TyKind::Param(_)) {
             for input_ty in sig.inputs() {
                 for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
                     if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {
@@ -558,7 +551,7 @@ impl ShapeLabelFormatter {
     #[must_use]
     pub fn node_labels<Kind: RegionIdxKind>(
         &self,
-        shape: &crate::borrow_pcg::abstraction::FunctionShape<Kind>,
+        shape: &borrow_pcg::abstraction::FunctionShape<Kind>,
     ) -> Vec<(String, String)> {
         use crate::borrow_pcg::abstraction::{FunctionShapeInput, FunctionShapeOutput};
 
@@ -602,7 +595,7 @@ impl ShapeLabelFormatter {
 /// When `formatter` is provided, nodes display human-readable labels (e.g.
 /// `x↓'a`). Otherwise falls back to the `Display` impl (e.g. `a0↓0`).
 fn function_shape_to_dot<Kind: RegionIdxKind>(
-    shape: crate::borrow_pcg::abstraction::FunctionShape<Kind>,
+    shape: borrow_pcg::abstraction::FunctionShape<Kind>,
     graph_name: &str,
     formatter: Option<&ShapeLabelFormatter>,
 ) -> String {
@@ -679,10 +672,7 @@ fn function_shape_to_dot<Kind: RegionIdxKind>(
 
 /// Returns the argument names for a function, using `"_"` for unnamed args.
 #[must_use]
-pub fn callee_arg_labels(
-    def_id: rustc_interface::hir::def_id::DefId,
-    tcx: TyCtxt<'_>,
-) -> Vec<String> {
+pub fn callee_arg_labels(def_id: hir::def_id::DefId, tcx: TyCtxt<'_>) -> Vec<String> {
     tcx.fn_arg_idents(def_id)
         .iter()
         .map(|ident| {
@@ -698,10 +688,10 @@ pub fn callee_arg_labels(
 /// Generate a DOT graph representing the function shape (bipartite graph of
 /// lifetime outlives relationships) for the callee at a call site.
 fn generate_function_shape_dot(
-    def_id: rustc_interface::hir::def_id::DefId,
+    def_id: hir::def_id::DefId,
     ctxt: CompilerCtxt<'_, '_>,
 ) -> Option<String> {
-    use crate::borrow_pcg::abstraction::FunctionShape;
+    use borrow_pcg::abstraction::FunctionShape;
     let shape = FunctionShape::for_fn_sig(def_id, ctxt).ok()?;
     let fn_name = ctxt.tcx().def_path_str(def_id);
 
@@ -717,7 +707,7 @@ fn generate_call_shape_dot<'tcx>(
     output_ty: ty::Ty<'tcx>,
     location: mir::Location,
     ctxt: CompilerCtxt<'_, 'tcx>,
-    callee_def_id: Option<rustc_interface::hir::def_id::DefId>,
+    callee_def_id: Option<hir::def_id::DefId>,
 ) -> String {
     use crate::borrow_pcg::{
         abstraction::FunctionShape, edge::abstraction::function::FnCallDataSource,

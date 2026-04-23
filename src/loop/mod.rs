@@ -8,6 +8,8 @@
 
 mod loop_set;
 
+use std::cmp;
+
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
@@ -201,12 +203,12 @@ pub enum PlaceUsageType {
 }
 
 impl Ord for PlaceUsageType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         match (self, other) {
             (PlaceUsageType::Read, PlaceUsageType::Read)
-            | (PlaceUsageType::Mutate, PlaceUsageType::Mutate) => std::cmp::Ordering::Equal,
-            (PlaceUsageType::Read, PlaceUsageType::Mutate) => std::cmp::Ordering::Less,
-            (PlaceUsageType::Mutate, PlaceUsageType::Read) => std::cmp::Ordering::Greater,
+            | (PlaceUsageType::Mutate, PlaceUsageType::Mutate) => cmp::Ordering::Equal,
+            (PlaceUsageType::Read, PlaceUsageType::Mutate) => cmp::Ordering::Less,
+            (PlaceUsageType::Mutate, PlaceUsageType::Read) => cmp::Ordering::Greater,
         }
     }
 }
@@ -320,8 +322,8 @@ impl<'tcx> PlaceUsages<'tcx> {
     where
         'tcx: 'a,
     {
-        use crate::utils::display::DisplayWithCtxt;
-        crate::visualization::stmt_graphs::PlaceUsagesDebugRepr::new(
+        use crate::{utils::display::DisplayWithCtxt, visualization::stmt_graphs};
+        stmt_graphs::PlaceUsagesDebugRepr::new(
             self.0
                 .iter()
                 .map(|(p, usage)| (p.to_short_string(ctxt), *usage))

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::BTreeMap};
 
 use itertools::Itertools;
-use petgraph::graph::NodeIndex;
+use petgraph::{algo, graph::NodeIndex};
 
 use crate::{
     borrow_checker::{RustBorrowCheckerInterface, r#impl::PoloniusBorrowChecker},
@@ -157,10 +157,10 @@ fn compute_region_sccs(
             }
         }
     }
-    let mut scc_graph = petgraph::algo::condensation(graph, true);
-    let toposort = petgraph::algo::toposort(&scc_graph, None).unwrap();
-    let (g, revmap) = petgraph::algo::tred::dag_to_toposorted_adjacency_list(&scc_graph, &toposort);
-    let (reduced, _) = petgraph::algo::tred::dag_transitive_reduction_closure::<_, u32>(&g);
+    let mut scc_graph = algo::condensation(graph, true);
+    let toposort = algo::toposort(&scc_graph, None).unwrap();
+    let (g, revmap) = algo::tred::dag_to_toposorted_adjacency_list(&scc_graph, &toposort);
+    let (reduced, _) = algo::tred::dag_transitive_reduction_closure::<_, u32>(&g);
     scc_graph.retain_edges(|slf, ei| {
         let endpoints = slf.edge_endpoints(ei).unwrap();
         reduced.contains_edge(revmap[endpoints.0.index()], revmap[endpoints.1.index()])
@@ -178,11 +178,7 @@ pub fn region_inference_outlives<'a, 'tcx: 'a, 'bc>(
         |_, regions| {
             format!(
                 "[{}]",
-                regions
-                    .iter()
-                    .map(|r| r.display_string(ctxt))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                regions.iter().map(|r| r.display_string(ctxt)).join(", ")
             )
         },
         |_, ()| "",

@@ -14,6 +14,7 @@ use crate::{
             PoloniusOutput, RegionInferenceContext, places_conflict,
         },
         data_structures::fx::{FxIndexMap, FxIndexSet},
+        index,
         middle::{
             mir::{self, Location},
             ty::RegionVid,
@@ -298,10 +299,10 @@ impl<'a, 'tcx> DisplayWithCtxt<&'a dyn BorrowCheckerInterface<'tcx>> for RegionV
 }
 
 #[rustversion::before(2025-03-02)]
-pub type InScopeBorrows = crate::rustc_interface::index::bit_set::BitSet<BorrowIndex>;
+pub type InScopeBorrows = index::bit_set::BitSet<BorrowIndex>;
 
 #[rustversion::since(2025-03-02)]
-pub type InScopeBorrows = crate::rustc_interface::index::bit_set::MixedBitSet<BorrowIndex>;
+pub type InScopeBorrows = index::bit_set::MixedBitSet<BorrowIndex>;
 
 /// An interface to the results of the borrow-checker analysis. The PCG queries
 /// this interface as part of its analysis, for example, to identify when borrows

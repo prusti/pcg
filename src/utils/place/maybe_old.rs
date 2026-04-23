@@ -18,7 +18,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
+        self, CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
         PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -67,7 +67,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         'tcx: 'a,
     {
         self.place()
-            .is_mutable(crate::utils::LocalMutationIsAllowed::Yes, ctxt)
+            .is_mutable(utils::LocalMutationIsAllowed::Yes, ctxt)
             .is_ok()
     }
 }
