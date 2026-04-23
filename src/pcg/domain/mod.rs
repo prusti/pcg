@@ -213,7 +213,7 @@ mod private {
         }
 
         pub(crate) fn push(&mut self, data: DomainDataWithCtxt<'a, 'tcx, T>) -> bool {
-            if self.pending.iter().any(|d| d == &data) {
+            if self.pending.contains(&data) {
                 return false;
             }
             self.pending.push(data);
