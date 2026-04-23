@@ -572,7 +572,7 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         &self,
         base_place: Place<'tcx>,
         obtain_type: ObtainType,
-        ctxt: impl crate::utils::HasCompilerCtxt<'mir, 'tcx>,
+        ctxt: impl HasCompilerCtxt<'mir, 'tcx>,
     ) -> CapabilityKind {
         obtain_type.capability(base_place, ctxt)
     }

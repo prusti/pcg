@@ -82,8 +82,8 @@ impl DisplayWithCtxt<()> for RegionVid {
     }
 }
 
-impl std::fmt::Display for PcgRegion<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PcgRegion<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")
     }
 }
@@ -258,11 +258,11 @@ pub type RegionIdx = LifetimeProjectionIdx<Region>;
 /// Only [`RegionOnly`] and [`Generic`] implement this trait.
 #[allow(private_bounds)]
 pub trait RegionIdxKind:
-    crate::Sealed + PartialEq + Eq + Clone + std::fmt::Debug + Hash + Copy + Ord + PartialOrd + 'static
+    Sealed + PartialEq + Eq + Clone + fmt::Debug + Hash + Copy + Ord + PartialOrd + 'static
 {
 }
-impl crate::Sealed for Region {}
-impl crate::Sealed for Generalized {}
+impl Sealed for Region {}
+impl Sealed for Generalized {}
 impl RegionIdxKind for Region {}
 impl RegionIdxKind for Generalized {}
 
@@ -293,7 +293,7 @@ pub enum PlaceOrConst<'tcx, T> {
     Const(Const<'tcx>),
 }
 
-impl<T> crate::Sealed for PlaceOrConst<'_, T> {}
+impl<T> Sealed for PlaceOrConst<'_, T> {}
 
 impl<'tcx> PcgLifetimeProjectionBaseLike<'tcx, Place<'tcx>> for Place<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, Place<'tcx>> {
@@ -519,7 +519,7 @@ pub struct LifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>, Kind
 pub type GeneralizedLifetimeProjection<'tcx, Base = PcgLifetimeProjectionBase<'tcx>> =
     LifetimeProjection<'tcx, Base, Generalized>;
 
-impl<Base, Kind: RegionIdxKind> crate::Sealed for LifetimeProjection<'_, Base, Kind> {}
+impl<Base, Kind: RegionIdxKind> Sealed for LifetimeProjection<'_, Base, Kind> {}
 
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;
@@ -804,7 +804,7 @@ pub trait HasRegions<'tcx, Ctxt: Copy> {
     ) -> IndexVec<LifetimeProjectionIdx, LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
-        Self: Sized + Copy + std::fmt::Debug,
+        Self: Sized + Copy + fmt::Debug,
     {
         self.regions(ctxt)
             .into_iter()
@@ -837,12 +837,12 @@ pub trait HasTy<'tcx, Ctxt> {
 
 /// Something that can be converted to a [`PcgLifetimeProjectionBase`].
 pub trait PcgLifetimeProjectionBaseLike<'tcx, P = Place<'tcx>>:
-    Copy + std::fmt::Debug + std::hash::Hash + Eq + PartialEq
+    Copy + fmt::Debug + Hash + Eq + PartialEq
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P>;
 }
 
-impl<'tcx, P: Eq + std::hash::Hash + std::fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx, P>
+impl<'tcx, P: Eq + Hash + fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx, P>
     for LocalLifetimeProjectionBase<'tcx, P>
 {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
@@ -871,7 +871,7 @@ where
     }
 }
 
-impl<T: std::fmt::Display, Kind: RegionIdxKind> fmt::Display for LifetimeProjection<'_, T, Kind> {
+impl<T: fmt::Display, Kind: RegionIdxKind> fmt::Display for LifetimeProjection<'_, T, Kind> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}↓{}", self.base, self.region_idx.index())
     }
@@ -937,8 +937,8 @@ impl<
     'tcx: 'a,
     Ctxt: HasCompilerCtxt<'a, 'tcx>,
     T: HasPlace<'tcx>
-        + std::fmt::Debug
-        + std::hash::Hash
+        + fmt::Debug
+        + Hash
         + Eq
         + PartialEq
         + Copy
@@ -1034,7 +1034,7 @@ impl<T, Kind: RegionIdxKind> LifetimeProjection<'_, T, Kind> {
     }
 }
 
-impl<'tcx, T: std::fmt::Debug> LifetimeProjection<'tcx, T> {
+impl<'tcx, T: fmt::Debug> LifetimeProjection<'tcx, T> {
     pub fn new<'a, Ctxt: Copy>(
         base: T,
         region: PcgRegion<'tcx>,

@@ -65,7 +65,7 @@ impl<'mir, 'tcx> JoinBorrowsArgs<'_, 'mir, 'tcx> {
 impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn render_debug_graph<'a>(
         &self,
-        block: mir::BasicBlock,
+        block: BasicBlock,
         debug_imgcat: Option<DebugImgcat>,
         capabilities: &impl PlaceCapabilitiesReader<'tcx>,
         comment: &str,

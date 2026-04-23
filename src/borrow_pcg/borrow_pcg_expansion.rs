@@ -459,7 +459,7 @@ impl<'a, 'tcx: 'a, Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx>> HasValidityCheck
 impl<
     'tcx,
     Ctxt: Copy,
-    P: Eq + Copy + std::fmt::Debug + std::hash::Hash + 'tcx,
+    P: Eq + Copy + std::fmt::Debug + Hash + 'tcx,
     Node: PartialEq + Copy + Into<LocalNode<'tcx, P>> + PcgNodeLike<'tcx, Ctxt, P>,
 > EdgeData<'tcx, Ctxt, P> for BorrowPcgExpansionData<Node>
 {
@@ -470,7 +470,7 @@ impl<
     fn blocked_nodes<'slf>(
         &self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -480,7 +480,7 @@ impl<
     fn blocked_by_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

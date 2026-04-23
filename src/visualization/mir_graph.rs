@@ -22,10 +22,10 @@ use std::{
     path::Path,
 };
 
+use rustc_interface::hir;
 use rustc_interface::middle::mir::{
     self, BinOp, Local, Operand, Rvalue, Statement, TerminatorKind, UnwindAction,
 };
-use rustc_interface::{hir, middle};
 
 #[rustversion::since(2025-03-02)]
 use rustc_interface::middle::mir::RawPtrKind;
@@ -526,7 +526,7 @@ impl ShapeLabelFormatter {
 
         // Mirror the logic in result_projections: for type parameter return
         // types, include all signature lifetimes.
-        if matches!(sig.output().kind(), middle::ty::TyKind::Param(_)) {
+        if matches!(sig.output().kind(), ty::TyKind::Param(_)) {
             for input_ty in sig.inputs() {
                 for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
                     if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {

@@ -1109,7 +1109,7 @@ where
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = PcgNodeWithPlace<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = PcgNodeWithPlace<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -1119,7 +1119,7 @@ where
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

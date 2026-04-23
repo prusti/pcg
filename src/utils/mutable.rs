@@ -4,12 +4,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rustc_interface::{
-    hir,
-    middle::{
-        mir::{Mutability, ProjectionElem},
-        ty::{CapturedPlace, TyKind, UpvarCapture},
-    },
+use rustc_interface::middle::{
+    mir::{Mutability, ProjectionElem},
+    ty::{CapturedPlace, TyKind, UpvarCapture},
 };
 
 use crate::{
@@ -109,10 +106,10 @@ impl<'tcx> Place<'tcx> {
                             TyKind::Ref(_, _, mutbl) => {
                                 match mutbl {
                                     // Shared borrowed data is never mutable
-                                    hir::Mutability::Not => Err(self),
+                                    Mutability::Not => Err(self),
                                     // Mutably borrowed data is mutable, but only if we have a
                                     // unique path to the `&mut`
-                                    hir::Mutability::Mut => {
+                                    Mutability::Mut => {
                                         let mode =
                                             match self.is_upvar_field_projection(upvars, ctxt) {
                                                 Some(field) if upvars[field.index()].by_ref => {
@@ -128,10 +125,10 @@ impl<'tcx> Place<'tcx> {
                             TyKind::RawPtr(_, mutbl) => {
                                 match mutbl {
                                     // `*const` raw pointers are not mutable
-                                    hir::Mutability::Not => Err(self),
+                                    Mutability::Not => Err(self),
                                     // `*mut` raw pointers are always mutable, regardless of
                                     // context. The users have to check by themselves.
-                                    hir::Mutability::Mut => Ok(RootPlace {
+                                    Mutability::Mut => Ok(RootPlace {
                                         place: self,
                                         is_local_mutation_allowed,
                                     }),

@@ -1,5 +1,3 @@
-use std::convert;
-
 use crate::{
     HasCompilerCtxt,
     borrow_pcg::{
@@ -60,10 +58,7 @@ impl<'tcx> DerefEdge<'tcx> {
         let blocked_lifetime_projection = place
             .base_lifetime_projection(ctxt)
             .unwrap()
-            .with_label(
-                blocked_lifetime_projection_label.map(convert::Into::into),
-                ctxt,
-            )
+            .with_label(blocked_lifetime_projection_label.map(Into::into), ctxt)
             .into();
         let blocked_place_label: Option<SnapshotLocation> = None;
         DerefEdge {
@@ -168,7 +163,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for Dere
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -184,7 +179,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for Dere
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

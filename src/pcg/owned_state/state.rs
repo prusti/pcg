@@ -98,7 +98,7 @@ impl<'tcx> LocalInitState<'tcx> {
         &self,
         capabilities: &PlaceCapabilities<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), String> {
+    ) -> Result<(), String> {
         match self {
             Self::Unallocated => Ok(()),
             Self::Allocated { expansions, .. } => expansions.check_validity(capabilities, ctxt),
@@ -166,7 +166,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         let always_live = ctxt.always_live_locals();
         let last_arg = Local::from_usize(ctxt.arg_count());
         let state: IndexVec<Local, LocalInitState<'tcx>> = IndexVec::from_fn_n(
-            |local: mir::Local| {
+            |local: Local| {
                 if local == RETURN_PLACE {
                     capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
                     LocalInitState::new_allocated(local, OwnedCapability::Uninit)
@@ -189,7 +189,7 @@ impl<'tcx> OwnedPcg<'tcx> {
         &self,
         capabilities: &PlaceCapabilities<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), String> {
+    ) -> Result<(), String> {
         self.state
             .iter()
             .try_for_each(|c| c.check_validity(capabilities, ctxt))
@@ -205,14 +205,14 @@ impl<'tcx> OwnedPcg<'tcx> {
             .is_some_and(LocalInitState::is_allocated)
     }
 
-    pub(crate) fn allocated_locals(&self) -> Vec<mir::Local> {
+    pub(crate) fn allocated_locals(&self) -> Vec<Local> {
         self.state
             .iter_enumerated()
             .filter_map(|(i, c)| c.is_allocated().then_some(i))
             .collect()
     }
 
-    pub(crate) fn unallocated_locals(&self) -> Vec<mir::Local> {
+    pub(crate) fn unallocated_locals(&self) -> Vec<Local> {
         self.state
             .iter_enumerated()
             .filter_map(|(i, c)| c.is_unallocated().then_some(i))
@@ -376,7 +376,7 @@ impl<'tcx> OwnedPcg<'tcx> {
 
     /// Reset the initialisation tree of `local` to `Leaf(Uninit)` without
     /// deallocating the local.
-    pub(crate) fn clear_local(&mut self, local: mir::Local) {
+    pub(crate) fn clear_local(&mut self, local: Local) {
         if let Some(tree) = self.state.get_mut(local).and_then(LocalInitState::tree_mut) {
             *tree = InitialisationTree::Leaf(OwnedCapability::Uninit);
         }

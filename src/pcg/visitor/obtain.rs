@@ -748,7 +748,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         &mut self,
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
-        _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         self.pcg
             .place_capabilities

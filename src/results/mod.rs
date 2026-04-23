@@ -272,7 +272,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         }
     }
 
-    fn aggregate<T: std::hash::Hash + std::cmp::Eq>(
+    fn aggregate<T: std::hash::Hash + Eq>(
         &self,
         f: impl Fn(&PcgLocation<'_, 'tcx>) -> FxHashSet<T>,
     ) -> FxHashSet<T> {

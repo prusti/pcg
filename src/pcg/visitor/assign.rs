@@ -1,5 +1,3 @@
-use std::convert;
-
 use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
@@ -18,8 +16,7 @@ use crate::{
     },
     rustc_interface::middle::mir::{self, Operand, Rvalue},
     utils::{
-        self, AnalysisLocation, DataflowCtxt, Place, SnapshotLocation,
-        maybe_old::MaybeLabelledPlace,
+        AnalysisLocation, DataflowCtxt, Place, SnapshotLocation, maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -57,7 +54,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     pub(crate) fn assign_post_main(
         &mut self,
-        target: utils::Place<'tcx>,
+        target: Place<'tcx>,
         rvalue: &Rvalue<'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
@@ -85,9 +82,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 | mir::AggregateKind::Array(..)),
                 fields,
             ) => {
-                let target: utils::Place<'tcx> = (*target).into();
+                let target: Place<'tcx> = (*target).into();
                 for (field_idx, field) in fields.iter().enumerate() {
-                    let operand_place: utils::Place<'tcx> = if let Some(place) = field.place() {
+                    let operand_place: Place<'tcx> = if let Some(place) = field.place() {
                         place.into()
                     } else {
                         continue;
@@ -115,7 +112,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
-                let blocked_place: utils::Place<'tcx> = (*blocked_place).into();
+                let blocked_place: Place<'tcx> = (*blocked_place).into();
                 let blocked_place = blocked_place.with_inherent_region(self.ctxt);
                 if !target.ty(self.ctxt).ty.is_ref() {
                     return Err(PcgError::unsupported(
@@ -159,7 +156,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 } else {
                     None
                 };
-                let place: utils::Place<'tcx> = (*place).into();
+                let place: Place<'tcx> = (*place).into();
                 let place = place.with_inherent_region(self.ctxt);
                 (
                     PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
@@ -184,8 +181,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     fn label_lifetime_projections_for_borrow(
         &mut self,
-        blocked_place: utils::Place<'tcx>,
-        target: utils::Place<'tcx>,
+        blocked_place: Place<'tcx>,
+        target: Place<'tcx>,
         kind: mir::BorrowKind,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
@@ -206,7 +203,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 source_proj.with_label(
                     obtainer
                         .label_for_shared_expansion_of_rp(source_proj, obtainer.ctxt)
-                        .map(convert::Into::into),
+                        .map(Into::into),
                     self.ctxt,
                 )
             };

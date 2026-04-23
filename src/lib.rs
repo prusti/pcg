@@ -30,6 +30,7 @@ may already be stabilized */
 #![feature(stmt_expr_attributes)]
 #![feature(allocator_api)]
 #![feature(let_chains)]
+#![warn(unused_qualifications)]
 
 pub mod action;
 pub mod borrow_checker;
@@ -87,7 +88,7 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(export, concrete(Place = String)))]
-pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+pub struct Weaken<'tcx, Place = utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
     pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
     pub(crate) to: ToCap,
@@ -313,7 +314,7 @@ pub struct PcgCtxtCreator<'tcx> {
     arena: bumpalo::Bump,
     settings: PcgSettings,
     #[cfg(feature = "visualization")]
-    debug_function_metadata: RefCell<crate::visualization::FunctionsMetadata>,
+    debug_function_metadata: RefCell<visualization::FunctionsMetadata>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -419,7 +420,7 @@ impl<'a> HasSettings<'a> for &'a PcgCtxt<'_, '_> {
     }
 }
 
-fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
+fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> MoveData<'tcx> {
     MoveData::gather_moves(body, tcx, |_| true)
 }
 

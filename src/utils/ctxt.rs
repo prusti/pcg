@@ -1,5 +1,3 @@
-use std::borrow;
-
 use crate::{
     HasSettings, Sealed,
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
@@ -130,10 +128,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub fn source_lines(&self) -> Result<Vec<String>, Box<SpanSnippetError>> {
         let source = self.source()?;
-        Ok(source
-            .lines()
-            .map(borrow::ToOwned::to_owned)
-            .collect::<Vec<_>>())
+        Ok(source.lines().map(ToOwned::to_owned).collect::<Vec<_>>())
     }
 
     pub fn borrow_checker(self) -> T

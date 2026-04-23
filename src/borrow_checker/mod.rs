@@ -57,10 +57,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
         !self.is_live(node, location)
     }
 
-    fn twophase_borrow_activations(
-        &self,
-        location: Location,
-    ) -> std::collections::BTreeSet<Location> {
+    fn twophase_borrow_activations(&self, location: Location) -> BTreeSet<Location> {
         let activation_map = self.borrow_set().activation_map();
         if let Some(borrow_idxs) = activation_map.get(&location) {
             borrow_idxs
@@ -68,7 +65,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
                 .map(|idx| get_reserve_location(&self.borrow_set()[*idx]))
                 .collect()
         } else {
-            std::collections::BTreeSet::new()
+            BTreeSet::new()
         }
     }
 

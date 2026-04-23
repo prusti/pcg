@@ -1,6 +1,6 @@
 pub(crate) mod expand;
 
-use std::{convert, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::{
     HasSettings,
@@ -280,7 +280,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
                                 .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
-                                .map(convert::Into::into)
+                                .map(Into::into)
                                 .collect::<Vec<_>>()
                         })
                         .collect::<Vec<_>>();

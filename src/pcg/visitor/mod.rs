@@ -23,7 +23,7 @@ use crate::{
 };
 
 use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+    AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
     maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
@@ -282,7 +282,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         {
             for operand in args {
                 if let Some(place) = operand.node.place() {
-                    let place: utils::Place<'tcx> = place.into();
+                    let place: Place<'tcx> = place.into();
                     if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
                         return Err(
                             PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(e).into()
@@ -290,7 +290,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                     }
                 }
             }
-            let destination: utils::Place<'tcx> = (*destination).into();
+            let destination: Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,
                 *fn_span,
@@ -304,7 +304,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 
     fn visit_place_fallable(
         &mut self,
-        place: utils::Place<'tcx>,
+        place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
     ) -> Result<(), PcgError<'tcx>> {

@@ -104,8 +104,8 @@ impl<'a, 'tcx> TripleWalker<'a, 'tcx> {
 impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     fn visit_operand_fallable(
         &mut self,
-        operand: &mir::Operand<'tcx>,
-        location: mir::Location,
+        operand: &Operand<'tcx>,
+        location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         self.super_operand_fallable(operand, location)?;
         #[allow(clippy::match_same_arms)]
@@ -129,8 +129,8 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     #[allow(unreachable_patterns)]
     fn visit_rvalue_fallable(
         &mut self,
-        rvalue: &mir::Rvalue<'tcx>,
-        location: mir::Location,
+        rvalue: &Rvalue<'tcx>,
+        location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
@@ -240,7 +240,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
     fn visit_terminator_fallable(
         &mut self,
         terminator: &Terminator<'tcx>,
-        location: mir::Location,
+        location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         self.super_terminator_fallable(terminator, location)?;
         use TerminatorKind::{
@@ -286,7 +286,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
-        _location: mir::Location,
+        _location: Location,
     ) -> Result<(), PcgError<'tcx>> {
         if place.contains_unsafe_deref(self.ctxt) {
             return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
