@@ -311,7 +311,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     pub fn places_with_capapability(&self, capability: CapabilityKind) -> HashSet<Place<'tcx>> {
         self.place_capabilities
             .iter()
-            .filter_map(|(p, c)| if c == capability { Some(p) } else { None })
+            .filter_map(|(p, c)| (c == capability).then_some(p))
             .collect()
     }
 
