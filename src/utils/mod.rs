@@ -247,10 +247,7 @@ impl PcgSettings {
 
     fn process_string_var(processed: &mut HashSet<String>, var_name: &str) -> Option<String> {
         processed.insert(var_name.to_owned());
-        match std::env::var(var_name) {
-            Ok(val) if !val.is_empty() => Some(val),
-            _ => None,
-        }
+        std::env::var(var_name).ok().filter(|val| !val.is_empty())
     }
 
     fn process_debug_block(processed: &mut HashSet<String>) -> Option<BasicBlock> {
