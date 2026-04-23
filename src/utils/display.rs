@@ -206,7 +206,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for mi
     }
 }
 
-impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for Vec<T> {
+impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for [T] {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let mut result = vec![DisplayOutput::Text("[".into())];
         for (i, item) in self.iter().enumerate() {

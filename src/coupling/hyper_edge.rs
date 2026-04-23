@@ -47,11 +47,11 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
         Self { inputs, outputs }
     }
 
-    pub fn inputs(&self) -> &Vec<InputNode> {
+    pub fn inputs(&self) -> &[InputNode] {
         &self.inputs
     }
 
-    pub fn outputs(&self) -> &Vec<OutputNode> {
+    pub fn outputs(&self) -> &[OutputNode] {
         &self.outputs
     }
 

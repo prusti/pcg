@@ -113,7 +113,7 @@ impl<'bc, 'tcx> RegionPrettyPrinter<'bc, 'tcx> {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn lookup(&self, region: RegionVid) -> Option<&String> {
+    pub(crate) fn lookup(&self, region: RegionVid) -> Option<&str> {
         if self.sccs.borrow().is_none() {
             let regions = self.region_to_string.keys().copied().collect::<Vec<_>>();
             *self.sccs.borrow_mut() = Some(compute_region_sccs(&regions, self.region_infer_ctxt));
