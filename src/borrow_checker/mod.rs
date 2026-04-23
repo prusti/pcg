@@ -98,11 +98,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
             .iter()
             .enumerate()
             .find_map(move |(index, (_, data))| {
-                if data.pcg_region() == region {
-                    Some(index.into())
-                } else {
-                    None
-                }
+                (data.pcg_region() == region).then_some(index.into())
             })
     }
 
@@ -349,11 +345,7 @@ pub trait RustBorrowCheckerInterface<'tcx> {
             .iter()
             .enumerate()
             .find_map(move |(index, (_, data))| {
-                if data.pcg_region() == region {
-                    Some(index.into())
-                } else {
-                    None
-                }
+                (data.pcg_region() == region).then_some(index.into())
             })
     }
 
