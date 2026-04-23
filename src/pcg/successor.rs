@@ -45,8 +45,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> DebugLines<
     for PcgSuccessor<'a, 'tcx>
 {
     fn debug_lines(&self, ctxt: Ctxt) -> Vec<Cow<'static, str>> {
-        let mut result = Vec::new();
-        result.extend(self.actions.iter().map(|a| a.debug_line(ctxt)));
-        result
+        self.actions.iter().map(|a| a.debug_line(ctxt)).collect()
     }
 }
