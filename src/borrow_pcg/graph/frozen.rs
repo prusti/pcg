@@ -212,8 +212,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     {
         {
             let edges = self.leaf_edges_cache.borrow();
-            if edges.is_some() {
-                return edges.as_ref().unwrap().clone();
+            if let Some(edges) = edges.as_ref() {
+                return edges.clone();
             }
         }
         let edges: CachedLeafEdges<'graph, 'tcx> = self.graph.leaf_edges_set(ctxt, self);
@@ -228,8 +228,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     ) -> CachedBlockingEdges<'graph, 'tcx> {
         {
             let map = self.edges_blocking_cache.borrow();
-            if map.contains_key(&node) {
-                return map[&node].clone();
+            if let Some(edges) = map.get(&node) {
+                return edges.clone();
             }
         }
         let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
@@ -249,8 +249,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     {
         {
             let map = self.edges_blocking_cache.borrow();
-            if map.contains_key(&node) {
-                return !map[&node].is_empty();
+            if let Some(edges) = map.get(&node) {
+                return !edges.is_empty();
             }
         }
         let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
