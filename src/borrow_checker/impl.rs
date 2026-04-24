@@ -258,11 +258,10 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
         location: Location,
     ) -> bool {
         self.origin_contains_loan_at_map(RichLocation::Start(location))
-            .and_then(|map| {
+            .is_some_and(|map| {
                 map.get(&region.vid().unwrap())
-                    .map(|set| set.contains(&loan))
+                    .is_some_and(|set| set.contains(&loan))
             })
-            .unwrap_or(false)
     }
 
     fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {
