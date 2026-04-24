@@ -436,7 +436,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                 place = place.project_deref(ctxt);
             }
             match ty.kind() {
-                TyKind::RawPtr(_, _) => {
+                TyKind::RawPtr(inner_ty, _) => {
                     let regions = place.regions(ctxt);
                     for region in regions {
                         let lt: LifetimeProjection<'_, MaybeLabelledPlace> =
@@ -471,7 +471,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                             .unwrap()
                             .changed
                         );
-                        let drp = DerefRemotePlace::new(deref_cnt, local);
+                        let drp = DerefRemotePlace::new(deref_cnt, local, *inner_ty);
                         let source_projection: LifetimeProjection<'tcx, DerefRemotePlace> =
                             LifetimeProjection::new(drp, region, None, ctxt).unwrap_or_else(|| {
                                 panic!(

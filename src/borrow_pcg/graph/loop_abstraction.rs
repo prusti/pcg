@@ -66,7 +66,7 @@ impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
 pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Local(Place<'tcx>),
     Remote(RemotePlace),
-    DerefRemote(DerefRemotePlace),
+    DerefRemote(DerefRemotePlace<'tcx>),
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>

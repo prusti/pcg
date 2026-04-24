@@ -344,14 +344,14 @@ impl<'tcx, P> From<RemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>
     }
 }
 
-impl From<DerefRemotePlace> for PlaceOrConst<'_, DerefRemotePlace> {
-    fn from(place: DerefRemotePlace) -> Self {
+impl<'tcx> From<DerefRemotePlace<'tcx>> for PlaceOrConst<'_, DerefRemotePlace<'tcx>> {
+    fn from(place: DerefRemotePlace<'tcx>) -> Self {
         PlaceOrConst::Place(place)
     }
 }
 
-impl<'tcx, P> From<DerefRemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
-    fn from(place: DerefRemotePlace) -> Self {
+impl<'tcx, P> From<DerefRemotePlace<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
+    fn from(place: DerefRemotePlace<'tcx>) -> Self {
         PlaceOrConst::Place(place.into())
     }
 }

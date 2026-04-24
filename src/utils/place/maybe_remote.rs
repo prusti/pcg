@@ -25,7 +25,7 @@ pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
     /// A place that cannot be named, e.g. the source of a reference-type input argument
     Remote(RemotePlace),
 
-    DerefRemote(DerefRemotePlace),
+    DerefRemote(DerefRemotePlace<'tcx>),
 }
 
 impl<P> From<RemotePlace> for MaybeRemotePlace<'_, P> {
@@ -34,8 +34,8 @@ impl<P> From<RemotePlace> for MaybeRemotePlace<'_, P> {
     }
 }
 
-impl<P> From<DerefRemotePlace> for MaybeRemotePlace<'_, P> {
-    fn from(place: DerefRemotePlace) -> Self {
+impl<'tcx, P> From<DerefRemotePlace<'tcx>> for MaybeRemotePlace<'tcx, P> {
+    fn from(place: DerefRemotePlace<'tcx>) -> Self {
         MaybeRemotePlace::DerefRemote(place)
     }
 }
@@ -96,7 +96,7 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx, P>
 where
     RemotePlace: HasTy<'tcx, Ctxt>,
-    DerefRemotePlace: HasTy<'tcx, Ctxt>,
+    DerefRemotePlace<'tcx>: HasTy<'tcx, Ctxt>,
 {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
@@ -229,9 +229,9 @@ impl RemotePlace {
     }
 }
 
-impl DerefRemotePlace {
+impl<'tcx> DerefRemotePlace<'tcx> {
     #[must_use]
-    pub fn new(cnt_derefs: usize, local: mir::Local) -> Self {
-        Self { cnt_derefs, local }
+    pub fn new(cnt_derefs: usize, local: mir::Local, ty: ty::Ty<'tcx>) -> Self {
+        Self { cnt_derefs, local, ty }
     }
 }

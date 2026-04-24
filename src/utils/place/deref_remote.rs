@@ -14,45 +14,40 @@ use crate::{
     },
 };
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
-pub struct DerefRemotePlace {
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
+pub struct DerefRemotePlace<'tcx> {
     pub(crate) cnt_derefs: usize,
     pub(crate) local: mir::Local,
+    pub(crate) ty: ty::Ty<'tcx>,
 }
 
-impl crate::Sealed for DerefRemotePlace {}
+impl<'tcx> crate::Sealed for DerefRemotePlace<'tcx> {}
 
-impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, P> for DerefRemotePlace {
+impl<'tcx, P> PcgLifetimeProjectionBaseLike<'tcx, P> for DerefRemotePlace<'tcx> {
     fn to_pcg_lifetime_projection_base(&self) -> PcgLifetimeProjectionBase<'tcx, P> {
         PlaceOrConst::Place(MaybeRemotePlace::DerefRemote(*self))
     }
 }
 
-impl<'tcx> From<LifetimeProjection<'tcx, DerefRemotePlace>> for PcgNode<'tcx> {
-    fn from(projection: LifetimeProjection<'tcx, DerefRemotePlace>) -> Self {
+impl<'tcx> From<LifetimeProjection<'tcx, DerefRemotePlace<'tcx>>> for PcgNode<'tcx> {
+    fn from(projection: LifetimeProjection<'tcx, DerefRemotePlace<'tcx>>) -> Self {
         PcgNode::LifetimeProjection(projection.rebase())
     }
 }
 
-impl<'tcx, Ctxt: LocalTys<'tcx>> HasTy<'tcx, Ctxt> for DerefRemotePlace {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
-        let mut ty = ctxt.local_ty(self.local);
-        for _i in 0..self.cnt_derefs {
-            ty = ty
-                .builtin_deref(true)
-                .expect("Number of derefs does not match for DerefRemotePlace");
-        }
-        ty
+impl<'tcx, Ctxt: LocalTys<'tcx>> HasTy<'tcx, Ctxt> for DerefRemotePlace<'tcx> {
+    fn rust_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.ty
     }
 }
 
-impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for DerefRemotePlace {
+impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for DerefRemotePlace<'tcx> {
     fn to_json(&self, _ctxt: Ctxt) -> serde_json::Value {
         todo!()
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefRemotePlace {
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefRemotePlace<'tcx> {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             format!(
@@ -66,14 +61,42 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for De
     }
 }
 
-impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for DerefRemotePlace {
+impl<'tcx> HasValidityCheck<CompilerCtxt<'_, 'tcx>> for DerefRemotePlace<'tcx> {
     fn check_validity(&self, _ctxt: CompilerCtxt<'_, 'tcx>) -> Result<(), String> {
         Ok(())
     }
 }
 
-impl std::fmt::Display for DerefRemotePlace {
+impl<'tcx> std::fmt::Display for DerefRemotePlace<'tcx> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:*<1$}Remote({2:?})", "", self.cnt_derefs, self.local)
+    }
+}
+
+impl<'tcx> PartialOrd for DerefRemotePlace<'tcx> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.cnt_derefs.partial_cmp(&other.cnt_derefs) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.local.partial_cmp(&other.local) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        Some(core::cmp::Ordering::Equal) // if both places refer to the same place they need to have the same ty
+    }
+}
+
+impl<'tcx> Ord for DerefRemotePlace<'tcx> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.cnt_derefs.cmp(&other.cnt_derefs) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.local.cmp(&other.local) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        core::cmp::Ordering::Equal // if both places refer to the same place they need to have the same ty
     }
 }
