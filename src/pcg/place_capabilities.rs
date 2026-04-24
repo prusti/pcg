@@ -72,11 +72,7 @@ mod private {
             P: 'slf + PlaceLike<'tcx, Ctxt>,
         {
             self.iter_mut().filter_map(move |(place, capability)| {
-                if place.local() == local && place.is_owned(ctxt) {
-                    Some((*place, capability))
-                } else {
-                    None
-                }
+                (place.local() == local && place.is_owned(ctxt)).then_some((*place, capability))
             })
         }
 

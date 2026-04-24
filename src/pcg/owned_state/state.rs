@@ -544,11 +544,7 @@ fn expand_leaf<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
                     fields.insert(f, (ty, leaf()));
                 }
             }
-            if fields.is_empty() {
-                None
-            } else {
-                Some(PlaceExpansion::Fields(fields))
-            }
+            (!fields.is_empty()).then_some(PlaceExpansion::Fields(fields))
         }
         ProjectionElem::Deref => Some(PlaceExpansion::Deref(leaf())),
         _ => None,

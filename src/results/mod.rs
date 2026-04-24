@@ -430,11 +430,9 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
                 PcgNode::LifetimeProjection(p) => match p.base() {
                     PlaceOrConst::Place(p) => {
                         let assoc_place = p.related_local_place();
-                        if assoc_place.is_ref(ctxt) {
-                            Some(assoc_place.project_deref(ctxt))
-                        } else {
-                            None
-                        }
+                        assoc_place
+                            .is_ref(ctxt)
+                            .then(|| assoc_place.project_deref(ctxt))
                     }
                     _ => None,
                 },

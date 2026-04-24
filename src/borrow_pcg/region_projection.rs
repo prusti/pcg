@@ -1121,11 +1121,8 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     /// this returns `*x`.
     #[must_use]
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
-        if self.base.ty_region(ctxt) == Some(self.region(ctxt)) {
-            Some(self.base.project_deref(ctxt))
-        } else {
-            None
-        }
+        (self.base.ty_region(ctxt) == Some(self.region(ctxt)))
+            .then(|| self.base.project_deref(ctxt))
     }
 }
 

@@ -451,11 +451,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if self.is_owned(ctxt) {
-            Some(OwnedPlace(self))
-        } else {
-            None
-        }
+        self.is_owned(ctxt).then_some(OwnedPlace(self))
     }
 
     /// Converts this place into a `BorrowedPlace` if it is borrowed.
@@ -466,11 +462,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if self.is_owned(ctxt) {
-            None
-        } else {
-            Some(BorrowedPlace(self))
-        }
+        (!self.is_owned(ctxt)).then_some(BorrowedPlace(self))
     }
 
     /// Converts this place into a `BorrowedPlace`, panicking if owned.

@@ -290,11 +290,7 @@ impl PcgSettings {
     fn check_for_unknown_vars(processed: &HashSet<String>) {
         let unknown_vars: Vec<String> = std::env::vars()
             .filter_map(|(key, _)| {
-                if key.starts_with("PCG_") && !processed.contains(&key) {
-                    Some(key)
-                } else {
-                    None
-                }
+                (key.starts_with("PCG_") && !processed.contains(&key)).then_some(key)
             })
             .collect();
 

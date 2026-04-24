@@ -42,23 +42,17 @@ impl PcgCtxt<'_, '_> {
     }
 
     pub(crate) fn visualization_function_metadata(&self) -> Option<FunctionMetadata> {
-        if self.settings.visualization {
-            Some(self.compiler_ctxt.function_metadata())
-        } else {
-            None
-        }
+        self.settings
+            .visualization
+            .then(|| self.compiler_ctxt.function_metadata())
     }
 
     pub fn visualization_output_path(&self) -> Option<PathBuf> {
-        if self.settings.visualization {
-            Some(
-                self.settings
-                    .visualization_data_dir
-                    .join(self.compiler_ctxt.function_metadata_slug().path()),
-            )
-        } else {
-            None
-        }
+        self.settings.visualization.then(|| {
+            self.settings
+                .visualization_data_dir
+                .join(self.compiler_ctxt.function_metadata_slug().path())
+        })
     }
 }
 

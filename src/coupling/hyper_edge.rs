@@ -74,11 +74,8 @@ impl<InputNode, OutputNode> HyperEdge<InputNode, OutputNode> {
     }
 
     pub(crate) fn try_to_singleton_edge(&self) -> Option<(&InputNode, &OutputNode)> {
-        if self.inputs.len() == 1 && self.outputs.len() == 1 {
-            Some((&self.inputs[0], &self.outputs[0]))
-        } else {
-            None
-        }
+        (self.inputs.len() == 1 && self.outputs.len() == 1)
+            .then(|| (&self.inputs[0], &self.outputs[0]))
     }
 }
 

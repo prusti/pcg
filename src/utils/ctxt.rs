@@ -326,11 +326,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
         'tcx: 'a,
     {
         let dest_places = self.dest_places_for_region(region, ctxt);
-        if dest_places.is_empty() {
-            None
-        } else {
-            Some(PlaceExpansion::from_places(dest_places, ctxt))
-        }
+        (!dest_places.is_empty()).then(|| PlaceExpansion::from_places(dest_places, ctxt))
     }
 }
 
