@@ -9,7 +9,9 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
-            borrow_flow::private::FutureEdgeKind, deref::DerefEdge, kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType}
+            borrow_flow::private::FutureEdgeKind,
+            deref::DerefEdge,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
         edge_data::{EdgeData, LabelNodePredicate},
         graph::Conditioned,
@@ -521,7 +523,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
                 RepackOp::Weaken(weaken) => {
                     pcg_validity_assert!(
-                        self.pcg.place_capability_equals(weaken.place, weaken.from, self.ctxt) || weaken.place.contains_unsafe_deref(self.ctxt) /* SEE COMMENT WHERE WE CREATE WEAKEN. THIS SHOULD BE CHANGED */
+                        self.pcg
+                            .place_capability_equals(weaken.place, weaken.from, self.ctxt)
+                            || weaken.place.contains_unsafe_deref(self.ctxt) /* SEE COMMENT WHERE WE CREATE WEAKEN. THIS SHOULD BE CHANGED */
                     );
                     self.pcg
                         .place_capabilities

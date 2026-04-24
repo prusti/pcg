@@ -1,7 +1,12 @@
 use crate::{
-    borrow_pcg::edge::kind::BorrowPcgEdgeKind, error::PcgError, pcg::{
-        PcgRefLike, obtain::ObtainType, triple::{PlaceCondition, Triple}
-    }, utils::{DataflowCtxt, Place}
+    borrow_pcg::edge::kind::BorrowPcgEdgeKind,
+    error::PcgError,
+    pcg::{
+        PcgRefLike,
+        obtain::ObtainType,
+        triple::{PlaceCondition, Triple},
+    },
+    utils::{DataflowCtxt, Place},
 };
 
 use super::PcgVisitor;
@@ -11,12 +16,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn require_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
         match triple.pre() {
             PlaceCondition::ExpandTwoPhase(place) => {
-                    self.place_obtainer()
-                        .obtain(place, ObtainType::TwoPhaseExpand)?;
+                self.place_obtainer()
+                    .obtain(place, ObtainType::TwoPhaseExpand)?;
             }
             PlaceCondition::Capability(place, capability) => {
-                    self.place_obtainer()
-                        .obtain(place, ObtainType::Capability(capability))?;
+                self.place_obtainer()
+                    .obtain(place, ObtainType::Capability(capability))?;
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
                 if self.pcg.owned[local].is_unallocated() {
@@ -29,15 +34,17 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 // With raw pointers, we can have dangling pointers
                 // Remove any incoming delegation edges
                 let place: Place = local.into();
-                let blocking_edges = self.pcg.borrows_graph().edges_blocking(place.into(), self.ctxt.bc_ctxt());
-                
+                let blocking_edges = self
+                    .pcg
+                    .borrows_graph()
+                    .edges_blocking(place.into(), self.ctxt.bc_ctxt());
+
                 let mut to_remove = vec![];
                 for edge in blocking_edges {
-                    match edge.kind {
-                        BorrowPcgEdgeKind::Delegation(_) => {to_remove.push(edge.kind().clone())}
-                        _ => {}
+                    if let BorrowPcgEdgeKind::Delegation(_) = edge.kind {
+                        to_remove.push(edge.kind().clone());
                     }
-                };
+                }
 
                 for edge in to_remove {
                     self.pcg.borrow.graph.remove(&edge);

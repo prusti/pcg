@@ -237,21 +237,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         operand: &Operand<'tcx>,
         location: Location,
     ) -> Result<(), PcgError<'tcx>> {
-        match operand {
-            Operand::Move(place) => {
-                if self.phase() == EvalStmtPhase::PostOperands {
-                    let snapshot_location = self.prev_snapshot_location();
-                    self.record_and_apply_action(
-                        BorrowPcgAction::label_place_and_update_related_capabilities(
-                            (*place).into(),
-                            snapshot_location,
-                            LabelPlaceReason::MoveOut,
-                        )
-                        .into(),
-                    )?;
-                }
-            }
-            _ => {}
+        if let Operand::Move(place) = operand
+            && self.phase() == EvalStmtPhase::PostOperands
+        {
+            let snapshot_location = self.prev_snapshot_location();
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    (*place).into(),
+                    snapshot_location,
+                    LabelPlaceReason::MoveOut,
+                )
+                .into(),
+            )?;
         }
         self.super_operand_fallable(operand, location)?;
         Ok(())

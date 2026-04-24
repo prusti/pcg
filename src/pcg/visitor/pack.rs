@@ -3,10 +3,14 @@ use std::borrow::Cow;
 use super::PcgError;
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode}, edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind}, edge_data::EdgeData, graph::{Conditioned, frozen::FrozenGraphRef}
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
+        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
+        edge_data::EdgeData,
+        graph::{Conditioned, frozen::FrozenGraphRef},
     },
     pcg::{
-        PcgNode, PcgRefLike, obtain::{PlaceCollapser, PlaceObtainer}
+        PcgNode, PcgRefLike,
+        obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
         DataflowCtxt, DebugCtxt, HasPlace, Place,
@@ -206,10 +210,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             // Do not kill if there is still a rawptr delegation to this node
             let node = PcgNode::from(p);
             let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
-            let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
-                crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
-                _ => None
-            }).filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location)).count();
+            let alias_edges_cnt = edges
+                .into_iter()
+                .filter_map(|e| match e.kind {
+                    crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => {
+                        Some(raw_ptr_edge)
+                    }
+                    _ => None,
+                })
+                .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))
+                .count();
 
             if alias_edges_cnt > 0 {
                 return ShouldKillNode::No;
@@ -217,16 +227,22 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
 
             if let Ok(lifetime_proj) = p.try_into_lifetime_projection() {
                 let base = lifetime_proj.base();
-                    // Do not kill if there is still a rawptr delegation to this node
-                    let node = PcgNode::from(base);
-                    let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
-                    let alias_edges_cnt = edges.into_iter().filter_map(|e| match e.kind {
-                        crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
-                        _ => None
-                    }).filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location)).count();
+                // Do not kill if there is still a rawptr delegation to this node
+                let node = PcgNode::from(base);
+                let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
+                let alias_edges_cnt = edges
+                    .into_iter()
+                    .filter_map(|e| match e.kind {
+                        crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(
+                            raw_ptr_edge,
+                        ) => Some(raw_ptr_edge),
+                        _ => None,
+                    })
+                    .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))
+                    .count();
 
-                    if alias_edges_cnt > 0 {
-                        return ShouldKillNode::No;
+                if alias_edges_cnt > 0 {
+                    return ShouldKillNode::No;
                 }
             }
 
@@ -319,11 +335,19 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 edge.value.display_string(self.ctxt)
             );
             if let BorrowPcgEdgeKind::Delegation(delegation) = edge.value {
-                if let ShouldKillNode::Yes { reason } = should_kill_node(delegation.rawptr_place.into(), &fg) {
+                if let ShouldKillNode::Yes { reason } =
+                    should_kill_node(delegation.rawptr_place.into(), &fg)
+                {
                     edges_to_remove.push(&edge, reason);
-                    let edges = self.pcg.borrows_graph().edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
+                    let edges = self
+                        .pcg
+                        .borrows_graph()
+                        .edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
                     for edge_to_remove in edges {
-                        edges_to_remove.push(&edge_to_remove.to_owned_edge(), "Delegation edge is removed".into());
+                        edges_to_remove.push(
+                            &edge_to_remove.to_owned_edge(),
+                            "Delegation edge is removed".into(),
+                        );
                     }
                 }
             } else if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {

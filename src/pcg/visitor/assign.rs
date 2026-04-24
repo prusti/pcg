@@ -5,16 +5,22 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::{borrow_flow::{
-            AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
-        }, delegation::DelegationEdge, kind::BorrowPcgEdgeKind},
+        edge::{
+            borrow_flow::{
+                AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
+            },
+            delegation::DelegationEdge,
+            kind::BorrowPcgEdgeKind,
+        },
         edge_data::LabelNodePredicate,
         region_projection::{HasRegions, PlaceOrConst},
     },
     pcg::{
-        CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike, obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander}, place_capabilities::PlaceCapabilitiesInterface
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike,
+        obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
+        place_capabilities::PlaceCapabilitiesInterface,
     },
-    rustc_interface::middle::mir::{self, Operand, Rvalue, CastKind},
+    rustc_interface::middle::mir::{self, CastKind, Operand, Rvalue},
     utils::Place,
 };
 
@@ -109,35 +115,42 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             }
             Rvalue::Use(operand) => {
                 let p = operand.place();
-                if p != None {
-                    let p: utils::Place = p.unwrap().into();
+                if let Some(p) = p {
+                    let p: utils::Place = p.into();
                     if p.ty(self.ctxt).ty.is_raw_ptr() {
-                    let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
-                    let node = PcgNode::from(p);
-                    let edges = self.pcg.borrows_graph().edges_blocked_by(node, self.ctxt.bc_ctxt());
-                    let alias_edges = edges.into_iter().filter_map(|e| match e.kind {
-                        BorrowPcgEdgeKind::Delegation(de) => Some(de),
-                        _ => None
-                    }).collect::<Vec<_>>();
-                    if alias_edges.len() > 0 {
-                        self.record_and_apply_action(BorrowPcgAction::add_edge(
+                        let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
+                        let node = PcgNode::from(p);
+                        let edges = self
+                            .pcg
+                            .borrows_graph()
+                            .edges_blocked_by(node, self.ctxt.bc_ctxt());
+                        let alias_edges = edges
+                            .into_iter()
+                            .filter_map(|e| match e.kind {
+                                BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        if !alias_edges.is_empty() {
+                            self.record_and_apply_action(
+                                BorrowPcgAction::add_edge(
                                     BorrowPcgEdge::new(
-                                            DelegationEdge{
-                                                rawptr_place: target.project_deref(ctxt).into(),
-                                                aliased_place: alias_edges[0].aliased_place.into()
-                                            }.into()
-                                        ,
+                                        DelegationEdge {
+                                            rawptr_place: target.project_deref(ctxt).into(),
+                                            aliased_place: alias_edges[0].aliased_place,
+                                        }
+                                        .into(),
                                         self.pcg.borrow.validity_conditions.clone(),
                                     ),
                                     "assign_post_main",
                                 )
                                 .into(),
-                        )?;
-                        return Ok(());
-                    }
+                            )?;
+                            return Ok(());
+                        }
                     }
                 }
-                    self.assignment_projections(operand, target, None)?;
+                self.assignment_projections(operand, target, None)?;
             }
             Rvalue::Cast(kind, operand, ty) => {
                 if let CastKind::PtrToPtr = kind {
@@ -145,23 +158,28 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     let p: utils::Place = p.into();
                     let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
                     let edges = self.pcg.borrows_graph().edges_blocked_by(p.into(), ctxt);
-                    let alies_edges = edges.into_iter().filter_map(|e| match e.kind {
-                        BorrowPcgEdgeKind::Delegation(de) => Some(de),
-                        _ => None
-                    }).collect::<Vec<_>>();
-                    if alies_edges.len() > 0 {
+                    let alies_edges = edges
+                        .into_iter()
+                        .filter_map(|e| match e.kind {
+                            BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    if !alies_edges.is_empty() {
                         assert!(alies_edges.len() == 1);
-                        self.record_and_apply_action(BorrowPcgAction::add_edge(
-                                    BorrowPcgEdge::new(
-                                            DelegationEdge{
-                                                rawptr_place: target.project_deref(ctxt).into(),
-                                                aliased_place: alies_edges[0].aliased_place.into()
-                                            }.into()
-                                        ,
-                                        self.pcg.borrow.validity_conditions.clone(),
-                                    ),
-                                    "assign_post_main",
-                                ).into(),
+                        self.record_and_apply_action(
+                            BorrowPcgAction::add_edge(
+                                BorrowPcgEdge::new(
+                                    DelegationEdge {
+                                        rawptr_place: target.project_deref(ctxt).into(),
+                                        aliased_place: alies_edges[0].aliased_place,
+                                    }
+                                    .into(),
+                                    self.pcg.borrow.validity_conditions.clone(),
+                                ),
+                                "assign_post_main",
+                            )
+                            .into(),
                         )?;
                     }
                 } else {
@@ -190,22 +208,25 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
-            Rvalue::RawPtr(kind, p) => if !kind.is_fake() {
-                let p: utils::Place<'tcx> = (*p).into();
-                let p = p.with_inherent_region(self.ctxt);
-                self.record_and_apply_action(BorrowPcgAction::add_edge(
+            Rvalue::RawPtr(kind, p) => {
+                if !kind.is_fake() {
+                    let p: utils::Place<'tcx> = (*p).into();
+                    let p = p.with_inherent_region(self.ctxt);
+                    self.record_and_apply_action(
+                        BorrowPcgAction::add_edge(
                             BorrowPcgEdge::new(
-                                    DelegationEdge{
-                                        rawptr_place: target.project_deref(ctxt).into(),
-                                        aliased_place: p.into()
-                                    }.into()
-                                ,
+                                DelegationEdge {
+                                    rawptr_place: target.project_deref(ctxt).into(),
+                                    aliased_place: p.into(),
+                                }
+                                .into(),
                                 self.pcg.borrow.validity_conditions.clone(),
                             ),
                             "assign_post_main",
                         )
                         .into(),
                     )?;
+                }
             }
             _ => {}
         }

@@ -1,7 +1,7 @@
 use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeRef,
-        edge::{kind::BorrowPcgEdgeKind},
+        edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData,
         graph::materialize::{MaterializedEdge, SyntheticEdge},
     },
@@ -134,12 +134,21 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
             BorrowPcgEdgeKind::Delegation(delegation_edge) => {
                 let raw_ptr_place = self.insert_maybe_labelled_place(delegation_edge.rawptr_place);
                 let aliased_place = self.insert_maybe_labelled_place(delegation_edge.aliased_place);
-                self.constructor().edges.insert(GraphEdge::Delegation { source: aliased_place, target: raw_ptr_place });
-            },
+                self.constructor().edges.insert(GraphEdge::Delegation {
+                    source: aliased_place,
+                    target: raw_ptr_place,
+                });
+            }
             BorrowPcgEdgeKind::ConditionalLifetimeProjection(conditional_lifetime_projection) => {
-                let raw_ptr_place = self.insert_maybe_labelled_place(conditional_lifetime_projection.rawptr_place);
+                let raw_ptr_place =
+                    self.insert_maybe_labelled_place(conditional_lifetime_projection.rawptr_place);
                 let proj = self.insert_pcg_node(conditional_lifetime_projection.proj.into());
-                self.constructor().edges.insert(GraphEdge::ConditionalLifetimeProjection { source: raw_ptr_place, target: proj });
+                self.constructor()
+                    .edges
+                    .insert(GraphEdge::ConditionalLifetimeProjection {
+                        source: raw_ptr_place,
+                        target: proj,
+                    });
             }
         }
     }

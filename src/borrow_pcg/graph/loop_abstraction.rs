@@ -32,7 +32,13 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation, data_structures::{HashMap, HashSet}, deref_remote::DerefRemotePlace, display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode}, logging::{self, LogPredicate}, maybe_old::MaybeLabelledPlace, remote::RemotePlace
+        CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        data_structures::{HashMap, HashSet},
+        deref_remote::DerefRemotePlace,
+        display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
+        logging::{self, LogPredicate},
+        maybe_old::MaybeLabelledPlace,
+        remote::RemotePlace,
     },
 };
 
@@ -60,7 +66,7 @@ impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
 pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Local(Place<'tcx>),
     Remote(RemotePlace),
-    DerefRemote(DerefRemotePlace)
+    DerefRemote(DerefRemotePlace),
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>

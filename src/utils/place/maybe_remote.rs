@@ -9,7 +9,11 @@ use crate::{
     },
     rustc_interface::middle::{mir, ty},
     utils::{
-        CompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place, deref_remote::DerefRemotePlace, display::{DisplayOutput, DisplayWithCtxt, OutputMode}, json::ToJsonWithCtxt, place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace}
+        CompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
+        deref_remote::DerefRemotePlace,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
+        place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
     },
 };
 
@@ -64,7 +68,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
             }
             MaybeRemotePlace::Local(MaybeLabelledPlace::Labelled(_)) => None,
             MaybeRemotePlace::Remote(rp) => Some(MaybeRemoteCurrentPlace::Remote(*rp)),
-            MaybeRemotePlace::DerefRemote(drp) => Some(MaybeRemoteCurrentPlace::DerefRemote(*drp))
+            MaybeRemotePlace::DerefRemote(drp) => Some(MaybeRemoteCurrentPlace::DerefRemote(*drp)),
         }
     }
 
@@ -74,8 +78,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     {
         match self {
             MaybeRemotePlace::Local(p) => p.is_mutable(ctxt),
-            MaybeRemotePlace::Remote(_) => false,
-            MaybeRemotePlace::DerefRemote(_) => false,
+            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => false,
         }
     }
 }
@@ -191,7 +194,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     pub fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(ctxt),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_)=> todo!(),
+            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => todo!(),
         }
     }
 }

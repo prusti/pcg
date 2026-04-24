@@ -337,7 +337,11 @@ impl<'tcx> PlaceUsages<'tcx> {
 
 impl<'tcx> FromIterator<PlaceUsage<'tcx>> for PlaceUsages<'tcx> {
     fn from_iter<T: IntoIterator<Item = PlaceUsage<'tcx>>>(iter: T) -> Self {
-        PlaceUsages(iter.into_iter().map(|u| (u.place, u.usage)).collect::<HashMap<Place, PlaceUsageType>>())
+        PlaceUsages(
+            iter.into_iter()
+                .map(|u| (u.place, u.usage))
+                .collect::<HashMap<Place, PlaceUsageType>>(),
+        )
     }
 }
 

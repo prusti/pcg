@@ -217,7 +217,7 @@ pub(crate) enum GraphEdge<'a> {
     ConditionalLifetimeProjection {
         source: NodeId,
         target: NodeId,
-    }
+    },
 }
 
 impl<'a> GraphEdge<'a> {

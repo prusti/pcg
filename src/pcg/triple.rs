@@ -284,7 +284,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
 
     fn visit_place_fallable(
         &mut self,
-        place: Place<'tcx>,
+        _place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: mir::Location,
     ) -> Result<(), PcgError<'tcx>> {

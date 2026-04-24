@@ -38,7 +38,9 @@ impl<'tcx, Ctxt: LocalTys<'tcx>> HasTy<'tcx, Ctxt> for DerefRemotePlace {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         let mut ty = ctxt.local_ty(self.local);
         for _i in 0..self.cnt_derefs {
-            ty = ty.builtin_deref(true).expect("Number of derefs does not match for DerefRemotePlace");
+            ty = ty
+                .builtin_deref(true)
+                .expect("Number of derefs does not match for DerefRemotePlace");
         }
         ty
     }
@@ -52,7 +54,15 @@ impl<'a, 'tcx, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt> for DerefRe
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for DerefRemotePlace {
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(format!("{:*<1$}Remote({2:?})", "", self.cnt_derefs, self.local.display_string(ctxt)).into())
+        DisplayOutput::Text(
+            format!(
+                "{:*<1$}Remote({2:?})",
+                "",
+                self.cnt_derefs,
+                self.local.display_string(ctxt)
+            )
+            .into(),
+        )
     }
 }
 

@@ -178,13 +178,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     for input in edges.inputs(ctxt) {
                         extend(input.0, seen, &mut result, false);
                     }
-                },
-                BorrowPcgEdgeKind::Delegation(rawptr_edge) =>{
+                }
+                BorrowPcgEdgeKind::Delegation(rawptr_edge) => {
                     extend(rawptr_edge.aliased_place.into(), seen, &mut result, direct);
-                },
-                BorrowPcgEdgeKind::ConditionalLifetimeProjection(rawptr_edge) =>{
+                }
+                BorrowPcgEdgeKind::ConditionalLifetimeProjection(rawptr_edge) => {
                     extend(rawptr_edge.proj.into(), seen, &mut result, direct);
-                } 
+                }
             }
         }
         result

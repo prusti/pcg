@@ -401,7 +401,9 @@ edgedata_enum!(
     Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx, P>),
     Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx, P>),
     Delegation(crate::borrow_pcg::edge::delegation::DelegationEdge<'tcx, P>),
-    ConditionalLifetimeProjection(crate::borrow_pcg::edge::conditional_lifetime_projection::ConditionalLifetimeProjectionEdge<'tcx, P>),
+    ConditionalLifetimeProjection(
+        crate::borrow_pcg::edge::conditional_lifetime_projection::ConditionalLifetimeProjectionEdge<'tcx,P>
+    ),
 );
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
