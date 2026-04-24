@@ -936,12 +936,11 @@ impl<'tcx> Place<'tcx> {
 
     #[must_use]
     pub fn is_downcast_of(self, other: Self) -> Option<VariantIdx> {
-        if let Some(ProjectionElem::Downcast(_, index)) = self.projection.last() {
-            if other.is_prefix_of(self) && other.projection.len() == self.projection.len() - 1 {
-                Some(*index)
-            } else {
-                None
-            }
+        if let Some(ProjectionElem::Downcast(_, index)) = self.projection.last()
+            && other.is_prefix_of(self)
+            && other.projection.len() == self.projection.len() - 1
+        {
+            Some(*index)
         } else {
             None
         }

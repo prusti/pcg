@@ -151,11 +151,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 } else {
                     OperandType::Copy
                 };
-                let place_label = if matches!(operand_type, OperandType::Move) {
-                    Some(self.pre_operand_move_label())
-                } else {
-                    None
-                };
+                let place_label = matches!(operand_type, OperandType::Move)
+                    .then(|| self.pre_operand_move_label());
                 let place: Place<'tcx> = (*place).into();
                 let place = place.with_inherent_region(self.ctxt);
                 (
