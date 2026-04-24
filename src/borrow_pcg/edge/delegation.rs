@@ -56,8 +56,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
         DisplayOutput::Text(
             format!(
                 "{{{}}} -=-> {{{}}}",
-                self.rawptr_place.display_output(ctxt, mode).into_text(),
-                self.aliased_place.display_output(ctxt, mode).into_text()
+                self.aliased_place.display_output(ctxt, mode).into_text(),
+                self.rawptr_place.display_output(ctxt, mode).into_text()
             )
             .into(),
         )
