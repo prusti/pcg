@@ -116,7 +116,7 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
 
 impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     pub(crate) fn is_acyclic<'mir: 'graph, 'bc: 'graph>(
-        &mut self,
+        &self,
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> bool {
         enum PushResult<'tcx, 'graph> {

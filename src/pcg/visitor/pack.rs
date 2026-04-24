@@ -174,7 +174,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     /// 1. The edge is an expansion edge, and the base can be killed, or
     /// 2. The edge is some other kind of edge, and all of the blocking nodes can be killed
     fn identify_leaf_edges_to_remove<'slf>(
-        &'slf mut self,
+        &'slf self,
         ancestor_place: Option<Place<'tcx>>,
     ) -> EdgesToRemove<'tcx> {
         enum ShouldKillNode {
