@@ -122,7 +122,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &'slf mut self,
     ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
         let location = self.curr_stmt.unwrap();
-        assert!(location == self.end_stmt.unwrap());
+        assert_eq!(location, self.end_stmt.unwrap());
         self.curr_stmt = None;
         self.end_stmt = None;
 

@@ -32,7 +32,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     }
 
     fn stmt_pre_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
-        assert!(self.phase() == EvalStmtPhase::PreMain);
+        assert_eq!(self.phase(), EvalStmtPhase::PreMain);
         match &statement.kind {
             StatementKind::StorageDead(local) => {
                 let place: utils::Place<'tcx> = (*local).into();
@@ -116,7 +116,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     }
 
     fn stmt_post_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError<'tcx>> {
-        assert!(self.phase() == EvalStmtPhase::PostMain);
+        assert_eq!(self.phase(), EvalStmtPhase::PostMain);
         if let StatementKind::Assign(box (target, rvalue)) = &statement.kind {
             self.assign_post_main((*target).into(), rvalue)?;
         }

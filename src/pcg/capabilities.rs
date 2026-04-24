@@ -246,11 +246,11 @@ mod tests {
         for a in caps {
             for b in caps {
                 if a == b {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Equal));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Equal));
                 } else if has_path_connecting(&graph, node_indices[&a], node_indices[&b], None) {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Greater));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Greater));
                 } else if has_path_connecting(&graph, node_indices[&b], node_indices[&a], None) {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Less));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
                 } else {
                     assert!(a.partial_cmp(&b).is_none());
                 }

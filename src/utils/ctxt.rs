@@ -602,9 +602,9 @@ impl<'tcx> Place<'tcx> {
                     }
                 }
                 if without_field.is_some() {
-                    assert!(places.len() == variant.fields.len() - 1);
+                    assert_eq!(places.len(), variant.fields.len() - 1);
                 } else {
-                    assert!(places.len() == variant.fields.len());
+                    assert_eq!(places.len(), variant.fields.len());
                 }
             }
             TyKind::Tuple(slice) => {
@@ -621,9 +621,9 @@ impl<'tcx> Place<'tcx> {
                     }
                 }
                 if without_field.is_some() {
-                    assert!(places.len() == slice.len() - 1);
+                    assert_eq!(places.len(), slice.len() - 1);
                 } else {
-                    assert!(places.len() == slice.len());
+                    assert_eq!(places.len(), slice.len());
                 }
             }
             TyKind::Closure(_, substs) => {
