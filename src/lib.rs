@@ -10,6 +10,7 @@ may already be stabilized */
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 #![deny(clippy::set_contains_or_insert)]
+#![deny(clippy::needless_pass_by_ref_mut)]
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::implicit_hasher)]
 #![allow(clippy::struct_excessive_bools)]
