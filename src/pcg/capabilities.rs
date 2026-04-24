@@ -157,11 +157,10 @@ impl CapabilityKind {
 
     #[must_use]
     pub fn minimum(self, other: Self) -> Option<Self> {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Greater) => Some(other),
-            Some(Ordering::Less | Ordering::Equal) => Some(self),
-            None => None,
-        }
+        self.partial_cmp(&other).map(|ord| match ord {
+            Ordering::Greater => other,
+            Ordering::Less | Ordering::Equal => self,
+        })
     }
 }
 
