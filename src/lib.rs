@@ -708,7 +708,7 @@ macro_rules! pcg_validity_assert {
             let ctxt = $ctxt;
             let loc = $loc;
             let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
+            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*));
         }
     };
@@ -716,7 +716,7 @@ macro_rules! pcg_validity_assert {
         {
             let ctxt = $ctxt;
             let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
+            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*));
         }
     };
@@ -729,11 +729,11 @@ macro_rules! pcg_validity_assert {
                 tracing::error!($($arg)*);
                 // Generate test case format if we're in a crate
                 if let Ok(crate_name) = std::env::var("CARGO_CRATE_NAME") {
-                    let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string());
+                    let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_owned());
                     let num_bbs = $crate::utils::ctxt::DebugCtxt::num_basic_blocks(&$ctxt);
                     let test_case = format!("{};{};2025-03-13;{};{}",
                         crate_name, crate_version, $func_name, num_bbs);
-                    tracing::error!("To reproduce this failure, use test case: {}", test_case);
+                    tracing::error!("To reproduce this failure, use test case: {test_case}");
                 }
                 if !$crate::validity_checks_warn_only() {
                     assert!($cond, $($arg)*);
