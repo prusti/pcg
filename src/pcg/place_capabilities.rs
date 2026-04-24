@@ -39,13 +39,8 @@ mod private {
             C: 'slf,
             P: 'slf + PrefixRelation,
         {
-            self.iter().filter_map(move |(p, c)| {
-                if place.is_strict_prefix_of(p) {
-                    Some((p, c))
-                } else {
-                    None
-                }
-            })
+            self.iter()
+                .filter(move |&(p, _)| place.is_strict_prefix_of(p))
         }
     }
 
