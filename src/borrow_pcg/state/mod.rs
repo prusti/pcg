@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use crate::{
     HasSettings,
     borrow_pcg::{
-        action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge::{conditional_lifetime_projection::ConditionalLifetimeProjectionEdge}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
+        action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge::conditional_lifetime_projection::ConditionalLifetimeProjectionEdge, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::{HasTy, PcgLifetimeProjectionBase}, validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         }
     },
@@ -14,7 +14,7 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
-        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike, data_structures::HashSet, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
+        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike, data_structures::HashSet, deref_remote::DerefRemotePlace, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
     },
 };
 
@@ -419,21 +419,52 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
     ) {
         let mut place: Place<'tcx> = local.into();
         let mut ty = place.ty(ctxt).ty;
+        let mut deref_cnt = 0;
         loop {
             if ty.is_any_ptr() {
+                deref_cnt = deref_cnt + 1;
                 place = place.project_deref(ctxt);
             }
             match ty.kind() {
                 TyKind::RawPtr(_, _) => {
                     let regions = place.regions(ctxt);
                     for region in regions {
+                        let lt: LifetimeProjection<'_, MaybeLabelledPlace> = LifetimeProjection::new(place.into(), region, Some(LifetimeProjectionLabel::Location(crate::utils::SnapshotLocation::Before(AnalysisLocation::new(ctxt.block.start_location(), crate::pcg::EvalStmtPhase::PreMain)))), ctxt).unwrap();
                         assert!(
                             self.apply_action(
-                                BorrowPcgAction::add_edge(BorrowPcgEdge::new(ConditionalLifetimeProjectionEdge {rawptr_place: MaybeLabelledPlace::Current(place), proj: LifetimeProjection::new(place.into(), region, Some(LifetimeProjectionLabel::Location(crate::utils::SnapshotLocation::Before(AnalysisLocation::new(Location::START, crate::pcg::EvalStmtPhase::PreOperands)))), ctxt).unwrap()}.into(), ValidityConditions::new()), "Introduce conditional lifetime projections")
+                                BorrowPcgAction::add_edge(BorrowPcgEdge::new(ConditionalLifetimeProjectionEdge {rawptr_place: MaybeLabelledPlace::Current(place), proj: lt}.into(), ValidityConditions::new()), "Introduce conditional lifetime projections")
                         , capabilities, ctxt)
                     .unwrap()
                     .changed);
+                let drp = DerefRemotePlace::new(deref_cnt, local);
+                let source_projection: LifetimeProjection<'tcx, DerefRemotePlace> =
+                LifetimeProjection::new(drp, region, None, ctxt)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Failed to create region for deref remote place (for {local:?}).
+                                    It does not have region {region:?}",
+                        );
+                    });
+            let source_projection: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx>> =
+                source_projection.rebase();
+                assert!(self.apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            BorrowFlowEdge::new(
+                                source_projection,
+                                lt,
+                                BorrowFlowEdgeKind::InitialBorrows,
+                            )
+                            .into(),
+                            ValidityConditions::new(),
+                        ),
+                        "Introduce initial borrows",
+                    ),
+                    capabilities,
+                    ctxt
+                ).unwrap().changed)
                     }
+                    
                     break;
                 },
                 TyKind::Ref(_, inner_ty, _) => {

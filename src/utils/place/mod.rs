@@ -55,6 +55,7 @@ pub mod corrected;
 pub mod maybe_old;
 pub mod maybe_remote;
 pub mod remote;
+pub mod deref_remote;
 
 #[derive(Clone, Copy, Deref, DerefMut)]
 pub struct Place<'tcx>(

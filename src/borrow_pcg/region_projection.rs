@@ -22,12 +22,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
-        PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
-        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
-        remote::RemotePlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt, PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY, deref_remote::DerefRemotePlace, display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode}, place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace}, remote::RemotePlace, validity::HasValidityCheck
     },
 };
 
@@ -339,6 +334,18 @@ impl From<RemotePlace> for PlaceOrConst<'_, RemotePlace> {
 
 impl<'tcx, P> From<RemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
     fn from(place: RemotePlace) -> Self {
+        PlaceOrConst::Place(place.into())
+    }
+}
+
+impl From<DerefRemotePlace> for PlaceOrConst<'_, DerefRemotePlace> {
+    fn from(place: DerefRemotePlace) -> Self {
+        PlaceOrConst::Place(place)
+    }
+}
+
+impl<'tcx, P> From<DerefRemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
+    fn from(place: DerefRemotePlace) -> Self {
         PlaceOrConst::Place(place.into())
     }
 }
