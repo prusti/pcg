@@ -128,7 +128,7 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
 
     pub fn source_lines(&self) -> Result<Vec<String>, Box<SpanSnippetError>> {
         let source = self.source()?;
-        Ok(source.lines().map(ToOwned::to_owned).collect::<Vec<_>>())
+        Ok(source.lines().map(ToOwned::to_owned).collect())
     }
 
     pub fn borrow_checker(self) -> T
@@ -314,7 +314,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
                     .any(|child_rp| region == child_rp.region(ctxt.ctxt()))
             })
             .copied()
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     pub(crate) fn place_expansion_for_region<'a>(
