@@ -131,12 +131,10 @@ impl BranchChoices {
 
     fn includes_successor(&self, successor: BasicBlock, body: &mir::Body<'_>) -> bool {
         let successors = effective_successors(self.from, body);
-        let pos = successors.iter().position(|s| s == &successor);
-        if let Some(pos) = pos {
-            self.chosen.contains(pos)
-        } else {
-            false
-        }
+        successors
+            .iter()
+            .position(|s| s == &successor)
+            .is_some_and(|pos| self.chosen.contains(pos))
     }
 
     fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> BranchChoicesJoinResult {

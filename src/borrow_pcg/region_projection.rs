@@ -531,11 +531,9 @@ pub(crate) trait PcgLifetimeProjectionLike<'tcx, P = PcgLifetimeProjectionBase<'
 
 impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for LifetimeProjection<'tcx> {
     fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
-        if let Some(p) = self.base.as_local_place_mut() {
-            p.label_place(labeller, ctxt)
-        } else {
-            false
-        }
+        self.base
+            .as_local_place_mut()
+            .is_some_and(|p| p.label_place(labeller, ctxt))
     }
 }
 
