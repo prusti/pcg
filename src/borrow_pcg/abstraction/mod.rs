@@ -49,7 +49,7 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx>> HasTy<'tcx, (FunctionData<'tcx>, Ctxt)> for Ar
 
 impl<Ctxt> DisplayWithCtxt<Ctxt> for ArgIdx {
     fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        format!("{self}").into()
+        self.to_string().into()
     }
 }
 

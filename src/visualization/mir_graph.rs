@@ -146,7 +146,7 @@ fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -
     match operand {
         Operand::Copy(p) => format_place(p, ctxt),
         Operand::Move(p) => format!("move {}", format_place(p, ctxt)),
-        Operand::Constant(c) => format!("{c}"),
+        Operand::Constant(c) => c.to_string(),
         other => todo!("{other:?}"),
     }
 }
@@ -487,7 +487,7 @@ impl ShapeLabelFormatter {
         self.arg_labels
             .as_ref()
             .and_then(|names| names.get(*arg).cloned())
-            .unwrap_or_else(|| format!("{arg}"))
+            .unwrap_or_else(|| arg.to_string())
     }
 
     /// Build a formatter for a function's generalized sig shape, looking up
@@ -605,10 +605,10 @@ fn function_shape_to_dot<Kind: RegionIdxKind>(
     let (inputs, outputs) = shape.take_inputs_and_outputs();
 
     let fmt_input = |input: &FunctionShapeInput<Kind>| -> String {
-        formatter.map_or_else(|| format!("{input}"), |f| f.format_input(input))
+        formatter.map_or_else(|| input.to_string(), |f| f.format_input(input))
     };
     let fmt_output = |output: &FunctionShapeOutput<Kind>| -> String {
-        formatter.map_or_else(|| format!("{output}"), |f| f.format_output(output))
+        formatter.map_or_else(|| output.to_string(), |f| f.format_output(output))
     };
 
     let input_node_id = |input: &FunctionShapeInput<Kind>| format!("in_{input}");
@@ -806,7 +806,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     edges.push(MirEdge {
                         source: format!("{bb:?}"),
                         target: format!("{target:?}"),
-                        label: Cow::Owned(format!("{val}")),
+                        label: Cow::Owned(val.to_string()),
                     });
                 }
                 edges.push(MirEdge {

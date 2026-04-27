@@ -83,7 +83,7 @@ fn format_input<Kind: RegionIdxKind>(
             let pretty = f.format_input(input);
             format!("{input} ({pretty})")
         }
-        None => format!("{input}"),
+        None => input.to_string(),
     }
 }
 
@@ -98,7 +98,7 @@ fn format_output<Kind: RegionIdxKind>(
             let pretty = f.format_output(output);
             format!("{output} ({pretty})")
         }
-        None => format!("{output}"),
+        None => output.to_string(),
     }
 }
 
@@ -113,7 +113,7 @@ fn format_edge<Kind: RegionIdxKind>(
             let output = f.format_output(&edge.output());
             format!("{input} -> {output}")
         }
-        None => format!("{edge}"),
+        None => edge.to_string(),
     }
 }
 

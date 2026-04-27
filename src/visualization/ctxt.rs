@@ -19,7 +19,7 @@ impl<T> CompilerCtxt<'_, '_, T> {
         let def_id = self.def_id();
         let fn_sig = self.tcx.fn_sig(def_id).instantiate_identity();
         let fn_sig = self.tcx.liberate_late_bound_regions(def_id.into(), fn_sig);
-        let signature = format!("{fn_sig}");
+        let signature = fn_sig.to_string();
         let debug_signature = format!("{fn_sig:#?}");
         FunctionMetadata::new(
             self.body_def_path_str(),

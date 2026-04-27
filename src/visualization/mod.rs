@@ -317,7 +317,7 @@ impl<'a> GraphEdge<'a> {
                 kind,
             } => {
                 let options = EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_label(format!("{kind}"))
+                    .with_label(kind.to_string())
                     .with_color("purple".into());
                 let options = match kind {
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal } => {

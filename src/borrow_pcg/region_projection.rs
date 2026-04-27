@@ -372,13 +372,13 @@ where
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx>> DisplayWithCtxt<Ctxt> for Const<'tcx> {
     fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(format!("{self}").into())
+        DisplayOutput::Text(self.to_string().into())
     }
 }
 
 impl DisplayWithCtxt<()> for Scalar {
     fn display_output(&self, _ctxt: (), _mode: OutputMode) -> DisplayOutput {
-        DisplayOutput::Text(format!("{self}").into())
+        DisplayOutput::Text(self.to_string().into())
     }
 }
 
