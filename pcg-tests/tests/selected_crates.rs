@@ -205,7 +205,7 @@ fn test_selected_crates() {
 
     // Read parallelism setting from environment variable
     let parallelism = std::env::var("PCG_TEST_CRATE_PARALLELISM")
-        .unwrap_or("1".to_string())
+        .unwrap_or_else(|_| "1".to_string())
         .parse::<usize>()
         .unwrap_or(1);
 

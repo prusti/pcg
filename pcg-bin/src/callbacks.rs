@@ -105,7 +105,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
     }
 
     if std::env::var("PCG_TYPECHECK_ONLY")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap()
     {
