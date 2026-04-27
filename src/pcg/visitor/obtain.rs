@@ -133,7 +133,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // borrowed The capability would be Write if the place is a
         // mutable reference (when dereferencing a mutable ref, the ref
         // place retains write capability)
-        if (blocked_cap.is_none() || matches!(blocked_cap, Some(CapabilityKind::Write)))
+        if matches!(blocked_cap, None | Some(CapabilityKind::Write))
             && blocked_cap != Some(restore_cap)
         {
             self.record_and_apply_action(PcgAction::restore_capability(

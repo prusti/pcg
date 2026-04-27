@@ -98,8 +98,7 @@ impl GraphNode {
                     None => Html::empty(),
                 };
                 let color = if location.is_some()
-                    || capability.is_none()
-                    || matches!(capability, Some(CapabilityKind::Write))
+                    || matches!(capability, None | Some(CapabilityKind::Write))
                 {
                     "gray"
                 } else if *owned {
