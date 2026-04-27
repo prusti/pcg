@@ -339,11 +339,8 @@ pub fn get_test_files(test_dir: &Path) -> Vec<PathBuf> {
             let entry = entry.unwrap();
             let path = entry.path();
             let file_name = path.file_name()?.to_str()?;
-            if file_name.chars().next()?.is_ascii_digit() && file_name.ends_with(".rs") {
-                Some(path)
-            } else {
-                None
-            }
+            (file_name.chars().next()?.is_ascii_digit() && file_name.ends_with(".rs"))
+                .then_some(path)
         })
         .collect();
 
