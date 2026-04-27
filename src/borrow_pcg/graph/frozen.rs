@@ -102,11 +102,8 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
         EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
         P: PcgPlace<'tcx, Ctxt>,
     {
-        {
-            let nodes = self.nodes_cache.borrow();
-            if nodes.is_some() {
-                return Ref::map(nodes, |o| o.as_ref().unwrap());
-            }
+        if let Ok(nodes) = Ref::filter_map(self.nodes_cache.borrow(), Option::as_ref) {
+            return nodes;
         }
         let nodes = self.graph.nodes(ctxt);
         self.nodes_cache.replace(Some(nodes));
@@ -192,11 +189,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Ref<'slf, FxHashSet<PcgNode<'tcx>>> {
-        {
-            let roots = self.roots_cache.borrow();
-            if roots.is_some() {
-                return Ref::map(roots, |o| o.as_ref().unwrap());
-            }
+        if let Ok(roots) = Ref::filter_map(self.roots_cache.borrow(), Option::as_ref) {
+            return roots;
         }
         let roots = self.graph.roots(ctxt);
         self.roots_cache.replace(Some(roots));
