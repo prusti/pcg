@@ -148,7 +148,7 @@ impl std::fmt::Display for MaybeRemotePlace<'_> {
         match self {
             MaybeRemotePlace::Local(p) => write!(f, "{p}"),
             MaybeRemotePlace::Remote(l) => write!(f, "Remote({l:?})"),
-            MaybeRemotePlace::DerefRemote(drp) => write!(f, "{drp}"),
+            MaybeRemotePlace::DerefRemote(drp) => write!(f, "Remote({drp:?})"),
         }
     }
 }

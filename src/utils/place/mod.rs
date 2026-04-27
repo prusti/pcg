@@ -457,7 +457,15 @@ impl<'tcx> Place<'tcx> {
                 res
             }
             TyKind::Foreign(_) => vec![],
-            TyKind::Array(ty, elems) => todo!(),
+            TyKind::Array(_ty, elems) => 
+            {
+                let mut res = vec![];
+                for i in 0..elems.try_to_scalar().unwrap().to_u64().unwrap() {
+                    //res.extend(self.project_deeper(ProjectionElem::ConstantIndex { offset: i, min_length: elems.try_to_scalar().unwrap().to_u64().unwrap(), from_end: false }, ctxt));
+                    res.extend(self.project_deeper(ProjectionElem::ConstantIndex { offset: i, min_length: elems.try_to_scalar().unwrap().to_u64().unwrap(), from_end: false }, ctxt));
+                }
+                res
+            }
             TyKind::Pat(_, _) => todo!(),
             TyKind::Slice(_) => todo!(),
             TyKind::RawPtr(_, _) => {

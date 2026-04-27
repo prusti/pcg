@@ -440,8 +440,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                                 ctxt,
                             )
                             .unwrap();
-                        assert!(
-                            self.apply_action(
+                        self.apply_action(
                                 BorrowPcgAction::add_edge(
                                     BorrowPcgEdge::new(
                                         ConditionalLifetimeProjectionEdge {
@@ -456,9 +455,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                                 capabilities,
                                 ctxt
                             )
-                            .unwrap()
-                            .changed
-                        );
+                            .unwrap();
                         let drp = DerefRemotePlace::new(place);
                         let source_projection: LifetimeProjection<'tcx, DerefRemotePlace> =
                             LifetimeProjection::new(drp, region, None, ctxt).unwrap_or_else(|| {
@@ -471,7 +468,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                             'tcx,
                             PcgLifetimeProjectionBase<'tcx>,
                         > = source_projection.rebase();
-                        assert!(
                             self.apply_action(
                                 BorrowPcgAction::add_edge(
                                     BorrowPcgEdge::new(
@@ -488,9 +484,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                                 capabilities,
                                 ctxt
                             )
-                            .unwrap()
-                            .changed
-                        );
+                            .unwrap();
                 }
             }
     }
