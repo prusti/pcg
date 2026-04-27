@@ -23,14 +23,10 @@ use crate::{
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
-        VariantIdx,
-        ast::Mutability,
-        data_structures::fx::FxHasher,
-        index::IndexVec,
-        middle::{
+        FieldIdx, VariantIdx, ast::Mutability, data_structures::fx::FxHasher, index::IndexVec, middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
-        },
+        }
     },
     utils::{
         HasCompilerCtxt,
@@ -436,6 +432,64 @@ impl<'tcx> Place<'tcx> {
         let left = self.projection.iter().copied();
         let right = other.projection.iter().copied();
         left.zip(right).map(|(e1, e2)| (elem_eq((e1, e2)), e1, e2))
+    }
+
+    pub(crate) fn get_rawptrs<'a>(
+        self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>
+    ) -> Vec<Self>
+    where 
+        'tcx: 'a {
+        match self.ty(ctxt).ty.kind() {
+            TyKind::Bool | 
+            TyKind::Str |
+            TyKind::Char => vec![],
+            TyKind::Int(_int_ty) =>  vec![],
+            TyKind::Uint(_uint_ty)  => vec![],
+            TyKind::Float(_float_ty)  => vec![],
+            TyKind::Adt(adt_def, args) => {
+                let mut i = 0;
+                let mut res = vec![];
+                for field in adt_def.all_fields() {
+                    res.extend(self.project_deeper(ProjectionElem::Field(FieldIdx::from_u32(i), field.ty(ctxt.tcx(), args)), ctxt).unwrap().get_rawptrs(ctxt));
+                    i = i + 1;
+                }
+                res
+            }
+            TyKind::Foreign(_) => vec![],
+            TyKind::Array(ty, elems) => todo!(),
+            TyKind::Pat(_, _) => todo!(),
+            TyKind::Slice(_) => todo!(),
+            TyKind::RawPtr(_, _) => {
+                let mut res = vec![self];
+                res.extend(self.project_deref(ctxt).get_rawptrs(ctxt));
+                res
+            },
+            TyKind::Ref(_, _, _) => self.project_deref(ctxt).get_rawptrs(ctxt),
+            TyKind::FnDef(_, _) => todo!(),
+            TyKind::FnPtr(binder, fn_header) => todo!(),
+            TyKind::UnsafeBinder(unsafe_binder_inner) => todo!(),
+            TyKind::Dynamic(_, _) => todo!(),
+            TyKind::Closure(_, _) => todo!(),
+            TyKind::CoroutineClosure(_, _) => todo!(),
+            TyKind::Coroutine(_, _) => todo!(),
+            TyKind::CoroutineWitness(_, _) => todo!(),
+            TyKind::Never => todo!(),
+            TyKind::Tuple(tys) => {
+                let mut i = 0;
+                let mut res = vec![];
+                for ty in tys.into_iter() {
+                    res.extend(self.project_deeper(ProjectionElem::Field(FieldIdx::from_u32(i), ty), ctxt).unwrap().get_rawptrs(ctxt));
+                }
+                res
+            },
+            TyKind::Alias(alias_ty_kind, alias_ty) => todo!(),
+            TyKind::Param(_) => todo!(),
+            TyKind::Bound(bound_var_index_kind, _) => todo!(),
+            TyKind::Placeholder(_) => todo!(),
+            TyKind::Infer(infer_ty) => todo!(),
+            TyKind::Error(_) => todo!(),
+        }
     }
 
     pub(crate) fn parent_place(self) -> Option<Self> {

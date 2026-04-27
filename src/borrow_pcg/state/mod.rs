@@ -20,11 +20,7 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
-        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
-        data_structures::HashSet,
-        deref_remote::DerefRemotePlace,
-        display::{DisplayWithCtxt, OutputMode},
-        maybe_remote::MaybeRemotePlace,
+        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, HasTyCtxt, PlaceLike, data_structures::HashSet, deref_remote::DerefRemotePlace, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
     },
 };
 
@@ -427,14 +423,8 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
-        let mut place: Place<'tcx> = local.into();
-        let mut ty = place.ty(ctxt).ty;
-        loop {
-            if ty.is_any_ptr() {
-                place = place.project_deref(ctxt);
-            }
-            match ty.kind() {
-                TyKind::RawPtr(inner_ty, _) => {
+            for rawptr in Place::from(local).get_rawptrs(ctxt) {
+                    let place = rawptr.project_deref(ctxt);
                     let regions = place.regions(ctxt);
                     for region in regions {
                         let lt: LifetimeProjection<'_, MaybeLabelledPlace> =
@@ -501,19 +491,8 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                             .unwrap()
                             .changed
                         );
-                    }
-
-                    ty = *inner_ty;
-                }
-                TyKind::Ref(_, inner_ty, _) => {
-                    ty = *inner_ty;
-                }
-                _ => {
-                    // TODO or break
-                    break;
                 }
             }
-        }
     }
 
     fn introduce_initial_borrows(
