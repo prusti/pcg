@@ -954,15 +954,11 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if other.is_prefix_of(self) {
-            Some(
-                self.iter_projections(ctxt.ctxt())
-                    .into_iter()
-                    .skip(other.projection.len()),
-            )
-        } else {
-            None
-        }
+        other.is_prefix_of(self).then(|| {
+            self.iter_projections(ctxt.ctxt())
+                .into_iter()
+                .skip(other.projection.len())
+        })
     }
 
     #[must_use]
