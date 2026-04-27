@@ -299,10 +299,8 @@ impl<'tcx> PlaceUsages<'tcx> {
         if let Some(existing_usage) = self.0.get(&place) {
             if usage == PlaceUsageType::Mutate && existing_usage == &PlaceUsageType::Read {
                 self.0.insert(place, PlaceUsageType::Mutate);
-                false
-            } else {
-                false
             }
+            false
         } else {
             self.0.insert(place, usage);
             true
