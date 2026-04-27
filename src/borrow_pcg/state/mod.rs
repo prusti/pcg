@@ -434,7 +434,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                 place = place.project_deref(ctxt);
             }
             match ty.kind() {
-                TyKind::RawPtr(_, _) => {
+                TyKind::RawPtr(inner_ty, _) => {
                     let regions = place.regions(ctxt);
                     for region in regions {
                         let lt: LifetimeProjection<'_, MaybeLabelledPlace> =
@@ -503,7 +503,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                         );
                     }
 
-                    break;
+                    ty = *inner_ty;
                 }
                 TyKind::Ref(_, inner_ty, _) => {
                     ty = *inner_ty;
