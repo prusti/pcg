@@ -88,7 +88,7 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place,
             MaybeRemoteCurrentPlace::Remote(place) => place.local.into(),
-            MaybeRemoteCurrentPlace::DerefRemote(place) => place.local.into(),
+            MaybeRemoteCurrentPlace::DerefRemote(place) => place.place.local.into(),
         }
     }
 

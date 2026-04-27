@@ -179,7 +179,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.place(),
             MaybeRemotePlace::Remote(rp) => rp.local.into(),
-            MaybeRemotePlace::DerefRemote(drp) => drp.local.into(),
+            MaybeRemotePlace::DerefRemote(drp) => drp.place.local.into(),
         }
     }
 
@@ -231,7 +231,7 @@ impl RemotePlace {
 
 impl<'tcx> DerefRemotePlace<'tcx> {
     #[must_use]
-    pub fn new(cnt_derefs: usize, local: mir::Local, ty: ty::Ty<'tcx>) -> Self {
-        Self { cnt_derefs, local, ty }
+    pub fn new(place: Place<'tcx>) -> Self {
+        Self { place }
     }
 }

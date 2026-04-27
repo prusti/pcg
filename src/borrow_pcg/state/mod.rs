@@ -429,14 +429,12 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
     ) {
         let mut place: Place<'tcx> = local.into();
         let mut ty = place.ty(ctxt).ty;
-        let mut deref_cnt = 0;
         loop {
             if ty.is_any_ptr() {
-                deref_cnt += 1;
                 place = place.project_deref(ctxt);
             }
             match ty.kind() {
-                TyKind::RawPtr(inner_ty, _) => {
+                TyKind::RawPtr(_, _) => {
                     let regions = place.regions(ctxt);
                     for region in regions {
                         let lt: LifetimeProjection<'_, MaybeLabelledPlace> =
@@ -471,11 +469,11 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                             .unwrap()
                             .changed
                         );
-                        let drp = DerefRemotePlace::new(deref_cnt, local, *inner_ty);
+                        let drp = DerefRemotePlace::new(place);
                         let source_projection: LifetimeProjection<'tcx, DerefRemotePlace> =
                             LifetimeProjection::new(drp, region, None, ctxt).unwrap_or_else(|| {
                                 panic!(
-                            "Failed to create region for deref remote place (for {local:?}).
+                            "Failed to create region for deref remote place (for {place:?}).
                                     It does not have region {region:?}",
                         );
                             });
