@@ -277,7 +277,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             frozen_graph.leaf_nodes(ctxt).display_string(ctxt)
         );
         for rp in &to_label {
-            tracing::debug!("labeling {:?}", rp);
+            tracing::debug!("labeling {rp:?}");
             graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
         }
         tracing::debug!("Completed loop abstraction");

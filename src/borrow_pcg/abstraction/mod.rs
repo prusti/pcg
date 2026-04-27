@@ -638,7 +638,7 @@ impl<Kind: RegionIdxKind> FunctionShape<Kind> {
                 if shape_data.is_invariant(output.region, output.ty, ctxt)
                     && shape_data.outlives(input.region, output.region, ctxt)
                 {
-                    tracing::debug!("{} outlives {}", input, output);
+                    tracing::debug!("{input} outlives {output}");
                     shape.insert(AbstractionBlockEdge::new(
                         to_input(input),
                         to_output_from_arg(output),
@@ -647,7 +647,7 @@ impl<Kind: RegionIdxKind> FunctionShape<Kind> {
             }
             for rp in &result_projections {
                 if shape_data.outlives(input.region, rp.region, ctxt) {
-                    tracing::debug!("{} outlives {}", input, rp);
+                    tracing::debug!("{input} outlives {rp}");
                     shape.insert(AbstractionBlockEdge::new(to_input(input), to_output(rp)));
                 }
             }

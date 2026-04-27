@@ -134,9 +134,9 @@ impl PcgSettings {
 
         // Log the absolute path after directory creation
         if let Ok(absolute_path) = std::fs::canonicalize(path) {
-            tracing::info!("Visualization directory: {:?}", absolute_path);
+            tracing::info!("Visualization directory: {absolute_path:?}");
         } else {
-            tracing::info!("Visualization directory: {:?}", path);
+            tracing::info!("Visualization directory: {path:?}");
         }
     }
 
@@ -226,9 +226,9 @@ impl PcgSettings {
     ) -> PathBuf {
         if let Some(user_path) = Self::process_string_var(processed, var_name) {
             let user_path = PathBuf::from(user_path);
-            tracing::info!("Using user path for {var_name}: {:?}", user_path);
+            tracing::info!("Using user path for {var_name}: {user_path:?}");
             match user_path.canonicalize() {
-                Ok(path) => tracing::info!("Absolute path: {:?}", path),
+                Ok(path) => tracing::info!("Absolute path: {path:?}"),
                 Err(e) => tracing::warn!(
                     "User path {} cannot be canonicalized from current directory {}: {e}",
                     user_path.display(),

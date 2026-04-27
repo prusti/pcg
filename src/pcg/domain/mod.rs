@@ -538,7 +538,7 @@ impl<'tcx> ErrorState<'tcx> {
 
     pub(crate) fn record_error(&mut self, error: PcgError<'tcx>) {
         assert!(!*PANIC_ON_ERROR, "PCG Error: {error:?}");
-        tracing::error!("PCG Error: {:?}", error);
+        tracing::error!("PCG Error: {error:?}");
         self.error = Some(error);
     }
 }

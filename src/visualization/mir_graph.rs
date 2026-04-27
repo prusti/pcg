@@ -162,7 +162,7 @@ fn format_raw_ptr<'tcx>(
         RawPtrKind::Const => "const",
         RawPtrKind::FakeForPtrMetadata => "fake",
     };
-    format!("&raw {} {}", kind, format_place(place, ctxt))
+    format!("&raw {kind} {}", format_place(place, ctxt))
 }
 
 #[rustversion::before(2025-03-02)]
@@ -175,25 +175,25 @@ fn format_raw_ptr<'tcx>(
         Mutability::Mut => "mut",
         Mutability::Not => "const",
     };
-    format!("*{} {}", kind, format_place(place, ctxt))
+    format!("*{kind} {}", format_place(place, ctxt))
 }
 
 #[allow(unreachable_patterns)]
 fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     match rvalue {
         Rvalue::Use(operand) => format_operand(operand, ctxt),
-        Rvalue::Repeat(operand, c) => format!("repeat {} {}", format_operand(operand, ctxt), c),
+        Rvalue::Repeat(operand, c) => format!("repeat {} {c}", format_operand(operand, ctxt)),
         Rvalue::Ref(_region, kind, place) => {
             let kind = match kind {
                 mir::BorrowKind::Shared => "",
                 mir::BorrowKind::Mut { .. } => "mut",
                 mir::BorrowKind::Fake(_) => "fake",
             };
-            format!("&{} {}", kind, format_place(place, ctxt))
+            format!("&{kind} {}", format_place(place, ctxt))
         }
         Rvalue::RawPtr(kind, place) => format_raw_ptr(*kind, place, ctxt),
         Rvalue::ThreadLocalRef(_) => todo!(),
-        Rvalue::Cast(_, operand, ty) => format!("{} as {}", format_operand(operand, ctxt), ty),
+        Rvalue::Cast(_, operand, ty) => format!("{} as {ty}", format_operand(operand, ctxt)),
         Rvalue::BinaryOp(op, box (lhs, rhs)) => {
             format!(
                 "{} {} {}",
@@ -203,7 +203,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             )
         }
         Rvalue::UnaryOp(op, val) => {
-            format!("{:?} {}", op, format_operand(val, ctxt))
+            format!("{op:?} {}", format_operand(val, ctxt))
         }
         Rvalue::Discriminant(place) => format!("Discriminant({})", format_place(place, ctxt)),
         Rvalue::Aggregate(kind, ops) => {

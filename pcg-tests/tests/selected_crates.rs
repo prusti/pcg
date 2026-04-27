@@ -120,7 +120,7 @@ impl SelectedCrateTestCase {
             Some(
                 parts[4]
                     .parse::<usize>()
-                    .map_err(|e| format!("Failed to parse num_bbs: {}", e))?,
+                    .map_err(|e| format!("Failed to parse num_bbs: {e}"))?,
             )
         };
         let debug_failure = parts.len() > 5 && parts[5] == "debug_failure";
@@ -185,7 +185,7 @@ impl SelectedCrateTestCase {
             },
         );
         if matches!(result, common::RunOnCrateResult::Failed) {
-            tracing::error!("Test case failed: {:?}", self);
+            tracing::error!("Test case failed: {self:?}");
             if self.function_name().is_some() {
                 tracing::info!("Will re-run with visualization");
                 self.debug_failure();

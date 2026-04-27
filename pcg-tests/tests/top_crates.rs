@@ -62,7 +62,7 @@ pub fn top_crates_parallel(n: usize, date: Option<&str>, parallelism: usize) {
                 },
             );
             if matches!(result, RunOnCrateResult::Failed) {
-                panic!("Failed: {i} ({}: {})", krate.name, version);
+                panic!("Failed: {i} ({}: {version})", krate.name);
             }
             println!("Finished: {i} ({})", krate.name);
         });

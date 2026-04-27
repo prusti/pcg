@@ -184,8 +184,8 @@ fn main() {
             ctxt.tcx(),
         );
         let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
-        eprintln!("aliases: {:?}", aliases);
-        eprintln!("deref_target: {:?}", deref_target);
+        eprintln!("aliases: {aliases:?}");
+        eprintln!("deref_target: {deref_target:?}");
         assert!(aliases.contains(&deref_target));
         assert!(
             analysis
@@ -230,8 +230,8 @@ fn main() {
             ctxt.tcx(),
         );
         let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
-        eprintln!("aliases: {:?}", aliases);
-        eprintln!("deref_target: {:?}", deref_target);
+        eprintln!("aliases: {aliases:?}");
+        eprintln!("deref_target: {deref_target:?}");
         assert!(aliases.contains(&deref_target));
         assert!(!aliases.contains(&deref3));
     });

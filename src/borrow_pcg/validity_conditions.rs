@@ -377,7 +377,7 @@ impl ValidityConditions {
         let mut bc = BranchChoices::new(pc.from, successors.len());
         bc.insert(successors.iter().position(|s| *s == pc.to).unwrap());
         self.0.insert(bc_index, bc);
-        tracing::debug!("After insert, {:?}", self);
+        tracing::debug!("After insert, {self:?}");
         true
     }
 }

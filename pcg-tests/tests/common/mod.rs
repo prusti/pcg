@@ -98,7 +98,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
 
 fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
     let content = std::fs::read_to_string(file)
-        .unwrap_or_else(|e| panic!("Failed to read file {}: {}", file.display(), e));
+        .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
 
     let re = regex::Regex::new(r"// option (PCG_[A-Z_]+): (.*)").unwrap();
     re.captures_iter(&content)
@@ -131,7 +131,7 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let status = command
         .status()
-        .unwrap_or_else(|e| panic!("Failed to execute test {}: {}", file.display(), e));
+        .unwrap_or_else(|e| panic!("Failed to execute test {}: {e}", file.display()));
 
     assert!(
         status.success(),
@@ -308,7 +308,7 @@ pub fn run_on_crate(
         }
     }
     std::fs::remove_dir_all(&dirname).unwrap_or_else(|e| {
-        panic!("Failed to remove directory {}: {}", dirname.display(), e);
+        panic!("Failed to remove directory {}: {e}", dirname.display());
     });
     if result {
         RunOnCrateResult::Success

@@ -206,7 +206,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other_expansion: &ExpandedPlace<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError<'tcx>> {
-        tracing::debug!("Joining expansion: {:?}", other_expansion);
+        tracing::debug!("Joining expansion: {other_expansion:?}");
         let place = other_expansion.place;
         let self_expansions = self
             .owned
@@ -223,7 +223,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             && let Some(self_cap) = self.capabilities.get(place, ctxt)
         {
             let other_cap = other.capabilities.get(place, ctxt);
-            tracing::debug!("Self cap: {:?}, Other cap: {:?}", self_cap, other_cap);
+            tracing::debug!("Self cap: {self_cap:?}, Other cap: {other_cap:?}");
             if let Some(other_cap) = other_cap {
                 Ok(JoinExpandedPlaceResult::CreatedExpansion(
                     self.expand_from_place_with_caps(
@@ -296,7 +296,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         let mut iteration = 0;
         loop {
             iteration += 1;
-            tracing::debug!("Iteration {}", iteration);
+            tracing::debug!("Iteration {iteration}");
             let iteration_actions = self.visit_each_other_expansion_iteration(&mut other, ctxt)?;
             if iteration_actions.is_empty() {
                 break;
