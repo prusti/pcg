@@ -116,9 +116,7 @@ impl ObtainType {
     where
         'tcx: 'a,
     {
-        if let ObtainType::Capability(CapabilityKind::Write) = self
-            && current_cap.is_exclusive()
-        {
+        if self == ObtainType::Capability(CapabilityKind::Write) && current_cap.is_exclusive() {
             CapabilityKind::Exclusive
         } else {
             self.capability(place, ctxt)

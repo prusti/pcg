@@ -704,7 +704,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         self.expand_to(place, obtain_type, self.ctxt)?;
 
-        if let ObtainType::ForStorageDead = obtain_type
+        if obtain_type == ObtainType::ForStorageDead
             && self
                 .pcg
                 .place_capability_equals(place, CapabilityKind::Exclusive, self.ctxt)

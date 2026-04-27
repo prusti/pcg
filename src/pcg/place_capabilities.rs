@@ -377,8 +377,7 @@ where
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {
-                if let Some(cmp::Ordering::Greater) = self_capability.partial_cmp(&other_capability)
-                {
+                if self_capability.partial_cmp(&other_capability) == Some(cmp::Ordering::Greater) {
                     changed |= self.map.insert(place, other_capability) != Some(other_capability);
                 } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
                     self_capability.partial_cmp(&other_capability)

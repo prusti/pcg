@@ -968,7 +968,7 @@ impl<'tcx> Place<'tcx> {
 
     #[must_use]
     pub fn target_place(self) -> Option<Self> {
-        if let Some(ProjectionElem::Deref) = self.projection.last() {
+        if self.projection.last() == Some(&ProjectionElem::Deref) {
             Some(Place::new(
                 self.local,
                 &self.projection[..self.projection.len() - 1],

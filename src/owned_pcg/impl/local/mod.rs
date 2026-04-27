@@ -77,7 +77,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Result<(), String> {
         for expansion in &self.expansions {
-            if let Some(CapabilityKind::Write) = capabilities.get(expansion.place, ctxt) {
+            if capabilities.get(expansion.place, ctxt) == Some(CapabilityKind::Write) {
                 return Err(format!(
                     "Base {} of expansion {:?} has write capability",
                     expansion.place.display_string(ctxt),

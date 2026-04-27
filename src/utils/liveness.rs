@@ -35,7 +35,7 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
         context: PlaceContext,
         location: mir::Location,
     ) {
-        if let PlaceContext::MutatingUse(MutatingUseContext::Yield) = context {
+        if context == PlaceContext::MutatingUse(MutatingUseContext::Yield) {
             // The resume place is evaluated and assigned to only after coroutine resumes, so its
             // effect is handled separately in `call_resume_effect`.
             return;
