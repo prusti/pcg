@@ -550,9 +550,6 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
         Node: Ord + HasPlace<'tcx, P> + PlaceProjectable<'tcx, Ctxt>,
         Self: HasValidityCheck<Ctxt>,
     {
-        if base.place().is_raw_ptr(ctxt) {
-            return Err(PcgUnsupportedError::DerefUnsafePtr.into()); // An expansion edge cannot originate from a RawPtr -> only Delegation edges can originate from rawptrs
-        }
         pcg_validity_assert!(
             !(base.is_place() && base.place().is_ref(ctxt) && expansion.is_deref()),
             [ctxt],

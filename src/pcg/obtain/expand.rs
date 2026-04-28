@@ -300,9 +300,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
             {
                 tracing::debug!("Expand {}", base_rp.display_string(ctxt.bc_ctxt()));
-                if base.is_raw_ptr(ctxt) {
-                    return Ok(()); // We have no aliasing information, PCG should not expand anything
-                }
                 let mut expansion = BorrowPcgExpansion::new_lifetime_projection_expansion(
                     base_rp,
                     &place_expansion,

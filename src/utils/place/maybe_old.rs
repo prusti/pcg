@@ -138,9 +138,6 @@ impl<'tcx> TryFrom<MaybeRemotePlace<'tcx>> for MaybeLabelledPlace<'tcx> {
             MaybeRemotePlace::Remote(r) => Err(format!(
                 "Remote place {r:?} cannot be converted to a maybe old place"
             )),
-            MaybeRemotePlace::DerefRemote(r) => Err(format!(
-                "Deref Remote place {r:?} cannot be converted to a maybe old place"
-            )),
         }
     }
 }

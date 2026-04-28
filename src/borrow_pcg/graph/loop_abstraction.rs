@@ -34,7 +34,6 @@ use crate::{
     utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
-        deref_remote::DerefRemotePlace,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
         logging::{self, LogPredicate},
         maybe_old::MaybeLabelledPlace,
@@ -66,7 +65,6 @@ impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
 pub(crate) enum MaybeRemoteCurrentPlace<'tcx> {
     Local(Place<'tcx>),
     Remote(RemotePlace),
-    DerefRemote(DerefRemotePlace<'tcx>),
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
@@ -77,7 +75,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
             match self {
                 MaybeRemoteCurrentPlace::Local(place) => place.display_string(ctxt),
                 MaybeRemoteCurrentPlace::Remote(place) => place.display_string(ctxt),
-                MaybeRemoteCurrentPlace::DerefRemote(place) => place.display_string(ctxt),
             }
             .into(),
         )
@@ -88,7 +85,6 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
         match self {
             MaybeRemoteCurrentPlace::Local(place) => place,
             MaybeRemoteCurrentPlace::Remote(place) => place.local.into(),
-            MaybeRemoteCurrentPlace::DerefRemote(place) => place.place.local.into(),
         }
     }
 
@@ -114,11 +110,6 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
             MaybeRemoteCurrentPlace::Remote(place) => place
-                .lifetime_projections(ctxt)
-                .into_iter()
-                .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
-                .collect(),
-            MaybeRemoteCurrentPlace::DerefRemote(place) => place
                 .lifetime_projections(ctxt)
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())

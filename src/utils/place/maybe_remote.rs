@@ -4,13 +4,12 @@ use crate::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelPlace, PlaceLabeller},
         region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
+            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
         },
     },
     rustc_interface::middle::{mir, ty},
     utils::{
         CompilerCtxt, HasPlace, LabelledPlace, PcgPlace, Place,
-        deref_remote::DerefRemotePlace,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         place::{maybe_old::MaybeLabelledPlace, remote::RemotePlace},
@@ -24,19 +23,11 @@ pub enum MaybeRemotePlace<'tcx, P = Place<'tcx>> {
 
     /// A place that cannot be named, e.g. the source of a reference-type input argument
     Remote(RemotePlace),
-
-    DerefRemote(DerefRemotePlace<'tcx>),
 }
 
 impl<P> From<RemotePlace> for MaybeRemotePlace<'_, P> {
     fn from(place: RemotePlace) -> Self {
         MaybeRemotePlace::Remote(place)
-    }
-}
-
-impl<'tcx, P> From<DerefRemotePlace<'tcx>> for MaybeRemotePlace<'tcx, P> {
-    fn from(place: DerefRemotePlace<'tcx>) -> Self {
-        MaybeRemotePlace::DerefRemote(place)
     }
 }
 
@@ -50,7 +41,7 @@ impl<'tcx, Ctxt> LabelPlace<'tcx, Ctxt> for MaybeRemotePlace<'tcx> {
     fn label_place(&mut self, labeller: &impl PlaceLabeller<'tcx, Ctxt>, ctxt: Ctxt) -> bool {
         match self {
             MaybeRemotePlace::Local(p) => p.label_place(labeller, ctxt),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => false,
+            MaybeRemotePlace::Remote(_) => false,
         }
     }
 }
@@ -68,7 +59,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
             }
             MaybeRemotePlace::Local(MaybeLabelledPlace::Labelled(_)) => None,
             MaybeRemotePlace::Remote(rp) => Some(MaybeRemoteCurrentPlace::Remote(*rp)),
-            MaybeRemotePlace::DerefRemote(drp) => Some(MaybeRemoteCurrentPlace::DerefRemote(*drp)),
         }
     }
 
@@ -78,17 +68,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     {
         match self {
             MaybeRemotePlace::Local(p) => p.is_mutable(ctxt),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => false,
-        }
-    }
-}
-
-impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
-    type Error = ();
-    fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
-        match value {
-            PlaceOrConst::Place(maybe_remote_place) => Ok(maybe_remote_place),
-            PlaceOrConst::Const(_) => Err(()),
+            MaybeRemotePlace::Remote(_) => false,
         }
     }
 }
@@ -96,13 +76,11 @@ impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx, P>
 where
     RemotePlace: HasTy<'tcx, Ctxt>,
-    DerefRemotePlace<'tcx>: HasTy<'tcx, Ctxt>,
 {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.rust_ty(ctxt),
             MaybeRemotePlace::Remote(rp) => rp.rust_ty(ctxt),
-            MaybeRemotePlace::DerefRemote(drp) => drp.rust_ty(ctxt),
         }
     }
 }
@@ -114,7 +92,6 @@ impl<'tcx, P: PcgLifetimeProjectionBaseLike<'tcx, P>> PcgLifetimeProjectionBaseL
         match self {
             MaybeRemotePlace::Local(p) => p.to_pcg_lifetime_projection_base(),
             MaybeRemotePlace::Remote(rp) => (*rp).into(),
-            MaybeRemotePlace::DerefRemote(drp) => (*drp).into(),
         }
     }
 }
@@ -126,7 +103,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
         match self {
             MaybeRemotePlace::Local(p) => p.display_output(ctxt, mode),
             MaybeRemotePlace::Remote(rp) => DisplayOutput::Text(format!("{rp}").into()),
-            MaybeRemotePlace::DerefRemote(drp) => DisplayOutput::Text(format!("{drp}").into()),
         }
     }
 }
@@ -138,7 +114,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(ctxt.ctxt()),
             MaybeRemotePlace::Remote(rp) => format!("{rp}").into(),
-            MaybeRemotePlace::DerefRemote(drp) => format!("{drp}").into(),
         }
     }
 }
@@ -148,7 +123,6 @@ impl std::fmt::Display for MaybeRemotePlace<'_> {
         match self {
             MaybeRemotePlace::Local(p) => write!(f, "{p}"),
             MaybeRemotePlace::Remote(l) => write!(f, "Remote({l:?})"),
-            MaybeRemotePlace::DerefRemote(drp) => write!(f, "Remote({drp:?})"),
         }
     }
 }
@@ -157,14 +131,14 @@ impl<'tcx, P: Copy> MaybeRemotePlace<'tcx, P> {
     pub fn as_current_place(&self) -> Option<P> {
         match self {
             MaybeRemotePlace::Local(p) => p.as_current_place(),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => None,
+            MaybeRemotePlace::Remote(_) => None,
         }
     }
 
     pub fn as_local_place(&self) -> Option<MaybeLabelledPlace<'tcx, P>> {
         match self {
             MaybeRemotePlace::Local(p) => Some(*p),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => None,
+            MaybeRemotePlace::Remote(_) => None,
         }
     }
 }
@@ -179,14 +153,13 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.place(),
             MaybeRemotePlace::Remote(rp) => rp.local.into(),
-            MaybeRemotePlace::DerefRemote(drp) => drp.place.local.into(),
         }
     }
 
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
             MaybeRemotePlace::Local(p) => Some(p),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => None,
+            MaybeRemotePlace::Remote(_) => None,
         }
     }
 
@@ -194,7 +167,7 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
     pub fn to_json(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> serde_json::Value {
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(ctxt),
-            MaybeRemotePlace::Remote(_) | MaybeRemotePlace::DerefRemote(_) => todo!(),
+            MaybeRemotePlace::Remote(_) => todo!(),
         }
     }
 }
@@ -226,12 +199,5 @@ impl RemotePlace {
     #[must_use]
     pub fn assigned_local(self) -> mir::Local {
         self.local
-    }
-}
-
-impl<'tcx> DerefRemotePlace<'tcx> {
-    #[must_use]
-    pub fn new(place: Place<'tcx>) -> Self {
-        Self { place }
     }
 }

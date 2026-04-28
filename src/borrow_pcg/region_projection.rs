@@ -24,7 +24,6 @@ use crate::{
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
         PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        deref_remote::DerefRemotePlace,
         display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
@@ -340,18 +339,6 @@ impl From<RemotePlace> for PlaceOrConst<'_, RemotePlace> {
 
 impl<'tcx, P> From<RemotePlace> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
     fn from(place: RemotePlace) -> Self {
-        PlaceOrConst::Place(place.into())
-    }
-}
-
-impl<'tcx> From<DerefRemotePlace<'tcx>> for PlaceOrConst<'_, DerefRemotePlace<'tcx>> {
-    fn from(place: DerefRemotePlace<'tcx>) -> Self {
-        PlaceOrConst::Place(place)
-    }
-}
-
-impl<'tcx, P> From<DerefRemotePlace<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx, P>> {
-    fn from(place: DerefRemotePlace<'tcx>) -> Self {
         PlaceOrConst::Place(place.into())
     }
 }

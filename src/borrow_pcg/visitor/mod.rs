@@ -81,7 +81,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
                 self.visit_region(*region);
             }
             //  TODO: Justify why function pointers are ignored
-            ty::TyKind::FnPtr(_, _) | ty::TyKind::RawPtr(_, _) => {}
+            ty::TyKind::FnPtr(_, _) => {}
             ty::TyKind::Closure(_, args) => {
                 let closure_args = args.as_closure();
                 let upvar_tys = closure_args.upvar_tys();

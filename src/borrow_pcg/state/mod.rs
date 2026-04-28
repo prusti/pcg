@@ -7,7 +7,6 @@ use crate::{
     borrow_pcg::{
         action::ApplyActionResult,
         borrow_pcg_edge::{BlockingNode, LocalNode},
-        edge::conditional_lifetime_projection::ConditionalLifetimeProjectionEdge,
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
         region_projection::PcgLifetimeProjectionBase,
@@ -20,7 +19,7 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
-        AnalysisLocation, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, HasTyCtxt, PlaceLike, data_structures::HashSet, deref_remote::DerefRemotePlace, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike, data_structures::HashSet, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
     },
 };
 
@@ -417,78 +416,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidity
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_conditional_lifetime_projections(
-        &mut self,
-        local: mir::Local,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) {
-            for rawptr in Place::from(local).get_rawptrs(ctxt) {
-                    let place = rawptr.project_deref(ctxt);
-                    let regions = place.regions(ctxt);
-                    for region in regions {
-                        let lt: LifetimeProjection<'_, MaybeLabelledPlace> =
-                            LifetimeProjection::new(
-                                place.into(),
-                                region,
-                                Some(LifetimeProjectionLabel::Location(
-                                    crate::utils::SnapshotLocation::Before(AnalysisLocation::new(
-                                        ctxt.block.start_location(),
-                                        crate::pcg::EvalStmtPhase::PreMain,
-                                    )),
-                                )),
-                                ctxt,
-                            )
-                            .unwrap();
-                        self.apply_action(
-                                BorrowPcgAction::add_edge(
-                                    BorrowPcgEdge::new(
-                                        ConditionalLifetimeProjectionEdge {
-                                            rawptr_place: MaybeLabelledPlace::Current(place),
-                                            proj: lt
-                                        }
-                                        .into(),
-                                        ValidityConditions::new()
-                                    ),
-                                    "Introduce conditional lifetime projections"
-                                ),
-                                capabilities,
-                                ctxt
-                            )
-                            .unwrap();
-                        let drp = DerefRemotePlace::new(place);
-                        let source_projection: LifetimeProjection<'tcx, DerefRemotePlace> =
-                            LifetimeProjection::new(drp, region, None, ctxt).unwrap_or_else(|| {
-                                panic!(
-                            "Failed to create region for deref remote place (for {place:?}).
-                                    It does not have region {region:?}",
-                        );
-                            });
-                        let source_projection: LifetimeProjection<
-                            'tcx,
-                            PcgLifetimeProjectionBase<'tcx>,
-                        > = source_projection.rebase();
-                            self.apply_action(
-                                BorrowPcgAction::add_edge(
-                                    BorrowPcgEdge::new(
-                                        BorrowFlowEdge::new(
-                                            source_projection,
-                                            lt,
-                                            BorrowFlowEdgeKind::InitialBorrows,
-                                        )
-                                        .into(),
-                                        ValidityConditions::new(),
-                                    ),
-                                    "Introduce initial borrows",
-                                ),
-                                capabilities,
-                                ctxt
-                            )
-                            .unwrap();
-                }
-            }
-    }
-
+    
     fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
@@ -543,7 +471,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
             borrow.introduce_initial_borrows(arg, capabilities, ctxt);
-            borrow.introduce_conditional_lifetime_projections(arg, capabilities, ctxt);
         }
         borrow
     }
