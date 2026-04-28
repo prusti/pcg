@@ -7,3 +7,4 @@ pub mod borrow_flow;
 pub mod delegation;
 pub mod deref;
 pub mod kind;
+pub mod rawptr_deref;

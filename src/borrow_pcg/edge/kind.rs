@@ -5,7 +5,7 @@ use crate::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{
             abstraction::AbstractionEdge, borrow::BorrowEdge, borrow_flow::private,
-            delegation::DelegationEdge, deref::DerefEdge,
+            delegation::DelegationEdge, deref::DerefEdge, rawptr_deref::RawPtrDerefEdge,
         },
     },
     coupling::PcgCoupledEdgeKind,
@@ -23,6 +23,7 @@ pub enum BorrowPcgEdgeKind<'tcx, P = Place<'tcx>> {
     BorrowFlow(BorrowFlowEdge<'tcx, P>),
     Coupled(PcgCoupledEdgeKind<'tcx, P>),
     Delegation(DelegationEdge<'tcx, P>),
+    RawPtrDeref(RawPtrDerefEdge<'tcx, P>),
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -36,4 +37,5 @@ pub enum BorrowPcgEdgeType {
     },
     Coupled,
     Delegation,
+    RawPtrDeref,
 }

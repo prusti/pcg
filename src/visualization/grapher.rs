@@ -139,6 +139,14 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     target: raw_ptr_place,
                 });
             }
+            BorrowPcgEdgeKind::RawPtrDeref(raw_ptr_deref_edge) => {
+                let deref_place = self.insert_maybe_labelled_place(raw_ptr_deref_edge.deref_place);
+                let blocked_place = self.insert_maybe_labelled_place(raw_ptr_deref_edge.blocked_place);
+                self.constructor().edges.insert(GraphEdge::RawPtrDeref {
+                    source: blocked_place,
+                    target: deref_place,
+                });
+            }
         }
     }
 }

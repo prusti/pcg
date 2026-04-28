@@ -8,7 +8,7 @@ use crate::{
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
-            kind::BorrowPcgEdgeKind,
+            kind::BorrowPcgEdgeKind, rawptr_deref::RawPtrDerefEdge,
         },
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
@@ -214,6 +214,20 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     .into(),
                 )?;
             }
+            Ok(true)
+        } else if matches!(expansion.kind, ProjectionKind::DerefRawPtr(_)) { 
+            let deref = RawPtrDerefEdge::new(base, ctxt);
+            let action = BorrowPcgAction::add_edge(
+                BorrowPcgEdge::new(deref.into(), self.path_conditions()),
+                "expand_place_one_level: add rawptr deref edge",
+            );
+            self.apply_action(action.into())?;
+            self.render_debug_graph(None, "expand_place_one_level: after apply action");
+            self.update_capabilities_for_deref(
+                base,
+                obtain_type.capability(base, ctxt),
+                ctxt.bc_ctxt(),
+            )?;
             Ok(true)
         } else if let Some(owned_base) = base.as_owned_place(ctxt) {
             self.expand_owned_place_one_level(owned_base, expansion, obtain_type, ctxt)

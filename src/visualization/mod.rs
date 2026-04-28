@@ -214,7 +214,7 @@ pub(crate) enum GraphEdge<'a> {
         source: NodeId,
         target: NodeId,
     },
-    ConditionalLifetimeProjection {
+    RawPtrDeref {
         source: NodeId,
         target: NodeId,
     },
@@ -237,7 +237,7 @@ impl<'a> GraphEdge<'a> {
             | GraphEdge::BorrowFlow { .. }
             | GraphEdge::Coupled { .. }
             | GraphEdge::Delegation { .. }
-            | GraphEdge::ConditionalLifetimeProjection { .. } => None,
+            | GraphEdge::RawPtrDeref { .. } => None,
         }
     }
     pub(super) fn to_dot_edge<'tcx: 'a>(
@@ -362,12 +362,15 @@ impl<'a> GraphEdge<'a> {
                     .with_color("blue".into())
                     .with_style("dashed"),
             },
-            GraphEdge::ConditionalLifetimeProjection { source, target } => DotEdge {
+            GraphEdge::RawPtrDeref {
+                source,
+                target,
+            } => DotEdge {
                 id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_color("purple".into())
+                    .with_color("green".into())
                     .with_style("dashed"),
             },
         }
