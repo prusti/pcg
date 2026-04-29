@@ -1,7 +1,5 @@
 use crate::{
-    HasSettings,
-    borrow_pcg::{
-        action::LabelPlaceReason,
+    HasSettings, borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
@@ -10,27 +8,20 @@ use crate::{
         region_projection::LifetimeProjectionLabel,
         state::BorrowStateRef,
         validity_conditions::ValidityConditions,
-    },
-    error::{PcgError, PcgUnsupportedError},
-    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
-    pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+    }, error::{PcgError, PcgUnsupportedError}, r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages}, owned_pcg::OwnedPcg, pcg::{
+        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
         ctxt::AnalysisCtxt,
         owned_state::OwnedPcg,
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
-    },
-    pcg_validity_assert,
-    rustc_interface::middle::mir::{self, BasicBlock},
-    utils::{
-        DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
+    }, pcg_validity_assert, rustc_interface::middle::mir::{self, BasicBlock}, utils::{
+        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
-    },
-    validity_checks_enabled,
+    }, validity_checks_enabled
 };
 
 #[cfg(feature = "visualization")]

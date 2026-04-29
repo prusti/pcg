@@ -508,7 +508,7 @@ impl<'tcx> Place<'tcx> {
                 .expect("RepackGuide::Default is not a valid expansion guide here");
             PlaceExpansion::Guided(required)
         } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::deref()
+            PlaceExpansion::Deref
         } else if self.ty(ctxt).ty.is_raw_ptr() {
             // let node = PcgNode::from(self/*.target_place().unwrap()*/);
 
@@ -520,7 +520,7 @@ impl<'tcx> Place<'tcx> {
             // assert!(raw_ptr_edge.len() == 1);
             // let target_place = raw_ptr_edge[0].aliased_place.place();
             // target_place.expansion(guide, ctxt)
-            PlaceExpansion::deref()
+            PlaceExpansion::Deref
         } else {
             match self.ty(ctxt).ty.kind() {
                 ty::TyKind::Adt(adt_def, substs) => {
