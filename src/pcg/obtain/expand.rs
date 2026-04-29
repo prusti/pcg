@@ -227,7 +227,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 base,
                 obtain_type.capability(base, ctxt),
                 ctxt.bc_ctxt(),
-            )?;
+            );
             Ok(true)
         } else if let Some(owned_base) = base.as_owned_place(ctxt) {
             self.expand_owned_place_one_level(owned_base, expansion, obtain_type, ctxt)
