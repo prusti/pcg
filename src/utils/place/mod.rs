@@ -510,9 +510,7 @@ impl<'tcx> Place<'tcx> {
                 .into_non_default()
                 .expect("RepackGuide::Default is not a valid expansion guide here");
             PlaceExpansion::Guided(required)
-        } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::deref()
-        } else if self.ty(ctxt).ty.is_raw_ptr() {
+        } else if self.ty(ctxt).ty.is_box() || self.ty(ctxt).ty.is_raw_ptr() {
             PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
