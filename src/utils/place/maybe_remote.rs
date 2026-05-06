@@ -3,9 +3,7 @@ use crate::{
     borrow_pcg::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelPlace, PlaceLabeller},
-        region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
-        },
+        region_projection::{HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike},
     },
     rustc_interface::middle::{mir, ty},
     utils::{

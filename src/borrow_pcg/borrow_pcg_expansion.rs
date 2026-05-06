@@ -25,7 +25,7 @@ use crate::{
         },
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
-    error::{PcgError, PcgUnsupportedError},
+    error::PcgError,
     r#loop::PlaceUsageType,
     owned_pcg::{RepackGuide, RequiredGuide},
     pcg::{

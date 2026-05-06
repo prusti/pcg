@@ -6,7 +6,7 @@ mod callbacks;
 
 use borrowck_body_storage::set_mir_borrowck;
 
-use pcg::rustc_interface::driver::{self, args, HandledOptions};
+use pcg::rustc_interface::driver::{self, HandledOptions, args};
 use pcg::rustc_interface::interface;
 use pcg::rustc_interface::session::EarlyDiagCtxt;
 use pcg::rustc_interface::session::config::{self, ErrorOutputType};
@@ -18,8 +18,7 @@ use crate::callbacks::PcgAsRustcCallbacks;
 fn init_tracing() {
     let default = "warn,pcg[debug_ctxt]=info";
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(default));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default));
 
     tracing_subscriber::fmt()
         .with_env_filter(filter)
@@ -89,7 +88,7 @@ fn main() {
             // Make sure name resolution and macro expansion is run.
             let _ = tcx.resolver_for_lowering();
             tcx.dcx().abort_if_errors();
-            let _ = tcx.ensure_ok().analysis(());
+            tcx.ensure_ok().analysis(());
             // Safety: `config` has `override_queries` set to [`set_mir_borrowck`], and the `tcx`
             // is the same `tcx` where the borrow-checking occurred.
             unsafe {

@@ -19,7 +19,10 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike, data_structures::HashSet, display::{DisplayWithCtxt, OutputMode}, maybe_remote::MaybeRemotePlace
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
+        data_structures::HashSet,
+        display::{DisplayWithCtxt, OutputMode},
+        maybe_remote::MaybeRemotePlace,
     },
 };
 
@@ -48,7 +51,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::{
         mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
-        ty::{self, TyKind},
+        ty,
     },
     utils::{
         CompilerCtxt, Place, display::DebugLines, place::maybe_old::MaybeLabelledPlace,
@@ -416,7 +419,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidity
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    
     fn introduce_initial_borrows<C: CapabilityLike>(
         &mut self,
         local: mir::Local,

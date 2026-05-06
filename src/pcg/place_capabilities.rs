@@ -257,7 +257,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
                 ctxt: Ctxt,
             ) -> bool {
                 match (parent_cap, child_cap) {
-                    (CapabilityKind::Write, _) if parent_place.ref_mutability(ctxt).is_some() || parent_place.is_raw_ptr(ctxt) => {
+                    (CapabilityKind::Write, _)
+                        if parent_place.ref_mutability(ctxt).is_some()
+                            || parent_place.is_raw_ptr(ctxt) =>
+                    {
                         true
                     }
                     (CapabilityKind::Read, CapabilityKind::Read) => true,

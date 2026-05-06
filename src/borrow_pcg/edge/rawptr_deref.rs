@@ -14,7 +14,11 @@ use crate::{
     },
     pcg::{LocalNodeLike, PcgNodeLike},
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation, data_structures::HashSet, display::{DisplayOutput, DisplayWithCtxt, OutputMode}, maybe_old::MaybeLabelledPlace, validity::HasValidityCheck
+        DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, SnapshotLocation,
+        data_structures::HashSet,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        maybe_old::MaybeLabelledPlace,
+        validity::HasValidityCheck,
     },
 };
 
@@ -34,17 +38,14 @@ impl<'tcx> RawPtrDerefEdge<'tcx> {
         self.deref_place
     }
 
-    pub(crate) fn new<'a>(
-        place: Place<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Self
+    pub(crate) fn new<'a>(place: Place<'tcx>, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
     where
         'tcx: 'a,
     {
         let blocked_place_label: Option<SnapshotLocation> = None;
         RawPtrDerefEdge {
             blocked_place: MaybeLabelledPlace::new(place, blocked_place_label),
-            deref_place: place.project_deref(ctxt).into()
+            deref_place: place.project_deref(ctxt).into(),
         }
     }
 }
@@ -59,7 +60,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt> HasValidityCheck
     }
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for RawPtrDerefEdge<'tcx> {
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
+    for RawPtrDerefEdge<'tcx>
+{
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             format!(
@@ -96,9 +99,7 @@ where
         labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
     ) -> HashSet<NodeReplacement<'tcx, P>> {
-        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx, P>> = vec![
-            &mut self.blocked_place,
-        ];
+        let blocked_places: Vec<&mut MaybeLabelledPlace<'tcx, P>> = vec![&mut self.blocked_place];
         conditionally_label_places(
             blocked_places,
             predicate,
@@ -124,7 +125,9 @@ where
     }
 }
 
-impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for RawPtrDerefEdge<'tcx, P> {
+impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
+    for RawPtrDerefEdge<'tcx, P>
+{
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
@@ -132,12 +135,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for RawP
     where
         'tcx: 'slf,
     {
-        Box::new(
-            vec![
-                self.blocked_place.to_pcg_node(ctxt),
-            ]
-            .into_iter(),
-        )
+        Box::new(vec![self.blocked_place.to_pcg_node(ctxt)].into_iter())
     }
 
     fn blocked_by_nodes<'slf>(

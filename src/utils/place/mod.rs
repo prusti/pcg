@@ -23,15 +23,17 @@ use crate::{
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
-        FieldIdx, VariantIdx, ast::Mutability, data_structures::fx::FxHasher, index::IndexVec, middle::{
+        VariantIdx,
+        ast::Mutability,
+        data_structures::fx::FxHasher,
+        index::IndexVec,
+        middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{self, Ty, TyKind},
-        }
+        },
     },
     utils::{
-        HasCompilerCtxt,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
-        json::ToJsonWithCtxt,
+        HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
     },
 };
@@ -432,7 +434,6 @@ impl<'tcx> Place<'tcx> {
         let right = other.projection.iter().copied();
         left.zip(right).map(|(e1, e2)| (elem_eq((e1, e2)), e1, e2))
     }
-
 
     pub(crate) fn parent_place(self) -> Option<Self> {
         let (prefix, _) = self.last_projection()?;

@@ -362,10 +362,7 @@ impl<'a> GraphEdge<'a> {
                     .with_color("blue".into())
                     .with_style("dashed"),
             },
-            GraphEdge::RawPtrDeref {
-                source,
-                target,
-            } => DotEdge {
+            GraphEdge::RawPtrDeref { source, target } => DotEdge {
                 id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
