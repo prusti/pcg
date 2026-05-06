@@ -250,7 +250,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 .into(),
             )?;
         }
-        self.super_operand_fallable(operand, location)?;
+        self.super_operand_fallable(operand, location);
         Ok(())
     }
 

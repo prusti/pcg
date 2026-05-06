@@ -107,7 +107,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
     ) -> Result<(), PcgError<'tcx>> {
-        self.super_operand_fallable(operand, location)?;
+        self.super_operand_fallable(operand, location);
         #[allow(clippy::match_same_arms)]
         let triple = match *operand {
             Operand::Copy(place) => Triple {

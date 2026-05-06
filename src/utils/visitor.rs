@@ -24,15 +24,12 @@ pub(crate) trait FallableVisitor<'tcx> {
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
     ) -> Result<(), PcgError<'tcx>> {
-        self.super_operand_fallable(operand, location)
+        self.super_operand_fallable(operand, location);
+        Ok(())
     }
 
     #[allow(clippy::wildcard_in_or_patterns)]
-    fn super_operand_fallable(
-        &mut self,
-        operand: &mir::Operand<'tcx>,
-        location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    fn super_operand_fallable(&mut self, operand: &mir::Operand<'tcx>, location: mir::Location) {
         match operand {
             mir::Operand::Copy(place) => {
                 self.visit_place_fallable(
@@ -51,7 +48,6 @@ pub(crate) trait FallableVisitor<'tcx> {
             #[allow(unreachable_patterns)]
             mir::Operand::Constant(_) | _ => {}
         }
-        Ok(())
     }
 
     #[allow(unreachable_patterns)]
