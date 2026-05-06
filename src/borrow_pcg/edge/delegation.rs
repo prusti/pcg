@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     borrow_pcg::{
+        self, borrow_pcg_edge,
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             EdgeData, LabelEdgeLifetimeProjections, LabelEdgePlaces, conditionally_label_places,
@@ -11,7 +12,7 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgPlace, Place, data_structures,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
@@ -29,10 +30,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     fn blocked_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<
-        dyn std::iter::Iterator<Item = crate::borrow_pcg::borrow_pcg_edge::BlockedNode<'tcx, P>>
-            + 'slf,
-    >
+    ) -> Box<dyn std::iter::Iterator<Item = borrow_pcg_edge::BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -42,10 +40,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     fn blocked_by_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<
-        dyn std::iter::Iterator<Item = crate::borrow_pcg::borrow_pcg_edge::LocalNode<'tcx, P>>
-            + 'slf,
-    >
+    ) -> Box<dyn std::iter::Iterator<Item = borrow_pcg_edge::LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -85,8 +80,8 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctx
 {
     fn label_lifetime_projections(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
-        _label: Option<crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
+        _predicate: &borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
+        _label: Option<borrow_pcg::region_projection::LifetimeProjectionLabel>,
         _ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         LabelLifetimeProjectionResult::Unchanged
@@ -100,12 +95,10 @@ where
 {
     fn label_blocked_places(
         &mut self,
-        predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
-        labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
+        predicate: &borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
+        labeller: &impl borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
         ctxt: Ctxt,
-    ) -> crate::utils::data_structures::HashSet<
-        crate::borrow_pcg::edge_data::NodeReplacement<'tcx, P>,
-    > {
+    ) -> data_structures::HashSet<borrow_pcg::edge_data::NodeReplacement<'tcx, P>> {
         conditionally_label_places(
             vec![&mut self.aliased_place],
             predicate,
@@ -117,12 +110,10 @@ where
 
     fn label_blocked_by_places(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
-        _labeller: &impl crate::borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
+        _predicate: &borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
+        _labeller: &impl borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
         _ctxt: Ctxt,
-    ) -> crate::utils::data_structures::HashSet<
-        crate::borrow_pcg::edge_data::NodeReplacement<'tcx, P>,
-    > {
+    ) -> data_structures::HashSet<borrow_pcg::edge_data::NodeReplacement<'tcx, P>> {
         HashSet::default()
     }
 }

@@ -286,8 +286,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         _place: utils::Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        Ok(())
+    ) {
     }
 
     fn visit_rvalue_fallable(

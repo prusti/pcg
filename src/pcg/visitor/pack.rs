@@ -213,9 +213,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             let alias_edges_cnt = edges
                 .into_iter()
                 .filter_map(|e| match e.kind {
-                    crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => {
-                        Some(raw_ptr_edge)
-                    }
+                    BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
                     _ => None,
                 })
                 .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))
@@ -233,9 +231,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 let alias_edges_cnt = edges
                     .into_iter()
                     .filter_map(|e| match e.kind {
-                        crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::Delegation(
-                            raw_ptr_edge,
-                        ) => Some(raw_ptr_edge),
+                        BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
                         _ => None,
                     })
                     .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))

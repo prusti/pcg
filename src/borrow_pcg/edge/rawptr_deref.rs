@@ -11,6 +11,7 @@ use crate::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
         },
+        region_projection::LifetimeProjectionLabel,
     },
     pcg::{LocalNodeLike, PcgNodeLike},
     utils::{
@@ -80,8 +81,8 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> LabelEdgeLifetimeProjections<'tcx, Ctx
 {
     fn label_lifetime_projections(
         &mut self,
-        _predicate: &crate::borrow_pcg::edge_data::LabelNodePredicate<'tcx, P>,
-        _label: Option<crate::borrow_pcg::region_projection::LifetimeProjectionLabel>,
+        _predicate: &LabelNodePredicate<'tcx, P>,
+        _label: Option<LifetimeProjectionLabel>,
         _ctxt: Ctxt,
     ) -> LabelLifetimeProjectionResult {
         LabelLifetimeProjectionResult::Unchanged

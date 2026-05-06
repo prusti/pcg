@@ -372,7 +372,7 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
         place: Place<'tcx>,
         context: mir::visit::PlaceContext,
         _location: mir::Location,
-    ) -> Result<(), crate::error::PcgError<'tcx>> {
+    ) {
         match context {
             PlaceContext::MutatingUse(MutatingUseContext::Projection) | PlaceContext::NonUse(_) => {
             }
@@ -383,7 +383,6 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
                 let _ = self.used_places.update(place, PlaceUsageType::Read);
             }
         }
-        Ok(())
     }
 }
 
