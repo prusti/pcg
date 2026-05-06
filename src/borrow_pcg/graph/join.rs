@@ -1,6 +1,7 @@
 use crate::{
     HasSettings,
     borrow_pcg::{
+        action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdgeLike,
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
@@ -11,10 +12,9 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     error::{PcgError, PcgUnsupportedError},
-    r#loop::{PlaceUsage, PlaceUsages},
-    owned_pcg::OwnedPcg,
+    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, SymbolicCapability,
+        BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         owned_state::OwnedPcg,
         place_capabilities::{
@@ -24,9 +24,9 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, BasicBlock},
     utils::{
-        DebugImgcat, HasBorrowCheckerCtxt, PlaceLike, SnapshotLocation,
+        DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
         data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        display::DisplayWithCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },

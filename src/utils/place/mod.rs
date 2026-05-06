@@ -33,7 +33,9 @@ use crate::{
         },
     },
     utils::{
-        HasCompilerCtxt, display::DisplayWithCtxt, json::ToJsonWithCtxt,
+        HasCompilerCtxt,
+        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
     },
 };
@@ -509,19 +511,9 @@ impl<'tcx> Place<'tcx> {
                 .expect("RepackGuide::Default is not a valid expansion guide here");
             PlaceExpansion::Guided(required)
         } else if self.ty(ctxt).ty.is_box() {
-            PlaceExpansion::Deref
+            PlaceExpansion::deref()
         } else if self.ty(ctxt).ty.is_raw_ptr() {
-            // let node = PcgNode::from(self/*.target_place().unwrap()*/);
-
-            // let edges = .pcg.borrow_pcg().edges_blocking(node, self.tw.ctxt);
-            // let raw_ptr_edge = edges.into_iter().filter_map(|e| match e.kind {
-            //     crate::borrow_pcg::edge::kind::BorrowPcgEdgeKind::RawPtrAlias(raw_ptr_edge) => Some(raw_ptr_edge),
-            //     _ => None
-            // }).collect::<Vec<_>>();
-            // assert!(raw_ptr_edge.len() == 1);
-            // let target_place = raw_ptr_edge[0].aliased_place.place();
-            // target_place.expansion(guide, ctxt)
-            PlaceExpansion::Deref
+            PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
                 ty::TyKind::Adt(adt_def, substs) => {

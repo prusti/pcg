@@ -24,7 +24,7 @@ use crate::{
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
         PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation, VALIDITY_CHECKS_WARN_ONLY,
-        display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
         validity::HasValidityCheck,

@@ -9,7 +9,7 @@ use crate::{
         borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
-        region_projection::{OverrideRegionDebugString, PcgLifetimeProjectionBase},
+        region_projection::PcgLifetimeProjectionBase,
         validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
@@ -419,7 +419,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt> HasValidity
 impl<EdgeKind: Eq + std::hash::Hash, VC> BorrowsState<'_, '_, EdgeKind, VC> {}
 
 impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-    fn introduce_initial_borrows<C: CapabilityLike>(
+    fn introduce_initial_borrows(
         &mut self,
         local: mir::Local,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,

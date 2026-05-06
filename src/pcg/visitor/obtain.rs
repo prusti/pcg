@@ -523,7 +523,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
                 RepackOp::Weaken(weaken) => {
                     pcg_validity_assert!(
-                        self.pcg.place_capability_equals(weaken.place, weaken.from)
+                        self.pcg
+                            .place_capability_equals(weaken.place, weaken.from, self.ctxt)
                             || weaken.place.contains_unsafe_deref(self.ctxt) /* SEE COMMENT WHERE WE CREATE WEAKEN. THIS SHOULD BE CHANGED */
                     );
                     self.pcg
