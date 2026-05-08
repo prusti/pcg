@@ -11,12 +11,15 @@
 //! `U` or `S`. Otherwise the tree would be collapsible to a single `D`
 //! leaf.
 
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Formatter};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Formatter},
+};
 
-use crate::borrow_pcg::borrow_pcg_expansion::PlaceExpansion;
-use crate::owned_pcg::RepackGuide;
-use crate::rustc_interface::middle;
+use crate::{
+    borrow_pcg::borrow_pcg_expansion::PlaceExpansion, owned_pcg::RepackGuide,
+    rustc_interface::middle,
+};
 
 use super::OwnedCapability;
 

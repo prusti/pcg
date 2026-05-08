@@ -65,11 +65,8 @@ where
     }
 
     #[rustversion::all(since(2025-05-24), before(2025-12-01))]
-    pub fn into_results_cursor<'mir>(
-        self,
-        body: &'mir Body<'tcx>,
-    ) -> mir_dataflow::ResultsCursor<'mir, 'tcx, A> {
-        mir_dataflow::ResultsCursor::new_owning(body, self.analysis, self.results)
+    pub fn into_results_cursor<'mir>(self, body: &'mir Body<'tcx>) -> ResultsCursor<'mir, 'tcx, A> {
+        ResultsCursor::new_owning(body, self.analysis, self.results)
     }
 
     #[rustversion::before(2025-05-24)]

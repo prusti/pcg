@@ -22,9 +22,9 @@ use std::{
     path::Path,
 };
 
-use rustc_interface::hir;
-use rustc_interface::middle::mir::{
-    self, BinOp, Local, Operand, Rvalue, Statement, TerminatorKind, UnwindAction,
+use rustc_interface::{
+    hir,
+    middle::mir::{self, BinOp, Local, Operand, Rvalue, Statement, TerminatorKind, UnwindAction},
 };
 
 #[rustversion::since(2025-03-02)]
