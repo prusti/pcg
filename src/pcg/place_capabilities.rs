@@ -44,7 +44,7 @@ mod private {
         }
     }
 
-    pub trait PlaceCapabilitiesInterface<'tcx, C = CapabilityKind, P: Copy = Place<'tcx>>:
+    pub trait PlaceCapabilitiesInterface<'tcx, C = CapabilityKind, P = Place<'tcx>>:
         PlaceCapabilitiesReader<'tcx, C, P>
     where
         P: Copy + Eq + std::hash::Hash,
