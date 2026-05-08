@@ -23,7 +23,7 @@ use crate::{
 };
 
 use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
+    AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
 };
 
 use super::{PcgError, PcgUnsupportedError};
@@ -114,7 +114,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             Rvalue::Use(operand) => {
                 let p = operand.place();
                 if let Some(p) = p {
-                    let p: utils::Place = p.into();
+                    let p: Place = p.into();
                     if p.ty(self.ctxt).ty.is_raw_ptr() {
                         let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
                         let node = PcgNode::from(p);
@@ -153,7 +153,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             Rvalue::Cast(kind, operand, ty) => {
                 if let CastKind::PtrToPtr = kind {
                     let p = operand.place().unwrap();
-                    let p: utils::Place = p.into();
+                    let p: Place = p.into();
                     let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
                     let edges = self.pcg.borrows_graph().edges_blocked_by(p.into(), ctxt);
                     let alies_edges = edges
@@ -208,7 +208,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             }
             Rvalue::RawPtr(kind, p) => {
                 if !kind.is_fake() {
-                    let p: utils::Place<'tcx> = (*p).into();
+                    let p: Place<'tcx> = (*p).into();
                     let p = p.with_inherent_region(self.ctxt);
                     self.record_and_apply_action(
                         BorrowPcgAction::add_edge(

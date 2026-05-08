@@ -288,7 +288,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         _place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
-        _location: mir::Location,
+        _location: Location,
     ) {
     }
 }

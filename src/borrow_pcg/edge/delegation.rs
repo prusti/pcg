@@ -30,7 +30,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     fn blocked_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = borrow_pcg_edge::BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = borrow_pcg_edge::BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -40,7 +40,7 @@ impl<'tcx, Ctxt: Copy, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P>
     fn blocked_by_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = borrow_pcg_edge::LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = borrow_pcg_edge::LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

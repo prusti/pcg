@@ -269,7 +269,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 ..
             } = &terminator.kind
         {
-            let destination: utils::Place<'tcx> = (*destination).into();
+            let destination: Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,
                 *fn_span,
@@ -283,7 +283,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 
     fn visit_place_fallable(
         &mut self,
-        _place: utils::Place<'tcx>,
+        _place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
     ) {

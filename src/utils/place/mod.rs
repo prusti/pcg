@@ -15,10 +15,7 @@ use derive_more::{Deref, DerefMut};
 
 use crate::{
     Sealed,
-    borrow_pcg::{
-        borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy},
-    },
+    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::HasTy},
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
