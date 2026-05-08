@@ -229,7 +229,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
         for (place, cap) in self.iter() {
-            if place.projects_shared_ref(ctxt) && !cap.is_read() {
+            if place.projects_shared_ref(ctxt)
+                && !cap.is_read()
+                && !place.is_raw_ptr(ctxt)
+                && !place.contains_unsafe_deref(ctxt)
+            {
                 return Err(format!(
                     "Place {} projects a shared ref, but has capability {:?}",
                     place.display_string(ctxt),
@@ -273,6 +277,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
                     let (other_place, other_cap) = (*other_place, *other_cap);
                     if place.is_prefix_of(other_place)
                         && !allowed_child_cap(place, parent_cap, other_cap, ctxt)
+                        && !other_place.contains_unsafe_deref(ctxt)
+                        && !other_place.is_raw_ptr(ctxt)
                     {
                         return Err(format!(
                             "Place ({}: {}) with capability {:?} has a child {} with capability {:?} which is not allowed",
