@@ -1,5 +1,5 @@
 //! Actions describing manipulations of the PCG.
-use std::{borrow::Cow, convert, marker::PhantomData};
+use std::{borrow::Cow, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut, From};
 use serde_derive::Serialize;
@@ -105,24 +105,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, Action: DebugRepr<Ctxt>
 
 impl<'tcx> From<BorrowPcgActions<'tcx>> for PcgActions<'tcx> {
     fn from(actions: BorrowPcgActions<'tcx>) -> Self {
-        PcgActions::new(
-            actions
-                .0
-                .into_iter()
-                .map(convert::Into::into)
-                .collect::<Vec<_>>(),
-        )
+        PcgActions::new(actions.0.into_iter().map(Into::into).collect())
     }
 }
 
 impl<'tcx> From<Vec<OwnedPcgAction<'tcx>>> for PcgActions<'tcx> {
     fn from(actions: Vec<OwnedPcgAction<'tcx>>) -> Self {
-        PcgActions::new(
-            actions
-                .into_iter()
-                .map(convert::Into::into)
-                .collect::<Vec<_>>(),
-        )
+        PcgActions::new(actions.into_iter().map(Into::into).collect())
     }
 }
 

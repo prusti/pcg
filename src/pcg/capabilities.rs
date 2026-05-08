@@ -157,11 +157,10 @@ impl CapabilityKind {
 
     #[must_use]
     pub fn minimum(self, other: Self) -> Option<Self> {
-        match self.partial_cmp(&other) {
-            Some(Ordering::Greater) => Some(other),
-            Some(Ordering::Less | Ordering::Equal) => Some(self),
-            None => None,
-        }
+        self.partial_cmp(&other).map(|ord| match ord {
+            Ordering::Greater => other,
+            Ordering::Less | Ordering::Equal => self,
+        })
     }
 }
 
@@ -246,11 +245,11 @@ mod tests {
         for a in caps {
             for b in caps {
                 if a == b {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Equal));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Equal));
                 } else if has_path_connecting(&graph, node_indices[&a], node_indices[&b], None) {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Greater));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Greater));
                 } else if has_path_connecting(&graph, node_indices[&b], node_indices[&a], None) {
-                    assert!(a.partial_cmp(&b) == Some(Ordering::Less));
+                    assert_eq!(a.partial_cmp(&b), Some(Ordering::Less));
                 } else {
                     assert!(a.partial_cmp(&b).is_none());
                 }

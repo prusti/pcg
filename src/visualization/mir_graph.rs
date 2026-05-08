@@ -2,8 +2,8 @@ use crate::{
     borrow_pcg::{
         self,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionShapeInput, FunctionShapeOutput},
-        region_projection::RegionIdxKind,
-        visitor::extract_regions,
+        region_projection::RegionIdxMarker,
+        visitor::{extract_generalized_lifetimes, extract_regions},
     },
     rustc_interface::{
         self,
@@ -22,10 +22,10 @@ use std::{
     path::Path,
 };
 
+use rustc_interface::hir;
 use rustc_interface::middle::mir::{
     self, BinOp, Local, Operand, Rvalue, Statement, TerminatorKind, UnwindAction,
 };
-use rustc_interface::{hir, middle};
 
 #[rustversion::since(2025-03-02)]
 use rustc_interface::middle::mir::RawPtrKind;
@@ -146,7 +146,7 @@ fn format_operand<'tcx>(operand: &Operand<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -
     match operand {
         Operand::Copy(p) => format_place(p, ctxt),
         Operand::Move(p) => format!("move {}", format_place(p, ctxt)),
-        Operand::Constant(c) => format!("{c}"),
+        Operand::Constant(c) => c.to_string(),
         other => todo!("{other:?}"),
     }
 }
@@ -162,7 +162,7 @@ fn format_raw_ptr<'tcx>(
         RawPtrKind::Const => "const",
         RawPtrKind::FakeForPtrMetadata => "fake",
     };
-    format!("&raw {} {}", kind, format_place(place, ctxt))
+    format!("&raw {kind} {}", format_place(place, ctxt))
 }
 
 #[rustversion::before(2025-03-02)]
@@ -175,25 +175,25 @@ fn format_raw_ptr<'tcx>(
         Mutability::Mut => "mut",
         Mutability::Not => "const",
     };
-    format!("*{} {}", kind, format_place(place, ctxt))
+    format!("*{kind} {}", format_place(place, ctxt))
 }
 
 #[allow(unreachable_patterns)]
 fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
     match rvalue {
         Rvalue::Use(operand) => format_operand(operand, ctxt),
-        Rvalue::Repeat(operand, c) => format!("repeat {} {}", format_operand(operand, ctxt), c),
+        Rvalue::Repeat(operand, c) => format!("repeat {} {c}", format_operand(operand, ctxt)),
         Rvalue::Ref(_region, kind, place) => {
             let kind = match kind {
                 mir::BorrowKind::Shared => "",
                 mir::BorrowKind::Mut { .. } => "mut",
                 mir::BorrowKind::Fake(_) => "fake",
             };
-            format!("&{} {}", kind, format_place(place, ctxt))
+            format!("&{kind} {}", format_place(place, ctxt))
         }
         Rvalue::RawPtr(kind, place) => format_raw_ptr(*kind, place, ctxt),
         Rvalue::ThreadLocalRef(_) => todo!(),
-        Rvalue::Cast(_, operand, ty) => format!("{} as {}", format_operand(operand, ctxt), ty),
+        Rvalue::Cast(_, operand, ty) => format!("{} as {ty}", format_operand(operand, ctxt)),
         Rvalue::BinaryOp(op, box (lhs, rhs)) => {
             format!(
                 "{} {} {}",
@@ -203,7 +203,7 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
             )
         }
         Rvalue::UnaryOp(op, val) => {
-            format!("{:?} {}", op, format_operand(val, ctxt))
+            format!("{op:?} {}", format_operand(val, ctxt))
         }
         Rvalue::Discriminant(place) => format!("Discriminant({})", format_place(place, ctxt)),
         Rvalue::Aggregate(kind, ops) => {
@@ -435,13 +435,13 @@ impl ShapeLabelFormatter {
         let input_regions = input_tys
             .iter()
             .map(|ty| {
-                extract_generalized_lifetimes(*ty)
+                extract_generalized_lifetimes(*ty, None)
                     .iter()
                     .map(format_gl)
                     .collect()
             })
             .collect();
-        let output_regions = extract_generalized_lifetimes(output_ty)
+        let output_regions = extract_generalized_lifetimes(output_ty, None)
             .iter()
             .map(format_gl)
             .collect();
@@ -454,7 +454,7 @@ impl ShapeLabelFormatter {
 
     /// Format a function-shape input node as a human-readable label.
     #[must_use]
-    pub fn format_input<Kind: RegionIdxKind>(&self, input: &FunctionShapeInput<Kind>) -> String {
+    pub fn format_input<Kind: RegionIdxMarker>(&self, input: &FunctionShapeInput<Kind>) -> String {
         let base_name = self.arg_base_name(input.base);
         let region_name = self.resolve_input_region(input.base, input.region_idx.index());
         format!("{base_name}↓{region_name}")
@@ -462,7 +462,10 @@ impl ShapeLabelFormatter {
 
     /// Format a function-shape output node as a human-readable label.
     #[must_use]
-    pub fn format_output<Kind: RegionIdxKind>(&self, output: &FunctionShapeOutput<Kind>) -> String {
+    pub fn format_output<Kind: RegionIdxMarker>(
+        &self,
+        output: &FunctionShapeOutput<Kind>,
+    ) -> String {
         let (base_name, region_name) = match output.base {
             ArgIdxOrResult::Argument(arg) => {
                 let name = self.arg_base_name(arg);
@@ -487,7 +490,7 @@ impl ShapeLabelFormatter {
         self.arg_labels
             .as_ref()
             .and_then(|names| names.get(*arg).cloned())
-            .unwrap_or_else(|| format!("{arg}"))
+            .unwrap_or_else(|| arg.to_string())
     }
 
     /// Build a formatter for a function's generalized sig shape, looking up
@@ -495,8 +498,7 @@ impl ShapeLabelFormatter {
     #[must_use]
     pub fn for_fn_sig<'tcx>(def_id: hir::def_id::DefId, tcx: TyCtxt<'tcx>) -> Self {
         use crate::borrow_pcg::{
-            edge::abstraction::function::TraitBoundRegions,
-            visitor::{GeneralizedLifetime, extract_generalized_lifetimes_with_bounds},
+            edge::abstraction::function::TraitBoundRegions, visitor::GeneralizedLifetime,
         };
 
         let sig = borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
@@ -514,21 +516,21 @@ impl ShapeLabelFormatter {
             .inputs()
             .iter()
             .map(|ty| {
-                extract_generalized_lifetimes_with_bounds(*ty, tbr_map)
+                extract_generalized_lifetimes(*ty, Some(tbr_map))
                     .iter()
                     .map(&format_gl)
                     .collect()
             })
             .collect();
-        let mut output_gls = extract_generalized_lifetimes_with_bounds(sig.output(), tbr_map)
+        let mut output_gls = extract_generalized_lifetimes(sig.output(), Some(tbr_map))
             .into_iter()
             .collect::<Vec<_>>();
 
         // Mirror the logic in result_projections: for type parameter return
         // types, include all signature lifetimes.
-        if matches!(sig.output().kind(), middle::ty::TyKind::Param(_)) {
+        if matches!(sig.output().kind(), ty::TyKind::Param(_)) {
             for input_ty in sig.inputs() {
-                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
                     if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {
                         output_gls.push(gl);
                     }
@@ -549,16 +551,16 @@ impl ShapeLabelFormatter {
     /// [`FunctionShape`]'s `Display` impl (e.g. `Arg(0)|2`), and the pretty
     /// label uses visualization-style names (e.g. `self↓'a`).
     #[must_use]
-    pub fn node_labels<Kind: RegionIdxKind>(
+    pub fn node_labels<Kind: RegionIdxMarker>(
         &self,
         shape: &borrow_pcg::abstraction::FunctionShape<Kind>,
     ) -> Vec<(String, String)> {
         use crate::borrow_pcg::abstraction::{FunctionShapeInput, FunctionShapeOutput};
 
-        fn raw_input<K: RegionIdxKind>(input: &FunctionShapeInput<K>) -> String {
+        fn raw_input<K: RegionIdxMarker>(input: &FunctionShapeInput<K>) -> String {
             format!("Arg({})↓{}", *input.base, input.region_idx.index())
         }
-        fn raw_output<K: RegionIdxKind>(output: &FunctionShapeOutput<K>) -> String {
+        fn raw_output<K: RegionIdxMarker>(output: &FunctionShapeOutput<K>) -> String {
             match output.base {
                 ArgIdxOrResult::Argument(arg) => {
                     format!("Arg({})↓{}", *arg, output.region_idx.index())
@@ -594,7 +596,7 @@ impl ShapeLabelFormatter {
 ///
 /// When `formatter` is provided, nodes display human-readable labels (e.g.
 /// `x↓'a`). Otherwise falls back to the `Display` impl (e.g. `a0↓0`).
-fn function_shape_to_dot<Kind: RegionIdxKind>(
+fn function_shape_to_dot<Kind: RegionIdxMarker>(
     shape: borrow_pcg::abstraction::FunctionShape<Kind>,
     graph_name: &str,
     formatter: Option<&ShapeLabelFormatter>,
@@ -605,10 +607,10 @@ fn function_shape_to_dot<Kind: RegionIdxKind>(
     let (inputs, outputs) = shape.take_inputs_and_outputs();
 
     let fmt_input = |input: &FunctionShapeInput<Kind>| -> String {
-        formatter.map_or_else(|| format!("{input}"), |f| f.format_input(input))
+        formatter.map_or_else(|| input.to_string(), |f| f.format_input(input))
     };
     let fmt_output = |output: &FunctionShapeOutput<Kind>| -> String {
-        formatter.map_or_else(|| format!("{output}"), |f| f.format_output(output))
+        formatter.map_or_else(|| output.to_string(), |f| f.format_output(output))
     };
 
     let input_node_id = |input: &FunctionShapeInput<Kind>| format!("in_{input}");
@@ -806,7 +808,7 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
                     edges.push(MirEdge {
                         source: format!("{bb:?}"),
                         target: format!("{target:?}"),
-                        label: Cow::Owned(format!("{val}")),
+                        label: Cow::Owned(val.to_string()),
                     });
                 }
                 edges.push(MirEdge {

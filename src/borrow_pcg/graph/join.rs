@@ -65,7 +65,7 @@ impl<'mir, 'tcx> JoinBorrowsArgs<'_, 'mir, 'tcx> {
 impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn render_debug_graph<'a>(
         &self,
-        block: mir::BasicBlock,
+        block: BasicBlock,
         debug_imgcat: Option<DebugImgcat>,
         capabilities: &impl PlaceCapabilitiesReader<'tcx>,
         comment: &str,
@@ -510,17 +510,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 .map(|(p, ancestors)| {
                     (
                         p.display_string(ctxt),
-                        ancestors
-                            .iter()
-                            .map(|n| n.display_string(ctxt))
-                            .collect::<Vec<_>>(),
+                        ancestors.iter().map(|n| n.display_string(ctxt)).collect(),
                     )
                 })
-                .collect::<Vec<_>>(),
+                .collect(),
             root_places: root_places
                 .iter()
                 .map(|p| (p.display_string(ctxt), Vec::<String>::new()))
-                .collect::<Vec<_>>(),
+                .collect(),
             dot_graphs,
             place_labels,
         });

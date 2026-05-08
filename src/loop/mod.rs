@@ -217,7 +217,7 @@ impl Ord for PlaceUsageType {
 }
 
 impl PartialOrd for PlaceUsageType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -299,10 +299,8 @@ impl<'tcx> PlaceUsages<'tcx> {
         if let Some(existing_usage) = self.0.get(&place) {
             if usage == PlaceUsageType::Mutate && existing_usage == &PlaceUsageType::Read {
                 self.0.insert(place, PlaceUsageType::Mutate);
-                false
-            } else {
-                false
             }
+            false
         } else {
             self.0.insert(place, usage);
             true
@@ -370,7 +368,7 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
     fn visit_place_fallable(
         &mut self,
         place: Place<'tcx>,
-        context: mir::visit::PlaceContext,
+        context: PlaceContext,
         _location: mir::Location,
     ) {
         match context {
@@ -397,7 +395,7 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
 
     const NAME: &'static str = "SingleLoopAnalysis";
 
-    fn bottom_value(&self, _body: &mir::Body<'tcx>) -> Self::Domain {
+    fn bottom_value(&self, _body: &Body<'tcx>) -> Self::Domain {
         LoopPlaceUsageDomain {
             used_places: PlaceUsages::default(),
         }

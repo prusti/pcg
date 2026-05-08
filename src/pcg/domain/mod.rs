@@ -60,7 +60,7 @@ pub struct PcgDomainData<'a, 'tcx, Capabilities = PlaceCapabilities<'tcx>> {
 
 impl<'a, 'tcx> PcgDomainData<'a, 'tcx> {
     pub(crate) fn from_incoming(
-        self_block: mir::BasicBlock,
+        self_block: BasicBlock,
         other: &DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>,
     ) -> Self {
         pcg_validity_assert!(self_block != other.ctxt.block);
@@ -152,8 +152,8 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
     }
 }
 
-impl std::fmt::Debug for PcgDomain<'_, '_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Debug for PcgDomain<'_, '_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             PcgDomain::Error(pcg_error) => write!(f, "Error({pcg_error:?})"),
             PcgDomain::Analysis(dataflow_state) => {
@@ -213,7 +213,7 @@ mod private {
         }
 
         pub(crate) fn push(&mut self, data: DomainDataWithCtxt<'a, 'tcx, T>) -> bool {
-            if self.pending.iter().any(|d| d == &data) {
+            if self.pending.contains(&data) {
                 return false;
             }
             self.pending.push(data);
@@ -372,8 +372,8 @@ impl<T> PartialEq for DataflowState<'_, '_, T> {
 
 impl<T> Eq for DataflowState<'_, '_, T> {}
 
-impl<T> std::fmt::Debug for DataflowState<'_, '_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T> Debug for DataflowState<'_, '_, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DataflowState::Pending(_) => write!(f, "Pending"),
             DataflowState::Transfer(_) => write!(f, "Transfer"),
@@ -538,7 +538,7 @@ impl<'tcx> ErrorState<'tcx> {
 
     pub(crate) fn record_error(&mut self, error: PcgError<'tcx>) {
         assert!(!*PANIC_ON_ERROR, "PCG Error: {error:?}");
-        tracing::error!("PCG Error: {:?}", error);
+        tracing::error!("PCG Error: {error:?}");
         self.error = Some(error);
     }
 }

@@ -7,7 +7,7 @@ impl<T: Eq + Clone> IdLookup<T> {
         Self(prefix, vec![])
     }
 
-    pub(super) fn existing_id(&mut self, item: &T) -> Option<NodeId> {
+    pub(super) fn existing_id(&self, item: &T) -> Option<NodeId> {
         self.1
             .iter()
             .position(|x| x == item)

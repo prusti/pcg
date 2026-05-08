@@ -39,13 +39,8 @@ mod private {
             C: 'slf,
             P: 'slf + PrefixRelation,
         {
-            self.iter().filter_map(move |(p, c)| {
-                if place.is_strict_prefix_of(p) {
-                    Some((p, c))
-                } else {
-                    None
-                }
-            })
+            self.iter()
+                .filter(move |&(p, _)| place.is_strict_prefix_of(p))
         }
     }
 
@@ -77,11 +72,7 @@ mod private {
             P: 'slf + PlaceLike<'tcx, Ctxt>,
         {
             self.iter_mut().filter_map(move |(place, capability)| {
-                if place.local() == local && place.is_owned(ctxt) {
-                    Some((*place, capability))
-                } else {
-                    None
-                }
+                (place.local() == local && place.is_owned(ctxt)).then_some((*place, capability))
             })
         }
 
@@ -395,8 +386,7 @@ where
             let place = *place;
             let other_capability = *other_capability;
             if let Some(self_capability) = self.map.get(&place) {
-                if let Some(cmp::Ordering::Greater) = self_capability.partial_cmp(&other_capability)
-                {
+                if self_capability.partial_cmp(&other_capability) == Some(cmp::Ordering::Greater) {
                     changed |= self.map.insert(place, other_capability) != Some(other_capability);
                 } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
                     self_capability.partial_cmp(&other_capability)

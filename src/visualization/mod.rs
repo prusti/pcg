@@ -98,8 +98,7 @@ impl GraphNode {
                     None => Html::empty(),
                 };
                 let color = if location.is_some()
-                    || capability.is_none()
-                    || matches!(capability, Some(CapabilityKind::Write))
+                    || matches!(capability, None | Some(CapabilityKind::Write))
                 {
                     "gray"
                 } else if *owned {
@@ -327,7 +326,7 @@ impl<'a> GraphEdge<'a> {
                 kind,
             } => {
                 let options = EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_label(format!("{kind}"))
+                    .with_label(kind.to_string())
                     .with_color("purple".into());
                 let options = match kind {
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal } => {

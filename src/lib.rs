@@ -9,6 +9,8 @@ may already be stabilized */
 
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
+#![deny(clippy::set_contains_or_insert)]
+#![deny(clippy::needless_pass_by_ref_mut)]
 #![allow(clippy::items_after_statements)]
 #![allow(clippy::implicit_hasher)]
 #![allow(clippy::struct_excessive_bools)]
@@ -29,6 +31,7 @@ may already be stabilized */
 #![feature(stmt_expr_attributes)]
 #![feature(allocator_api)]
 #![feature(let_chains)]
+#![warn(unused_qualifications)]
 
 pub mod action;
 pub mod borrow_checker;
@@ -86,7 +89,7 @@ pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(export, concrete(Place = String)))]
-pub struct Weaken<'tcx, Place = crate::utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+pub struct Weaken<'tcx, Place = utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
     pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
     pub(crate) to: ToCap,
@@ -312,7 +315,7 @@ pub struct PcgCtxtCreator<'tcx> {
     arena: bumpalo::Bump,
     settings: PcgSettings,
     #[cfg(feature = "visualization")]
-    debug_function_metadata: RefCell<crate::visualization::FunctionsMetadata>,
+    debug_function_metadata: RefCell<visualization::FunctionsMetadata>,
 }
 
 impl<'tcx> PcgCtxtCreator<'tcx> {
@@ -418,7 +421,7 @@ impl<'a> HasSettings<'a> for &'a PcgCtxt<'_, '_> {
     }
 }
 
-fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: ty::TyCtxt<'tcx>) -> MoveData<'tcx> {
+fn gather_moves<'tcx>(body: &Body<'tcx>, tcx: TyCtxt<'tcx>) -> MoveData<'tcx> {
     MoveData::gather_moves(body, tcx, |_| true)
 }
 
@@ -706,7 +709,7 @@ macro_rules! pcg_validity_assert {
             let ctxt = $ctxt;
             let loc = $loc;
             let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
+            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*));
         }
     };
@@ -714,7 +717,7 @@ macro_rules! pcg_validity_assert {
         {
             let ctxt = $ctxt;
             let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {})", s)).unwrap_or_default();
+            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
             pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*));
         }
     };
@@ -727,11 +730,11 @@ macro_rules! pcg_validity_assert {
                 tracing::error!($($arg)*);
                 // Generate test case format if we're in a crate
                 if let Ok(crate_name) = std::env::var("CARGO_CRATE_NAME") {
-                    let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string());
+                    let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_owned());
                     let num_bbs = $crate::utils::ctxt::DebugCtxt::num_basic_blocks(&$ctxt);
                     let test_case = format!("{};{};2025-03-13;{};{}",
                         crate_name, crate_version, $func_name, num_bbs);
-                    tracing::error!("To reproduce this failure, use test case: {}", test_case);
+                    tracing::error!("To reproduce this failure, use test case: {test_case}");
                 }
                 if !$crate::validity_checks_warn_only() {
                     assert!($cond, $($arg)*);

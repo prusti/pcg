@@ -1,8 +1,5 @@
-use std::convert;
-
 use crate::{
     borrow_pcg::{
-        self,
         borrow_pcg_edge::BorrowPcgEdgeRef,
         edge::kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         graph::Conditioned,
@@ -21,7 +18,6 @@ use crate::{
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         maybe_old::MaybeLabelledPlace,
-        place,
     },
 };
 
@@ -34,7 +30,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf;
 
@@ -43,7 +39,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf;
 
@@ -59,7 +55,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
         &'slf self,
         ctxt: Ctxt,
     ) -> Box<
-        dyn std::iter::Iterator<
+        dyn Iterator<
                 Item = PcgNode<
                     'tcx,
                     MaybeLabelledPlace<'tcx, P>,
@@ -73,7 +69,7 @@ pub trait EdgeData<'tcx, Ctxt: Copy, P: Copy + PartialEq = Place<'tcx>> {
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(convert::Into::into)),
+                .chain(self.blocked_by_nodes(ctxt).map(Into::into)),
         )
     }
 
@@ -93,7 +89,7 @@ where
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -103,7 +99,7 @@ where
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -122,7 +118,7 @@ where
         &'slf self,
         ctxt: Ctxt,
     ) -> Box<
-        dyn std::iter::Iterator<
+        dyn Iterator<
                 Item = PcgNode<
                     'tcx,
                     MaybeLabelledPlace<'tcx, P>,
@@ -136,7 +132,7 @@ where
     {
         Box::new(
             self.blocked_nodes(ctxt)
-                .chain(self.blocked_by_nodes(ctxt).map(convert::Into::into)),
+                .chain(self.blocked_by_nodes(ctxt).map(Into::into)),
         )
     }
 
@@ -155,7 +151,7 @@ where
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, Place<'tcx>>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, Place<'tcx>>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -165,7 +161,7 @@ where
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, Place<'tcx>>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, Place<'tcx>>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -220,7 +216,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches all non-future lifetime projections with
     /// the given base place and region index.
     pub(crate) fn all_non_future(
-        place: place::maybe_old::MaybeLabelledPlace<'tcx>,
+        place: MaybeLabelledPlace<'tcx>,
         region_idx: LifetimeProjectionIdx,
     ) -> Self {
         Self::And(vec![
@@ -234,10 +230,7 @@ impl<'tcx> LabelNodePredicate<'tcx> {
     /// Creates a predicate that matches lifetime projections that are postfixes
     /// of the given projection (same region, same label, and base is a postfix).
     pub(crate) fn postfix_lifetime_projection(
-        projection: borrow_pcg::region_projection::LifetimeProjection<
-            'tcx,
-            place::maybe_old::MaybeLabelledPlace<'tcx>,
-        >,
+        projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>>,
     ) -> Self {
         Self::And(vec![
             Self::PlaceIsPostfixOf(projection.base.place()),
@@ -315,8 +308,7 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
         label_context: LabelNodeContext,
     ) -> bool {
         let related_maybe_labelled_place = candidate.related_maybe_labelled_place();
-        let related_place =
-            related_maybe_labelled_place.map(place::maybe_old::MaybeLabelledPlace::place);
+        let related_place = related_maybe_labelled_place.map(MaybeLabelledPlace::place);
         match self {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {

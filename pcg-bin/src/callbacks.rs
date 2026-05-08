@@ -96,7 +96,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
         }
     );
     if let Some(block) = settings.debug_block {
-        tracing::info!("Debug block: {:?}", block);
+        tracing::info!("Debug block: {block:?}");
     }
     if in_cargo_crate() && !is_primary_crate() {
         // We're running in cargo, but not compiling the primary package
@@ -105,7 +105,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
     }
 
     if std::env::var("PCG_TYPECHECK_ONLY")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap()
     {
@@ -140,7 +140,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
         if !should_check_body(&global_settings, &body.body) {
             continue;
         }
-        tracing::info!("Def Id: {:?}", def_id);
+        tracing::info!("Def Id: {def_id:?}");
 
         tracing::info!(
             "{}Running PCG on function: {} with {} basic blocks",
@@ -253,7 +253,7 @@ fn emit_and_check_annotations(
                     }
                 }
             } else {
-                tracing::warn!("No source for function: {}", item_name);
+                tracing::warn!("No source for function: {item_name}");
             }
         }
     }

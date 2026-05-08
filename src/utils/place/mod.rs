@@ -29,7 +29,7 @@ use crate::{
         index::IndexVec,
         middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
-            ty::{self, Ty, TyKind},
+            ty::{Ty, TyKind},
         },
     },
     utils::{
@@ -83,19 +83,19 @@ impl<'tcx> From<BorrowedPlace<'tcx>> for Place<'tcx> {
 impl Sealed for BorrowedPlace<'_> {}
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for BorrowedPlace<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> Ty<'tcx> {
         self.0.rust_ty(ctxt)
     }
 }
 
 impl PartialOrd for BorrowedPlace<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for BorrowedPlace<'_> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.0.cmp(&other.0)
     }
 }
@@ -183,7 +183,7 @@ where
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasTy<'tcx, Ctxt> for Place<'tcx> {
-    fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx> {
+    fn rust_ty(&self, ctxt: Ctxt) -> Ty<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty
     }
 }
@@ -250,11 +250,10 @@ pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
 
-pub trait PcgNodeComponent = Copy + Eq + std::hash::Hash + std::fmt::Debug;
+pub trait PcgNodeComponent = Copy + Eq + Hash + Debug;
 
 pub trait PcgPlace<'tcx, Ctxt: Copy> = PlaceProjectable<'tcx, Ctxt>
     + PcgNodeComponent
-    + HasRegions<'tcx, Ctxt>
     + HasTy<'tcx, Ctxt>
     + PrefixRelation
     + Ord
@@ -395,14 +394,14 @@ impl<'tcx> Place<'tcx> {
         }
         let corrected_elem = if let ProjectionElem::Field(field_idx, proj_ty) = elem {
             let expected_ty = match base_ty.ty.kind() {
-                ty::TyKind::Adt(def, substs) => {
+                TyKind::Adt(def, substs) => {
                     let variant = match base_ty.variant_index {
                         Some(v) => def.variant(v),
                         None => def.non_enum_variant(),
                     };
                     variant.fields[field_idx].ty(ctxt.tcx(), substs)
                 }
-                ty::TyKind::Tuple(tys) => tys[field_idx.as_usize()],
+                TyKind::Tuple(tys) => tys[field_idx.as_usize()],
                 _ => proj_ty,
             };
             ProjectionElem::Field(field_idx, expected_ty)
@@ -450,11 +449,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if self.is_owned(ctxt) {
-            Some(OwnedPlace(self))
-        } else {
-            None
-        }
+        self.is_owned(ctxt).then_some(OwnedPlace(self))
     }
 
     /// Converts this place into a `BorrowedPlace` if it is borrowed.
@@ -465,11 +460,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if self.is_owned(ctxt) {
-            None
-        } else {
-            Some(BorrowedPlace(self))
-        }
+        (!self.is_owned(ctxt)).then_some(BorrowedPlace(self))
     }
 
     /// Converts this place into a `BorrowedPlace`, panicking if owned.
@@ -514,7 +505,7 @@ impl<'tcx> Place<'tcx> {
             PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
-                ty::TyKind::Adt(adt_def, substs) => {
+                TyKind::Adt(adt_def, substs) => {
                     let variant = match self.ty(ctxt).variant_index {
                         Some(v) => adt_def.variant(v),
                         None => adt_def.non_enum_variant(),
@@ -528,7 +519,7 @@ impl<'tcx> Place<'tcx> {
                             .collect(),
                     )
                 }
-                ty::TyKind::Tuple(tys) => PlaceExpansion::fields(
+                TyKind::Tuple(tys) => PlaceExpansion::fields(
                     tys.iter()
                         .enumerate()
                         .map(|(i, ty)| (i.into(), ty))
@@ -867,12 +858,11 @@ impl<'tcx> Place<'tcx> {
 
     #[must_use]
     pub fn is_downcast_of(self, other: Self) -> Option<VariantIdx> {
-        if let Some(ProjectionElem::Downcast(_, index)) = self.projection.last() {
-            if other.is_prefix_of(self) && other.projection.len() == self.projection.len() - 1 {
-                Some(*index)
-            } else {
-                None
-            }
+        if let Some(ProjectionElem::Downcast(_, index)) = self.projection.last()
+            && other.is_prefix_of(self)
+            && other.projection.len() == self.projection.len() - 1
+        {
+            Some(*index)
         } else {
             None
         }
@@ -886,15 +876,11 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        if other.is_prefix_of(self) {
-            Some(
-                self.iter_projections(ctxt.ctxt())
-                    .into_iter()
-                    .skip(other.projection.len()),
-            )
-        } else {
-            None
-        }
+        other.is_prefix_of(self).then(|| {
+            self.iter_projections(ctxt.ctxt())
+                .into_iter()
+                .skip(other.projection.len())
+        })
     }
 
     #[must_use]
@@ -904,7 +890,7 @@ impl<'tcx> Place<'tcx> {
 
     #[must_use]
     pub fn target_place(self) -> Option<Self> {
-        if let Some(ProjectionElem::Deref) = self.projection.last() {
+        if self.projection.last() == Some(&ProjectionElem::Deref) {
             Some(Place::new(
                 self.local,
                 &self.projection[..self.projection.len() - 1],

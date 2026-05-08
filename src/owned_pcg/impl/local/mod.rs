@@ -48,7 +48,7 @@ impl<'tcx, P> ExpandedPlace<'tcx, P> {
     pub(crate) fn expansion_places<Ctxt>(
         &self,
         ctxt: Ctxt,
-    ) -> std::result::Result<HashSet<P>, PcgUnsupportedError<'tcx>>
+    ) -> Result<HashSet<P>, PcgUnsupportedError<'tcx>>
     where
         P: PlaceLike<'tcx, Ctxt>,
     {
@@ -75,9 +75,9 @@ impl<'tcx> LocalExpansions<'tcx> {
         &self,
         capabilities: &PlaceCapabilities<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> std::result::Result<(), String> {
+    ) -> Result<(), String> {
         for expansion in &self.expansions {
-            if let Some(CapabilityKind::Write) = capabilities.get(expansion.place, ctxt) {
+            if capabilities.get(expansion.place, ctxt) == Some(CapabilityKind::Write) {
                 return Err(format!(
                     "Base {} of expansion {:?} has write capability",
                     expansion.place.display_string(ctxt),

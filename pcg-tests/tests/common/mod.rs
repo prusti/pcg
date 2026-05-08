@@ -81,6 +81,10 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
             "PCG_VALIDITY_CHECKS",
             format!("{}", options.validity_checks()),
         )
+        // Allow building pyo3 against Python interpreters newer than the
+        // pinned pyo3 version's max supported version (e.g. Python 3.14 with
+        // pyo3 0.24, which only officially supports up to 3.13).
+        .env("PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "1")
         .env("PCG_BE_RUSTC", "true")
         .env("RUSTC", &pcg_exe);
     for (key, value) in options.extra_env_vars() {
@@ -98,7 +102,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
 
 fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
     let content = std::fs::read_to_string(file)
-        .unwrap_or_else(|e| panic!("Failed to read file {}: {}", file.display(), e));
+        .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
 
     let re = regex::Regex::new(r"// option (PCG_[A-Z_]+): (.*)").unwrap();
     re.captures_iter(&content)
@@ -131,7 +135,7 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let status = command
         .status()
-        .unwrap_or_else(|e| panic!("Failed to execute test {}: {}", file.display(), e));
+        .unwrap_or_else(|e| panic!("Failed to execute test {}: {e}", file.display()));
 
     assert!(
         status.success(),
@@ -308,7 +312,7 @@ pub fn run_on_crate(
         }
     }
     std::fs::remove_dir_all(&dirname).unwrap_or_else(|e| {
-        panic!("Failed to remove directory {}: {}", dirname.display(), e);
+        panic!("Failed to remove directory {}: {e}", dirname.display());
     });
     if result {
         RunOnCrateResult::Success
@@ -339,11 +343,8 @@ pub fn get_test_files(test_dir: &Path) -> Vec<PathBuf> {
             let entry = entry.unwrap();
             let path = entry.path();
             let file_name = path.file_name()?.to_str()?;
-            if file_name.chars().next()?.is_ascii_digit() && file_name.ends_with(".rs") {
-                Some(path)
-            } else {
-                None
-            }
+            (file_name.chars().next()?.is_ascii_digit() && file_name.ends_with(".rs"))
+                .then_some(path)
         })
         .collect();
 

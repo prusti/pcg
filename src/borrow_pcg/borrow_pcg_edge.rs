@@ -208,10 +208,7 @@ pub type LocalNode<'tcx, P = Place<'tcx>> =
 
 impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
     fn is_place(&self) -> bool {
-        match self {
-            LocalNode::Place(_) => true,
-            LocalNode::LifetimeProjection(_) => false,
-        }
+        matches!(self, LocalNode::Place(_))
     }
 
     fn place(&self) -> Place<'tcx> {

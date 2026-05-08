@@ -1,7 +1,7 @@
 use dot::escape_html;
 use itertools::Itertools;
 use serde_derive::Serialize;
-use std::{borrow::Cow, string};
+use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
@@ -51,9 +51,7 @@ impl std::fmt::Display for Html {
             Html::Seq(seq) => write!(
                 f,
                 "{}",
-                seq.iter()
-                    .map(string::ToString::to_string)
-                    .collect::<String>()
+                seq.iter().map(ToString::to_string).collect::<String>()
             ),
             Html::Font(face, html) => {
                 write!(f, "<FONT FACE=\"{face}\">{html}</FONT>")

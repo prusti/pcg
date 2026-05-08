@@ -19,3 +19,4 @@ pub use abstraction::{
     FunctionShapeInput, FunctionShapeNode, FunctionShapeOutput, MakeFunctionShapeError,
 };
 pub use domain::{AbstractionInputTarget, AbstractionOutputTarget};
+pub use visitor::GeneralizedLifetime;

@@ -1,5 +1,3 @@
-use std::convert;
-
 use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
@@ -13,7 +11,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::{HasRegions, PlaceOrConst},
+        region_projection::{ExtractRegionsCtxt, PlaceOrConst},
     },
     pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike,
@@ -62,7 +60,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     pub(crate) fn assign_post_main(
         &mut self,
-        target: utils::Place<'tcx>,
+        target: Place<'tcx>,
         rvalue: &Rvalue<'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
@@ -90,9 +88,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 | mir::AggregateKind::Array(..)),
                 fields,
             ) => {
-                let target: utils::Place<'tcx> = (*target).into();
+                let target: Place<'tcx> = (*target).into();
                 for (field_idx, field) in fields.iter().enumerate() {
-                    let operand_place: utils::Place<'tcx> = if let Some(place) = field.place() {
+                    let operand_place: Place<'tcx> = if let Some(place) = field.place() {
                         place.into()
                     } else {
                         continue;
@@ -187,7 +185,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
-                let blocked_place: utils::Place<'tcx> = (*blocked_place).into();
+                let blocked_place: Place<'tcx> = (*blocked_place).into();
                 let blocked_place = blocked_place.with_inherent_region(self.ctxt);
                 if !target.ty(self.ctxt).ty.is_ref() {
                     return Err(PcgError::unsupported(
@@ -246,21 +244,20 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 } else {
                     OperandType::Copy
                 };
-                let place_label = if matches!(operand_type, OperandType::Move) {
-                    Some(self.pre_operand_move_label())
-                } else {
-                    None
-                };
-                let place: utils::Place<'tcx> = (*place).into();
+                let place_label = matches!(operand_type, OperandType::Move)
+                    .then(|| self.pre_operand_move_label());
+                let place: Place<'tcx> = (*place).into();
                 let place = place.with_inherent_region(self.ctxt);
                 (
-                    PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
-                        .lifetime_projections(self.ctxt),
+                    self.ctxt.extract_lifetime_projections(PlaceOrConst::Place(
+                        MaybeLabelledPlace::new(place, place_label),
+                    )),
                     operand_type,
                 )
             }
             Operand::Constant(const_) => (
-                PlaceOrConst::Const(const_.const_).lifetime_projections(self.ctxt),
+                self.ctxt
+                    .extract_lifetime_projections(PlaceOrConst::Const(const_.const_)),
                 OperandType::Const,
             ),
             #[allow(unreachable_patterns)]
@@ -276,12 +273,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     fn label_lifetime_projections_for_borrow(
         &mut self,
-        blocked_place: utils::Place<'tcx>,
-        target: utils::Place<'tcx>,
+        blocked_place: Place<'tcx>,
+        target: Place<'tcx>,
         kind: mir::BorrowKind,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
-        for source_proj in blocked_place.lifetime_projections(self.ctxt).into_iter() {
+        for source_proj in blocked_place.lifetime_projections(self.ctxt) {
             let mut obtainer = self.place_obtainer();
             let source_proj = if kind.mutability().is_mut() {
                 let label = obtainer.prev_snapshot_location();
@@ -298,13 +295,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 source_proj.with_label(
                     obtainer
                         .label_for_shared_expansion_of_rp(source_proj, obtainer.ctxt)
-                        .map(convert::Into::into),
+                        .map(Into::into),
                     self.ctxt,
                 )
             };
             let source_region = source_proj.region(self.ctxt.ctxt());
             let mut nested_ref_mut_targets = vec![];
-            for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
+            for target_proj in target.lifetime_projections(self.ctxt) {
                 let target_region = target_proj.region(self.ctxt.ctxt());
                 if self
                     .ctxt

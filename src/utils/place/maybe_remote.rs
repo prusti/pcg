@@ -100,7 +100,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             MaybeRemotePlace::Local(p) => p.display_output(ctxt, mode),
-            MaybeRemotePlace::Remote(rp) => DisplayOutput::Text(format!("{rp}").into()),
+            MaybeRemotePlace::Remote(rp) => DisplayOutput::Text(rp.to_string().into()),
         }
     }
 }
@@ -111,7 +111,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> ToJsonWithCtxt<Ctxt>
     fn to_json(&self, ctxt: Ctxt) -> serde_json::Value {
         match self {
             MaybeRemotePlace::Local(p) => p.to_json(ctxt.ctxt()),
-            MaybeRemotePlace::Remote(rp) => format!("{rp}").into(),
+            MaybeRemotePlace::Remote(rp) => rp.to_string().into(),
         }
     }
 }

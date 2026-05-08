@@ -60,15 +60,12 @@ impl<'tcx> OwnedPcg<'tcx> {
                     CapabilityKind::ShallowExclusive => unreachable!(),
                 }
                 if place.as_owned_place(ctxt).is_some() {
-                    if capabilities.get(place, ctxt).is_some() {
-                    } else {
-                        pcg_validity_assert!(
-                            false,
-                            [ctxt],
-                            "No capability for {}",
-                            place.display_string(ctxt.bc_ctxt())
-                        );
-                    }
+                    pcg_validity_assert!(
+                        capabilities.get(place, ctxt).is_some(),
+                        [ctxt],
+                        "No capability for {}",
+                        place.display_string(ctxt.bc_ctxt())
+                    );
                 }
             }
             PlaceCondition::Return => {

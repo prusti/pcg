@@ -133,7 +133,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // borrowed The capability would be Write if the place is a
         // mutable reference (when dereferencing a mutable ref, the ref
         // place retains write capability)
-        if (blocked_cap.is_none() || matches!(blocked_cap, Some(CapabilityKind::Write)))
+        if matches!(blocked_cap, None | Some(CapabilityKind::Write))
             && blocked_cap != Some(restore_cap)
         {
             self.record_and_apply_action(PcgAction::restore_capability(
@@ -704,7 +704,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         self.expand_to(place, obtain_type, self.ctxt)?;
 
-        if let ObtainType::ForStorageDead = obtain_type
+        if obtain_type == ObtainType::ForStorageDead
             && self
                 .pcg
                 .place_capability_equals(place, CapabilityKind::Exclusive, self.ctxt)
@@ -748,7 +748,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         &mut self,
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
-        _ctxt: crate::utils::CompilerCtxt<'_, 'tcx>,
+        _ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
         self.pcg
             .place_capabilities

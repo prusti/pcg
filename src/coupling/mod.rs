@@ -160,11 +160,11 @@ impl<Metadata, InputNode, OutputNode> CoupledEdgeKind<Metadata, InputNode, Outpu
     pub(crate) fn new(metadata: Metadata, edge: HyperEdge<InputNode, OutputNode>) -> Self {
         Self { metadata, edge }
     }
-    pub(crate) fn inputs(&self) -> &Vec<InputNode> {
+    pub(crate) fn inputs(&self) -> &[InputNode] {
         self.edge.inputs()
     }
 
-    pub(crate) fn outputs(&self) -> &Vec<OutputNode> {
+    pub(crate) fn outputs(&self) -> &[OutputNode] {
         self.edge.outputs()
     }
 

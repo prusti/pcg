@@ -38,7 +38,7 @@ fn test_file_upload_integration() {
     let server_url = get_server_url();
 
     if !wait_for_server(&server_url, 10) {
-        println!("Skipping integration test - server not running on {}", server_url);
+        println!("Skipping integration test - server not running on {server_url}");
         return;
     }
 
@@ -59,7 +59,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/upload", server_url))
+        .post(&format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -72,7 +72,7 @@ fn main() {
             );
         }
         Err(e) => {
-            panic!("Request failed: {}", e);
+            panic!("Request failed: {e}");
         }
     }
 }
@@ -83,7 +83,7 @@ fn test_code_textarea_integration() {
     let server_url = get_server_url();
 
     if !wait_for_server(&server_url, 10) {
-        println!("Skipping integration test - server not running on {}", server_url);
+        println!("Skipping integration test - server not running on {server_url}");
         return;
     }
 
@@ -100,7 +100,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/upload", server_url))
+        .post(&format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -113,7 +113,7 @@ fn main() {
             );
         }
         Err(e) => {
-            panic!("Request failed: {}", e);
+            panic!("Request failed: {e}");
         }
     }
 }
@@ -124,7 +124,7 @@ fn test_empty_code_returns_bad_request() {
     let server_url = get_server_url();
 
     if !wait_for_server(&server_url, 10) {
-        println!("Skipping integration test - server not running on {}", server_url);
+        println!("Skipping integration test - server not running on {server_url}");
         return;
     }
 
@@ -134,7 +134,7 @@ fn test_empty_code_returns_bad_request() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/upload", server_url))
+        .post(&format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -152,7 +152,7 @@ fn test_empty_code_returns_bad_request() {
             );
         }
         Err(e) => {
-            panic!("Request failed: {}", e);
+            panic!("Request failed: {e}");
         }
     }
 }
@@ -163,7 +163,7 @@ fn test_non_rust_file_rejected() {
     let server_url = get_server_url();
 
     if !wait_for_server(&server_url, 10) {
-        println!("Skipping integration test - server not running on {}", server_url);
+        println!("Skipping integration test - server not running on {server_url}");
         return;
     }
 
@@ -178,7 +178,7 @@ fn test_non_rust_file_rejected() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/upload", server_url))
+        .post(&format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -191,7 +191,7 @@ fn test_non_rust_file_rejected() {
             );
         }
         Err(e) => {
-            panic!("Request failed: {}", e);
+            panic!("Request failed: {e}");
         }
     }
 }
@@ -202,7 +202,7 @@ fn test_compilation_error_returns_error() {
     let server_url = get_server_url();
 
     if !wait_for_server(&server_url, 10) {
-        println!("Skipping integration test - server not running on {}", server_url);
+        println!("Skipping integration test - server not running on {server_url}");
         return;
     }
 
@@ -218,7 +218,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{}/upload", server_url))
+        .post(&format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -236,7 +236,7 @@ fn main() {
             );
         }
         Err(e) => {
-            panic!("Request failed: {}", e);
+            panic!("Request failed: {e}");
         }
     }
 }

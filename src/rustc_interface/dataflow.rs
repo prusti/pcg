@@ -7,9 +7,7 @@ use super::mir_dataflow::{self, ResultsCursor};
 use super::mir_dataflow::Analysis as MirAnalysis;
 
 use super::middle::{
-    mir::{
-        self, BasicBlock, Body, CallReturnPlaces, Location, Statement, Terminator, TerminatorEdges,
-    },
+    mir::{BasicBlock, Body, CallReturnPlaces, Location, Statement, Terminator, TerminatorEdges},
     ty,
 };
 
@@ -62,11 +60,8 @@ where
     }
 
     #[rustversion::since(2025-12-01)]
-    pub fn into_results_cursor<'mir>(
-        self,
-        body: &'mir Body<'tcx>,
-    ) -> mir_dataflow::ResultsCursor<'mir, 'tcx, A> {
-        mir_dataflow::ResultsCursor::new_owning(body, self.results)
+    pub fn into_results_cursor<'mir>(self, body: &'mir Body<'tcx>) -> ResultsCursor<'mir, 'tcx, A> {
+        ResultsCursor::new_owning(body, self.results)
     }
 
     #[rustversion::all(since(2025-05-24), before(2025-12-01))]
@@ -123,7 +118,7 @@ pub trait Analysis<'tcx> {
     type Domain: mir_dataflow::JoinSemiLattice + Clone;
     type Direction: mir_dataflow::Direction;
 
-    fn bottom_value(&self, body: &mir::Body<'tcx>) -> Self::Domain;
+    fn bottom_value(&self, body: &Body<'tcx>) -> Self::Domain;
 
     fn initialize_start_block(&self, _body: &Body<'tcx>, state: &mut Self::Domain);
 
@@ -218,7 +213,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 
     type Domain = T::Domain;
 
-    fn bottom_value(&self, body: &mir::Body<'tcx>) -> Self::Domain {
+    fn bottom_value(&self, body: &Body<'tcx>) -> Self::Domain {
         self.0.bottom_value(body)
     }
 
@@ -229,7 +224,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_early_statement_effect(
         &self,
         state: &mut Self::Domain,
-        statement: &mir::Statement<'tcx>,
+        statement: &Statement<'tcx>,
         location: Location,
     ) {
         self.0
@@ -239,7 +234,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_primary_statement_effect(
         &self,
         state: &mut Self::Domain,
-        statement: &mir::Statement<'tcx>,
+        statement: &Statement<'tcx>,
         location: Location,
     ) {
         self.0.apply_statement_effect(state, statement, location);
@@ -248,7 +243,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_primary_terminator_effect<'mir>(
         &self,
         state: &mut Self::Domain,
-        terminator: &'mir mir::Terminator<'tcx>,
+        terminator: &'mir Terminator<'tcx>,
         location: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
         self.0.apply_terminator_effect(state, terminator, location)
@@ -257,7 +252,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_early_terminator_effect(
         &self,
         state: &mut Self::Domain,
-        terminator: &mir::Terminator<'tcx>,
+        terminator: &Terminator<'tcx>,
         location: Location,
     ) {
         self.0
@@ -282,7 +277,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 
     type Domain = T::Domain;
 
-    fn bottom_value(&self, body: &mir::Body<'tcx>) -> Self::Domain {
+    fn bottom_value(&self, body: &Body<'tcx>) -> Self::Domain {
         self.0.bottom_value(body)
     }
 
@@ -293,7 +288,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_early_statement_effect(
         &mut self,
         state: &mut Self::Domain,
-        statement: &mir::Statement<'tcx>,
+        statement: &Statement<'tcx>,
         location: Location,
     ) {
         self.0
@@ -303,7 +298,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_primary_statement_effect(
         &mut self,
         state: &mut Self::Domain,
-        statement: &mir::Statement<'tcx>,
+        statement: &Statement<'tcx>,
         location: Location,
     ) {
         self.0.apply_statement_effect(state, statement, location);
@@ -312,7 +307,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_primary_terminator_effect<'mir>(
         &mut self,
         state: &mut Self::Domain,
-        terminator: &'mir mir::Terminator<'tcx>,
+        terminator: &'mir Terminator<'tcx>,
         location: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
         self.0.apply_terminator_effect(state, terminator, location)
@@ -321,7 +316,7 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
     fn apply_early_terminator_effect(
         &mut self,
         state: &mut Self::Domain,
-        terminator: &mir::Terminator<'tcx>,
+        terminator: &Terminator<'tcx>,
         location: Location,
     ) {
         self.0

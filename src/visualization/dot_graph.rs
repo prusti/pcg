@@ -109,7 +109,7 @@ impl DotGraph {
         if !imgcat_status.success() {
             return Err(std::io::Error::other("imgcat command failed"));
         }
-        tracing::info!("↑ {} ↑\n", comment);
+        tracing::info!("↑ {comment} ↑\n");
 
         Ok(())
     }

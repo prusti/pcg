@@ -122,7 +122,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &'slf mut self,
     ) -> Result<PcgTerminator<'a, 'tcx>, PcgError<'tcx>> {
         let location = self.curr_stmt.unwrap();
-        assert!(location == self.end_stmt.unwrap());
+        assert_eq!(location, self.end_stmt.unwrap());
         self.curr_stmt = None;
         self.end_stmt = None;
 
@@ -272,7 +272,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         }
     }
 
-    fn aggregate<T: std::hash::Hash + std::cmp::Eq>(
+    fn aggregate<T: std::hash::Hash + Eq>(
         &self,
         f: impl Fn(&PcgLocation<'_, 'tcx>) -> FxHashSet<T>,
     ) -> FxHashSet<T> {
@@ -430,11 +430,9 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
                 PcgNode::LifetimeProjection(p) => match p.base() {
                     PlaceOrConst::Place(p) => {
                         let assoc_place = p.related_local_place();
-                        if assoc_place.is_ref(ctxt) {
-                            Some(assoc_place.project_deref(ctxt))
-                        } else {
-                            None
-                        }
+                        assoc_place
+                            .is_ref(ctxt)
+                            .then(|| assoc_place.project_deref(ctxt))
                     }
                     _ => None,
                 },

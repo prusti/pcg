@@ -55,7 +55,7 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for PcgCoupled
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -65,7 +65,7 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> EdgeData<'tcx, Ctxt, P> for PcgCoupled
     fn blocked_by_nodes<'slf>(
         &'slf self,
         _ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -79,7 +79,7 @@ impl<'a, 'tcx, BC: Copy, T: EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>>>
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'a, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = crate::pcg::PcgNode<'tcx>> + 'slf>
+    ) -> Box<dyn Iterator<Item = PcgNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -92,7 +92,7 @@ impl<'a, 'tcx, BC: Copy, T: EdgeData<'tcx, CompilerCtxt<'a, 'tcx, BC>>>
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: CompilerCtxt<'a, 'tcx, BC>,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx>> + 'slf>
     where
         'tcx: 'slf,
     {

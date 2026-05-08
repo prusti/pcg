@@ -1,12 +1,12 @@
 use crate::{
     borrow_pcg::{
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{LifetimeProjection, PlaceOrConst},
+        region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         state::BorrowStateRef,
     },
-    pcg::owned_state::{LocalInitState, OwnedPcg},
     pcg::{
         CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef,
+        owned_state::{LocalInitState, OwnedPcg},
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
@@ -98,7 +98,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             }
         };
         let loans = if let Some(output) = self.ctxt.borrow_checker.polonius_output()
-            && let Some(region_vid) = projection.region(self.ctxt).vid()
+            && let Some(region_vid) = projection.region::<PcgRegion<'tcx>, _>(self.ctxt).vid()
         {
             let region_vid = region_vid.into();
             let render_loans = |loans: Option<&BTreeSet<BorrowIndex>>| {
@@ -128,7 +128,10 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 );
                 format!(
                     "Loans in {} - before: {}, mid: {}",
-                    DisplayWithCtxt::<_>::display_string(&projection.region(self.ctxt), self.ctxt),
+                    DisplayWithCtxt::<_>::display_string(
+                        &projection.region::<PcgRegion<'tcx>, _>(self.ctxt),
+                        self.ctxt
+                    ),
                     loans_before,
                     loans_after
                 )

@@ -144,13 +144,7 @@ impl<'a, 'tcx> AnalysisCtxt<'a, 'tcx> {
     }
     pub(crate) fn matches(&self, predicate: &LogPredicate) -> bool {
         match predicate {
-            LogPredicate::DebugBlock => {
-                if let Some(debug_block) = self.settings.debug_block {
-                    debug_block == self.block
-                } else {
-                    false
-                }
-            }
+            LogPredicate::DebugBlock => self.settings.debug_block == Some(self.block),
         }
     }
 }

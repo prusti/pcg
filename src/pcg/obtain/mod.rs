@@ -1,6 +1,6 @@
 pub(crate) mod expand;
 
-use std::{convert, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::{
     HasSettings,
@@ -14,7 +14,7 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{LifetimeProjection, LocalLifetimeProjection, PcgRegion},
         state::BorrowStateMutRef,
     },
     error::PcgError,
@@ -116,9 +116,7 @@ impl ObtainType {
     where
         'tcx: 'a,
     {
-        if let ObtainType::Capability(CapabilityKind::Write) = self
-            && current_cap.is_exclusive()
-        {
+        if self == ObtainType::Capability(CapabilityKind::Write) && current_cap.is_exclusive() {
             CapabilityKind::Exclusive
         } else {
             self.capability(place, ctxt)
@@ -279,11 +277,14 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                         .flat_map(|ep| {
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
-                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
-                                .map(convert::Into::into)
+                                .filter(|erp| {
+                                    erp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
+                                        == rp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
+                                })
+                                .map(Into::into)
                                 .collect::<Vec<_>>()
                         })
-                        .collect::<Vec<_>>();
+                        .collect();
                     if rp_expansion.len() > 1 && capability.is_exclusive() {
                         self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
                     }

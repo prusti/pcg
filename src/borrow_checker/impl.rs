@@ -6,7 +6,7 @@ use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
     BodyAndBorrows,
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::{HasRegions, PcgRegion},
+    borrow_pcg::region_projection::{ExtractRegionsCtxt, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -128,7 +128,7 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
         }
     }
 
-    pub fn origin_live_on_entry(&self, location: RichLocation) -> Option<BTreeSet<ty::RegionVid>> {
+    pub fn origin_live_on_entry(&self, location: RichLocation) -> Option<BTreeSet<RegionVid>> {
         let origins = match location {
             RichLocation::Start(location) => self.output_facts.origin_live_on_entry.get(
                 &self
@@ -144,7 +144,7 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
         Some(origins.iter().map(|r| (*r).into()).collect())
     }
 
-    pub fn loans_live_at(&self, location: RichLocation) -> BTreeSet<ty::RegionVid> {
+    pub fn loans_live_at(&self, location: RichLocation) -> BTreeSet<RegionVid> {
         let loans = match location {
             RichLocation::Start(location) => self.output_facts.loans_in_scope_at(
                 self.borrow_checker_data
@@ -164,7 +164,7 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
     pub fn origin_contains_loan_at_map(
         &self,
         location: RichLocation,
-    ) -> Option<BTreeMap<ty::RegionVid, BTreeSet<BorrowIndex>>> {
+    ) -> Option<BTreeMap<RegionVid, BTreeSet<BorrowIndex>>> {
         let location_table = self.location_table();
         let loans = match location {
             RichLocation::Start(location) => self
@@ -193,10 +193,11 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
-        let regions: Vec<_> = match node {
-            PcgNode::Place(place) => place.regions(self.ctxt()).into_iter().collect(),
+        let ctxt = self.ctxt();
+        let regions: Vec<PcgRegion<'tcx>> = match node {
+            PcgNode::Place(place) => ctxt.extract_regions(place).into_iter().collect(),
             PcgNode::LifetimeProjection(lifetime_projection) => {
-                vec![lifetime_projection.region(self.ctxt())]
+                vec![lifetime_projection.region(ctxt)]
             }
         };
 
@@ -207,7 +208,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
 
         let live_loans = self.output_facts.loans_in_scope_at(start_index);
 
-        let live_origins: BTreeSet<ty::RegionVid> = self
+        let live_origins: BTreeSet<RegionVid> = self
             .output_facts
             .origins_live_at(start_index)
             .iter()
@@ -258,11 +259,10 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
         location: Location,
     ) -> bool {
         self.origin_contains_loan_at_map(RichLocation::Start(location))
-            .and_then(|map| {
+            .is_some_and(|map| {
                 map.get(&region.vid().unwrap())
-                    .map(|set| set.contains(&loan))
+                    .is_some_and(|set| set.contains(&loan))
             })
-            .unwrap_or(false)
     }
 
     fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {

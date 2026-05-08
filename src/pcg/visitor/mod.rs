@@ -23,7 +23,7 @@ use crate::{
 };
 
 use crate::utils::{
-    self, AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+    AnalysisLocation, DataflowCtxt, HasCompilerCtxt, Place, SnapshotLocation,
     maybe_old::MaybeLabelledPlace, visitor::FallableVisitor,
 };
 
@@ -137,7 +137,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                 self.perform_borrow_initial_pre_operand_actions()?;
                 self.place_obtainer().collapse_owned_places()?;
                 for triple in &self.tw.operand_triples {
-                    tracing::debug!("Require triple {:?}", triple);
+                    tracing::debug!("Require triple {triple:?}");
                     self.require_triple(*triple)?;
                 }
             }
@@ -148,7 +148,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             }
             EvalStmtPhase::PreMain => {
                 for triple in &self.tw.main_triples {
-                    tracing::debug!("Require triple {:?}", triple);
+                    tracing::debug!("Require triple {triple:?}");
                     self.require_triple(*triple)?;
                 }
             }
@@ -186,7 +186,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind<'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
         let ctxt = self.ctxt;
-        for target_proj in target.lifetime_projections(self.ctxt).into_iter() {
+        for target_proj in target.lifetime_projections(self.ctxt) {
             if self.outlives(
                 source_proj.region(ctxt.ctxt()),
                 target_proj.region(ctxt.ctxt()),

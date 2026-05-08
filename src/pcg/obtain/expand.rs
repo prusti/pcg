@@ -60,7 +60,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError<'tcx>> {
         for (base, _) in place.iter_projections() {
-            let base: crate::utils::Place = base.into();
+            let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
             if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {

@@ -13,7 +13,7 @@ use crate::{
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
         region_projection::LifetimeProjectionLabel,
     },
-    rustc_interface::middle::mir::{self, BasicBlock, Location},
+    rustc_interface::middle::mir::{BasicBlock, Location},
     utils::{
         DebugCtxt, PcgPlace, Place,
         data_structures::HashSet,
@@ -26,10 +26,10 @@ pub(crate) type LoopAbstractionEdge<'tcx, P = Place<'tcx>> =
     AbstractionBlockEdge<'tcx, LoopAbstractionInput<'tcx, P>, LoopAbstractionOutput<'tcx>>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
-pub struct LoopAbstractionEdgeMetadata(mir::BasicBlock);
+pub struct LoopAbstractionEdgeMetadata(BasicBlock);
 
 impl LoopAbstractionEdgeMetadata {
-    pub(crate) fn loop_head_block(self) -> mir::BasicBlock {
+    pub(crate) fn loop_head_block(self) -> BasicBlock {
         self.0
     }
 }
@@ -58,7 +58,7 @@ where
     fn blocked_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = BlockedNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {
@@ -68,7 +68,7 @@ where
     fn blocked_by_nodes<'slf>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Box<dyn std::iter::Iterator<Item = LocalNode<'tcx, P>> + 'slf>
+    ) -> Box<dyn Iterator<Item = LocalNode<'tcx, P>> + 'slf>
     where
         'tcx: 'slf,
     {

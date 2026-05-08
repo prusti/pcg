@@ -102,11 +102,8 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
         EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
         P: PcgPlace<'tcx, Ctxt>,
     {
-        {
-            let nodes = self.nodes_cache.borrow();
-            if nodes.is_some() {
-                return Ref::map(nodes, |o| o.as_ref().unwrap());
-            }
+        if let Ok(nodes) = Ref::filter_map(self.nodes_cache.borrow(), Option::as_ref) {
+            return nodes;
         }
         let nodes = self.graph.nodes(ctxt);
         self.nodes_cache.replace(Some(nodes));
@@ -116,7 +113,7 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
 
 impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     pub(crate) fn is_acyclic<'mir: 'graph, 'bc: 'graph>(
-        &mut self,
+        &self,
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> bool {
         enum PushResult<'tcx, 'graph> {
@@ -192,11 +189,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> Ref<'slf, FxHashSet<PcgNode<'tcx>>> {
-        {
-            let roots = self.roots_cache.borrow();
-            if roots.is_some() {
-                return Ref::map(roots, |o| o.as_ref().unwrap());
-            }
+        if let Ok(roots) = Ref::filter_map(self.roots_cache.borrow(), Option::as_ref) {
+            return roots;
         }
         let roots = self.graph.roots(ctxt);
         self.roots_cache.replace(Some(roots));
@@ -212,8 +206,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     {
         {
             let edges = self.leaf_edges_cache.borrow();
-            if edges.is_some() {
-                return edges.as_ref().unwrap().clone();
+            if let Some(edges) = edges.as_ref() {
+                return edges.clone();
             }
         }
         let edges: CachedLeafEdges<'graph, 'tcx> = self.graph.leaf_edges_set(ctxt, self);
@@ -228,8 +222,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     ) -> CachedBlockingEdges<'graph, 'tcx> {
         {
             let map = self.edges_blocking_cache.borrow();
-            if map.contains_key(&node) {
-                return map[&node].clone();
+            if let Some(edges) = map.get(&node) {
+                return edges.clone();
             }
         }
         let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
@@ -249,8 +243,8 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     {
         {
             let map = self.edges_blocking_cache.borrow();
-            if map.contains_key(&node) {
-                return !map[&node].is_empty();
+            if let Some(edges) = map.get(&node) {
+                return !edges.is_empty();
             }
         }
         let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
