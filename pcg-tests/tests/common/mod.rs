@@ -81,6 +81,10 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
             "PCG_VALIDITY_CHECKS",
             format!("{}", options.validity_checks()),
         )
+        // Allow building pyo3 against Python interpreters newer than the
+        // pinned pyo3 version's max supported version (e.g. Python 3.14 with
+        // pyo3 0.24, which only officially supports up to 3.13).
+        .env("PYO3_USE_ABI3_FORWARD_COMPATIBILITY", "1")
         .env("PCG_BE_RUSTC", "true")
         .env("RUSTC", &pcg_exe);
     for (key, value) in options.extra_env_vars() {

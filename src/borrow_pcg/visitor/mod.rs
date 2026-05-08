@@ -1,13 +1,17 @@
 use std::{collections::HashMap, hash::Hash};
 
-use crate::rustc_interface::{
-    index::IndexVec,
-    middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
+use crate::{
+    borrow_pcg::region_projection::region_is_invariant_in_type,
+    rustc_interface::{
+        index::IndexVec,
+        middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
+    },
+    utils::HasTyCtxt,
 };
 
 use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion, Region};
 
-/// Trait abstracting over region extraction strategies.
+/// Trait abstracting over lifetimes
 ///
 /// Implementors define which "lifetime-like" values are extracted from a type
 /// and which [`LifetimeProjectionIdx`] kind they correspond to. The two
@@ -19,48 +23,34 @@ use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion, Re
 pub trait LifetimeKind<'tcx>: Sized + Copy + PartialEq + Eq + std::fmt::Debug + Hash {
     /// The index kind: [`Region`] for lifetime projections, [`Generalized`]
     /// for generalized lifetime projections.
-    type IdxKind: super::region_projection::RegionIdxKind;
+    type IdxMarker: super::region_projection::RegionIdxMarker;
+}
 
-    /// Extract all lifetime-like values from `ty`.
-    fn extract(
-        ty: ty::Ty<'tcx>,
-        tcx: ty::TyCtxt<'tcx>,
-    ) -> IndexVec<LifetimeProjectionIdx<Self::IdxKind>, Self>;
-
+pub(crate) trait LifetimeDataCtxt<'tcx, Kind: LifetimeKind<'tcx>> {
     /// Whether this lifetime appears in an invariant (mutable) position in `ty`.
-    fn is_invariant_in_type(self, ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> bool;
+    fn is_invariant_in_type(&self, kind: Kind, ty: ty::Ty<'tcx>) -> bool;
 }
 
 impl<'tcx> LifetimeKind<'tcx> for PcgRegion<'tcx> {
-    type IdxKind = Region;
+    type IdxMarker = Region;
+}
 
-    fn extract(
-        ty: ty::Ty<'tcx>,
-        _tcx: ty::TyCtxt<'tcx>,
-    ) -> IndexVec<LifetimeProjectionIdx<Region>, Self> {
-        extract_regions(ty)
-    }
-
-    fn is_invariant_in_type(self, ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> bool {
-        super::region_projection::region_is_invariant_in_type(tcx, self, ty)
+impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, PcgRegion<'tcx>> for Ctxt {
+    fn is_invariant_in_type(&self, kind: PcgRegion<'tcx>, ty: ty::Ty<'tcx>) -> bool {
+        region_is_invariant_in_type(self.tcx(), kind, ty)
     }
 }
 
 impl<'tcx> LifetimeKind<'tcx> for GeneralizedLifetime<'tcx> {
-    type IdxKind = Generalized;
+    type IdxMarker = Generalized;
+}
 
-    fn extract(
-        ty: ty::Ty<'tcx>,
-        _tcx: ty::TyCtxt<'tcx>,
-    ) -> IndexVec<LifetimeProjectionIdx<Generalized>, Self> {
-        extract_generalized_lifetimes(ty)
-    }
-
-    fn is_invariant_in_type(self, ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> bool {
-        match self {
-            GeneralizedLifetime::Region(region) => {
-                super::region_projection::region_is_invariant_in_type(tcx, region, ty)
-            }
+impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifetime<'tcx>>
+    for Ctxt
+{
+    fn is_invariant_in_type(&self, kind: GeneralizedLifetime<'tcx>, ty: ty::Ty<'tcx>) -> bool {
+        match kind {
+            GeneralizedLifetime::Region(region) => self.is_invariant_in_type(region, ty),
             // A type parameter `T` that appears in the type is always
             // considered invariant — any borrows hidden inside could be
             // affected by the function.
@@ -243,28 +233,13 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
 /// aliases), in the order they appear, with duplicates removed.
 ///
 /// See the [`glfts(τ)` definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
-pub(crate) fn extract_generalized_lifetimes(
-    ty: ty::Ty<'_>,
-) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'_>> {
-    let mut visitor = GeneralizedLifetimeExtractor {
-        lifetimes: vec![],
-        trait_bound_regions: None,
-    };
-    ty.visit_with(&mut visitor);
-    visitor.lifetimes.into_iter().collect()
-}
-
-/// Like [`extract_generalized_lifetimes`], but also includes regions from
-/// trait bounds of type parameters. For a type parameter `T` with bound
-/// `T: Foo<'a, 'b>`, the resulting list will contain `RegionsIn(T)` followed
-/// by `Region('a)` and `Region('b)`.
-pub(crate) fn extract_generalized_lifetimes_with_bounds<'tcx>(
+pub(crate) fn extract_generalized_lifetimes<'tcx>(
     ty: ty::Ty<'tcx>,
-    trait_bound_regions: &HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>,
+    trait_bound_regions: Option<&HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>>,
 ) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
     let mut visitor = GeneralizedLifetimeExtractor {
         lifetimes: vec![],
-        trait_bound_regions: Some(trait_bound_regions),
+        trait_bound_regions,
     };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.into_iter().collect()

@@ -14,7 +14,7 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LifetimeProjection, LocalLifetimeProjection},
+        region_projection::{LifetimeProjection, LocalLifetimeProjection, PcgRegion},
         state::BorrowStateMutRef,
     },
     error::PcgError,
@@ -277,7 +277,10 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                         .flat_map(|ep| {
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
-                                .filter(|erp| erp.region(ctxt.ctxt()) == rp.region(ctxt.ctxt()))
+                                .filter(|erp| {
+                                    erp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
+                                        == rp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
+                                })
                                 .map(Into::into)
                                 .collect::<Vec<_>>()
                         })

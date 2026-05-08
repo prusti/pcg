@@ -6,7 +6,7 @@ use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
     BodyAndBorrows,
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::{HasRegions, PcgRegion},
+    borrow_pcg::region_projection::{ExtractRegionsCtxt, PcgRegion},
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -193,10 +193,11 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
-        let regions: Vec<_> = match node {
-            PcgNode::Place(place) => place.regions(self.ctxt()).into_iter().collect(),
+        let ctxt = self.ctxt();
+        let regions: Vec<PcgRegion<'tcx>> = match node {
+            PcgNode::Place(place) => ctxt.extract_regions(place).into_iter().collect(),
             PcgNode::LifetimeProjection(lifetime_projection) => {
-                vec![lifetime_projection.region(self.ctxt())]
+                vec![lifetime_projection.region(ctxt)]
             }
         };
 

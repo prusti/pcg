@@ -7,7 +7,7 @@ use crate::{
             AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
         },
         edge_data::LabelNodePredicate,
-        region_projection::{HasRegions, PlaceOrConst},
+        region_projection::{ExtractRegionsCtxt, PlaceOrConst},
     },
     pcg::{
         CapabilityKind, EvalStmtPhase,
@@ -156,13 +156,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 let place: Place<'tcx> = (*place).into();
                 let place = place.with_inherent_region(self.ctxt);
                 (
-                    PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
-                        .lifetime_projections(self.ctxt),
+                    self.ctxt.extract_lifetime_projections(PlaceOrConst::Place(
+                        MaybeLabelledPlace::new(place, place_label),
+                    )),
                     operand_type,
                 )
             }
             Operand::Constant(const_) => (
-                PlaceOrConst::Const(const_.const_).lifetime_projections(self.ctxt),
+                self.ctxt
+                    .extract_lifetime_projections(PlaceOrConst::Const(const_.const_)),
                 OperandType::Const,
             ),
             #[allow(unreachable_patterns)]

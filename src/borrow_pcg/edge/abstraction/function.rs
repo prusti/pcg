@@ -14,8 +14,8 @@ use crate::{
             NodeReplacement,
         },
         has_pcs_elem::{LabelLifetimeProjectionResult, PlaceLabeller},
-        region_projection::{LifetimeProjectionLabel, PcgRegion, region_is_invariant_in_type},
-        visitor::{GeneralizedLifetime, OpaqueTy, extract_generalized_lifetimes_with_bounds},
+        region_projection::{LifetimeProjectionLabel, PcgRegion},
+        visitor::{GeneralizedLifetime, OpaqueTy, extract_generalized_lifetimes},
     },
     coupling::CoupledEdgeKind,
     pcg::PcgNodeWithPlace,
@@ -83,18 +83,6 @@ where
         generalized_outlives(sup, sub, &self.outlives, sig.inputs(), ctxt.tcx())
     }
 
-    fn is_invariant(
-        &self,
-        lifetime: GeneralizedLifetime<'tcx>,
-        ty: ty::Ty<'tcx>,
-        ctxt: Ctxt,
-    ) -> bool {
-        match lifetime {
-            GeneralizedLifetime::RegionsIn(_) => true,
-            GeneralizedLifetime::Region(r) => region_is_invariant_in_type(ctxt.tcx(), r, ty),
-        }
-    }
-
     fn input_arg_projections(
         &self,
         ctxt: Ctxt,
@@ -104,7 +92,7 @@ where
             .into_iter()
             .enumerate()
             .flat_map(|(i, ty)| {
-                let lifetimes = extract_generalized_lifetimes_with_bounds(ty, tbr.as_map());
+                let lifetimes = extract_generalized_lifetimes(ty, Some(tbr.as_map()));
                 ProjectionData::nodes_for_extracted(i.into(), ty, lifetimes)
             })
             .collect()
@@ -115,8 +103,7 @@ where
         ctxt: Ctxt,
     ) -> Vec<ProjectionData<'tcx, ArgIdxOrResult, GeneralizedLifetime<'tcx>>> {
         let tbr = TraitBoundRegions::new(self.outlives.param_env);
-        let mut lifetimes =
-            extract_generalized_lifetimes_with_bounds(self.output_ty(ctxt), tbr.as_map());
+        let mut lifetimes = extract_generalized_lifetimes(self.output_ty(ctxt), Some(tbr.as_map()));
 
         // For type parameters in the result, we cannot know which lifetimes
         // they will capture at the call site. Add all signature lifetimes as
@@ -126,7 +113,7 @@ where
             let sig = self.sig(ctxt.tcx());
             let tbr_map = tbr.as_map();
             for input_ty in sig.inputs() {
-                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
                     if matches!(gl, GeneralizedLifetime::Region(_)) && !lifetimes.raw.contains(&gl)
                     {
                         lifetimes.push(gl);
@@ -273,8 +260,8 @@ fn generalized_outlives<'tcx>(
 ///
 /// For bounds like `T: Foo<'a, 'b>` and `T: Bar<'c>`, stores
 /// `T -> {'a, 'b, 'c}`. These are used to create additional lifetime
-/// projections in the function signature (see
-/// [`extract_generalized_lifetimes_with_bounds`]) and to determine
+/// projections in the function signature (passed to
+/// [`extract_generalized_lifetimes`]) and to determine
 /// trait-bound region invariance, but do **not** produce edges in the
 /// generalized outlives graph. The bound `T: Foo<'a>` does not imply
 /// `T: 'a`, nor that `'a` is a region "in" `T`.
@@ -727,7 +714,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
             let param_ty = opaque_ty.ty(ctxt.tcx());
             let tbr = TraitBoundRegions::new(self.outlives.param_env);
             let tbr_map = tbr.as_map();
-            let bound_regions = extract_generalized_lifetimes_with_bounds(param_ty, tbr_map);
+            let bound_regions = extract_generalized_lifetimes(param_ty, Some(tbr_map));
             for gl in bound_regions {
                 if matches!(gl, GeneralizedLifetime::Region(_))
                     && generalized_outlives(
@@ -744,7 +731,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
             // Also check against all signature lifetimes (since T could
             // contain borrows under any of them).
             for input_ty in &identity_input_tys {
-                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
                     if matches!(gl, GeneralizedLifetime::Region(_))
                         && generalized_outlives(
                             sup_gl,

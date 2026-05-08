@@ -14,7 +14,7 @@ use crate::{
         edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         region_projection::{
-            HasRegions, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
+            ExtractRegionsCtxt, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
         },
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
@@ -109,8 +109,9 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
-            MaybeRemoteCurrentPlace::Remote(place) => place
-                .lifetime_projections(ctxt)
+            MaybeRemoteCurrentPlace::Remote(place) => ctxt
+                .ctxt()
+                .extract_lifetime_projections(place)
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),

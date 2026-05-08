@@ -66,7 +66,7 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
 
 use pcg::borrow_pcg::{
     FunctionShapeInput, FunctionShapeOutput, edge::abstraction::AbstractionBlockEdge,
-    region_projection::RegionIdxKind,
+    region_projection::RegionIdxMarker,
 };
 
 type Edge<Kind> =
@@ -74,7 +74,7 @@ type Edge<Kind> =
 
 /// Formats a function shape input node, using the formatter for pretty labels
 /// when available, otherwise falling back to the raw `Display` representation.
-fn format_input<Kind: RegionIdxKind>(
+fn format_input<Kind: RegionIdxMarker>(
     input: &FunctionShapeInput<Kind>,
     formatter: Option<&ShapeLabelFormatter>,
 ) -> String {
@@ -89,7 +89,7 @@ fn format_input<Kind: RegionIdxKind>(
 
 /// Formats a function shape output node, using the formatter for pretty labels
 /// when available, otherwise falling back to the raw `Display` representation.
-fn format_output<Kind: RegionIdxKind>(
+fn format_output<Kind: RegionIdxMarker>(
     output: &FunctionShapeOutput<Kind>,
     formatter: Option<&ShapeLabelFormatter>,
 ) -> String {
@@ -103,7 +103,7 @@ fn format_output<Kind: RegionIdxKind>(
 }
 
 /// Formats an edge using the formatter for pretty labels when available.
-fn format_edge<Kind: RegionIdxKind>(
+fn format_edge<Kind: RegionIdxMarker>(
     edge: &Edge<Kind>,
     formatter: Option<&ShapeLabelFormatter>,
 ) -> String {
@@ -121,7 +121,7 @@ fn format_edge<Kind: RegionIdxKind>(
 /// inputs, outputs, and edges on failure. When a [`ShapeLabelFormatter`] is
 /// provided, nodes are annotated with visualization-style names (e.g.
 /// `self↓'a`).
-fn assert_shape_eq_with_formatter<Kind: RegionIdxKind>(
+fn assert_shape_eq_with_formatter<Kind: RegionIdxMarker>(
     actual: &FunctionShape<Kind>,
     expected: &FunctionShape<Kind>,
     formatter: Option<&ShapeLabelFormatter>,
@@ -194,7 +194,7 @@ fn assert_shape_eq_with_formatter<Kind: RegionIdxKind>(
 
 /// Asserts that `actual` equals `expected`, printing a human-readable diff of
 /// inputs, outputs, and edges on failure.
-fn assert_shape_eq<Kind: RegionIdxKind>(
+fn assert_shape_eq<Kind: RegionIdxMarker>(
     actual: &FunctionShape<Kind>,
     expected: &FunctionShape<Kind>,
 ) {

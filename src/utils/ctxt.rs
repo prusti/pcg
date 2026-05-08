@@ -3,7 +3,11 @@ use crate::{
     borrow_checker::{BorrowCheckerInterface, RustBorrowCheckerInterface},
     borrow_pcg::{
         borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{PcgRegion, TyVarianceVisitor, default_region_display_output},
+        region_projection::{
+            ExtractRegionsCtxt, Generalized, HasTy, LifetimeProjectionIdx, PcgRegion, Region,
+            TyVarianceVisitor, default_region_display_output,
+        },
+        visitor::{GeneralizedLifetime, extract_generalized_lifetimes, extract_regions},
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -12,6 +16,7 @@ use crate::{
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
         borrowck::{BorrowSet, LocationTable},
+        index::IndexVec,
         middle::{
             mir::{
                 BasicBlock, Body, HasLocalDecls, Local, Mutability, Place as MirPlace, PlaceElem,
@@ -391,6 +396,27 @@ pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tc
 {
     fn bc(&self) -> BC;
     fn bc_ctxt(&self) -> CompilerCtxt<'a, 'tcx, BC>;
+}
+
+impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, PcgRegion<'tcx>> for Ctxt {
+    fn extract_regions(self, data: T) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'tcx>> {
+        extract_regions(data.rust_ty(self))
+    }
+}
+
+impl<'tcx, Ctxt: Copy> ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, GeneralizedLifetime<'tcx>> for Ctxt {
+    fn extract_regions(
+        self,
+        data: ty::Ty<'tcx>,
+    ) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
+        extract_generalized_lifetimes(data, None)
+    }
+}
+
+impl<'tcx, Ctxt> HasTy<'tcx, Ctxt> for ty::Ty<'tcx> {
+    fn rust_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
+        *self
+    }
 }
 
 pub trait HasTyCtxt<'tcx> {

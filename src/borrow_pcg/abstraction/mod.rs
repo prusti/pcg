@@ -16,10 +16,10 @@ use crate::{
             },
         },
         region_projection::{
-            Generalized, HasTy, LifetimeProjection, LifetimeProjectionIdx, PcgRegion, Region,
-            RegionIdxKind, default_region_display_output,
+            ExtractRegionsCtxt, Generalized, HasTy, LifetimeProjection, LifetimeProjectionIdx,
+            PcgRegion, Region, RegionIdxMarker, default_region_display_output,
         },
-        visitor::{GeneralizedLifetime, LifetimeKind},
+        visitor::{GeneralizedLifetime, LifetimeDataCtxt, LifetimeKind},
     },
     coupling::{CoupleAbstractionError, CoupledEdgesData},
     rustc_interface::{
@@ -117,9 +117,9 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         })
     }
 
-    fn defined_fn_call_shape<'a>(
+    fn defined_fn_call_shape<'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
         self,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+        ctxt: Ctxt,
     ) -> Option<FunctionShape>
     where
         'tcx: 'a,
@@ -184,33 +184,34 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> {
     fn output_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
     fn outlives(&self, sup: Self::Lifetime, sub: Self::Lifetime, ctxt: Ctxt) -> bool;
 
-    /// Whether `lifetime` is in an invariant position in `ty`.
-    fn is_invariant(&self, lifetime: Self::Lifetime, ty: ty::Ty<'tcx>, ctxt: Ctxt) -> bool {
-        lifetime.is_invariant_in_type(ty, ctxt.tcx())
-    }
-
-    fn input_arg_projections(
-        &self,
-        ctxt: Ctxt,
-    ) -> Vec<ProjectionData<'tcx, ArgIdx, Self::Lifetime>> {
+    fn input_arg_projections(&self, ctxt: Ctxt) -> Vec<ProjectionData<'tcx, ArgIdx, Self::Lifetime>>
+    where
+        Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, Self::Lifetime>,
+    {
         self.input_tys(ctxt)
             .into_iter()
             .enumerate()
-            .flat_map(|(i, ty)| ProjectionData::nodes_for_ty(i.into(), ty, ctxt.tcx()))
+            .flat_map(|(i, ty)| ProjectionData::nodes_for_ty(i.into(), ty, ctxt))
             .collect()
     }
 
     fn result_projections(
         &self,
         ctxt: Ctxt,
-    ) -> Vec<ProjectionData<'tcx, ArgIdxOrResult, Self::Lifetime>> {
-        ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.output_ty(ctxt), ctxt.tcx())
+    ) -> Vec<ProjectionData<'tcx, ArgIdxOrResult, Self::Lifetime>>
+    where
+        Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, Self::Lifetime>,
+    {
+        ProjectionData::nodes_for_ty(ArgIdxOrResult::Result, self.output_ty(ctxt), ctxt)
     }
 
     fn inputs(
         &self,
         ctxt: Ctxt,
-    ) -> Vec<FunctionShapeInput<<Self::Lifetime as LifetimeKind<'tcx>>::IdxKind>> {
+    ) -> Vec<FunctionShapeInput<<Self::Lifetime as LifetimeKind<'tcx>>::IdxMarker>>
+    where
+        Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, Self::Lifetime>,
+    {
         self.input_arg_projections(ctxt)
             .into_iter()
             .map(|pd| FunctionShapeInput::from_index(pd.base, pd.region_idx))
@@ -220,7 +221,10 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> {
     fn outputs(
         &self,
         ctxt: Ctxt,
-    ) -> Vec<FunctionShapeOutput<<Self::Lifetime as LifetimeKind<'tcx>>::IdxKind>> {
+    ) -> Vec<FunctionShapeOutput<<Self::Lifetime as LifetimeKind<'tcx>>::IdxMarker>>
+    where
+        Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, Self::Lifetime>,
+    {
         self.result_projections(ctxt)
             .into_iter()
             .map(|pd| FunctionShapeOutput::from_index(pd.base, pd.region_idx))
@@ -232,13 +236,17 @@ pub(crate) trait FunctionShapeDataSource<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy> {
 pub(crate) struct ProjectionData<'tcx, T, L: LifetimeKind<'tcx> = PcgRegion<'tcx>> {
     base: T,
     ty: ty::Ty<'tcx>,
-    region_idx: LifetimeProjectionIdx<L::IdxKind>,
+    region_idx: LifetimeProjectionIdx<L::IdxMarker>,
     region: L,
 }
 
 impl<'tcx, T: Copy, L: LifetimeKind<'tcx>> ProjectionData<'tcx, T, L> {
-    fn nodes_for_ty(base: T, ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<Self> {
-        L::extract(ty, tcx)
+    fn nodes_for_ty<Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, L>>(
+        base: T,
+        ty: ty::Ty<'tcx>,
+        ctxt: Ctxt,
+    ) -> Vec<Self> {
+        ctxt.extract_regions(ty)
             .into_iter()
             .enumerate()
             .map(|(region_idx, region)| Self {
@@ -255,7 +263,7 @@ impl<'tcx, T: Copy, L: LifetimeKind<'tcx>> ProjectionData<'tcx, T, L> {
     pub(crate) fn nodes_for_extracted(
         base: T,
         ty: ty::Ty<'tcx>,
-        lifetimes: IndexVec<LifetimeProjectionIdx<L::IdxKind>, L>,
+        lifetimes: IndexVec<LifetimeProjectionIdx<L::IdxMarker>, L>,
     ) -> Vec<Self> {
         lifetimes
             .into_iter()
@@ -316,7 +324,7 @@ impl<'tcx> From<ProjectionData<'tcx, ArgIdx, GeneralizedLifetime<'tcx>>>
 
 pub type FunctionShapeInput<Kind = Region> = LifetimeProjection<'static, ArgIdx, Kind>;
 
-impl<Kind: RegionIdxKind> FunctionShapeInput<Kind> {
+impl<Kind: RegionIdxMarker> FunctionShapeInput<Kind> {
     #[must_use]
     pub fn to_function_shape_node(self) -> FunctionShapeNode<Kind> {
         self.with_base(ArgIdxOrResult::Argument(self.base))
@@ -333,13 +341,13 @@ pub type FunctionShapeOutput<Kind = Region> = LifetimeProjection<'static, ArgIdx
 /// Either an input or output in the shape of the function.
 pub type FunctionShapeNode<Kind = Region> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;
 
-impl<Kind: RegionIdxKind> From<FunctionShapeInput<Kind>> for FunctionShapeNode<Kind> {
+impl<Kind: RegionIdxMarker> From<FunctionShapeInput<Kind>> for FunctionShapeNode<Kind> {
     fn from(value: FunctionShapeInput<Kind>) -> Self {
         value.to_function_shape_node()
     }
 }
 
-impl<Kind: RegionIdxKind> FunctionShapeNode<Kind> {
+impl<Kind: RegionIdxMarker> FunctionShapeNode<Kind> {
     #[must_use]
     pub fn mir_local(self) -> mir::Local {
         match self.base {
@@ -364,7 +372,7 @@ impl<Kind: RegionIdxKind> FunctionShapeNode<Kind> {
 /// projections ([`Region`], the default, used for call shapes) and generalized
 /// lifetime projections ([`Generalized`], used for signature shapes).
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct FunctionShape<Kind: RegionIdxKind = Region> {
+pub struct FunctionShape<Kind: RegionIdxMarker = Region> {
     inputs: Vec<FunctionShapeInput<Kind>>,
     outputs: Vec<FunctionShapeOutput<Kind>>,
     edges: BTreeSet<
@@ -372,7 +380,7 @@ pub struct FunctionShape<Kind: RegionIdxKind = Region> {
     >,
 }
 
-impl<Kind: RegionIdxKind> FunctionShape<Kind> {
+impl<Kind: RegionIdxMarker> FunctionShape<Kind> {
     pub fn edges(
         &self,
     ) -> impl Iterator<
@@ -534,7 +542,7 @@ impl std::fmt::Display for ArgIdxOrResult {
         }
     }
 }
-impl<Kind: RegionIdxKind, Ctxt: Copy> DisplayWithCtxt<Ctxt> for FunctionShape<Kind>
+impl<Kind: RegionIdxMarker, Ctxt: Copy> DisplayWithCtxt<Ctxt> for FunctionShape<Kind>
 where
     FunctionShapeInput<Kind>: DisplayWithCtxt<Ctxt>,
     FunctionShapeOutput<Kind>: DisplayWithCtxt<Ctxt>,
@@ -553,16 +561,16 @@ where
     }
 }
 
-impl<Kind: RegionIdxKind> std::fmt::Display for FunctionShape<Kind> {
+impl<Kind: RegionIdxMarker> std::fmt::Display for FunctionShape<Kind> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn fmt_input<K: RegionIdxKind>(
+        fn fmt_input<K: RegionIdxMarker>(
             f: &mut std::fmt::Formatter<'_>,
             input: &FunctionShapeInput<K>,
         ) -> std::fmt::Result {
             write!(f, "Arg({})↓{}", *input.base, input.region_idx.index())
         }
 
-        fn fmt_output<K: RegionIdxKind>(
+        fn fmt_output<K: RegionIdxMarker>(
             f: &mut std::fmt::Formatter<'_>,
             output: &FunctionShapeOutput<K>,
         ) -> std::fmt::Result {
@@ -603,7 +611,7 @@ impl<Kind: RegionIdxKind> std::fmt::Display for FunctionShape<Kind> {
     }
 }
 
-impl<Kind: RegionIdxKind> FunctionShape<Kind> {
+impl<Kind: RegionIdxMarker> FunctionShape<Kind> {
     #[allow(unused)]
     pub(crate) fn is_specialization_of(&self, other: &Self) -> bool {
         self.edges.is_subset(&other.edges)
@@ -611,12 +619,18 @@ impl<Kind: RegionIdxKind> FunctionShape<Kind> {
 
     pub(crate) fn new<
         'tcx,
-        Ctxt: HasTyCtxt<'tcx> + Copy,
-        ShapeData: FunctionShapeDataSource<'tcx, Ctxt, Lifetime: LifetimeKind<'tcx, IdxKind = Kind>>,
+        Ctxt,
+        ShapeData: FunctionShapeDataSource<'tcx, Ctxt, Lifetime: LifetimeKind<'tcx, IdxMarker = Kind>>,
     >(
         shape_data: &ShapeData,
         ctxt: Ctxt,
-    ) -> Self {
+    ) -> Self
+    where
+        Ctxt: HasTyCtxt<'tcx>
+            + Copy
+            + ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, ShapeData::Lifetime>
+            + LifetimeDataCtxt<'tcx, ShapeData::Lifetime>,
+    {
         let mut shape: BTreeSet<
             AbstractionBlockEdge<'static, FunctionShapeInput<Kind>, FunctionShapeOutput<Kind>>,
         > = BTreeSet::default();
@@ -635,7 +649,7 @@ impl<Kind: RegionIdxKind> FunctionShape<Kind> {
         };
         for input in &arg_projections {
             for output in &arg_projections {
-                if shape_data.is_invariant(output.region, output.ty, ctxt)
+                if ctxt.is_invariant_in_type(output.region, output.ty)
                     && shape_data.outlives(input.region, output.region, ctxt)
                 {
                     tracing::debug!("{input} outlives {output}");
@@ -673,7 +687,7 @@ pub type FunctionShapeCoupledEdges<Kind = Region> =
 
 #[cfg(test)]
 mod tests {
-    use crate::{borrow_pcg::region_projection::HasRegions, rustc_interface::index::IndexVec};
+    use crate::rustc_interface::index::IndexVec;
 
     use super::*;
 
@@ -684,20 +698,22 @@ mod tests {
         let tick_a: PcgRegion = PcgRegion::RegionVid(0u32.into());
         #[derive(Clone, Copy)]
         struct TestCtxt(PcgRegion<'static>);
-        impl HasRegions<'static, TestCtxt> for ArgIdx {
-            fn regions(
-                &self,
-                ctxt: TestCtxt,
-            ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
-                IndexVec::from_raw(vec![ctxt.0])
+
+        impl ExtractRegionsCtxt<'static, ArgIdx, PcgRegion<'static>> for TestCtxt {
+            fn extract_regions(
+                self,
+                _data: ArgIdx,
+            ) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'static>> {
+                IndexVec::from_raw(vec![self.0])
             }
         }
-        impl HasRegions<'static, TestCtxt> for ArgIdxOrResult {
-            fn regions(
-                &self,
-                ctxt: TestCtxt,
-            ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'static>> {
-                IndexVec::from_raw(vec![ctxt.0])
+
+        impl ExtractRegionsCtxt<'static, ArgIdxOrResult, PcgRegion<'static>> for TestCtxt {
+            fn extract_regions(
+                self,
+                _data: ArgIdxOrResult,
+            ) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'static>> {
+                IndexVec::from_raw(vec![self.0])
             }
         }
 

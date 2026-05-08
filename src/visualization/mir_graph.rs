@@ -2,8 +2,8 @@ use crate::{
     borrow_pcg::{
         self,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionShapeInput, FunctionShapeOutput},
-        region_projection::RegionIdxKind,
-        visitor::extract_regions,
+        region_projection::RegionIdxMarker,
+        visitor::{extract_generalized_lifetimes, extract_regions},
     },
     rustc_interface::{
         self,
@@ -435,13 +435,13 @@ impl ShapeLabelFormatter {
         let input_regions = input_tys
             .iter()
             .map(|ty| {
-                extract_generalized_lifetimes(*ty)
+                extract_generalized_lifetimes(*ty, None)
                     .iter()
                     .map(format_gl)
                     .collect()
             })
             .collect();
-        let output_regions = extract_generalized_lifetimes(output_ty)
+        let output_regions = extract_generalized_lifetimes(output_ty, None)
             .iter()
             .map(format_gl)
             .collect();
@@ -454,7 +454,7 @@ impl ShapeLabelFormatter {
 
     /// Format a function-shape input node as a human-readable label.
     #[must_use]
-    pub fn format_input<Kind: RegionIdxKind>(&self, input: &FunctionShapeInput<Kind>) -> String {
+    pub fn format_input<Kind: RegionIdxMarker>(&self, input: &FunctionShapeInput<Kind>) -> String {
         let base_name = self.arg_base_name(input.base);
         let region_name = self.resolve_input_region(input.base, input.region_idx.index());
         format!("{base_name}↓{region_name}")
@@ -462,7 +462,10 @@ impl ShapeLabelFormatter {
 
     /// Format a function-shape output node as a human-readable label.
     #[must_use]
-    pub fn format_output<Kind: RegionIdxKind>(&self, output: &FunctionShapeOutput<Kind>) -> String {
+    pub fn format_output<Kind: RegionIdxMarker>(
+        &self,
+        output: &FunctionShapeOutput<Kind>,
+    ) -> String {
         let (base_name, region_name) = match output.base {
             ArgIdxOrResult::Argument(arg) => {
                 let name = self.arg_base_name(arg);
@@ -495,8 +498,7 @@ impl ShapeLabelFormatter {
     #[must_use]
     pub fn for_fn_sig<'tcx>(def_id: hir::def_id::DefId, tcx: TyCtxt<'tcx>) -> Self {
         use crate::borrow_pcg::{
-            edge::abstraction::function::TraitBoundRegions,
-            visitor::{GeneralizedLifetime, extract_generalized_lifetimes_with_bounds},
+            edge::abstraction::function::TraitBoundRegions, visitor::GeneralizedLifetime,
         };
 
         let sig = borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
@@ -514,13 +516,13 @@ impl ShapeLabelFormatter {
             .inputs()
             .iter()
             .map(|ty| {
-                extract_generalized_lifetimes_with_bounds(*ty, tbr_map)
+                extract_generalized_lifetimes(*ty, Some(tbr_map))
                     .iter()
                     .map(&format_gl)
                     .collect()
             })
             .collect();
-        let mut output_gls = extract_generalized_lifetimes_with_bounds(sig.output(), tbr_map)
+        let mut output_gls = extract_generalized_lifetimes(sig.output(), Some(tbr_map))
             .into_iter()
             .collect::<Vec<_>>();
 
@@ -528,7 +530,7 @@ impl ShapeLabelFormatter {
         // types, include all signature lifetimes.
         if matches!(sig.output().kind(), ty::TyKind::Param(_)) {
             for input_ty in sig.inputs() {
-                for gl in extract_generalized_lifetimes_with_bounds(*input_ty, tbr_map) {
+                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
                     if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {
                         output_gls.push(gl);
                     }
@@ -549,16 +551,16 @@ impl ShapeLabelFormatter {
     /// [`FunctionShape`]'s `Display` impl (e.g. `Arg(0)|2`), and the pretty
     /// label uses visualization-style names (e.g. `self↓'a`).
     #[must_use]
-    pub fn node_labels<Kind: RegionIdxKind>(
+    pub fn node_labels<Kind: RegionIdxMarker>(
         &self,
         shape: &borrow_pcg::abstraction::FunctionShape<Kind>,
     ) -> Vec<(String, String)> {
         use crate::borrow_pcg::abstraction::{FunctionShapeInput, FunctionShapeOutput};
 
-        fn raw_input<K: RegionIdxKind>(input: &FunctionShapeInput<K>) -> String {
+        fn raw_input<K: RegionIdxMarker>(input: &FunctionShapeInput<K>) -> String {
             format!("Arg({})↓{}", *input.base, input.region_idx.index())
         }
-        fn raw_output<K: RegionIdxKind>(output: &FunctionShapeOutput<K>) -> String {
+        fn raw_output<K: RegionIdxMarker>(output: &FunctionShapeOutput<K>) -> String {
             match output.base {
                 ArgIdxOrResult::Argument(arg) => {
                     format!("Arg({})↓{}", *arg, output.region_idx.index())
@@ -594,7 +596,7 @@ impl ShapeLabelFormatter {
 ///
 /// When `formatter` is provided, nodes display human-readable labels (e.g.
 /// `x↓'a`). Otherwise falls back to the `Display` impl (e.g. `a0↓0`).
-fn function_shape_to_dot<Kind: RegionIdxKind>(
+fn function_shape_to_dot<Kind: RegionIdxMarker>(
     shape: borrow_pcg::abstraction::FunctionShape<Kind>,
     graph_name: &str,
     formatter: Option<&ShapeLabelFormatter>,

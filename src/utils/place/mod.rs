@@ -15,10 +15,7 @@ use derive_more::{Deref, DerefMut};
 
 use crate::{
     Sealed,
-    borrow_pcg::{
-        borrow_pcg_expansion::PlaceExpansion,
-        region_projection::{HasRegions, HasTy},
-    },
+    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::HasTy},
     error::{PcgError, PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
@@ -255,7 +252,6 @@ pub trait PcgNodeComponent = Copy + Eq + Hash + Debug;
 
 pub trait PcgPlace<'tcx, Ctxt: Copy> = PlaceProjectable<'tcx, Ctxt>
     + PcgNodeComponent
-    + HasRegions<'tcx, Ctxt>
     + HasTy<'tcx, Ctxt>
     + PrefixRelation
     + Ord

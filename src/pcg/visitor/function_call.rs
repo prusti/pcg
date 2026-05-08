@@ -13,7 +13,7 @@ use crate::{
             },
         },
         edge_data::LabelNodePredicate,
-        region_projection::{HasRegions, LifetimeProjection},
+        region_projection::{ExtractRegionsCtxt, LifetimeProjection},
     },
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
@@ -160,7 +160,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         let arg_region_projections = args
             .iter()
             .map(|arg| self.maybe_labelled_operand(arg))
-            .flat_map(|input_place| input_place.lifetime_projections(self.ctxt))
+            .flat_map(|input_place| self.ctxt.extract_lifetime_projections(input_place))
             .collect::<Vec<_>>();
 
         let pre_rps = arg_region_projections
