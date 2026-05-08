@@ -1030,6 +1030,13 @@ impl<'tcx, T, IdxMarker: RegionIdxMarker> LifetimeProjection<'tcx, T, IdxMarker>
             phantom: PhantomData,
         }
     }
+    /// The index into this projection's base's lifetime list. Pair with a
+    /// custom [`ExtractRegionsCtxt`] to look up the underlying lifetime when
+    /// the base type does not provide a [`HasTy`] impl that matches the
+    /// desired extraction semantics.
+    pub fn region_idx(&self) -> LifetimeProjectionIdx<IdxMarker> {
+        self.region_idx
+    }
     pub fn region<
         'a,
         LtKind: LifetimeKind<'tcx, IdxMarker = IdxMarker>,
