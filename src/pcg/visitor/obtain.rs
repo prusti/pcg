@@ -525,7 +525,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     pcg_validity_assert!(
                         self.pcg
                             .place_capability_equals(weaken.place, weaken.from, self.ctxt)
-                            || weaken.place.contains_unsafe_deref(self.ctxt) /* SEE COMMENT WHERE WE CREATE WEAKEN. THIS SHOULD BE CHANGED */
+                            || weaken.place.contains_unsafe_deref(self.ctxt)
                     );
                     self.pcg
                         .place_capabilities
