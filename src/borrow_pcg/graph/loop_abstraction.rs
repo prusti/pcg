@@ -45,6 +45,9 @@ pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
     pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
     pub(crate) capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
+    /// Local root places that are actually blocked by the loop abstraction.
+    /// Their mutable-reference ancestors must be downgraded from E to W.
+    pub(crate) blocked_root_places: HashSet<Place<'tcx>>,
 }
 
 impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
@@ -52,11 +55,13 @@ impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
         graph: BorrowsGraph<'tcx>,
         to_label: HashSet<LabelNodePredicate<'tcx>>,
         capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
+        blocked_root_places: HashSet<Place<'tcx>>,
     ) -> Self {
         Self {
             graph,
             to_label,
             capability_updates,
+            blocked_root_places,
         }
     }
 }
@@ -131,6 +136,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let mut graph = BorrowsGraph::default();
         let mut capability_updates = HashMap::default();
         let mut to_label = HashSet::default();
+        let mut blocked_root_places: HashSet<Place<'tcx>> = HashSet::default();
 
         let loop_head_location = mir::Location {
             block: loop_head,
@@ -167,6 +173,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     );
                     add_block_edges(&mut expander, *root, blocker, ctxt);
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
+                        blocked_root_places.insert(*root);
                         for rp in root.lifetime_projections(ctxt) {
                             to_label.insert(LabelNodePredicate::all_non_future(
                                 (*root).into(),
@@ -291,7 +298,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 capability
             );
         }
-        ConstructAbstractionGraphResult::new(graph, to_label, capability_updates)
+        ConstructAbstractionGraphResult::new(
+            graph,
+            to_label,
+            capability_updates,
+            blocked_root_places,
+        )
     }
 
     pub(crate) fn get_borrow_roots(

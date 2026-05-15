@@ -14,7 +14,7 @@ use crate::{
     error::{PcgError, PcgUnsupportedError},
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        BodyAnalysis, CapabilityKind, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         owned_state::OwnedPcg,
         place_capabilities::{
@@ -433,6 +433,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             graph: abstraction_graph,
             to_label,
             capability_updates,
+            blocked_root_places,
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
             &root_places,
@@ -469,6 +470,23 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 capabilities.insert(place, cap, ctxt);
             } else {
                 capabilities.remove(place, ctxt);
+            }
+        }
+
+        // For each root place that is actually blocked by the loop abstraction,
+        // downgrade mutable-reference ancestors from E to W.  Without this,
+        // `variant: E` and `(*variant).fields: E` can coexist once the
+        // abstraction edge is removed (e.g. in unreachable `otherwise` branches),
+        // violating the parent-child capability invariant.
+        for root_place in &blocked_root_places {
+            let mut p = *root_place;
+            while let Some(parent) = p.parent_place() {
+                if capabilities.get(parent, ctxt.ctxt) == Some(CapabilityKind::Exclusive)
+                    && (parent.ref_mutability(ctxt.ctxt).is_some() || parent.is_raw_ptr(ctxt.ctxt))
+                {
+                    capabilities.insert(parent, CapabilityKind::Write, ctxt.ctxt);
+                }
+                p = parent;
             }
         }
 

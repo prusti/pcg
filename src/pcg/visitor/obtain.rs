@@ -161,6 +161,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError<'tcx>> {
+        // Snapshot the borrow-graph places *before* acquiring `fg` so the
+        // owned HashSet doesn't hold a borrow of the graph across the
+        // restore_place call below.
+        let borrow_places = self.pcg.borrow.graph.places(self.ctxt.bc_ctxt());
+
         let fg = self.pcg.borrow.graph.frozen_graph();
         let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
@@ -172,6 +177,17 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         for node in to_restore {
             if let Some(place) = node.as_current_place() {
+                // Only restore if the place is still tracked somewhere.  After
+                // a loop abstraction edge is removed, the blocked place (e.g.
+                // `(*variant).fields`) may no longer appear in either the owned
+                // PCG or the borrow graph; restoring a capability there would
+                // violate the invariant that every capability-holding place must
+                // be tracked.
+                if !borrow_places.contains(&place)
+                    && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
+                {
+                    continue;
+                }
                 self.restore_place(
                     place,
                     "update_unblocked_node_capabilities_and_remove_placeholder_projections",
