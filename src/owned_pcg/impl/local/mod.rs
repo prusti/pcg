@@ -48,7 +48,7 @@ impl<'tcx, P> ExpandedPlace<'tcx, P> {
     pub(crate) fn expansion_places<Ctxt>(
         &self,
         ctxt: Ctxt,
-    ) -> Result<HashSet<P>, PcgUnsupportedError<'tcx>>
+    ) -> Result<HashSet<P>, PcgUnsupportedError>
     where
         P: PlaceLike<'tcx, Ctxt>,
     {

@@ -15,7 +15,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_statement_fallable(statement, location)
     }
 
@@ -23,7 +23,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_operand_fallable(operand, location);
         Ok(())
     }
@@ -55,7 +55,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match &statement.kind {
             mir::StatementKind::Assign(box (place, rvalue)) => {
                 self.visit_place_fallable(
@@ -124,7 +124,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_terminator_fallable(terminator, location)
     }
 
@@ -139,7 +139,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_rvalue_fallable(rvalue, location)
     }
 
@@ -148,7 +148,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match rvalue {
             mir::Rvalue::Use(operand)
             | mir::Rvalue::Cast(_, operand, _)
@@ -231,7 +231,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match &terminator.kind {
             mir::TerminatorKind::Goto { .. }
             | mir::TerminatorKind::UnwindResume

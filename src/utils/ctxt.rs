@@ -507,7 +507,7 @@ impl<'tcx> Place<'tcx> {
         self,
         guide_place: Self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<ShallowExpansion<'tcx>, PcgError<'tcx>>
+    ) -> Result<ShallowExpansion<'tcx>, PcgError>
     where
         'tcx: 'a,
     {
@@ -592,7 +592,7 @@ impl<'tcx> Place<'tcx> {
         self,
         without_field: Option<usize>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<Vec<Self>, PcgError<'tcx>>
+    ) -> Result<Vec<Self>, PcgError>
     where
         'tcx: 'a,
     {

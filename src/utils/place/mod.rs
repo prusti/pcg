@@ -113,7 +113,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>> {
+    ) -> std::result::Result<Self, PcgError> {
         Ok(Self(PlaceProjectable::project_deeper(&self.0, elem, ctxt)?))
     }
 
@@ -242,7 +242,7 @@ pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>>;
+    ) -> std::result::Result<Self, PcgError>;
 
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
@@ -284,7 +284,7 @@ pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>>;
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
@@ -309,7 +309,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError> {
         self.expansion_places(expansion, ctxt)
     }
 }
@@ -328,7 +328,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>> {
+    ) -> std::result::Result<Self, PcgError> {
         Place::project_deeper(*self, elem, ctxt).map_err(PcgError::unsupported)
     }
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
@@ -377,7 +377,7 @@ impl<'tcx> Place<'tcx> {
         self,
         elem: PlaceElem<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgUnsupportedError<'tcx>>
+    ) -> std::result::Result<Self, PcgUnsupportedError>
     where
         'tcx: 'a,
     {
@@ -531,7 +531,7 @@ impl<'tcx> Place<'tcx> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError<'tcx>>
+    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError>
     where
         'tcx: 'a,
     {

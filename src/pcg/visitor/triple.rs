@@ -13,7 +13,7 @@ use super::PcgVisitor;
 
 impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> {
     #[tracing::instrument(skip(self))]
-    pub(crate) fn require_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
+    pub(crate) fn require_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
         match triple.pre() {
             PlaceCondition::ExpandTwoPhase(place) => {
                 self.place_obtainer()
@@ -57,7 +57,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     }
 
     #[tracing::instrument(skip(self, triple))]
-    pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError<'tcx>> {
+    pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
         self.pcg.ensure_triple(triple, self.ctxt);
         Ok(())
     }

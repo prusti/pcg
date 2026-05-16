@@ -11,7 +11,6 @@ use crate::{
         state::BorrowStateRef,
         validity_conditions::ValidityConditions,
     },
-    error::{PcgError, PcgUnsupportedError},
     r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
         BodyAnalysis, CapabilityKind, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
@@ -131,7 +130,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &'slf ValidityConditions,
         mut args: JoinBorrowsArgs<'slf, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) {
         let other_block = args.other_block;
         let self_block = args.self_block;
         pcg_validity_assert!(
@@ -150,7 +149,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .body_analysis
             .get_places_used_in_loop_with_head(self_block)
         {
-            self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
+            self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt);
             #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
                 && let Ok(dot_graph) =
@@ -167,7 +166,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 [ctxt],
                 "Graph became invalid after join"
             );
-            return Ok(());
+            return;
         }
         for other_edge in other_graph.edges() {
             self.insert(other_edge.to_owned_edge(), ctxt);
@@ -223,7 +222,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 }
             }
         }
-        Ok(())
     }
 
     fn join_loop<'mir>(
@@ -232,7 +230,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &ValidityConditions,
         mut args: JoinBorrowsArgs<'_, 'mir, 'tcx>,
         ctxt: AnalysisCtxt<'mir, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) {
         let loop_head = args.self_block;
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -283,13 +281,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 }
             })
             .collect::<PlaceUsages<'_>>();
-
-        if !live_loop_places
-            .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))
-            .is_empty()
-        {
-            return Err(PcgUnsupportedError::DerefUnsafePtr.into());
-        }
 
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -569,6 +560,5 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Final graph",
             ctxt.ctxt,
         );
-        Ok(())
     }
 }

@@ -156,7 +156,7 @@ pub struct PcgEngine<'a, 'tcx: 'a> {
     pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
     pub(crate) reachable_blocks: RefCell<BitSet<Block>>,
     pub(crate) analyzed_blocks: RefCell<BitSet<Block>>,
-    pub(crate) first_error: RefCell<ErrorState<'tcx>>,
+    pub(crate) first_error: RefCell<ErrorState>,
     pub(crate) arena: PcgArena<'a>,
     pub(crate) settings: &'a PcgSettings,
 }
@@ -250,7 +250,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         object: AnalysisObject<'_, 'tcx>,
         tw: &TripleWalker<'a, 'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let domain = &mut state.data;
         for phase in EvalStmtPhase::phases() {
             let curr = PcgArenaRef::make_mut(&mut domain.pcg.states.0[phase]);
@@ -273,7 +273,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         state: &mut PcgDomain<'a, 'tcx>,
         object: AnalysisObject<'obj, 'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if !self
             .reachable_blocks
             .borrow()
@@ -363,7 +363,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         }
     }
 
-    fn record_error_if_first(&self, error: &PcgError<'tcx>) {
+    fn record_error_if_first(&self, error: &PcgError) {
         if self.first_error.borrow().error().is_none() {
             self.first_error.borrow_mut().record_error(error.clone());
         }

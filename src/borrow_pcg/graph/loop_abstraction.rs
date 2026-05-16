@@ -518,10 +518,7 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
-    fn apply_action(
-        &mut self,
-        action: PcgAction<'tcx>,
-    ) -> Result<(), crate::error::PcgError<'tcx>> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), crate::error::PcgError> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {

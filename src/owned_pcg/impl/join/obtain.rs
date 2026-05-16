@@ -27,7 +27,7 @@ impl HasSnapshotLocation for JoinObtainer<'_, '_, '_, '_, '_> {
 }
 
 impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError<'tcx>> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {
         match action {
             PcgAction::Borrow(action) => {
                 self.data

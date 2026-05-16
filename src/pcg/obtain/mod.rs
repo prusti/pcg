@@ -206,7 +206,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         &mut self,
         parent_place: Option<Place<'tcx>>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let mut leaf_places = self.leaf_places(ctxt.bc_ctxt());
         tracing::debug!(
             "Leaf places: {}",
@@ -249,7 +249,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         capability: CapabilityKind,
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let to_collapse = self
             .get_local_expansions(place.local)
             .places_to_collapse_for_obtain_of(place, ctxt);
@@ -306,7 +306,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         base: LocalLifetimeProjection<'tcx>,
         expansion: &[LocalLifetimeProjection<'tcx>],
         ctxt: Ctxt,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         for (idx, node) in expansion.iter().enumerate() {
             if let Some(place) = node.base.as_current_place() {
                 let labeller = SetLabel(self.prev_snapshot_location());
@@ -352,7 +352,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 }
 
 pub(crate) trait ActionApplier<'tcx> {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError<'tcx>>;
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError>;
 }
 
 pub(crate) trait HasSnapshotLocation {

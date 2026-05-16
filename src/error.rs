@@ -10,14 +10,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PcgError<'tcx> {
-    pub(crate) kind: PcgErrorKind<'tcx>,
+pub struct PcgError {
+    pub(crate) kind: PcgErrorKind,
     pub(crate) context: Vec<String>,
 }
 
-impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgError<'tcx>
+impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgError
 where
-    PcgErrorKind<'tcx>: DisplayWithCtxt<Ctxt>,
+    PcgErrorKind: DisplayWithCtxt<Ctxt>,
 {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match mode {
@@ -32,14 +32,14 @@ where
     }
 }
 
-impl<'tcx> From<PcgUnsupportedError<'tcx>> for PcgError<'tcx> {
-    fn from(e: PcgUnsupportedError<'tcx>) -> Self {
+impl<'tcx> From<PcgUnsupportedError> for PcgError {
+    fn from(e: PcgUnsupportedError) -> Self {
         Self::new(PcgErrorKind::Unsupported(e), vec![])
     }
 }
 
-impl<'tcx> PcgError<'tcx> {
-    pub(crate) fn new(kind: PcgErrorKind<'tcx>, context: Vec<String>) -> Self {
+impl<'tcx> PcgError {
+    pub(crate) fn new(kind: PcgErrorKind, context: Vec<String>) -> Self {
         assert!(
             !*PANIC_ON_ERROR,
             "PCG Error: {:?} ({})",
@@ -51,12 +51,12 @@ impl<'tcx> PcgError<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PcgErrorKind<'tcx> {
-    Unsupported(PcgUnsupportedError<'tcx>),
+pub enum PcgErrorKind {
+    Unsupported(PcgUnsupportedError),
     Internal(PcgInternalError),
 }
 
-impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'_> {
+impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match mode {
             OutputMode::Test => match self {
@@ -72,7 +72,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind<'_> {
     }
 }
 
-impl<'tcx> PcgError<'tcx> {
+impl<'tcx> PcgError {
     #[allow(dead_code)]
     pub(crate) fn internal(msg: String) -> Self {
         Self {
@@ -81,7 +81,7 @@ impl<'tcx> PcgError<'tcx> {
         }
     }
 
-    pub(crate) fn unsupported(err: PcgUnsupportedError<'tcx>) -> Self {
+    pub(crate) fn unsupported(err: PcgUnsupportedError) -> Self {
         Self {
             kind: PcgErrorKind::Unsupported(err),
             context: vec![],
@@ -104,7 +104,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgInternalError {
     }
 }
 
-impl From<PcgInternalError> for PcgError<'_> {
+impl From<PcgInternalError> for PcgError {
     fn from(e: PcgInternalError) -> Self {
         PcgError::new(PcgErrorKind::Internal(e), vec![])
     }
@@ -117,31 +117,17 @@ pub struct PlaceContainingPtrWithNestedLifetime<'tcx> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PcgUnsupportedError<'tcx> {
+pub enum PcgUnsupportedError {
     AssignBorrowToNonReferenceType,
-    DerefUnsafePtr,
-    MoveUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
     ExpansionOfAliasType,
-    CallWithUnsafePtrWithNestedLifetime(PlaceContainingPtrWithNestedLifetime<'tcx>),
     IndexingNonIndexableType,
     InlineAssembly,
     MaxNodesExceeded,
     Coupling(CoupleInputError),
 }
 
-impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgUnsupportedError<'_> {
-    fn display_output(&self, _ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        match mode {
-            OutputMode::Test => match self {
-                PcgUnsupportedError::MoveUnsafePtrWithNestedLifetime(_) => {
-                    "MoveUnsafePtrWithNestedLifetime".into()
-                }
-                PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(_) => {
-                    "CallWithUnsafePtrWithNestedLifetime".into()
-                }
-                _ => format!("{self:?}").into(),
-            },
-            _ => format!("{self:?}").into(),
-        }
+impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgUnsupportedError {
+    fn display_output(&self, _ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
+        format!("{self:?}").into()
     }
 }

@@ -276,7 +276,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         base: LifetimeProjection<'tcx, Place<'tcx>>,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
     {
@@ -292,7 +292,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         base: Place<'tcx>,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
     {
@@ -545,7 +545,7 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
         base: Node,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         Node: Ord + HasPlace<'tcx, P> + PlaceProjectable<'tcx, Ctxt>,
         Self: HasValidityCheck<Ctxt>,
