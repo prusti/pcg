@@ -15,7 +15,7 @@ pub struct PcgError {
     pub(crate) context: Vec<String>,
 }
 
-impl<'tcx, Ctxt> DisplayWithCtxt<Ctxt> for PcgError
+impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgError
 where
     PcgErrorKind: DisplayWithCtxt<Ctxt>,
 {
@@ -32,13 +32,13 @@ where
     }
 }
 
-impl<'tcx> From<PcgUnsupportedError> for PcgError {
+impl From<PcgUnsupportedError> for PcgError {
     fn from(e: PcgUnsupportedError) -> Self {
         Self::new(PcgErrorKind::Unsupported(e), vec![])
     }
 }
 
-impl<'tcx> PcgError {
+impl PcgError {
     pub(crate) fn new(kind: PcgErrorKind, context: Vec<String>) -> Self {
         assert!(
             !*PANIC_ON_ERROR,
@@ -72,7 +72,7 @@ impl<Ctxt> DisplayWithCtxt<Ctxt> for PcgErrorKind {
     }
 }
 
-impl<'tcx> PcgError {
+impl PcgError {
     #[allow(dead_code)]
     pub(crate) fn internal(msg: String) -> Self {
         Self {

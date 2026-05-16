@@ -305,8 +305,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn collapse_iteration<'slf>(
-        &'slf mut self,
+    fn collapse_iteration(
+        &mut self,
         local: mir::Local,
         iteration: usize,
     ) -> Result<bool, PcgError> {
