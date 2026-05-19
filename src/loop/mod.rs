@@ -276,10 +276,6 @@ impl<'tcx> PlaceUsages<'tcx> {
         clone
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
     pub(crate) fn usages_where(
         &self,
         predicate: impl Fn(PlaceUsage<'tcx>) -> bool,
@@ -333,6 +329,16 @@ impl<'tcx> PlaceUsages<'tcx> {
     }
 }
 
+impl<'tcx> FromIterator<PlaceUsage<'tcx>> for PlaceUsages<'tcx> {
+    fn from_iter<T: IntoIterator<Item = PlaceUsage<'tcx>>>(iter: T) -> Self {
+        PlaceUsages(
+            iter.into_iter()
+                .map(|u| (u.place, u.usage))
+                .collect::<HashMap<Place, PlaceUsageType>>(),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct LoopPlaceUsageAnalysis<'tcx> {
     /// This map contains, for each loop head, the set of places that are used in the loop.
@@ -360,7 +366,7 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
         place: Place<'tcx>,
         context: PlaceContext,
         _location: mir::Location,
-    ) -> Result<(), crate::error::PcgError<'tcx>> {
+    ) {
         match context {
             PlaceContext::MutatingUse(MutatingUseContext::Projection) | PlaceContext::NonUse(_) => {
             }
@@ -371,7 +377,6 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
                 let _ = self.used_places.update(place, PlaceUsageType::Read);
             }
         }
-        Ok(())
     }
 }
 

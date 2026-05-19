@@ -30,7 +30,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         &mut self,
         place: Place<'tcx>,
         reason: AdjustCapabilityReason,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if place.is_mut_ref(self.ctxt) {
             // We've reached an indirection (e.g from **s to *s), we
             // downgrade the ref from R to W
@@ -75,7 +75,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         &mut self,
         place: Place<'tcx>,
         reason: AdjustCapabilityReason,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let place_regions = place.regions(self.ctxt);
         let mut prev = None;
         let mut current = place;

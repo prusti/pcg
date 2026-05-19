@@ -56,7 +56,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.place_obtainer().record_and_apply_action(action)
     }
 }
@@ -102,7 +102,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn restore_place(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError<'tcx>> {
+    fn restore_place(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
         // The place to restore could come from a local that was conditionally
         // allocated and therefore we can't get back to it, and certainly
         // shouldn't give it any capability
@@ -160,7 +160,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     fn update_unblocked_node_capabilities_and_remove_placeholder_projections(
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
+        // Snapshot the borrow-graph places *before* acquiring `fg` so the
+        // owned HashSet doesn't hold a borrow of the graph across the
+        // restore_place call below.
+        let borrow_places = self.pcg.borrow.graph.places(self.ctxt.bc_ctxt());
+
         let fg = self.pcg.borrow.graph.frozen_graph();
         let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
@@ -172,6 +177,17 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
         for node in to_restore {
             if let Some(place) = node.as_current_place() {
+                // Only restore if the place is still tracked somewhere.  After
+                // a loop abstraction edge is removed, the blocked place (e.g.
+                // `(*variant).fields`) may no longer appear in either the owned
+                // PCG or the borrow graph; restoring a capability there would
+                // violate the invariant that every capability-holding place must
+                // be tracked.
+                if !borrow_places.contains(&place)
+                    && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
+                {
+                    continue;
+                }
                 self.restore_place(
                     place,
                     "update_unblocked_node_capabilities_and_remove_placeholder_projections",
@@ -207,7 +223,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         deref: &DerefEdge<'tcx>,
         context: &str,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if deref.deref_place.is_current()
             && deref.deref_place.lifetime_projections(self.ctxt).is_empty()
         {
@@ -222,7 +238,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         deref_place: MaybeLabelledPlace<'tcx>,
         edges: HashSet<Conditioned<DerefEdge<'tcx>>>,
         context: &str,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         for edge in edges {
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
@@ -258,7 +274,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         edge: &BorrowPcgEdge<'tcx>,
         context: &str,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if let BorrowPcgEdgeKind::Deref(deref) = edge.kind() {
             return self.remove_deref_edges_to(
                 deref.deref_place,
@@ -376,7 +392,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         deref: &DerefEdge<'tcx>,
         context: &str,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.record_and_apply_action(
             BorrowPcgAction::remove_lifetime_projection_label(
                 deref.blocked_lifetime_projection,
@@ -390,7 +406,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn remove_read_permission_downwards(
         &mut self,
         upgraded_place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let to_remove = self
             .pcg
             .place_capabilities
@@ -408,10 +424,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn upgrade_read_to_exclusive(
-        &mut self,
-        place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
         tracing::debug!(
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())
@@ -447,7 +460,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn upgrade_closest_read_ancestor_to_exclusive_and_update_rps(
         &mut self,
         place: Place<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let mut expand_root = place;
         loop {
             if let Some(cap) = self.pcg.capability_of(expand_root, self.ctxt) {
@@ -467,7 +480,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     pub(crate) fn record_and_apply_action(
         &mut self,
         action: PcgAction<'tcx>,
-    ) -> Result<(), PcgError<'tcx>>
+    ) -> Result<(), PcgError>
     where
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
@@ -522,11 +535,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     ApplyActionResult::changed_no_display()
                 }
                 RepackOp::Weaken(weaken) => {
-                    pcg_validity_assert!(self.pcg.place_capability_equals(
-                        weaken.place,
-                        weaken.from,
-                        self.ctxt
-                    ));
+                    pcg_validity_assert!(
+                        self.pcg
+                            .place_capability_equals(weaken.place, weaken.from, self.ctxt)
+                            || weaken.place.contains_unsafe_deref(self.ctxt)
+                    );
                     self.pcg
                         .place_capabilities
                         .insert(weaken.place, weaken.to, self.ctxt);
@@ -569,7 +582,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt> ActionApplier<'tcx>
     for PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError<'tcx>> {
+    fn apply_action(&mut self, action: PcgAction<'tcx>) -> Result<(), PcgError> {
         self.record_and_apply_action(action)
     }
 }
@@ -586,7 +599,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         place: Place<'tcx>,
         obtain_type: ObtainType,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let obtain_cap = obtain_type.capability(place, self.ctxt);
 
         if obtain_cap.is_write() {

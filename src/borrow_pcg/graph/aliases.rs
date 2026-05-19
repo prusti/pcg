@@ -179,6 +179,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         extend(input.0, seen, &mut result, false);
                     }
                 }
+                BorrowPcgEdgeKind::Delegation(rawptr_edge) => {
+                    extend(rawptr_edge.aliased_place.into(), seen, &mut result, direct);
+                }
+                BorrowPcgEdgeKind::RawPtrDeref(raw_ptr_deref_edge) => {
+                    let blocked = raw_ptr_deref_edge.deref_place;
+                    extend(blocked.into(), seen, &mut result, direct);
+                }
             }
         }
         result

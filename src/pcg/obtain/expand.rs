@@ -9,6 +9,7 @@ use crate::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             deref::DerefEdge,
             kind::BorrowPcgEdgeKind,
+            rawptr_deref::RawPtrDerefEdge,
         },
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::BorrowsGraph,
@@ -57,7 +58,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         place: Place<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         for (base, _) in place.iter_projections() {
             let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
@@ -121,7 +122,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Result<bool, PcgError<'tcx>> {
+    ) -> Result<bool, PcgError> {
         if self.contains_owned_expansion_to(expansion.target_place) {
             tracing::debug!(
                 "Already contains owned expansion from {}",
@@ -145,7 +146,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 )
                 .into(),
             )?;
-        } else {
+        } else if !base.is_raw_ptr(ctxt) {
             self.apply_action(
                 OwnedPcgAction::new(
                     RepackOp::expand(
@@ -168,7 +169,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Result<bool, PcgError<'tcx>> {
+    ) -> Result<bool, PcgError> {
         let place_expansion = PlaceExpansion::from_places(expansion.expansion(), ctxt);
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
             if self
@@ -215,6 +216,20 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 )?;
             }
             Ok(true)
+        } else if matches!(expansion.kind, ProjectionKind::DerefRawPtr(_)) {
+            let deref = RawPtrDerefEdge::new(base, ctxt);
+            let action = BorrowPcgAction::add_edge(
+                BorrowPcgEdge::new(deref.into(), self.path_conditions()),
+                "expand_place_one_level: add rawptr deref edge",
+            );
+            self.apply_action(action.into())?;
+            self.render_debug_graph(None, "expand_place_one_level: after apply action");
+            let _ = self.update_capabilities_for_deref(
+                base,
+                obtain_type.capability(base, ctxt),
+                ctxt.bc_ctxt(),
+            );
+            Ok(true)
         } else if let Some(owned_base) = base.as_owned_place(ctxt) {
             self.expand_owned_place_one_level(owned_base, expansion, obtain_type, ctxt)
         } else {
@@ -234,7 +249,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         place_expansion: PlaceExpansion<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Result<bool, PcgError<'tcx>>
+    ) -> Result<bool, PcgError>
     where
         'tcx: 'a,
     {
@@ -258,6 +273,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             base.display_string(ctxt.bc_ctxt()),
             block_type
         );
+        if base.is_raw_ptr(ctxt) {
+            return Ok(true); // We have no aliasing information, PCG should not expand anything
+        }
         let expansion: BorrowPcgExpansion<'tcx> =
             BorrowPcgExpansion::new_place_expansion(base, &expanded_place.expansion, ctxt)?;
 
@@ -291,7 +309,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         expansion: &ShallowExpansion<'tcx>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         for base_rp in base.lifetime_projections(ctxt) {
             if let Some(place_expansion) =
                 expansion.place_expansion_for_region(base_rp.region(ctxt.ctxt()), ctxt)
@@ -381,7 +399,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         expansion_rps: &[LifetimeProjection<'tcx>],
         context: &str,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if expansion_rps.is_empty() {
             return Ok(());
         }
@@ -433,7 +451,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         old_source: LocalLifetimeProjection<'tcx>,
         new_source: LocalLifetimeProjection<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let to_replace = self
             .borrows_graph()
             .edges_blocking(old_source.into(), ctxt.bc_ctxt())

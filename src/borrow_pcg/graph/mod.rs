@@ -228,7 +228,7 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P
         &self,
         expanded_place: &ExpandedPlace<'tcx, P>,
         ctxt: Ctxt,
-    ) -> Result<bool, PcgUnsupportedError<'tcx>>
+    ) -> Result<bool, PcgUnsupportedError>
     where
         P: PlaceLike<'tcx, Ctxt>,
         BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,

@@ -240,6 +240,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
         for (place, cap) in self.place_capabilities.iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
                 && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
+                && !place.contains_unsafe_deref(ctxt)
             {
                 return Err(format!(
                     "Place {} has capability {:?} but is not in the owned PCG or borrow graph",
@@ -380,7 +381,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut slf = self.clone();
         let mut other = other.clone();
         let mut slf_owned_data = slf.join_owned_data(self_block);
@@ -412,7 +413,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError<'tcx>> {
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut other_capabilities = other.place_capabilities.clone();
         let mut other_borrows = other.borrow.clone();
         let mut self_owned_data = self.join_owned_data(self_block);
@@ -437,7 +438,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut self.place_capabilities,
             owned: &mut self.owned,
         };
-        self.borrow.join(&other_borrows, borrow_args, ctxt)?;
+        self.borrow.join(&other_borrows, borrow_args, ctxt);
         Ok(repack_ops)
     }
 

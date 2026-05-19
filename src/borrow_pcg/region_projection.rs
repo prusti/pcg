@@ -942,7 +942,7 @@ impl<
         + HasTy<'tcx, Ctxt>,
 > PlaceProjectable<'tcx, Ctxt> for LifetimeProjection<'tcx, T>
 {
-    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError<'tcx>> {
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         LifetimeProjection::new(
             self.base.project_deeper(elem, ctxt)?,
             self.region(ctxt),

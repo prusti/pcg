@@ -53,7 +53,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         analysis_location: AnalysisLocation,
         analysis_object: AnalysisObject<'_, 'tcx>,
         ctxt: Ctxt,
-    ) -> Result<AppliedActions<'tcx>, PcgError<'tcx>> {
+    ) -> Result<AppliedActions<'tcx>, PcgError> {
         let visitor = Self::new(pcg, ctxt, tw, analysis_location);
         let actions = visitor.apply(analysis_object)?;
         Ok(actions)
@@ -86,7 +86,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         self.analysis_location.location
     }
 
-    fn perform_borrow_initial_pre_operand_actions(&mut self) -> Result<(), PcgError<'tcx>> {
+    fn perform_borrow_initial_pre_operand_actions(&mut self) -> Result<(), PcgError> {
         self.place_obtainer()
             .pack_old_and_dead_borrow_leaves(None)?;
         for created_location in self.ctxt.bc().twophase_borrow_activations(self.location()) {
@@ -131,7 +131,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
     pub(crate) fn apply(
         mut self,
         object: AnalysisObject<'_, 'tcx>,
-    ) -> Result<AppliedActions<'tcx>, PcgError<'tcx>> {
+    ) -> Result<AppliedActions<'tcx>, PcgError> {
         match self.phase() {
             EvalStmtPhase::PreOperands => {
                 self.perform_borrow_initial_pre_operand_actions()?;
@@ -184,7 +184,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
         target: Place<'tcx>,
         kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt) {
             if self.outlives(
@@ -228,7 +228,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         &mut self,
         statement: &Statement<'tcx>,
         _location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.perform_statement_actions(statement)
     }
 
@@ -236,32 +236,21 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         &mut self,
         operand: &Operand<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        match operand {
-            Operand::Copy(place) => {
-                let place: Place<'tcx> = (*place).into();
-                if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                    return Err(PcgError::unsupported(
-                        PcgUnsupportedError::MoveUnsafePtrWithNestedLifetime(e),
-                    ));
-                }
-            }
-            Operand::Move(place) => {
-                if self.phase() == EvalStmtPhase::PostOperands {
-                    let snapshot_location = self.prev_snapshot_location();
-                    self.record_and_apply_action(
-                        BorrowPcgAction::label_place_and_update_related_capabilities(
-                            (*place).into(),
-                            snapshot_location,
-                            LabelPlaceReason::MoveOut,
-                        )
-                        .into(),
-                    )?;
-                }
-            }
-            _ => {}
+    ) -> Result<(), PcgError> {
+        if let Operand::Move(place) = operand
+            && self.phase() == EvalStmtPhase::PostOperands
+        {
+            let snapshot_location = self.prev_snapshot_location();
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    (*place).into(),
+                    snapshot_location,
+                    LabelPlaceReason::MoveOut,
+                )
+                .into(),
+            )?;
         }
-        self.super_operand_fallable(operand, location)?;
+        self.super_operand_fallable(operand, location);
         Ok(())
     }
 
@@ -269,7 +258,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
         &mut self,
         terminator: &Terminator<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_terminator_fallable(terminator, location)?;
         if self.phase() == EvalStmtPhase::PostMain
             && let mir::TerminatorKind::Call {
@@ -280,16 +269,6 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 ..
             } = &terminator.kind
         {
-            for operand in args {
-                if let Some(place) = operand.node.place() {
-                    let place: Place<'tcx> = place.into();
-                    if let Err(e) = place.check_lifetimes_under_unsafe_ptr(self.ctxt) {
-                        return Err(
-                            PcgUnsupportedError::CallWithUnsafePtrWithNestedLifetime(e).into()
-                        );
-                    }
-                }
-            }
             let destination: Place<'tcx> = (*destination).into();
             self.make_function_call_abstraction(
                 func,
@@ -304,22 +283,17 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 
     fn visit_place_fallable(
         &mut self,
-        place: Place<'tcx>,
+        _place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        if place.contains_unsafe_deref(self.ctxt) {
-            tracing::error!("DerefUnsafePtr: {}", place.display_string(self.ctxt));
-            return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
-        }
-        Ok(())
+    ) {
     }
 
     fn visit_rvalue_fallable(
         &mut self,
         rvalue: &Rvalue<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         if matches!(rvalue, Rvalue::Ref(_, mir::BorrowKind::Fake(_), _)) {
             return Ok(());
         }
@@ -331,11 +305,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn collapse_iteration<'slf>(
-        &'slf mut self,
+    fn collapse_iteration(
+        &mut self,
         local: mir::Local,
         iteration: usize,
-    ) -> Result<bool, PcgError<'tcx>> {
+    ) -> Result<bool, PcgError> {
         let local_expansions = self.pcg.owned[local].expansions();
         let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
         let parent_places = leaf_expansions
@@ -389,7 +363,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    pub(crate) fn collapse_owned_places(&mut self) -> Result<(), PcgError<'tcx>> {
+    pub(crate) fn collapse_owned_places(&mut self) -> Result<(), PcgError> {
         let allocated_locals = self.pcg.owned.allocated_locals();
         for local in allocated_locals {
             self.iterations_for_local(local)?;
@@ -397,7 +371,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    fn iterations_for_local(&mut self, local: mir::Local) -> Result<(), PcgError<'tcx>> {
+    fn iterations_for_local(&mut self, local: mir::Local) -> Result<(), PcgError> {
         let mut iteration = 1;
         while self.collapse_iteration(local, iteration)? {
             iteration += 1;
@@ -410,7 +384,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     fn activate_twophase_borrow_created_at(
         &mut self,
         created_location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let Some(borrow) = self.pcg.borrow_created_at(created_location) else {
             return Ok(());
         };

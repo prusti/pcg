@@ -44,14 +44,13 @@ use crate::{
         has_pcs_elem::{PlaceLabeller, SetLabel},
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
-    error::PcgError,
     pcg::{
         CapabilityKind, PcgNode, ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface,
     },
     pcg_validity_assert,
     rustc_interface::middle::{
         mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
-        ty::{self},
+        ty,
     },
     utils::{
         CompilerCtxt, Place, display::DebugLines, place::maybe_old::MaybeLabelledPlace,
@@ -489,16 +488,15 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         other: &Self,
         args: JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) {
         self.graph
-            .join(&other.graph, self.validity_conditions, args, ctxt)?;
+            .join(&other.graph, self.validity_conditions, args, ctxt);
         if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self
             .validity_conditions
             .join_result(other.validity_conditions, ctxt.body())
         {
             self.validity_conditions = ctxt.arena.alloc(new_validity_conditions);
         }
-        Ok(())
     }
 
     /// Remove all edges that are not valid for `path`, based on their validity

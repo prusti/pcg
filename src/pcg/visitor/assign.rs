@@ -3,21 +3,27 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
-        edge::borrow_flow::{
-            AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
+        edge::{
+            borrow_flow::{
+                AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
+            },
+            delegation::DelegationEdge,
+            kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
         region_projection::{ExtractRegionsCtxt, PlaceOrConst},
     },
     pcg::{
-        CapabilityKind, EvalStmtPhase,
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike,
         obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
         place_capabilities::PlaceCapabilitiesInterface,
     },
-    rustc_interface::middle::mir::{self, Operand, Rvalue},
-    utils::{
-        AnalysisLocation, DataflowCtxt, Place, SnapshotLocation, maybe_old::MaybeLabelledPlace,
-    },
+    rustc_interface::middle::mir::{self, CastKind, Operand, Rvalue},
+    utils::Place,
+};
+
+use crate::utils::{
+    AnalysisLocation, DataflowCtxt, SnapshotLocation, maybe_old::MaybeLabelledPlace,
 };
 
 use super::{PcgError, PcgUnsupportedError};
@@ -56,7 +62,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         target: Place<'tcx>,
         rvalue: &Rvalue<'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
 
         // If `target` is a reference, then the dereferenced place technically
@@ -106,10 +112,77 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
             }
             Rvalue::Use(operand) => {
+                let p = operand.place();
+                if let Some(p) = p {
+                    let p: Place = p.into();
+                    if p.ty(self.ctxt).ty.is_raw_ptr() {
+                        let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
+                        let node = PcgNode::from(p);
+                        let edges = self
+                            .pcg
+                            .borrows_graph()
+                            .edges_blocked_by(node, self.ctxt.bc_ctxt());
+                        let alias_edges = edges
+                            .into_iter()
+                            .filter_map(|e| match e.kind {
+                                BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>();
+                        if !alias_edges.is_empty() {
+                            self.record_and_apply_action(
+                                BorrowPcgAction::add_edge(
+                                    BorrowPcgEdge::new(
+                                        DelegationEdge {
+                                            rawptr_place: target.project_deref(ctxt).into(),
+                                            aliased_place: alias_edges[0].aliased_place,
+                                        }
+                                        .into(),
+                                        self.pcg.borrow.validity_conditions.clone(),
+                                    ),
+                                    "assign_post_main",
+                                )
+                                .into(),
+                            )?;
+                            return Ok(());
+                        }
+                    }
+                }
                 self.assignment_projections(operand, target, None)?;
             }
             Rvalue::Cast(kind, operand, ty) => {
-                self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
+                if let CastKind::PtrToPtr = kind {
+                    let p = operand.place().unwrap();
+                    let p: Place = p.into();
+                    let p = p.with_inherent_region(self.ctxt).project_deref(self.ctxt);
+                    let edges = self.pcg.borrows_graph().edges_blocked_by(p.into(), ctxt);
+                    let alies_edges = edges
+                        .into_iter()
+                        .filter_map(|e| match e.kind {
+                            BorrowPcgEdgeKind::Delegation(de) => Some(de),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    if !alies_edges.is_empty() {
+                        assert!(alies_edges.len() == 1);
+                        self.record_and_apply_action(
+                            BorrowPcgAction::add_edge(
+                                BorrowPcgEdge::new(
+                                    DelegationEdge {
+                                        rawptr_place: target.project_deref(ctxt).into(),
+                                        aliased_place: alies_edges[0].aliased_place,
+                                    }
+                                    .into(),
+                                    self.pcg.borrow.validity_conditions.clone(),
+                                ),
+                                "assign_post_main",
+                            )
+                            .into(),
+                        )?;
+                    }
+                } else {
+                    self.assignment_projections(operand, target, Some(CastData::new(*kind, *ty)))?;
+                }
             }
             Rvalue::Ref(borrow_region, kind, blocked_place) => {
                 let blocked_place: Place<'tcx> = (*blocked_place).into();
@@ -133,6 +206,26 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
+            Rvalue::RawPtr(kind, p) => {
+                if !kind.is_fake() {
+                    let p: Place<'tcx> = (*p).into();
+                    let p = p.with_inherent_region(self.ctxt);
+                    self.record_and_apply_action(
+                        BorrowPcgAction::add_edge(
+                            BorrowPcgEdge::new(
+                                DelegationEdge {
+                                    rawptr_place: target.project_deref(ctxt).into(),
+                                    aliased_place: p.into(),
+                                }
+                                .into(),
+                                self.pcg.borrow.validity_conditions.clone(),
+                            ),
+                            "assign_post_main",
+                        )
+                        .into(),
+                    )?;
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -143,7 +236,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         operand: &Operand<'tcx>,
         target_place: Place<'tcx>,
         cast_data: Option<CastData<'tcx>>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let (source_projections, operand_type) = match operand {
             Operand::Move(place) | Operand::Copy(place) => {
                 let operand_type = if matches!(operand, Operand::Move(_)) {
@@ -183,7 +276,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         blocked_place: Place<'tcx>,
         target: Place<'tcx>,
         kind: mir::BorrowKind,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for source_proj in blocked_place.lifetime_projections(self.ctxt) {
             let mut obtainer = self.place_obtainer();

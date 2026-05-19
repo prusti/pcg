@@ -3,9 +3,7 @@ use crate::{
     borrow_pcg::{
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelPlace, PlaceLabeller},
-        region_projection::{
-            HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike, PlaceOrConst,
-        },
+        region_projection::{HasTy, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike},
     },
     rustc_interface::middle::{mir, ty},
     utils::{
@@ -69,16 +67,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
         match self {
             MaybeRemotePlace::Local(p) => p.is_mutable(ctxt),
             MaybeRemotePlace::Remote(_) => false,
-        }
-    }
-}
-
-impl<'tcx> TryFrom<PcgLifetimeProjectionBase<'tcx>> for MaybeRemotePlace<'tcx> {
-    type Error = ();
-    fn try_from(value: PcgLifetimeProjectionBase<'tcx>) -> Result<Self, Self::Error> {
-        match value {
-            PlaceOrConst::Place(maybe_remote_place) => Ok(maybe_remote_place),
-            PlaceOrConst::Const(_) => Err(()),
         }
     }
 }

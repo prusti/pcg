@@ -16,7 +16,7 @@ use derive_more::{Deref, DerefMut};
 use crate::{
     Sealed,
     borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::HasTy},
-    error::{PcgError, PcgUnsupportedError, PlaceContainingPtrWithNestedLifetime},
+    error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
@@ -31,7 +31,6 @@ use crate::{
     },
     utils::{
         HasCompilerCtxt,
-        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -114,7 +113,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>> {
+    ) -> std::result::Result<Self, PcgError> {
         Ok(Self(PlaceProjectable::project_deeper(&self.0, elem, ctxt)?))
     }
 
@@ -243,7 +242,7 @@ pub trait PlaceProjectable<'tcx, Ctxt>: Sized {
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>>;
+    ) -> std::result::Result<Self, PcgError>;
 
     fn iter_projections(&self, ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)>;
 }
@@ -285,7 +284,7 @@ pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>>;
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
@@ -310,7 +309,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError<'tcx>> {
+    ) -> std::result::Result<Vec<Self>, PcgUnsupportedError> {
         self.expansion_places(expansion, ctxt)
     }
 }
@@ -329,7 +328,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
         &self,
         elem: PlaceElem<'tcx>,
         ctxt: Ctxt,
-    ) -> std::result::Result<Self, PcgError<'tcx>> {
+    ) -> std::result::Result<Self, PcgError> {
         Place::project_deeper(*self, elem, ctxt).map_err(PcgError::unsupported)
     }
     fn iter_projections(&self, _ctxt: Ctxt) -> Vec<(Self, PlaceElem<'tcx>)> {
@@ -378,7 +377,7 @@ impl<'tcx> Place<'tcx> {
         self,
         elem: PlaceElem<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Self, PcgUnsupportedError<'tcx>>
+    ) -> std::result::Result<Self, PcgUnsupportedError>
     where
         'tcx: 'a,
     {
@@ -499,7 +498,7 @@ impl<'tcx> Place<'tcx> {
                 .into_non_default()
                 .expect("RepackGuide::Default is not a valid expansion guide here");
             PlaceExpansion::Guided(required)
-        } else if self.ty(ctxt).ty.is_box() {
+        } else if self.ty(ctxt).ty.is_box() || self.ty(ctxt).ty.is_raw_ptr() {
             PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
@@ -532,7 +531,7 @@ impl<'tcx> Place<'tcx> {
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError<'tcx>>
+    ) -> std::result::Result<Vec<Place<'tcx>>, PcgUnsupportedError>
     where
         'tcx: 'a,
     {
@@ -569,84 +568,6 @@ impl<'tcx> Place<'tcx> {
             }
         }
         false
-    }
-
-    pub(crate) fn check_lifetimes_under_unsafe_ptr<'a>(
-        self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> std::result::Result<(), PlaceContainingPtrWithNestedLifetime<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        fn ty_has_lifetimes_under_unsafe_ptr<'a, 'tcx>(
-            ty: Ty<'tcx>,
-            seen: &mut HashSet<Ty<'tcx>>,
-            ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-        ) -> std::result::Result<(), Vec<Ty<'tcx>>>
-        where
-            'tcx: 'a,
-        {
-            if seen.contains(&ty) {
-                return Ok(());
-            }
-            seen.insert(ty);
-            if extract_regions(ty).is_empty() {
-                return Ok(());
-            }
-            #[rustversion::before(2025-03-01)]
-            let is_raw_ptr = ty.is_unsafe_ptr();
-            #[rustversion::since(2025-03-01)]
-            let is_raw_ptr = ty.is_raw_ptr();
-            if is_raw_ptr {
-                return Err(vec![ty]);
-            }
-            let field_tys: Vec<Ty<'tcx>> = match ty.kind() {
-                TyKind::Array(ty, _) | TyKind::Slice(ty) | TyKind::Ref(_, ty, _) => vec![*ty],
-                TyKind::Adt(def, substs) => {
-                    if ty.is_box() {
-                        vec![substs.first().unwrap().expect_ty()]
-                    } else {
-                        def.all_fields().map(|f| f.ty(ctxt.tcx(), substs)).collect()
-                    }
-                }
-                TyKind::Tuple(slice) => slice.iter().collect(),
-                TyKind::Closure(_, substs) => substs.as_closure().upvar_tys().iter().collect(),
-                TyKind::Coroutine(_, _) | TyKind::CoroutineClosure(_, _) | TyKind::FnDef(_, _) => {
-                    vec![]
-                }
-                TyKind::Alias(_, _)
-                | TyKind::Dynamic(..)
-                | TyKind::Param(_)
-                | TyKind::Bound(_, _)
-                | TyKind::CoroutineWitness(_, _) => vec![],
-                TyKind::Bool => todo!(),
-                TyKind::Int(_) => todo!(),
-                TyKind::Uint(_) => todo!(),
-                TyKind::Float(_) => todo!(),
-                TyKind::Foreign(_) => todo!(),
-                TyKind::Str => todo!(),
-                TyKind::Pat(_, _) => todo!(),
-                TyKind::RawPtr(_, _) => todo!(),
-                TyKind::FnPtr(_, _) => todo!(),
-                TyKind::Never => todo!(),
-                TyKind::Placeholder(_) => todo!(),
-                TyKind::Infer(_) => todo!(),
-                TyKind::Error(_) => todo!(),
-                _ => todo!(),
-            };
-            for ty in field_tys {
-                if let Err(mut tys) = ty_has_lifetimes_under_unsafe_ptr(ty, seen, ctxt) {
-                    tys.push(ty);
-                    return Err(tys);
-                }
-            }
-            Ok(())
-        }
-        ty_has_lifetimes_under_unsafe_ptr(self.rust_ty(ctxt), &mut HashSet::default(), ctxt)
-            .map_err(|tys| PlaceContainingPtrWithNestedLifetime {
-                place: self,
-                invalid_ty_chain: tys,
-            })
     }
 
     pub(crate) fn ty_region<'a>(
@@ -782,7 +703,9 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         assert!(
-            self.rust_ty(ctxt).is_ref() || self.rust_ty(ctxt).is_box(),
+            self.rust_ty(ctxt).is_ref()
+                || self.rust_ty(ctxt).is_box()
+                || self.rust_ty(ctxt).is_raw_ptr(),
             "Expected ref or box, got {:?}",
             self.rust_ty(ctxt)
         );

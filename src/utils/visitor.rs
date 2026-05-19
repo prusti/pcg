@@ -15,7 +15,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_statement_fallable(statement, location)
     }
 
@@ -23,35 +23,31 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         operand: &mir::Operand<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        self.super_operand_fallable(operand, location)
+    ) -> Result<(), PcgError> {
+        self.super_operand_fallable(operand, location);
+        Ok(())
     }
 
     #[allow(clippy::wildcard_in_or_patterns)]
-    fn super_operand_fallable(
-        &mut self,
-        operand: &mir::Operand<'tcx>,
-        location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    fn super_operand_fallable(&mut self, operand: &mir::Operand<'tcx>, location: mir::Location) {
         match operand {
             mir::Operand::Copy(place) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Copy),
                     location,
-                )?;
+                );
             }
             mir::Operand::Move(place) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Move),
                     location,
-                )?;
+                );
             }
             #[allow(unreachable_patterns)]
             mir::Operand::Constant(_) | _ => {}
         }
-        Ok(())
     }
 
     #[allow(unreachable_patterns)]
@@ -59,14 +55,14 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match &statement.kind {
             mir::StatementKind::Assign(box (place, rvalue)) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Store),
                     location,
-                )?;
+                );
                 self.visit_rvalue_fallable(rvalue, location)?;
             }
             mir::StatementKind::FakeRead(box (_, place)) => {
@@ -74,14 +70,14 @@ pub(crate) trait FallableVisitor<'tcx> {
                     (*place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
                     location,
-                )?;
+                );
             }
             mir::StatementKind::SetDiscriminant { place, .. } => {
                 self.visit_place_fallable(
                     (**place).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::SetDiscriminant),
                     location,
-                )?;
+                );
             }
             mir::StatementKind::StorageLive(_)
             | mir::StatementKind::StorageDead(_)
@@ -93,21 +89,21 @@ pub(crate) trait FallableVisitor<'tcx> {
                     (**place).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Retag),
                     location,
-                )?;
+                );
             }
             mir::StatementKind::PlaceMention(place) => {
                 self.visit_place_fallable(
                     (**place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::PlaceMention),
                     location,
-                )?;
+                );
             }
             mir::StatementKind::AscribeUserType(box (place, _), variance) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::NonUse(visit::NonUseContext::AscribeUserTy(*variance)),
                     location,
-                )?;
+                );
             }
             mir::StatementKind::Intrinsic(box intrinsic) => match intrinsic {
                 mir::NonDivergingIntrinsic::Assume(op) => {
@@ -128,7 +124,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_terminator_fallable(terminator, location)
     }
 
@@ -137,13 +133,13 @@ pub(crate) trait FallableVisitor<'tcx> {
         place: Place<'tcx>,
         context: visit::PlaceContext,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>>;
+    );
 
     fn visit_rvalue_fallable(
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_rvalue_fallable(rvalue, location)
     }
 
@@ -152,7 +148,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match rvalue {
             mir::Rvalue::Use(operand)
             | mir::Rvalue::Cast(_, operand, _)
@@ -174,14 +170,14 @@ pub(crate) trait FallableVisitor<'tcx> {
                         visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Borrow)
                     }
                 };
-                self.visit_place_fallable((*path).into(), ctx, location)?;
+                self.visit_place_fallable((*path).into(), ctx, location);
             }
             mir::Rvalue::CopyForDeref(place) | mir::Rvalue::Discriminant(place) => {
                 self.visit_place_fallable(
                     (*place).into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Inspect),
                     location,
-                )?;
+                );
             }
             mir::Rvalue::BinaryOp(_, box (lhs, rhs)) => {
                 self.visit_operand_fallable(lhs, location)?;
@@ -224,7 +220,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                         visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::RawBorrow)
                     }
                 };
-                self.visit_place_fallable((*place).into(), context, location)?;
+                self.visit_place_fallable((*place).into(), context, location);
             }
             _ => {}
         }
@@ -235,7 +231,7 @@ pub(crate) trait FallableVisitor<'tcx> {
         &mut self,
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         match &terminator.kind {
             mir::TerminatorKind::Goto { .. }
             | mir::TerminatorKind::UnwindResume
@@ -249,7 +245,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                     mir::RETURN_PLACE.into(),
                     visit::PlaceContext::NonMutatingUse(visit::NonMutatingUseContext::Move),
                     location,
-                )?;
+                );
                 Ok(())
             }
             mir::TerminatorKind::SwitchInt { discr, .. } => {
@@ -261,7 +257,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                     (*place).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Drop),
                     location,
-                )?;
+                );
                 Ok(())
             }
             mir::TerminatorKind::Call {
@@ -278,7 +274,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                     (*destination).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Call),
                     location,
-                )?;
+                );
                 Ok(())
             }
             mir::TerminatorKind::Assert { cond, .. } => {
@@ -293,7 +289,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                     (*resume_arg).into(),
                     visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Yield),
                     location,
-                )?;
+                );
                 Ok(())
             }
             mir::TerminatorKind::InlineAsm { operands, .. } => {
@@ -311,7 +307,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                                     visit::MutatingUseContext::AsmOutput,
                                 ),
                                 location,
-                            )?;
+                            );
                         }
                         mir::InlineAsmOperand::InOut {
                             in_value,
@@ -326,7 +322,7 @@ pub(crate) trait FallableVisitor<'tcx> {
                                         visit::MutatingUseContext::AsmOutput,
                                     ),
                                     location,
-                                )?;
+                                );
                             }
                         }
                         _ => {}

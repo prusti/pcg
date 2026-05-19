@@ -50,7 +50,9 @@ impl<'tcx> OwnedPcg<'tcx> {
                     }
                     CapabilityKind::Exclusive => {
                         pcg_validity_assert!(
-                            !place.projects_shared_ref(ctxt),
+                            !place.projects_shared_ref(ctxt)
+                                || place.is_raw_ptr(ctxt)
+                                || place.contains_unsafe_deref(ctxt),
                             "Cannot get exclusive on projection of shared ref {}",
                             place.display_string(ctxt.bc_ctxt())
                         );

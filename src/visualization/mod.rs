@@ -209,6 +209,14 @@ pub(crate) enum GraphEdge<'a> {
         source: NodeId,
         target: NodeId,
     },
+    Delegation {
+        source: NodeId,
+        target: NodeId,
+    },
+    RawPtrDeref {
+        source: NodeId,
+        target: NodeId,
+    },
 }
 
 impl<'a> GraphEdge<'a> {
@@ -226,7 +234,9 @@ impl<'a> GraphEdge<'a> {
             | GraphEdge::Alias { .. }
             | GraphEdge::Abstract { .. }
             | GraphEdge::BorrowFlow { .. }
-            | GraphEdge::Coupled { .. } => None,
+            | GraphEdge::Coupled { .. }
+            | GraphEdge::Delegation { .. }
+            | GraphEdge::RawPtrDeref { .. } => None,
         }
     }
     pub(super) fn to_dot_edge<'tcx: 'a>(
@@ -341,6 +351,22 @@ impl<'a> GraphEdge<'a> {
                 to: target.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
                     .with_color("red".into())
+                    .with_style("dashed"),
+            },
+            GraphEdge::Delegation { source, target } => DotEdge {
+                id: edge_id,
+                from: source.to_string(),
+                to: target.to_string(),
+                options: EdgeOptions::directed(EdgeDirection::Forward)
+                    .with_color("blue".into())
+                    .with_style("dashed"),
+            },
+            GraphEdge::RawPtrDeref { source, target } => DotEdge {
+                id: edge_id,
+                from: source.to_string(),
+                to: target.to_string(),
+                options: EdgeOptions::directed(EdgeDirection::Forward)
+                    .with_color("green".into())
                     .with_style("dashed"),
             },
         }

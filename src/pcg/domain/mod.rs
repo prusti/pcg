@@ -279,7 +279,7 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     pub(crate) fn join(
         self,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError<'tcx>> {
+    ) -> Result<DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError> {
         let (first, rest) = self.take_first();
         let mut result: DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> =
             DomainDataWithCtxt::new(PcgDomainData::from_incoming(ctxt.block, &first), ctxt);
@@ -316,7 +316,7 @@ impl<'a, 'tcx> DataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     pub(crate) fn ensure_transfer(
         &mut self,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<&mut DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError<'tcx>> {
+    ) -> Result<&mut DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError> {
         match self {
             DataflowState::Pending(pending_state) => {
                 let pending_state = pending_state.take();
@@ -330,7 +330,7 @@ impl<'a, 'tcx> DataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     pub(crate) fn take_into_data(
         self,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError<'tcx>> {
+    ) -> Result<DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError> {
         match self {
             DataflowState::Pending(pending) => Ok(pending.join(ctxt)?),
             DataflowState::Transfer(transfer) => Ok(transfer),
@@ -429,7 +429,7 @@ impl<T: Eq> Eq for DomainDataWithCtxt<'_, '_, T> {}
 #[derive(From, Clone)]
 pub enum PcgDomain<'a, 'tcx> {
     Bottom,
-    Error(PcgError<'tcx>),
+    Error(PcgError),
     Analysis(DataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>),
     Results(DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>>),
 }
@@ -460,7 +460,7 @@ impl<'a, 'tcx: 'a> PcgDomain<'a, 'tcx> {
     pub(crate) fn bottom() -> Self {
         Self::Bottom
     }
-    pub(crate) fn record_error(&mut self, error: PcgError<'tcx>) {
+    pub(crate) fn record_error(&mut self, error: PcgError) {
         *self = Self::Error(error);
     }
     pub(crate) fn data_mut(&mut self) -> &mut PcgDomainData<'a, 'tcx> {
@@ -527,16 +527,16 @@ pub(crate) trait HasPcgDomainData<'a, 'tcx: 'a> {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct ErrorState<'tcx> {
-    error: Option<PcgError<'tcx>>,
+pub(crate) struct ErrorState {
+    error: Option<PcgError>,
 }
 
-impl<'tcx> ErrorState<'tcx> {
-    pub(crate) fn error(&self) -> Option<&PcgError<'tcx>> {
+impl ErrorState {
+    pub(crate) fn error(&self) -> Option<&PcgError> {
         self.error.as_ref()
     }
 
-    pub(crate) fn record_error(&mut self, error: PcgError<'tcx>) {
+    pub(crate) fn record_error(&mut self, error: PcgError) {
         assert!(!*PANIC_ON_ERROR, "PCG Error: {error:?}");
         tracing::error!("PCG Error: {error:?}");
         self.error = Some(error);
@@ -544,7 +544,7 @@ impl<'tcx> ErrorState<'tcx> {
 }
 
 impl<'a, 'tcx> PcgDomain<'a, 'tcx> {
-    pub(crate) fn error(&self) -> Option<&PcgError<'tcx>> {
+    pub(crate) fn error(&self) -> Option<&PcgError> {
         match self {
             PcgDomain::Error(e) => Some(e),
             _ => None,
@@ -567,7 +567,7 @@ impl<'a, 'tcx> PcgDomain<'a, 'tcx> {
 
     pub(crate) fn expect_results_or_error(
         &self,
-    ) -> Result<&DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>>, PcgError<'tcx>> {
+    ) -> Result<&DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>>, PcgError> {
         match self {
             PcgDomain::Results(dataflow_state) => Ok(dataflow_state),
             PcgDomain::Error(pcg_error) => Err(pcg_error.clone()),

@@ -74,7 +74,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &mut self,
         shape: &FunctionShape,
         call: &FunctionCall<'_, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let metadata = FunctionCallAbstractionEdgeMetadata {
             location: call.location,
             defined_fn_call: call.defined,
@@ -136,7 +136,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         args: &[&Operand<'tcx>],
         destination: utils::Place<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         let call = FunctionCall::new(
             location,
             args,

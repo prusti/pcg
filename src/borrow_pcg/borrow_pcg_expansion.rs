@@ -25,7 +25,7 @@ use crate::{
         },
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
     },
-    error::{PcgError, PcgUnsupportedError},
+    error::PcgError,
     r#loop::PlaceUsageType,
     owned_pcg::{RepackGuide, RequiredGuide},
     pcg::{
@@ -276,7 +276,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         base: LifetimeProjection<'tcx, Place<'tcx>>,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
     {
@@ -292,7 +292,7 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         base: Place<'tcx>,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: impl HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         'tcx: 'a,
     {
@@ -545,14 +545,11 @@ impl<'tcx, Node: PcgNodeComponent + 'tcx> BorrowPcgExpansionData<Node> {
         base: Node,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
-    ) -> Result<Self, PcgError<'tcx>>
+    ) -> Result<Self, PcgError>
     where
         Node: Ord + HasPlace<'tcx, P> + PlaceProjectable<'tcx, Ctxt>,
         Self: HasValidityCheck<Ctxt>,
     {
-        if base.place().is_raw_ptr(ctxt) {
-            return Err(PcgUnsupportedError::DerefUnsafePtr.into());
-        }
         pcg_validity_assert!(
             !(base.is_place() && base.place().is_ref(ctxt) && expansion.is_deref()),
             [ctxt],

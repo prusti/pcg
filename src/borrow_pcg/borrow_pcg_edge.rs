@@ -180,7 +180,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + DebugCtxt, T: BorrowPc
     HasValidityCheck<Ctxt> for T
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
-        self.kind().check_validity(ctxt)
+        self.kind().check_validity(ctxt.bc_ctxt())
     }
 }
 
@@ -229,7 +229,7 @@ impl<'tcx> HasPlace<'tcx> for LocalNode<'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceProjectable<'tcx, Ctxt>
     for LocalNode<'tcx>
 {
-    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError<'tcx>> {
+    fn project_deeper(&self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> Result<Self, PcgError> {
         Ok(match self {
             LocalNode::Place(p) => LocalNode::Place(p.project_deeper(elem, ctxt)?),
             LocalNode::LifetimeProjection(rp) => {
@@ -397,6 +397,8 @@ edgedata_enum!(
     BorrowFlow(crate::borrow_pcg::edge::borrow_flow::BorrowFlowEdge<'tcx, P>),
     Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx, P>),
     Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx, P>),
+    Delegation(crate::borrow_pcg::edge::delegation::DelegationEdge<'tcx, P>),
+    RawPtrDeref(crate::borrow_pcg::edge::rawptr_deref::RawPtrDerefEdge<'tcx, P>),
 );
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>

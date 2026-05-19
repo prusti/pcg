@@ -68,7 +68,9 @@ impl<'tcx> PlaceCondition<'tcx> {
     ) -> PlaceCondition<'tcx> {
         let place = place.into();
         pcg_validity_assert!(
-            !place.projects_shared_ref(ctxt),
+            !place.projects_shared_ref(ctxt)
+                || place.is_raw_ptr(ctxt)
+                || place.contains_unsafe_deref(ctxt),
             "Cannot get exclusive on projection of shared ref {}",
             place.display_string(ctxt)
         );
@@ -106,8 +108,8 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         operand: &Operand<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        self.super_operand_fallable(operand, location)?;
+    ) -> Result<(), PcgError> {
+        self.super_operand_fallable(operand, location);
         #[allow(clippy::match_same_arms)]
         let triple = match *operand {
             Operand::Copy(place) => Triple {
@@ -131,7 +133,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         rvalue: &Rvalue<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_rvalue_fallable(rvalue, location)?;
         use Rvalue::{
             Aggregate, BinaryOp, Cast, CopyForDeref, Discriminant, RawPtr, Ref, Repeat,
@@ -205,7 +207,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         statement: &Statement<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_statement_fallable(statement, location)?;
         use StatementKind::{Assign, FakeRead, Retag, SetDiscriminant, StorageDead, StorageLive};
         let t = match statement.kind {
@@ -241,7 +243,7 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
         &mut self,
         terminator: &Terminator<'tcx>,
         location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) -> Result<(), PcgError> {
         self.super_terminator_fallable(terminator, location)?;
         use TerminatorKind::{
             Assert, Call, CoroutineDrop, Drop, FalseEdge, FalseUnwind, Goto, InlineAsm, Return,
@@ -284,14 +286,10 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
 
     fn visit_place_fallable(
         &mut self,
-        place: Place<'tcx>,
+        _place: Place<'tcx>,
         _context: mir::visit::PlaceContext,
         _location: Location,
-    ) -> Result<(), PcgError<'tcx>> {
-        if place.contains_unsafe_deref(self.ctxt) {
-            return Err(PcgError::unsupported(PcgUnsupportedError::DerefUnsafePtr));
-        }
-        Ok(())
+    ) {
     }
 }
 

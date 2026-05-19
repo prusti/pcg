@@ -11,10 +11,9 @@ use crate::{
         state::BorrowStateRef,
         validity_conditions::ValidityConditions,
     },
-    error::{PcgError, PcgUnsupportedError},
-    r#loop::{PlaceUsageType, PlaceUsages},
+    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
-        BodyAnalysis, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        BodyAnalysis, CapabilityKind, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         owned_state::OwnedPcg,
         place_capabilities::{
@@ -26,7 +25,7 @@ use crate::{
     utils::{
         DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
         data_structures::HashSet,
-        display::DisplayWithCompilerCtxt,
+        display::DisplayWithCtxt,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
@@ -131,7 +130,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &'slf ValidityConditions,
         mut args: JoinBorrowsArgs<'slf, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) {
         let other_block = args.other_block;
         let self_block = args.self_block;
         pcg_validity_assert!(
@@ -150,7 +149,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .body_analysis
             .get_places_used_in_loop_with_head(self_block)
         {
-            self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt)?;
+            self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt);
             #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
                 && let Ok(dot_graph) =
@@ -167,7 +166,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 [ctxt],
                 "Graph became invalid after join"
             );
-            return Ok(());
+            return;
         }
         for other_edge in other_graph.edges() {
             self.insert(other_edge.to_owned_edge(), ctxt);
@@ -223,7 +222,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 }
             }
         }
-        Ok(())
     }
 
     fn join_loop<'mir>(
@@ -232,7 +230,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         validity_conditions: &ValidityConditions,
         mut args: JoinBorrowsArgs<'_, 'mir, 'tcx>,
         ctxt: AnalysisCtxt<'mir, 'tcx>,
-    ) -> Result<(), PcgError<'tcx>> {
+    ) {
         let loop_head = args.self_block;
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -261,12 +259,28 @@ impl<'tcx> BorrowsGraph<'tcx> {
             )
         });
 
-        if !live_loop_places
-            .usages_where(|p| p.place.contains_unsafe_deref(ctxt.ctxt))
-            .is_empty()
-        {
-            return Err(PcgUnsupportedError::DerefUnsafePtr.into());
-        }
+        let live_loop_places = live_loop_places
+            .iter()
+            .map(|p| {
+                if p.place.contains_unsafe_deref(ctxt.ctxt) {
+                    let edges = self.edges_blocking(p.place.into(), ctxt);
+                    let raw_ptr_edge = edges
+                        .into_iter()
+                        .filter_map(|e| match e.kind {
+                            BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>();
+                    assert!(raw_ptr_edge.len() == 1);
+                    PlaceUsage {
+                        place: raw_ptr_edge[0].aliased_place.place(),
+                        usage: p.usage,
+                    }
+                } else {
+                    p
+                }
+            })
+            .collect::<PlaceUsages<'_>>();
 
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -410,6 +424,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             graph: abstraction_graph,
             to_label,
             capability_updates,
+            blocked_root_places,
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
             &root_places,
@@ -446,6 +461,23 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 capabilities.insert(place, cap, ctxt);
             } else {
                 capabilities.remove(place, ctxt);
+            }
+        }
+
+        // For each root place that is actually blocked by the loop abstraction,
+        // downgrade mutable-reference ancestors from E to W.  Without this,
+        // `variant: E` and `(*variant).fields: E` can coexist once the
+        // abstraction edge is removed (e.g. in unreachable `otherwise` branches),
+        // violating the parent-child capability invariant.
+        for root_place in &blocked_root_places {
+            let mut p = *root_place;
+            while let Some(parent) = p.parent_place() {
+                if capabilities.get(parent, ctxt.ctxt) == Some(CapabilityKind::Exclusive)
+                    && (parent.ref_mutability(ctxt.ctxt).is_some() || parent.is_raw_ptr(ctxt.ctxt))
+                {
+                    capabilities.insert(parent, CapabilityKind::Write, ctxt.ctxt);
+                }
+                p = parent;
             }
         }
 
@@ -528,6 +560,5 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Final graph",
             ctxt.ctxt,
         );
-        Ok(())
     }
 }
