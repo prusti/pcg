@@ -270,6 +270,7 @@ struct PcgStmtVisualizationData {
     actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
     return_unblock_graph: Option<String>,
+    return_unblock_actions: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -548,7 +549,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             };
 
             let terminator_stmt_index = body[block].statements.len();
-            let return_unblock_graph =
+            let return_unblock =
                 if matches!(&body[block].terminator().kind, mir::TerminatorKind::Return) {
                     let filename = format!("{block:?}_remote_lifetime_projection_unblock.dot");
                     let post_main = &pcg_block.terminator.states[EvalStmtPhase::PostMain];
@@ -570,6 +571,13 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                         &post_main.borrow,
                         pcg_ctxt.compiler_ctxt,
                     );
+                    let unblock_actions = unblock_graph
+                        .clone()
+                        .actions(pcg_ctxt.compiler_ctxt)
+                        .expect("Failed to generate return unblock actions")
+                        .into_iter()
+                        .map(|action| action.edge().display_string(pcg_ctxt.compiler_ctxt))
+                        .collect::<Vec<_>>();
                     let dot_graph = visualization::generate_unblock_dot_graph(
                         pcg_ctxt.compiler_ctxt,
                         &post_main.place_capabilities,
@@ -578,7 +586,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                     .expect("Failed to generate return unblock graph");
                     std::fs::write(dir_path.join(&filename), dot_graph)
                         .expect("Failed to write return unblock graph");
-                    Some(filename)
+                    Some((filename, unblock_actions))
                 } else {
                     None
                 };
@@ -597,7 +605,16 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                         return_unblock_graph: if stmt.location.statement_index
                             == terminator_stmt_index
                         {
-                            return_unblock_graph.clone()
+                            return_unblock
+                                .as_ref()
+                                .map(|(filename, _)| filename.clone())
+                        } else {
+                            None
+                        },
+                        return_unblock_actions: if stmt.location.statement_index
+                            == terminator_stmt_index
+                        {
+                            return_unblock.as_ref().map(|(_, actions)| actions.clone())
                         } else {
                             None
                         },

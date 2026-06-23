@@ -284,6 +284,20 @@ const getReturnUnblockGraphFilename = (
   return filename ? `data/${selectedFunction}/${filename}` : null;
 };
 
+const getReturnUnblockActions = (
+  currentPoint: CurrentPoint,
+  graphs: PcgBlockVisualizationData
+): string[] => {
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
+    return [];
+  }
+
+  return graphs.statements[currentPoint.stmt].return_unblock_actions ?? [];
+};
+
 const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
   if (currentPoint.type === "stmt") {
     const navPointName =
@@ -377,6 +391,7 @@ export default function PCGNavigator({
     selectedFunction,
     pcgData
   );
+  const returnUnblockActions = getReturnUnblockActions(currentPoint, pcgData);
 
   // Resize handlers
   const handleResizeStart = (event: React.MouseEvent) => {
@@ -680,7 +695,11 @@ export default function PCGNavigator({
                 openDotGraphInNewWindow(
                   api,
                   returnUnblockGraphFilename,
-                  "Remote Lifetime Projection Unblock Graph"
+                  "Remote Lifetime Projection Unblock Graph",
+                  {
+                    title: "Unblock Actions",
+                    items: returnUnblockActions,
+                  }
                 );
               }}
             >
