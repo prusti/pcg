@@ -56,7 +56,7 @@ pub mod utils;
 pub mod visualization;
 
 use borrow_checker::BorrowCheckerInterface;
-use borrow_pcg::graph::borrows_imgcat_debug;
+use borrow_pcg::graph::{borrows_imgcat_debug, loop_abstraction::MaybeRemoteCurrentPlace};
 use pcg::{CapabilityKind, EvalStmtPhase, PcgEngine};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
@@ -549,27 +549,23 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
             };
 
             let terminator_stmt_index = body[block].statements.len();
-            let return_unblock = if matches!(
-                &body[block].terminator().kind,
-                mir::TerminatorKind::Return
-            ) {
+            let is_return = matches!(&body[block].terminator().kind, mir::TerminatorKind::Return);
+            let return_unblock = if is_return {
                 let filename = format!("{block:?}_remote_lifetime_projection_unblock.dot");
                 let post_main = &pcg_block.terminator.states[EvalStmtPhase::PostMain];
                 let remote_lifetime_projections = post_main
-                        .borrow
-                        .graph()
-                        .nodes(pcg_ctxt.compiler_ctxt)
-                        .into_iter()
-                        .filter(|node| {
-                            node.try_into_lifetime_projection().is_ok_and(|rp| {
-                                rp.base()
-                                    .maybe_remote_current_place()
-                                    .is_some_and(
-                                        borrow_pcg::graph::loop_abstraction::MaybeRemoteCurrentPlace::is_remote,
-                                    )
-                            })
+                    .borrow
+                    .graph()
+                    .nodes(pcg_ctxt.compiler_ctxt)
+                    .into_iter()
+                    .filter(|node| {
+                        node.try_into_lifetime_projection().is_ok_and(|rp| {
+                            rp.base()
+                                .maybe_remote_current_place()
+                                .is_some_and(MaybeRemoteCurrentPlace::is_remote)
                         })
-                        .collect::<Vec<_>>();
+                    })
+                    .collect::<Vec<_>>();
                 let unblock_graph = borrow_pcg::unblock_graph::UnblockGraph::for_nodes(
                     remote_lifetime_projections,
                     &post_main.borrow,
