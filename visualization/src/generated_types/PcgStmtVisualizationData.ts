@@ -3,4 +3,4 @@ import type { AppliedAction } from "./AppliedAction";
 import type { EvalStmtData } from "./EvalStmtData";
 import type { StmtGraphs } from "./StmtGraphs";
 
-export type PcgStmtVisualizationData = { actions: EvalStmtData<Array<AppliedAction>>, graphs: StmtGraphs, };
+export type PcgStmtVisualizationData = { actions: EvalStmtData<Array<AppliedAction>>, graphs: StmtGraphs, return_unblock_graph: string | null, return_unblock_actions: Array<string> | null, };

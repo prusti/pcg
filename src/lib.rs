@@ -56,8 +56,8 @@ pub mod utils;
 pub mod visualization;
 
 use borrow_checker::BorrowCheckerInterface;
-use borrow_pcg::graph::borrows_imgcat_debug;
-use pcg::{CapabilityKind, PcgEngine};
+use borrow_pcg::graph::{borrows_imgcat_debug, loop_abstraction::MaybeRemoteCurrentPlace};
+use pcg::{CapabilityKind, EvalStmtPhase, PcgEngine};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -269,6 +269,8 @@ use utils::eval_stmt_data::EvalStmtData;
 struct PcgStmtVisualizationData {
     actions: EvalStmtData<Vec<AppliedActionDebugRepr>>,
     graphs: visualization::stmt_graphs::StmtGraphs,
+    return_unblock_graph: Option<String>,
+    return_unblock_actions: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
@@ -546,6 +548,49 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 (None, Vec::new())
             };
 
+            let terminator_stmt_index = body[block].statements.len();
+            let is_return = matches!(&body[block].terminator().kind, mir::TerminatorKind::Return);
+            let return_unblock = if is_return {
+                let filename = format!("{block:?}_remote_lifetime_projection_unblock.dot");
+                let post_main = &pcg_block.terminator.states[EvalStmtPhase::PostMain];
+                let remote_lifetime_projections = post_main
+                    .borrow
+                    .graph()
+                    .nodes(pcg_ctxt.compiler_ctxt)
+                    .into_iter()
+                    .filter(|node| {
+                        node.try_into_lifetime_projection().is_ok_and(|rp| {
+                            rp.base()
+                                .maybe_remote_current_place()
+                                .is_some_and(MaybeRemoteCurrentPlace::is_remote)
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                let unblock_graph = borrow_pcg::unblock_graph::UnblockGraph::for_nodes(
+                    remote_lifetime_projections,
+                    &post_main.borrow,
+                    pcg_ctxt.compiler_ctxt,
+                );
+                let unblock_actions = unblock_graph
+                    .clone()
+                    .actions(pcg_ctxt.compiler_ctxt)
+                    .expect("Failed to generate return unblock actions")
+                    .into_iter()
+                    .map(|action| action.edge().display_string(pcg_ctxt.compiler_ctxt))
+                    .collect::<Vec<_>>();
+                let dot_graph = visualization::generate_unblock_dot_graph(
+                    pcg_ctxt.compiler_ctxt,
+                    &post_main.place_capabilities,
+                    &unblock_graph,
+                )
+                .expect("Failed to generate return unblock graph");
+                std::fs::write(dir_path.join(&filename), dot_graph)
+                    .expect("Failed to write return unblock graph");
+                Some((filename, unblock_actions))
+            } else {
+                None
+            };
+
             let statements = pcg_block
                 .statements()
                 .map(|stmt| {
@@ -557,6 +602,22 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                             .get(stmt.location.statement_index)
                             .cloned()
                             .unwrap_or_default(),
+                        return_unblock_graph: if stmt.location.statement_index
+                            == terminator_stmt_index
+                        {
+                            return_unblock
+                                .as_ref()
+                                .map(|(filename, _)| filename.clone())
+                        } else {
+                            None
+                        },
+                        return_unblock_actions: if stmt.location.statement_index
+                            == terminator_stmt_index
+                        {
+                            return_unblock.as_ref().map(|(_, actions)| actions.clone())
+                        } else {
+                            None
+                        },
                     }
                 })
                 .collect();

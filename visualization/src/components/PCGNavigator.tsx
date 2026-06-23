@@ -42,6 +42,17 @@ export const NAVIGATOR_MIN_WIDTH_NUM = 40;
 export const NAVIGATOR_MAX_WIDTH = "200px";
 export const NAVIGATOR_MIN_WIDTH = "40px";
 
+const navigatorActionButtonStyle: React.CSSProperties = {
+  margin: "10px",
+  padding: "8px",
+  cursor: "pointer",
+  backgroundColor: "#007acc",
+  color: "white",
+  border: "none",
+  borderRadius: "4px",
+  fontSize: "12px",
+};
+
 function DotGraphButton({
   label,
   dotContent,
@@ -257,6 +268,36 @@ const getPCGDotGraphFilename = (
   return `data/${selectedFunction}/${filename}`;
 };
 
+const getReturnUnblockGraphFilename = (
+  currentPoint: CurrentPoint,
+  selectedFunction: string,
+  graphs: PcgBlockVisualizationData
+): string | null => {
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
+    return null;
+  }
+
+  const filename = graphs.statements[currentPoint.stmt].return_unblock_graph;
+  return filename ? `data/${selectedFunction}/${filename}` : null;
+};
+
+const getReturnUnblockActions = (
+  currentPoint: CurrentPoint,
+  graphs: PcgBlockVisualizationData
+): string[] => {
+  if (
+    currentPoint.type !== "stmt" ||
+    graphs.statements.length <= currentPoint.stmt
+  ) {
+    return [];
+  }
+
+  return graphs.statements[currentPoint.stmt].return_unblock_actions ?? [];
+};
+
 const formatCurrentPointTitle = (currentPoint: CurrentPoint): string => {
   if (currentPoint.type === "stmt") {
     const navPointName =
@@ -345,6 +386,12 @@ export default function PCGNavigator({
   };
 
   const navigationItems = buildNavigationItems();
+  const returnUnblockGraphFilename = getReturnUnblockGraphFilename(
+    currentPoint,
+    selectedFunction,
+    pcgData
+  );
+  const returnUnblockActions = getReturnUnblockActions(currentPoint, pcgData);
 
   // Resize handlers
   const handleResizeStart = (event: React.MouseEvent) => {
@@ -626,16 +673,7 @@ export default function PCGNavigator({
             {renderItems()}
           </div>
           <button
-            style={{
-              margin: "10px",
-              padding: "8px",
-              cursor: "pointer",
-              backgroundColor: "#007acc",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "12px",
-            }}
+            style={navigatorActionButtonStyle}
             onClick={async () => {
               const dotFilePath = getPCGDotGraphFilename(
                 currentPoint,
@@ -650,6 +688,24 @@ export default function PCGNavigator({
           >
             Open Current PCG in New Window
           </button>
+          {returnUnblockGraphFilename ? (
+            <button
+              style={navigatorActionButtonStyle}
+              onClick={() => {
+                openDotGraphInNewWindow(
+                  api,
+                  returnUnblockGraphFilename,
+                  "Remote Lifetime Projection Unblock Graph",
+                  {
+                    title: "Unblock Actions",
+                    items: returnUnblockActions,
+                  }
+                );
+              }}
+            >
+              Open Remote Lifetime Projection Unblock Graph in New Window
+            </button>
+          ) : null}
           <div
             style={{
               padding: "10px",
