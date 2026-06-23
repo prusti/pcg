@@ -115,6 +115,10 @@ impl<'tcx> UnblockGraph<'tcx> {
         self.edges.is_empty()
     }
 
+    pub(crate) fn edges(&self) -> impl Iterator<Item = &UnblockEdge<'tcx>> {
+        self.edges.iter()
+    }
+
     fn add_dependency(&mut self, unblock_edge: UnblockEdge<'tcx>) -> bool {
         self.edges.insert(unblock_edge)
     }

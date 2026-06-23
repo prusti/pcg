@@ -25,7 +25,7 @@ pub use mir_graph::SourcePos;
 
 use crate::{
     borrow_pcg::{
-        edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph,
+        edge::borrow_flow::BorrowFlowEdgeKind, graph::BorrowsGraph, unblock_graph::UnblockGraph,
         validity_conditions::ValidityConditions,
     },
     pcg::{CapabilityKind, PcgRef, place_capabilities::PlaceCapabilitiesReader},
@@ -418,6 +418,23 @@ pub(crate) fn generate_borrows_dot_graph<'a, 'tcx: 'a>(
     borrows_domain: &'a BorrowsGraph<'tcx>,
 ) -> io::Result<String> {
     let constructor = BorrowsGraphConstructor::new(borrows_domain, capabilities, ctxt.bc_ctxt());
+    let graph = constructor.construct_graph();
+    let mut buf = vec![];
+    let drawer = GraphDrawer::new(&mut buf, None);
+    drawer.draw(&graph, ctxt)?;
+    Ok(String::from_utf8(buf).unwrap())
+}
+
+pub(crate) fn generate_unblock_dot_graph<'a, 'tcx: 'a>(
+    ctxt: CompilerCtxt<'a, 'tcx>,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx>,
+    unblock_graph: &UnblockGraph<'tcx>,
+) -> io::Result<String> {
+    let mut borrows_graph = BorrowsGraph::default();
+    for edge in unblock_graph.edges() {
+        borrows_graph.insert(edge.clone(), ctxt.bc_ctxt());
+    }
+    let constructor = BorrowsGraphConstructor::new(&borrows_graph, capabilities, ctxt.bc_ctxt());
     let graph = constructor.construct_graph();
     let mut buf = vec![];
     let drawer = GraphDrawer::new(&mut buf, None);

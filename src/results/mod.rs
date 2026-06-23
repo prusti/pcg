@@ -127,6 +127,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         let state = self.cursor.get().expect_results_or_error()?;
         let from_pcg = &state.data.pcg;
         let from_post_main = from_pcg.states[EvalStmtPhase::PostMain].clone();
+        let states = state.data.pcg.states.to_owned();
         let self_abstraction_edges = from_post_main
             .borrow
             .graph()
@@ -194,7 +195,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                 ))
             })
             .collect::<Result<Vec<_>, PcgError>>()?;
-        Ok(PcgTerminator { succs })
+        Ok(PcgTerminator { succs, states })
     }
 
     /// Obtains the results of the dataflow analysis for all blocks.
@@ -455,4 +456,5 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
 #[derive(Debug)]
 pub struct PcgTerminator<'a, 'tcx> {
     pub succs: Vec<PcgSuccessor<'a, 'tcx>>,
+    pub(crate) states: DomainDataStates<Pcg<'a, 'tcx>>,
 }
