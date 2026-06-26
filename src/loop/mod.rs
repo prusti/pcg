@@ -51,48 +51,79 @@ pub struct LoopAnalysis {
 impl LoopAnalysis {
     #[must_use]
     pub fn find_loops(body: &Body) -> Self {
+        let successors: IndexVec<BasicBlock, Vec<BasicBlock>> = IndexVec::from_fn_n(
+            |bb: BasicBlock| body.basic_blocks[bb].terminator().successors().collect(),
+            body.basic_blocks.len(),
+        );
+        let predecessors: IndexVec<BasicBlock, Vec<BasicBlock>> = IndexVec::from_fn_n(
+            |bb: BasicBlock| {
+                body.basic_blocks.predecessors()[bb]
+                    .iter()
+                    .copied()
+                    .collect()
+            },
+            body.basic_blocks.len(),
+        );
+        let dominators = body.basic_blocks.dominators();
+        Self::find_loops_in_cfg(
+            body.basic_blocks.len(),
+            body.basic_blocks.reverse_postorder().iter().copied().rev(),
+            &successors,
+            &predecessors,
+            |from, to| dominators.dominates(to, from),
+        )
+    }
+
+    fn find_loops_in_cfg(
+        block_count: usize,
+        backedge_search_order: impl IntoIterator<Item = BasicBlock>,
+        successors: &IndexVec<BasicBlock, Vec<BasicBlock>>,
+        predecessors: &IndexVec<BasicBlock, Vec<BasicBlock>>,
+        is_backedge: impl Fn(BasicBlock, BasicBlock) -> bool,
+    ) -> Self {
         let mut analysis = LoopAnalysis {
-            bb_data: IndexVec::from_elem_n(LoopSet::new(), body.basic_blocks.len()),
+            bb_data: IndexVec::from_elem_n(LoopSet::new(), block_count),
             loop_heads: IndexVec::new(),
         };
 
-        let mut visited_bbs: IndexVec<BasicBlock, bool> =
-            IndexVec::from_elem_n(false, body.basic_blocks.len());
-
         let mut loop_head_bb_index: IndexVec<BasicBlock, LoopId> =
-            IndexVec::from_elem_n(NO_LOOP, body.basic_blocks.len());
-        let postorder_blocks = body.basic_blocks.reverse_postorder().iter().copied().rev();
-        for bb in postorder_blocks {
-            for succ in body.basic_blocks[bb].terminator().successors() {
-                if visited_bbs[succ] {
-                    // Merge in loops of this succ
-                    assert_ne!(bb, succ);
-                    let other = analysis.bb_data[succ].clone();
-                    let data = &mut analysis.bb_data[bb];
-                    data.merge(&other);
-                    // If `succ` is a loop head, we are no longer in that loop
-                    let loop_idx = loop_head_bb_index[succ];
-                    if loop_idx != NO_LOOP {
-                        assert_eq!(analysis.loop_heads[loop_idx], succ);
-                        data.remove(loop_idx);
-                    }
-                } else {
-                    // Create new loop
+            IndexVec::from_elem_n(NO_LOOP, block_count);
+        for bb in backedge_search_order {
+            for &succ in &successors[bb] {
+                if is_backedge(bb, succ) {
                     let loop_idx = &mut loop_head_bb_index[succ];
                     if *loop_idx == NO_LOOP {
                         *loop_idx = LoopId::new(analysis.loop_heads.len());
                         analysis.loop_heads.push(succ);
                     }
-                    analysis.bb_data[bb].add(*loop_idx);
+                    analysis.add_natural_loop(succ, bb, *loop_idx, predecessors);
                 }
             }
-            visited_bbs[bb] = true;
         }
         if validity_checks_enabled() {
             analysis.consistency_check();
         }
         analysis
     }
+
+    fn add_natural_loop(
+        &mut self,
+        head: BasicBlock,
+        tail: BasicBlock,
+        loop_idx: LoopId,
+        predecessors: &IndexVec<BasicBlock, Vec<BasicBlock>>,
+    ) {
+        self.bb_data[head].add(loop_idx);
+        let mut stack = vec![tail];
+        while let Some(bb) = stack.pop() {
+            if self.bb_data[bb].contains(loop_idx) {
+                continue;
+            }
+            self.bb_data[bb].add(loop_idx);
+            stack.extend(predecessors[bb].iter().copied());
+        }
+    }
+
     #[must_use]
     pub fn in_loop(&self, bb: BasicBlock, l: LoopId) -> bool {
         self.bb_data[bb].contains(l)
@@ -175,6 +206,81 @@ impl Idx for LoopId {
     }
 }
 const NO_LOOP: LoopId = LoopId(usize::MAX);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn block(index: usize) -> BasicBlock {
+        BasicBlock::new(index)
+    }
+
+    fn make_cfg(
+        successor_indices: &[Vec<usize>],
+    ) -> (
+        IndexVec<BasicBlock, Vec<BasicBlock>>,
+        IndexVec<BasicBlock, Vec<BasicBlock>>,
+    ) {
+        let successors: IndexVec<BasicBlock, Vec<BasicBlock>> = IndexVec::from_fn_n(
+            |bb: BasicBlock| {
+                successor_indices[bb.index()]
+                    .iter()
+                    .copied()
+                    .map(block)
+                    .collect()
+            },
+            successor_indices.len(),
+        );
+        let mut predecessors: IndexVec<BasicBlock, Vec<BasicBlock>> =
+            IndexVec::from_elem_n(Vec::new(), successor_indices.len());
+        for (bb, successors) in successors.iter_enumerated() {
+            for &successor in successors {
+                predecessors[successor].push(bb);
+            }
+        }
+        (successors, predecessors)
+    }
+
+    #[test]
+    fn nested_loop_membership_includes_inner_body_in_outer_loop() {
+        let (successors, predecessors) = make_cfg(&[
+            vec![1],
+            vec![2],
+            vec![3],
+            vec![4, 5],
+            vec![],
+            vec![6],
+            vec![7],
+            vec![8],
+            vec![9],
+            vec![10],
+            vec![11],
+            vec![12],
+            vec![13, 14],
+            vec![1],
+            vec![15],
+            vec![16],
+            vec![17],
+            vec![18],
+            vec![10],
+        ]);
+
+        let analysis = LoopAnalysis::find_loops_in_cfg(
+            successors.len(),
+            (0..successors.len()).rev().map(block),
+            &successors,
+            &predecessors,
+            |from, to| matches!((from.index(), to.index()), (13, 1) | (18, 10)),
+        );
+        let outer = analysis.loop_head_of(block(1)).unwrap();
+        let inner = analysis.loop_head_of(block(10)).unwrap();
+
+        for index in 14..=18 {
+            assert!(analysis.in_loop(block(index), outer));
+            assert!(analysis.in_loop(block(index), inner));
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deref, DerefMut, PartialEq, Eq)]
 struct LoopPlaceUsageDomain<'tcx> {
