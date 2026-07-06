@@ -558,15 +558,19 @@ impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> 
     ) -> bool
     where
         EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P>,
+        VC: ValidityConditionOps<Ctxt>,
     {
         let mut result = false;
-        self.filter_mut_edges(|edge| {
-            let changed: LabelLifetimeProjectionResult = edge
-                .value
-                .label_lifetime_projections(predicate, label, ctxt);
-            result |= changed != LabelLifetimeProjectionResult::Unchanged;
-            changed.to_filter_mut_result()
-        });
+        self.filter_mut_edges(
+            |edge| {
+                let changed: LabelLifetimeProjectionResult = edge
+                    .value
+                    .label_lifetime_projections(predicate, label, ctxt);
+                result |= changed != LabelLifetimeProjectionResult::Unchanged;
+                changed.to_filter_mut_result()
+            },
+            ctxt,
+        );
         result
     }
 }

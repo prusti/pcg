@@ -111,15 +111,18 @@ impl<'tcx> BorrowsGraph<'tcx> {
                     rp.try_to_local_node(ctxt.bc_ctxt())
             {
                 let orig_rp = local_rp.with_label(None, ctxt.bc_ctxt());
-                self.filter_mut_edges(|edge| {
-                    edge.value
-                        .label_lifetime_projections(
-                            &LabelNodePredicate::equals_lifetime_projection(orig_rp),
-                            Some(LifetimeProjectionLabel::Future),
-                            ctxt,
-                        )
-                        .to_filter_mut_result()
-                });
+                self.filter_mut_edges(
+                    |edge| {
+                        edge.value
+                            .label_lifetime_projections(
+                                &LabelNodePredicate::equals_lifetime_projection(orig_rp),
+                                Some(LifetimeProjectionLabel::Future),
+                                ctxt,
+                            )
+                            .to_filter_mut_result()
+                    },
+                    ctxt,
+                );
             }
         }
     }
@@ -443,17 +446,20 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         for rp in &to_label {
-            self.filter_mut_edges(|edge| {
-                edge.value
-                    .label_lifetime_projections(
-                        rp,
-                        Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
-                            loop_head,
-                        ))),
-                        ctxt,
-                    )
-                    .to_filter_mut_result()
-            });
+            self.filter_mut_edges(
+                |edge| {
+                    edge.value
+                        .label_lifetime_projections(
+                            rp,
+                            Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
+                                loop_head,
+                            ))),
+                            ctxt,
+                        )
+                        .to_filter_mut_result()
+                },
+                ctxt,
+            );
         }
 
         for (place, cap_option) in capability_updates {

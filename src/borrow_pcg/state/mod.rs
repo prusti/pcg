@@ -204,6 +204,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     where
         'tcx: 'a,
         EdgeKind: LabelEdgePlaces<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: ValidityConditionOps<Ctxt>,
         PcgNodeWithPlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
     {
         let state = self.as_mut_ref();
@@ -230,6 +231,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     where
         'tcx: 'a,
         EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: ValidityConditionOps<Ctxt>,
     {
         self.graph_mut()
             .label_lifetime_projections(predicate, label, ctxt)
