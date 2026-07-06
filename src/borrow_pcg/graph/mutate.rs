@@ -13,6 +13,8 @@ use crate::{
     },
 };
 
+use std::collections::hash_map;
+
 use super::BorrowsGraph;
 
 impl<'tcx> BorrowsGraph<'tcx> {
@@ -34,10 +36,10 @@ fn insert_joining_conditions<EdgeKind: Eq + std::hash::Hash, VC, Ctxt: Copy>(
     VC: ValidityConditionOps<Ctxt>,
 {
     match edges.entry(edge.value) {
-        std::collections::hash_map::Entry::Occupied(mut existing) => {
+        hash_map::Entry::Occupied(mut existing) => {
             existing.get_mut().join(&edge.conditions, ctxt);
         }
-        std::collections::hash_map::Entry::Vacant(slot) => {
+        hash_map::Entry::Vacant(slot) => {
             slot.insert(edge.conditions);
         }
     }
