@@ -125,9 +125,6 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::RemoveCapability(place) => {
                 place_capabilities.remove(place, ctxt);
-                if let Some(owned) = place.as_owned_place(ctxt) {
-                    self.remove(owned);
-                }
             }
         }
     }

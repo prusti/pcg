@@ -279,17 +279,6 @@ impl<'tcx> OwnedPcg<'tcx> {
         set_cap_at(tree, root_place, projection, cap, ctxt);
     }
 
-    pub(crate) fn remove(&mut self, place: OwnedPlace<'tcx>) {
-        if place.place().projection.is_empty()
-            && let Some(tree) = self
-                .state
-                .get_mut(place.place().local)
-                .and_then(LocalInitState::tree_mut)
-        {
-            *tree = InitialisationTree::Leaf(OwnedCapability::Uninit);
-        }
-    }
-
     pub(crate) fn remove_strict_postfixes_of(&mut self, place: Place<'tcx>) {
         let Some(tree) = self
             .state
