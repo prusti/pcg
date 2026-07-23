@@ -50,8 +50,7 @@ pub struct DefinedFnSigShapeDataSource<'tcx> {
 
 impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
     fn sig(&self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
-        let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
-        tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+        FunctionData::new(self.def_id).identity_fn_sig(tcx)
     }
 }
 
@@ -587,7 +586,16 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
 impl<'tcx> FunctionData<'tcx> {
     #[must_use]
     pub fn identity_fn_sig(self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
-        let fn_sig = tcx.fn_sig(self.def_id).instantiate_identity();
+        let fn_sig = if tcx.is_closure_like(self.def_id) {
+            let ty::TyKind::Closure(_, args) =
+                tcx.type_of(self.def_id).instantiate_identity().kind()
+            else {
+                unreachable!();
+            };
+            self.closure_fn_sig(tcx, args)
+        } else {
+            tcx.fn_sig(self.def_id).instantiate_identity()
+        };
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
 
@@ -595,8 +603,52 @@ impl<'tcx> FunctionData<'tcx> {
     /// not normalized).
     #[must_use]
     pub fn fn_sig(self, tcx: ty::TyCtxt<'tcx>, substs: GenericArgsRef<'tcx>) -> ty::FnSig<'tcx> {
-        let fn_sig = tcx.fn_sig(self.def_id).instantiate(tcx, substs);
+        let fn_sig = if tcx.is_closure_like(self.def_id) {
+            self.closure_fn_sig(tcx, substs)
+        } else {
+            tcx.fn_sig(self.def_id).instantiate(tcx, substs)
+        };
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
+    }
+
+    /// The signature of a closure body: the environment (taken by value or by
+    /// reference, per the closure kind) followed by the untupled arguments.
+    /// Mirrors the construction in rustc's `UniversalRegions` (borrowck),
+    /// which is not exposed as a query.
+    fn closure_fn_sig(
+        self,
+        tcx: ty::TyCtxt<'tcx>,
+        args: GenericArgsRef<'tcx>,
+    ) -> ty::PolyFnSig<'tcx> {
+        let closure = args.as_closure();
+        let closure_sig = closure.sig();
+        let bound_vars =
+            tcx.mk_bound_variable_kinds_from_iter(closure_sig.bound_vars().iter().chain(
+                std::iter::once(ty::BoundVariableKind::Region(
+                    ty::BoundRegionKind::ClosureEnv,
+                )),
+            ));
+        let env_region = ty::Region::new_bound(
+            tcx,
+            ty::INNERMOST,
+            ty::BoundRegion {
+                var: ty::BoundVar::from_usize(bound_vars.len() - 1),
+                kind: ty::BoundRegionKind::ClosureEnv,
+            },
+        );
+        let closure_ty = ty::Ty::new_closure(tcx, self.def_id, args);
+        let env_ty = tcx.closure_env_ty(closure_ty, closure.kind(), env_region);
+        let sig = closure_sig.skip_binder();
+        ty::Binder::bind_with_vars(
+            tcx.mk_fn_sig(
+                std::iter::once(env_ty).chain(sig.inputs()[0].tuple_fields()),
+                sig.output(),
+                sig.c_variadic,
+                sig.safety,
+                sig.abi,
+            ),
+            bound_vars,
+        )
     }
 }
 
