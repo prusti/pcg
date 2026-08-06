@@ -522,6 +522,16 @@ impl<'tcx> Place<'tcx> {
                         .map(|(i, ty)| (i.into(), ty))
                         .collect(),
                 ),
+                // The fields of a closure are the places it captures.
+                TyKind::Closure(_, substs) => PlaceExpansion::fields(
+                    substs
+                        .as_closure()
+                        .upvar_tys()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ty)| (i.into(), ty))
+                        .collect(),
+                ),
                 _ => unreachable!("Unexpected type: {:?}", self.ty(ctxt).ty),
             }
         }
