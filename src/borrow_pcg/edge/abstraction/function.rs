@@ -26,7 +26,10 @@ use crate::{
             mir::{self, Location},
             ty::{self, GenericArgsRef},
         },
-        span::{DUMMY_SP, Span, def_id::LocalDefId},
+        span::{
+            DUMMY_SP, Span,
+            def_id::{CRATE_DEF_ID, LocalDefId},
+        },
         trait_selection::{
             infer::{RegionVariableOrigin, outlives::env::OutlivesEnvironment},
             traits::{NormalizeExt, ScrubbedTraitError, TraitEngine, TraitEngineExt},
@@ -140,14 +143,21 @@ impl<'tcx> DefinedFnSigShapeDataSource<'tcx> {
         def_id: DefId,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
+        use crate::rustc_interface::trait_selection::regions::OutlivesEnvironmentBuildExt;
+
         let typing_env = ty::TypingEnv::post_analysis(tcx, def_id);
-        let (_, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
-        let outlives = OutlivesEnvironment::from_normalized_bounds(
-            param_env,
-            vec![],
-            vec![],
-            HashSet::default(),
-        );
+        let (infcx, param_env) = tcx.infer_ctxt().build_with_typing_env(typing_env);
+        // Assume the signature is well-formed, as the caller must establish.
+        // This gives us the bounds it implies, e.g. `'a: 'b` for an argument
+        // of type `&'a &'b T`, on top of the bounds written down.
+        let wf_tys = FunctionData::new(def_id)
+            .identity_fn_sig(tcx)
+            .inputs_and_output;
+        // Passing `CRATE_DEF_ID` is fine since that argument is used for spans
+        // only (in obligations). We never resolve the regions of `infcx`, so
+        // these spans are never even observed. rustc uses this same fallback.
+        // We cannot use `def_id` since that may not be local.
+        let outlives = OutlivesEnvironment::new(&infcx, CRATE_DEF_ID, param_env, wf_tys.iter());
         Ok(Self { def_id, outlives })
     }
 }
@@ -620,14 +630,18 @@ impl<'tcx> FunctionData<'tcx> {
         tcx: ty::TyCtxt<'tcx>,
         args: GenericArgsRef<'tcx>,
     ) -> ty::PolyFnSig<'tcx> {
+        let (args, capture_regions) = renumbered_captures(tcx, args);
         let closure = args.as_closure();
         let closure_sig = closure.sig();
-        let bound_vars =
-            tcx.mk_bound_variable_kinds_from_iter(closure_sig.bound_vars().iter().chain(
-                std::iter::once(ty::BoundVariableKind::Region(
+        let bound_vars = tcx.mk_bound_variable_kinds_from_iter(
+            closure_sig
+                .bound_vars()
+                .iter()
+                .chain(capture_regions)
+                .chain(std::iter::once(ty::BoundVariableKind::Region(
                     ty::BoundRegionKind::ClosureEnv,
-                )),
-            ));
+                ))),
+        );
         let env_region = ty::Region::new_bound(
             tcx,
             ty::INNERMOST,
@@ -650,6 +664,51 @@ impl<'tcx> FunctionData<'tcx> {
             bound_vars,
         )
     }
+}
+
+/// The closure arguments with the regions of the captures restored, together
+/// with the regions bound for them. The caller must bind these immediately
+/// after the ones the closure signature binds.
+///
+/// Typeck erases the regions of the captures, so `tcx.type_of` gives
+/// `ReErased` where borrowck sees universal regions inherited from the
+/// enclosing function. Which region a capture had is not recoverable from the
+/// type alone: borrowck renumbers them into fresh inference variables and
+/// re-infers them (`UniversalRegions::defining_ty`). Lacking an inference
+/// context, we bind each as its own late-bound region instead, so that
+/// liberating the signature makes them distinct universal regions of the
+/// closure, as it does for the elided lifetimes of a `fn`.
+fn renumbered_captures<'tcx>(
+    tcx: ty::TyCtxt<'tcx>,
+    args: GenericArgsRef<'tcx>,
+) -> (GenericArgsRef<'tcx>, Vec<ty::BoundVariableKind>) {
+    let closure = args.as_closure();
+    let mut regions = Vec::new();
+    // Only the captures are renumbered: the regions of the signature are
+    // bound by it, and those of the parent arguments are its parameters.
+    // The captures are a tuple of types, so no binder is crossed and the
+    // fresh regions are bound by the signature that the caller builds.
+    let upvars = ty::fold_regions(tcx, closure.tupled_upvars_ty(), |region, _| {
+        if !region.is_erased() {
+            return region;
+        }
+        let var = ty::BoundVar::from_usize(closure.sig().bound_vars().len() + regions.len());
+        regions.push(ty::BoundVariableKind::Region(ty::BoundRegionKind::Anon));
+        ty::Region::new_bound(
+            tcx,
+            ty::INNERMOST,
+            ty::BoundRegion {
+                var,
+                kind: ty::BoundRegionKind::Anon,
+            },
+        )
+    });
+    let args = tcx.mk_args_from_iter(closure.parent_args().iter().copied().chain([
+        closure.kind_ty().into(),
+        closure.sig_as_fn_ptr_ty().into(),
+        upvars.into(),
+    ]));
+    (args, regions)
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
