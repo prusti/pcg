@@ -34,6 +34,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     fn stmt_pre_main(&mut self, statement: &Statement<'tcx>) -> Result<(), PcgError> {
         assert_eq!(self.phase(), EvalStmtPhase::PreMain);
         match &statement.kind {
+            StatementKind::StorageLive(local) => {
+                let ctxt = self.ctxt;
+                let location = self.location();
+                pcg_validity_assert!(
+                    !self.pcg.owned.is_allocated(*local),
+                    [ctxt at location],
+                    "StorageLive({local:?}) called while the local is already allocated in the PCG"
+                );
+            }
             StatementKind::StorageDead(local) => {
                 let place: utils::Place<'tcx> = (*local).into();
                 let snapshot_location = self.prev_snapshot_location();

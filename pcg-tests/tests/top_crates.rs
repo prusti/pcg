@@ -19,7 +19,7 @@ pub fn top_crates() {
         std::env::var("PCG_TEST_CRATE_PARALLELISM").unwrap_or_else(|_| "1".to_string());
     top_crates_parallel(
         num_crates.parse().unwrap(),
-        Some("2025-03-13"),
+        Some("2026-07-15"),
         parallelism.parse().unwrap(),
     )
 }
