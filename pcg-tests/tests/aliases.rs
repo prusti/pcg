@@ -8,7 +8,7 @@ use pcg::{
         span::Symbol,
     },
 };
-use pcg_tests::run_pcg_on_str;
+use pcg_tests::{BodySelector, run_pcg_on_str};
 
 fn check_all_statements<'mir, 'tcx>(
     body: &'mir mir::Body<'tcx>,
@@ -48,7 +48,7 @@ fn test_aliases() {
             x;
         }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
@@ -79,7 +79,7 @@ fn test_aliases() {
             *y;
         }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let ctxt = analysis.ctxt();
         let stmt = &bb.statements[12];
@@ -105,7 +105,7 @@ fn test_aliases() {
             x;
         }
         "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb = analysis.get_all_for_bb(1usize.into()).unwrap().unwrap();
@@ -134,7 +134,7 @@ fn test_aliases() {
                     ok(f);
                 }
                 "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
@@ -168,7 +168,7 @@ fn main() {
     }
 }
         "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(2usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
@@ -214,7 +214,7 @@ fn main() {
     x;
     }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[0];
@@ -248,7 +248,7 @@ fn main() {
         let y = x.0 .0 .0 .0 + 1;
     }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
@@ -266,7 +266,7 @@ fn main() {
     x;
 }
 "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let temp: mir::Place<'_> = mir::Local::from(4_usize).into();
@@ -293,7 +293,7 @@ fn main() {
       let d = &b;
       let e = foo(c, d);
     }"#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -320,7 +320,7 @@ fn main() {
             let d = **c;
         }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -347,7 +347,7 @@ fn main() {
             let a = ***y;
         }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();
@@ -391,7 +391,7 @@ fn main() {
             (x);
         }
     "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.ctxt();
 
         let bb0 = analysis.get_all_for_bb(START_BLOCK).unwrap().unwrap();

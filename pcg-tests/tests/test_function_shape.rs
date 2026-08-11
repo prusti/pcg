@@ -10,7 +10,7 @@ use pcg::{
 };
 
 type SigShape = FunctionShape<Generalized>;
-use pcg_tests::run_pcg_on_str;
+use pcg_tests::{BodySelector, run_pcg_on_str};
 
 /// Returns the [`DefinedFnCallWithCallTys`] for the first call to a function
 /// whose name contains `target_name` in the given MIR body.
@@ -277,7 +277,7 @@ fn test_choose_single_lifetime() {
 
         fn choose<'a>(x: &'a mut u32, y: &'a mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let call_shape = sig_and_call_shapes(analysis.ctxt(), "choose");
         assert_shape_eq(&call_shape, &choose_shape());
     });
@@ -295,7 +295,7 @@ fn test_choose_two_lifetimes_with_outlives() {
 
         fn choose<'a, 'b: 'a>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let call_shape = sig_and_call_shapes(analysis.ctxt(), "choose");
         assert_shape_eq(&call_shape, &choose_shape());
     });
@@ -313,7 +313,7 @@ fn test_choose_no_outlives() {
 
         fn choose<'a, 'b>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let call_shape = sig_and_call_shapes(analysis.ctxt(), "choose");
         assert_shape_eq(&call_shape, &choose_no_outlives_shape());
     });
@@ -330,7 +330,7 @@ fn test_choose_no_outlives_caller_same_lifetime() {
 
         fn choose<'a, 'b>(x: &'a mut u32, y: &'b mut u32) -> &'a mut u32 { x }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let call_shape = sig_and_call_shapes(analysis.ctxt(), "choose");
         assert_shape_eq(&call_shape, &choose_no_outlives_shape());
     });
@@ -352,7 +352,7 @@ fn test_deref_mut_alias_output() {
             *borrow = 10;
         }
     "#;
-    run_pcg_on_str(input, false, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, false, |analysis| {
         let ctxt = analysis.ctxt();
         let defined_fn_call = find_call("deref_mut", ctxt);
         let shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
@@ -380,7 +380,7 @@ fn test_vec_into_iter_shape() {
             let _iter = v.into_iter();
         }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let ctxt = analysis.ctxt();
         let defined_fn_call = find_call("into_iter", ctxt);
         let call_shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
@@ -424,7 +424,7 @@ impl<'a> FromMutref<'a> for &'a mut i32 {
     fn from_mutref(x: &'a mut i32) -> Self { x }
 }
     "#;
-    run_pcg_on_str(input, true, |analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let ctxt = analysis.ctxt();
         let call = find_call("get", ctxt); // Call to `get()` in `caller()`
         let sig_shape = SigShape::for_fn_sig(call.fn_def_id(), ctxt).unwrap();

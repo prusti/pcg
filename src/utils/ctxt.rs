@@ -131,11 +131,6 @@ impl<'a, 'tcx, T> CompilerCtxt<'a, 'tcx, T> {
         self.source_of_span(self.mir.span)
     }
 
-    pub fn source_lines(&self) -> Result<Vec<String>, Box<SpanSnippetError>> {
-        let source = self.source()?;
-        Ok(source.lines().map(ToOwned::to_owned).collect())
-    }
-
     pub fn borrow_checker(self) -> T
     where
         T: Copy,

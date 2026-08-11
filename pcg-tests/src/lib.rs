@@ -19,7 +19,7 @@ use pcg::{
     run_pcg,
     rustc_interface::{
         driver::{self, Compilation},
-        hir::def::DefKind,
+        hir::{def::DefKind, def_id::LocalDefId},
         interface::{Config, interface::Compiler},
         middle::ty::TyCtxt,
         span::source_map::FileLoader,
@@ -55,8 +55,35 @@ impl FileLoader for StringLoader {
 
 type TestCallback = dyn for<'a, 'tcx> Fn(PcgAnalysisResults<'a, 'tcx>) + Send + Sync + 'static;
 
+/// Which body of the compiled input the PCG is run on.
+#[derive(Clone, Copy, Debug)]
+pub enum BodySelector {
+    /// The first free or associated function, excluding the bodies nested
+    /// inside it.
+    FirstFunction,
+    /// The body with this `def_path_str`, e.g. `outer::{closure#0}` for the
+    /// first closure defined in `outer`.
+    DefPath(&'static str),
+}
+
+impl BodySelector {
+    fn select(self, tcx: TyCtxt<'_>) -> LocalDefId {
+        match self {
+            BodySelector::FirstFunction => tcx
+                .hir_body_owners()
+                .find(|def_id| matches!(tcx.def_kind(*def_id), DefKind::Fn | DefKind::AssocFn))
+                .expect("input defines no function"),
+            BodySelector::DefPath(path) => tcx
+                .hir_body_owners()
+                .find(|def_id| tcx.def_path_str(def_id.to_def_id()) == path)
+                .unwrap_or_else(|| panic!("input defines no body with path {path}")),
+        }
+    }
+}
+
 struct TestCallbacks {
     input: String,
+    selector: BodySelector,
     validity_checks: bool,
     callback: Option<Box<TestCallback>>,
 }
@@ -71,7 +98,12 @@ impl driver::Callbacks for TestCallbacks {
     fn after_analysis(&mut self, _compiler: &Compiler, tcx: TyCtxt<'_>) -> Compilation {
         tracing::info!("after_analysis");
         unsafe {
-            run_pcg_on_first_fn(tcx, self.validity_checks, self.callback.take().unwrap());
+            run_pcg_on_body(
+                tcx,
+                self.selector,
+                self.validity_checks,
+                self.callback.take().unwrap(),
+            );
         }
         if in_cargo_crate() {
             Compilation::Continue
@@ -84,15 +116,13 @@ impl driver::Callbacks for TestCallbacks {
 /// # Safety
 ///
 /// Stored bodies must come from the same `tcx`.
-unsafe fn run_pcg_on_first_fn<'tcx>(
+unsafe fn run_pcg_on_body<'tcx>(
     tcx: TyCtxt<'tcx>,
+    selector: BodySelector,
     validity_checks: bool,
     callback: impl for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
-    let def_id = tcx
-        .hir_body_owners()
-        .find(|def_id| matches!(tcx.def_kind(*def_id), DefKind::Fn | DefKind::AssocFn))
-        .unwrap();
+    let def_id = selector.select(tcx);
     let body = unsafe { take_stored_body(tcx, def_id) };
     let mut settings = PcgSettings::new();
     settings.validity_checks = validity_checks;
@@ -105,6 +135,7 @@ unsafe fn run_pcg_on_first_fn<'tcx>(
 
 pub fn run_pcg_on_str(
     input: &str,
+    selector: BodySelector,
     validity_checks: bool,
     callback: impl for<'mir, 'tcx> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
@@ -119,6 +150,7 @@ pub fn run_pcg_on_str(
         ],
         &mut TestCallbacks {
             input: input.to_string(),
+            selector,
             validity_checks,
             callback: Some(Box::new(callback)),
         },
