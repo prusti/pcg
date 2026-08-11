@@ -42,6 +42,16 @@ fn is_primary_crate() -> bool {
     std::env::var("CARGO_PRIMARY_PACKAGE").is_ok()
 }
 
+/// Whether the PCG runs on the body of `def_id`.
+///
+/// `is_fn_like` covers free and associated functions along with the closure and
+/// coroutine bodies nested inside them. Coroutine bodies (from `async fn`,
+/// async blocks, and generators) are excluded: expanding a coroutine place is
+/// not something the PCG models, so it aborts rather than reporting an error.
+fn is_analyzed_body(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+    tcx.def_kind(def_id).is_fn_like() && tcx.coroutine_kind(def_id).is_none()
+}
+
 fn should_check_body(settings: &GlobalPcgSettings, body: &Body<'_>) -> bool {
     if settings.skip_bodies_with_loops && is_cyclic(&body.basic_blocks) {
         return false;
@@ -116,9 +126,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
     let nested_bodies = NestedBodies::new(tcx);
 
     for def_id in hir_body_owners(tcx) {
-        // `is_fn_like` covers free and associated functions along with the
-        // closure, async block, and coroutine bodies nested inside them.
-        if !tcx.def_kind(def_id).is_fn_like() {
+        if !is_analyzed_body(tcx, def_id) {
             continue;
         }
         let item_name = tcx.def_path_str(def_id.to_def_id()).to_string();
