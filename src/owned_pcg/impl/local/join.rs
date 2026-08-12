@@ -1,5 +1,5 @@
 use crate::{
-    DebugLines,
+    DebugLines, Weaken,
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::action::LabelPlaceReason,
     capability_gte,
@@ -45,16 +45,16 @@ enum JoinExpandedPlaceResult<'tcx> {
     JoinedWithSameExpansion(Vec<RepackOp<'tcx>>),
     CreatedExpansion(Vec<RepackOp<'tcx>>),
     JoinedWithOtherExpansions(JoinDifferentExpansionsResult<'tcx>),
-    CollapsedOtherExpansion,
+    CollapsedOtherExpansion(Vec<RepackOp<'tcx>>),
 }
 
 impl<'tcx> JoinExpandedPlaceResult<'tcx> {
     fn actions(self) -> Vec<RepackOp<'tcx>> {
         match self {
             JoinExpandedPlaceResult::JoinedWithSameExpansion(actions)
-            | JoinExpandedPlaceResult::CreatedExpansion(actions) => actions,
+            | JoinExpandedPlaceResult::CreatedExpansion(actions)
+            | JoinExpandedPlaceResult::CollapsedOtherExpansion(actions) => actions,
             JoinExpandedPlaceResult::JoinedWithOtherExpansions(result) => result.actions(),
-            JoinExpandedPlaceResult::CollapsedOtherExpansion => vec![],
         }
     }
 
@@ -63,7 +63,7 @@ impl<'tcx> JoinExpandedPlaceResult<'tcx> {
             self,
             JoinExpandedPlaceResult::JoinedWithOtherExpansions(
                 JoinDifferentExpansionsResult::Collapsed(_)
-            ) | JoinExpandedPlaceResult::CollapsedOtherExpansion
+            ) | JoinExpandedPlaceResult::CollapsedOtherExpansion(_)
         )
     }
 }
@@ -237,11 +237,29 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             } else if other_expansion.is_enum_expansion() {
                 // The other expansion is a downcast to a variant that is
                 // presumably borrowed or partially-moved (see 206_issue_77.rs).
-                // It won't survive the join, so collapse it.
-                other
-                    .owned
-                    .collapse(place, Some(CapabilityKind::Write), other.capabilities, ctxt);
-                Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion)
+                // It won't survive the join, so collapse it, announcing the
+                // ops: leaves still above write capability are weakened
+                // first, so that the emitted collapse meets its guarantee
+                // that all packed-up places hold exactly its capability.
+                let mut ops: Vec<RepackOp<'tcx>> = other
+                    .capabilities
+                    .owned_capabilities(place.local, ctxt)
+                    .filter_map(|(p, k)| {
+                        (place.is_prefix_of(p) && *k > CapabilityKind::Write).then(|| {
+                            let weaken =
+                                RepackOp::Weaken(Weaken::new(p, *k, CapabilityKind::Write));
+                            *k = CapabilityKind::Write;
+                            weaken
+                        })
+                    })
+                    .collect();
+                ops.extend(other.owned.collapse(
+                    place,
+                    Some(CapabilityKind::Write),
+                    other.capabilities,
+                    ctxt,
+                ));
+                Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion(ops))
             } else {
                 // We might as well just expand our place
                 let expand_action = RepackExpand::new(place, other_expansion.guide(), self_cap);
