@@ -2,6 +2,7 @@
 #![feature(stmt_expr_attributes)]
 #![feature(proc_macro_hygiene)]
 
+mod annotations;
 mod callbacks;
 
 use borrowck_body_storage::set_mir_borrowck;

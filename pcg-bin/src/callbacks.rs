@@ -9,23 +9,22 @@ use pcg::utils::{PcgSettings, display::DisplayWithCtxt};
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
     borrow_checker::r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
-    borrow_pcg::region_projection::{PcgRegion, RegionIdx},
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{
         borrowck::{BorrowIndex, RichLocation},
         data_structures::{fx::FxHashSet, graph::is_cyclic},
         driver::{self, Compilation, init_rustc_env_logger},
-        hir::{def::DefKind, def_id::LocalDefId},
+        hir::def_id::LocalDefId,
         interface::{self, interface::Compiler},
         middle::{
-            mir::{Body, Local, Location},
+            mir::{Body, Location},
             ty::{RegionVid, TyCtxt},
         },
         session::{EarlyDiagCtxt, config::ErrorOutputType},
     },
     utils::{
-        CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt, Place,
+        CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt,
         callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
     },
     visualization::bc_facts_graph::{
@@ -33,12 +32,24 @@ use pcg::{
     },
 };
 
+use crate::annotations::{BodyAnnotations, NestedBodies};
+
 fn hir_body_owners(tcx: TyCtxt<'_>) -> impl std::iter::Iterator<Item = LocalDefId> + '_ {
     tcx.hir_body_owners()
 }
 
 fn is_primary_crate() -> bool {
     std::env::var("CARGO_PRIMARY_PACKAGE").is_ok()
+}
+
+/// Whether the PCG runs on the body of `def_id`.
+///
+/// `is_fn_like` covers free and associated functions along with the closure and
+/// coroutine bodies nested inside them. Coroutine bodies (from `async fn`,
+/// async blocks, and generators) are excluded: expanding a coroutine place is
+/// not something the PCG models, so it aborts rather than reporting an error.
+fn is_analyzed_body(tcx: TyCtxt<'_>, def_id: LocalDefId) -> bool {
+    tcx.def_kind(def_id).is_fn_like() && tcx.coroutine_kind(def_id).is_none()
 }
 
 fn should_check_body(settings: &GlobalPcgSettings, body: &Body<'_>) -> bool {
@@ -112,9 +123,10 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
         return;
     }
 
+    let nested_bodies = NestedBodies::new(tcx);
+
     for def_id in hir_body_owners(tcx) {
-        let kind = tcx.def_kind(def_id);
-        if !matches!(kind, DefKind::Fn | DefKind::AssocFn) {
+        if !is_analyzed_body(tcx, def_id) {
             continue;
         }
         let item_name = tcx.def_path_str(def_id.to_def_id()).to_string();
@@ -151,7 +163,7 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
         tracing::info!("Path: {:?}", body.body.span);
         tracing::debug!("Number of basic blocks: {}", body.body.basic_blocks.len());
         tracing::debug!("Number of locals: {}", body.body.local_decls.len());
-        run_pcg_on_fn(&body, &mut ctxt_creator);
+        run_pcg_on_fn(&body, &mut ctxt_creator, &nested_bodies);
     }
     ctxt_creator.write_debug_visualization_metadata();
 }
@@ -159,18 +171,24 @@ pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
 pub(crate) fn run_pcg_on_fn<'tcx>(
     body: &BodyWithBorrowckFacts<'tcx>,
     ctxt_creator: &mut PcgCtxtCreator<'tcx>,
+    nested_bodies: &NestedBodies,
 ) {
     let tcx = ctxt_creator.tcx;
-    let region_debug_name_overrides =
-        if let Ok(lines) = CompilerCtxt::new(&body.body, tcx, ()).source_lines() {
-            lines
-                .iter()
-                .flat_map(|l| l.split("PCG_LIFETIME_DISPLAY: ").nth(1))
-                .map(|l| LifetimeRenderAnnotation::from(l).to_pair(tcx, &body.body))
-                .collect::<_>()
-        } else {
-            BTreeMap::new()
-        };
+    let annotations = match BodyAnnotations::of_body(tcx, &body.body, nested_bodies) {
+        Ok(annotations) => annotations,
+        Err(err) => {
+            tracing::warn!(
+                "No source for {}: {err:?}",
+                tcx.def_path_str(body.body.source.def_id())
+            );
+            BodyAnnotations::default()
+        }
+    };
+    let region_debug_name_overrides = annotations
+        .lifetime_display()
+        .iter()
+        .map(|annotation| annotation.to_pair(tcx, &body.body))
+        .collect::<BTreeMap<_, _>>();
     let mut bc = if ctxt_creator.settings().polonius {
         RustBorrowCheckerImpl::Polonius(PoloniusBorrowChecker::new(tcx, body))
     } else {
@@ -193,6 +211,7 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
     emit_and_check_annotations(
         pcg_ctxt.ctxt().body_def_path_str(),
         pcg_ctxt.settings(),
+        &annotations,
         &mut output,
     );
 }
@@ -200,6 +219,7 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
 fn emit_and_check_annotations(
     item_name: String,
     settings: &PcgSettings,
+    annotations: &BodyAnnotations,
     output: &mut PcgOutput<'_, '_>,
 ) {
     let emit_pcg_annotations = settings.emit_annotations;
@@ -228,71 +248,23 @@ fn emit_and_check_annotations(
             }
         }
         if check_pcg_annotations {
-            if let Ok(source) = ctxt.ctxt().source_lines() {
-                let debug_lines_set: FxHashSet<String> =
-                    debug_lines.into_iter().map(|l| l.into_owned()).collect();
-                let expected_annotations = source
-                    .iter()
-                    .flat_map(|l| l.split("// PCG: ").nth(1))
-                    .map(|l| l.trim())
-                    .collect::<Vec<_>>();
-                let missing_annotations = expected_annotations
-                    .iter()
-                    .filter(|a| !debug_lines_set.contains(**a))
-                    .collect::<Vec<_>>();
-                if !missing_annotations.is_empty() {
-                    panic!("Missing annotations: {missing_annotations:?}");
-                }
-                for not_expected_annotation in source
-                    .iter()
-                    .flat_map(|l| l.split("// ~PCG: ").nth(1))
-                    .map(|l| l.trim())
-                {
-                    if debug_lines_set.contains(not_expected_annotation) {
-                        panic!("Unexpected annotation: {not_expected_annotation}");
-                    }
-                }
-            } else {
-                tracing::warn!("No source for function: {item_name}");
+            let debug_lines_set: FxHashSet<String> =
+                debug_lines.into_iter().map(|l| l.into_owned()).collect();
+            let missing_annotations = annotations
+                .expected()
+                .iter()
+                .filter(|a| !debug_lines_set.contains(*a))
+                .collect::<Vec<_>>();
+            assert!(
+                missing_annotations.is_empty(),
+                "Missing annotations for {item_name}: {missing_annotations:?}"
+            );
+            for not_expected_annotation in annotations.forbidden() {
+                assert!(
+                    !debug_lines_set.contains(not_expected_annotation),
+                    "Unexpected annotation for {item_name}: {not_expected_annotation}"
+                );
             }
-        }
-    }
-}
-
-struct LifetimeRenderAnnotation {
-    var: String,
-    region_idx: RegionIdx,
-    display_as: String,
-}
-
-impl LifetimeRenderAnnotation {
-    fn get_place<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> Place<'tcx> {
-        if self.var.starts_with('_')
-            && let Ok(idx) = self.var.split_at(1).1.parse::<usize>()
-        {
-            let local: Local = idx.into();
-            local.into()
-        } else {
-            CompilerCtxt::new(body, tcx, ())
-                .local_place(self.var.as_str())
-                .unwrap()
-        }
-    }
-
-    fn to_pair<'tcx>(&self, tcx: TyCtxt<'tcx>, body: &Body<'tcx>) -> (RegionVid, String) {
-        let place = self.get_place(tcx, body);
-        let region: PcgRegion = place.regions(CompilerCtxt::new(body, tcx, ()))[self.region_idx];
-        (region.vid().unwrap(), self.display_as.clone())
-    }
-}
-
-impl From<&str> for LifetimeRenderAnnotation {
-    fn from(s: &str) -> Self {
-        let parts = s.split(" ").collect::<Vec<_>>();
-        Self {
-            var: parts[0].to_string(),
-            region_idx: parts[1].parse::<usize>().unwrap().into(),
-            display_as: parts[2].to_string(),
         }
     }
 }

@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 use pcg::visualization::graph_constructor::PcgGraphConstructor;
-use pcg_tests::run_pcg_on_str;
+use pcg_tests::{BodySelector, run_pcg_on_str};
 
 // 26_ref_in_struct.rs
 #[test]
@@ -19,7 +19,7 @@ let rx = s.x;
 *rx = 1;
 }
 "#;
-    run_pcg_on_str(input, true, |mut analysis| {
+    run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let bb = analysis.get_all_for_bb(0usize.into()).unwrap().unwrap();
         let ctxt = analysis.ctxt();
         let stmt = &bb.statements[22];
