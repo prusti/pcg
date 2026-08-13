@@ -5,7 +5,7 @@ use crate::{
     capability_gte,
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, LocalExpansions, RepackExpand, RepackOp,
+        ExpandedPlace, LocalExpansions, RegainedCapability, RepackExpand, RepackOp,
         join::{
             data::JoinOwnedData,
             obtain::{JoinCtxt, JoinObtainer},
@@ -365,7 +365,21 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             .data
             .capabilities
             .insert(place, CapabilityKind::Write, ctxt);
-        Ok(join_obtainer.actions)
+        let mut actions = join_obtainer.actions;
+        // This side's read-lending has ended and the value it still holds is
+        // dropped by the join (the other side moved it out): restore the
+        // place to exclusive and then weaken it, so consumers see a
+        // capability restoration followed by an ordinary value drop.
+        actions.push(RepackOp::RegainLoanedCapability(RegainedCapability::new(
+            place,
+            CapabilityKind::Exclusive,
+        )));
+        actions.push(RepackOp::weaken(
+            place,
+            CapabilityKind::Exclusive,
+            CapabilityKind::Write,
+        ));
+        Ok(actions)
     }
 
     pub(crate) fn join_owned_places(
