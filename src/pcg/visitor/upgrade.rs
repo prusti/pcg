@@ -33,7 +33,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     ) -> Result<(), PcgError> {
         if place.is_mut_ref(self.ctxt) {
             // We've reached an indirection (e.g from **s to *s), we
-            // downgrade the ref from R to W
+            // downgrade the ref from R to e (lent through)
             // We need to continue: `s` would previously have capability R, which
             // is not compatible with it being mutably borrowed
             self.record_and_apply_action(
