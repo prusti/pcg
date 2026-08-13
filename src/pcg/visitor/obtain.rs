@@ -1,7 +1,7 @@
 #[cfg(feature = "visualization")]
 use crate::visualization::stmt_graphs;
 use crate::{
-    HasSettings, Weaken,
+    HasSettings,
     action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         self,
@@ -656,6 +656,31 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             } else {
                 obtain_cap
             };
+            // When collapsing to write capability (an overwrite or a
+            // StorageDead of e.g. a partially-moved local), leaves that still
+            // hold exclusive capability must be explicitly weakened first, so
+            // that consumers see the capability drop; see
+            // <https://github.com/prusti/pcg/issues/137>.
+            if collapse_cap.is_write() {
+                let to_weaken = self
+                    .pcg
+                    .place_capabilities
+                    .owned_capabilities(place.local, self.ctxt)
+                    .filter_map(|(p, k)| {
+                        (place.is_prefix_of(p) && k.is_exclusive()).then_some((p, *k))
+                    })
+                    .collect::<Vec<_>>();
+                for (p, from_cap) in to_weaken {
+                    let weaken = if obtain_type == ObtainType::ForStorageDead {
+                        RepackOp::weaken_for_storage_dead(p, from_cap, CapabilityKind::Write)
+                    } else {
+                        RepackOp::weaken(p, from_cap, CapabilityKind::Write)
+                    };
+                    self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
+                        weaken, None,
+                    )))?;
+                }
+            }
             tracing::debug!(
                 "Collapsing owned places to {}",
                 place.display_string(self.ctxt.bc_ctxt())
@@ -725,11 +750,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             // Temporary: mark as for_storage_dead until
             // https://github.com/prusti/pcg/issues/137 is resolved.
             self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                RepackOp::Weaken(Weaken::new_for_storage_dead(
+                RepackOp::weaken_for_storage_dead(
                     place,
                     CapabilityKind::Exclusive,
                     CapabilityKind::Write,
-                )),
+                ),
                 None,
             )))?;
         }

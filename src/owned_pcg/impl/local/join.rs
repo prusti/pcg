@@ -1,5 +1,5 @@
 use crate::{
-    DebugLines, Weaken,
+    DebugLines,
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::action::LabelPlaceReason,
     capability_gte,
@@ -246,8 +246,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                     .owned_capabilities(place.local, ctxt)
                     .filter_map(|(p, k)| {
                         (place.is_prefix_of(p) && *k > CapabilityKind::Write).then(|| {
-                            let weaken =
-                                RepackOp::Weaken(Weaken::new(p, *k, CapabilityKind::Write));
+                            let weaken = RepackOp::weaken(p, *k, CapabilityKind::Write);
                             *k = CapabilityKind::Write;
                             weaken
                         })
