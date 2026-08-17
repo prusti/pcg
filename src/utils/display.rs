@@ -338,7 +338,7 @@ impl<'tcx> Place<'tcx> {
                 }
                 ProjectionElem::Downcast(sym, _) => {
                     let variant = sym.map_or_else(|| "??".into(), |s| s.to_string());
-                    (ElemPosition::Suffix, format!("@{variant}",).into())
+                    (ElemPosition::Suffix, format!("@{variant}").into())
                 }
 
                 ProjectionElem::Index(idx) => (ElemPosition::Suffix, format!("[{idx:?}]").into()),

@@ -16,6 +16,7 @@ use crate::{
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
         borrowck::{BorrowSet, LocationTable},
+        field_ty,
         index::IndexVec,
         middle::{
             mir::{
@@ -90,7 +91,7 @@ impl<'tcx, T: Copy> HasTyCtxt<'tcx> for CompilerCtxt<'_, 'tcx, T> {
 
 impl<T: Copy> std::fmt::Debug for CompilerCtxt<'_, '_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "CompilerCtxt",)
+        write!(f, "CompilerCtxt")
     }
 }
 
@@ -618,7 +619,7 @@ impl<'tcx> Place<'tcx> {
                         let field_place = ctxt.tcx().mk_place_field(
                             self.to_rust_place(ctxt),
                             field,
-                            field_def.ty(ctxt.tcx(), substs),
+                            field_ty(field_def, ctxt.tcx(), substs),
                         );
                         places.push(field_place.into());
                     }

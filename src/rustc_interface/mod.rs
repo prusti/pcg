@@ -37,3 +37,76 @@ mod aliases {
 }
 
 pub(crate) use aliases::*;
+
+/// `BoundRegion` and `BoundVariableKind` became generic over the interner when
+/// `Region` was uplifted from `rustc_middle` into `rustc_type_ir`.
+#[rustversion::since(2026-07-21)]
+mod bound_var_aliases {
+    use crate::rustc_interface::middle::ty;
+    pub(crate) type BoundRegion<'tcx> = ty::BoundRegion<'tcx>;
+    pub(crate) type BoundVariableKind<'tcx> = ty::BoundVariableKind<'tcx>;
+}
+
+#[rustversion::before(2026-07-21)]
+mod bound_var_aliases {
+    use crate::rustc_interface::middle::ty;
+    pub(crate) type BoundRegion<'tcx> = ty::BoundRegion;
+    pub(crate) type BoundVariableKind<'tcx> = ty::BoundVariableKind;
+}
+
+pub(crate) use bound_var_aliases::*;
+
+/// Discards the `Unnormalized` wrapper that instantiating an `EarlyBinder`
+/// introduced, yielding the value the instantiation produced directly before
+/// the wrapper existed. PCG does not normalize these types.
+#[rustversion::since(2026-04-19)]
+pub(crate) fn skip_normalization<T>(value: middle::ty::Unnormalized<'_, T>) -> T {
+    value.skip_normalization()
+}
+
+#[rustversion::before(2026-04-19)]
+pub(crate) fn skip_normalization<T>(value: T) -> T {
+    value
+}
+
+/// The generic arguments of a `TyKind::FnDef`.
+///
+/// `FnDef` now holds its arguments behind a binder, as a first step towards
+/// late-bound turbofishing. That binder currently binds nothing, so skipping it
+/// recovers the arguments as they were before.
+#[rustversion::since(2026-07-13)]
+pub(crate) fn fn_def_args<'tcx>(
+    args: &middle::ty::Binder<'tcx, middle::ty::GenericArgsRef<'tcx>>,
+) -> middle::ty::GenericArgsRef<'tcx> {
+    args.skip_binder()
+}
+
+#[rustversion::before(2026-07-13)]
+pub(crate) fn fn_def_args<'tcx>(
+    args: &middle::ty::GenericArgsRef<'tcx>,
+) -> middle::ty::GenericArgsRef<'tcx> {
+    *args
+}
+
+/// The type of `field` instantiated with `args`.
+///
+/// `FieldDef::ty` began returning its result wrapped in `Unnormalized`. PCG uses
+/// the instantiated field type without normalizing it, which is what the method
+/// returned directly before the wrapper was introduced.
+#[rustversion::since(2026-05-13)]
+pub(crate) fn field_ty<'tcx>(
+    field: &middle::ty::FieldDef,
+    tcx: middle::ty::TyCtxt<'tcx>,
+    args: middle::ty::GenericArgsRef<'tcx>,
+) -> middle::ty::Ty<'tcx> {
+    field.ty(tcx, args).skip_normalization()
+}
+
+#[rustversion::before(2026-05-13)]
+pub(crate) fn field_ty<'tcx>(
+    field: &middle::ty::FieldDef,
+    tcx: middle::ty::TyCtxt<'tcx>,
+    args: middle::ty::GenericArgsRef<'tcx>,
+) -> middle::ty::Ty<'tcx> {
+    field.ty(tcx, args)
+}

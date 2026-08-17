@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     PcgCtxt, PcgCtxtCreator,
+    rustc_interface::skip_normalization,
     utils::CompilerCtxt,
     visualization::{
         functions_metadata::{FunctionMetadata, FunctionSlug},
@@ -17,7 +18,7 @@ impl<T> CompilerCtxt<'_, '_, T> {
     pub(crate) fn function_metadata(&self) -> FunctionMetadata {
         let start = SourcePos::new(self.mir.span.lo(), self.tcx);
         let def_id = self.def_id();
-        let fn_sig = self.tcx.fn_sig(def_id).instantiate_identity();
+        let fn_sig = skip_normalization(self.tcx.fn_sig(def_id).instantiate_identity());
         let fn_sig = self.tcx.liberate_late_bound_regions(def_id.into(), fn_sig);
         let signature = fn_sig.to_string();
         let debug_signature = format!("{fn_sig:#?}");

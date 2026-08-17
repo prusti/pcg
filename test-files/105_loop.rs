@@ -4,8 +4,8 @@ fn main() {
     for i in vec.iter_mut() {
         x = &mut *i;
     }
-    // PCGTODO: bb8[0] post_main: Loop(bb8): (*_12) -> iter↓'?18
-    // PCGTODO: bb8[0] post_main: Loop(bb8): (*_12) -> x↓'?12
-    // PCG: bb8[0] post_main: Loop(bb8): _7 -> x↓'?12
+    // PCGTODO: bb7[0] post_main: Loop(bb7): (*_10) -> iter↓'?18
+    // PCGTODO: bb7[0] post_main: Loop(bb7): (*_10) -> x↓'?12
+    // PCG: bb7[0] post_main: Loop(bb7): _5 -> x↓'?12
     let y = *x;
 }

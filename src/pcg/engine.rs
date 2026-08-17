@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{alloc, cell::RefCell, path::PathBuf, ptr::NonNull, rc::Rc};
 
 use bit_set::BitSet;
 use derive_more::From;
@@ -94,11 +94,12 @@ impl<'tcx> BodyWithBorrowckFacts<'tcx> {
         param_env: MonomorphizeEnv<'tcx>,
     ) -> Self {
         let body = Self::erase_regions(tcx, self.body.clone());
-        let monomorphized_body = tcx.instantiate_and_normalize_erasing_regions(
-            substs,
-            param_env,
-            ty::EarlyBinder::bind(body),
-        );
+        #[rustversion::since(2026-04-19)]
+        let body = ty::EarlyBinder::bind(tcx, body);
+        #[rustversion::before(2026-04-19)]
+        let body = ty::EarlyBinder::bind(body);
+        let monomorphized_body =
+            tcx.instantiate_and_normalize_erasing_regions(substs, param_env, body);
         Self {
             body: monomorphized_body,
             promoted: self.promoted,
@@ -126,7 +127,73 @@ impl<'tcx> From<borrowck::BodyWithBorrowckFacts<'tcx>> for BodyWithBorrowckFacts
 type Block = usize;
 
 pub(crate) type PcgArenaStore = bumpalo::Bump;
-pub(crate) type PcgArena<'a> = &'a PcgArenaStore;
+
+/// A handle to the arena that PCG states are allocated in.
+///
+/// This is a newtype around `&PcgArenaStore` rather than the reference itself
+/// because `Rc<T, A>: Clone` requires `A: AllocatorClone`. The only applicable
+/// blanket impl of that trait is `AllocatorClone for &A where A: Allocator`, and
+/// `bumpalo` implements `Allocator` for `&Bump` rather than for `Bump`;
+/// therefore `&Bump` alone cannot satisfy the bound.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PcgArena<'a>(&'a PcgArenaStore);
+
+impl<'a> PcgArena<'a> {
+    pub(crate) fn new(store: &'a PcgArenaStore) -> Self {
+        Self(store)
+    }
+
+    pub(crate) fn alloc<T>(self, val: T) -> &'a mut T {
+        self.0.alloc(val)
+    }
+}
+
+unsafe impl alloc::Allocator for PcgArena<'_> {
+    fn allocate(&self, layout: alloc::Layout) -> Result<NonNull<[u8]>, alloc::AllocError> {
+        self.0.allocate(layout)
+    }
+
+    fn allocate_zeroed(&self, layout: alloc::Layout) -> Result<NonNull<[u8]>, alloc::AllocError> {
+        self.0.allocate_zeroed(layout)
+    }
+
+    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: alloc::Layout) {
+        unsafe { self.0.deallocate(ptr, layout) }
+    }
+
+    unsafe fn grow(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: alloc::Layout,
+        new_layout: alloc::Layout,
+    ) -> Result<NonNull<[u8]>, alloc::AllocError> {
+        unsafe { self.0.grow(ptr, old_layout, new_layout) }
+    }
+
+    unsafe fn grow_zeroed(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: alloc::Layout,
+        new_layout: alloc::Layout,
+    ) -> Result<NonNull<[u8]>, alloc::AllocError> {
+        unsafe { self.0.grow_zeroed(ptr, old_layout, new_layout) }
+    }
+
+    unsafe fn shrink(
+        &self,
+        ptr: NonNull<u8>,
+        old_layout: alloc::Layout,
+        new_layout: alloc::Layout,
+    ) -> Result<NonNull<[u8]>, alloc::AllocError> {
+        unsafe { self.0.shrink(ptr, old_layout, new_layout) }
+    }
+}
+
+/// SAFETY: a `PcgArena` is a shared reference to a bump arena; a clone therefore
+/// allocates from and frees into the very same arena. Moving or dropping the
+/// handle leaves the arena, and every block it has handed out, untouched.
+#[rustversion::since(2026-08-14)]
+unsafe impl alloc::AllocatorClone for PcgArena<'_> {}
 
 impl<'a, 'tcx: 'a> HasSettings<'a> for &PcgEngine<'a, 'tcx> {
     fn settings(&self) -> &'a PcgSettings {
@@ -190,10 +257,7 @@ pub(crate) fn successor_blocks(terminator: &Terminator<'_>) -> Vec<BasicBlock> {
         TerminatorEdges::AssignOnReturn {
             return_, cleanup, ..
         } => {
-            let mut result = vec![];
-            for block in return_ {
-                result.push(*block);
-            }
+            let mut result: Vec<BasicBlock> = return_.iter().copied().collect();
             if let Some(cleanup) = cleanup {
                 result.push(cleanup);
             }
@@ -406,24 +470,29 @@ impl<'a, 'tcx: 'a> Analysis<'tcx> for PcgEngine<'a, 'tcx> {
         }
     }
 
-    fn apply_terminator_effect<'mir>(
+    fn apply_terminator_effect(
         &self,
         state: &mut Self::Domain,
-        terminator: &'mir Terminator<'tcx>,
+        terminator: &Terminator<'tcx>,
         location: Location,
-    ) -> TerminatorEdges<'mir, 'tcx> {
-        let edges = edges_to_analyze(terminator);
+    ) {
         if let Some(error) = state.error() {
             if self.first_error.borrow().error().is_none() {
                 self.first_error.borrow_mut().record_error(error.clone());
             }
-            return edges;
+            return;
         }
         if let Err(e) = self.analyze(state, terminator.into(), location) {
             self.record_error_if_first(&e);
             state.record_error(e);
         }
-        edges
+    }
+
+    fn terminator_edges<'mir>(
+        &self,
+        terminator: &'mir Terminator<'tcx>,
+    ) -> TerminatorEdges<'mir, 'tcx> {
+        edges_to_analyze(terminator)
     }
 
     type Direction = Forward;

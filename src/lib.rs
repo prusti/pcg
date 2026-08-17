@@ -21,7 +21,6 @@ may already be stabilized */
 #![allow(clippy::missing_errors_doc)]
 #![allow(stable_features)]
 #![feature(trait_alias)]
-#![feature(associated_type_defaults)]
 #![feature(rustc_private)]
 #![feature(box_patterns)]
 #![feature(if_let_guard)]
@@ -57,7 +56,7 @@ pub mod visualization;
 
 use borrow_checker::BorrowCheckerInterface;
 use borrow_pcg::graph::{borrows_imgcat_debug, loop_abstraction::MaybeRemoteCurrentPlace};
-use pcg::{CapabilityKind, EvalStmtPhase, PcgEngine};
+use pcg::{CapabilityKind, EvalStmtPhase, PcgArena, PcgEngine};
 use rustc_interface::{
     borrowck::{self, BorrowSet, LocationTable, PoloniusInput, RegionInferenceContext},
     dataflow::{AnalysisEngine, compute_fixpoint},
@@ -497,7 +496,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
     let engine = PcgEngine::new(
         pcg_ctxt.compiler_ctxt,
         &pcg_ctxt.move_data,
-        &pcg_ctxt.arena,
+        PcgArena::new(&pcg_ctxt.arena),
         settings,
         #[cfg(feature = "visualization")]
         pcg_ctxt.visualization_output_path(),

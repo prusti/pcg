@@ -143,12 +143,22 @@ pub trait Analysis<'tcx> {
     ) {
     }
 
-    fn apply_terminator_effect<'mir>(
+    fn apply_terminator_effect(
         &self,
         state: &mut Self::Domain,
-        terminator: &'mir Terminator<'tcx>,
+        terminator: &Terminator<'tcx>,
         location: Location,
-    ) -> TerminatorEdges<'mir, 'tcx>;
+    );
+
+    /// The successor edges the analysis traverses out of `terminator`. This is
+    /// separate from [`Analysis::apply_terminator_effect`] because an analysis
+    /// may deliberately ignore some of the terminator's real edges.
+    fn terminator_edges<'mir>(
+        &self,
+        terminator: &'mir Terminator<'tcx>,
+    ) -> TerminatorEdges<'mir, 'tcx> {
+        terminator.edges()
+    }
 }
 
 // --- compute_fixpoint ---
@@ -237,13 +247,35 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
         self.0.apply_statement_effect(state, statement, location);
     }
 
+    #[rustversion::since(2026-08-06)]
+    fn get_terminator_edges<'mir>(
+        &self,
+        _state: &Self::Domain,
+        terminator: &'mir Terminator<'tcx>,
+        _location: Location,
+    ) -> TerminatorEdges<'mir, 'tcx> {
+        self.0.terminator_edges(terminator)
+    }
+
+    #[rustversion::since(2026-08-06)]
+    fn apply_primary_terminator_effect(
+        &self,
+        state: &mut Self::Domain,
+        terminator: &Terminator<'tcx>,
+        location: Location,
+    ) {
+        self.0.apply_terminator_effect(state, terminator, location);
+    }
+
+    #[rustversion::before(2026-08-06)]
     fn apply_primary_terminator_effect<'mir>(
         &self,
         state: &mut Self::Domain,
         terminator: &'mir Terminator<'tcx>,
         location: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
-        self.0.apply_terminator_effect(state, terminator, location)
+        self.0.apply_terminator_effect(state, terminator, location);
+        self.0.terminator_edges(terminator)
     }
 
     fn apply_early_terminator_effect(
@@ -307,7 +339,8 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
         terminator: &'mir Terminator<'tcx>,
         location: Location,
     ) -> TerminatorEdges<'mir, 'tcx> {
-        self.0.apply_terminator_effect(state, terminator, location)
+        self.0.apply_terminator_effect(state, terminator, location);
+        self.0.terminator_edges(terminator)
     }
 
     fn apply_early_terminator_effect(

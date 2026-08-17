@@ -18,6 +18,7 @@ use crate::{
     coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
     pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
     rustc_interface::{
+        fn_def_args,
         middle::mir::{Location, Operand},
         span::Span,
     },
@@ -144,7 +145,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             match func.ty(self.ctxt.body(), self.ctxt.tcx()).kind() {
                 ty::TyKind::FnDef(def_id, substs) => Some(DefinedFnCall::new(
                     FunctionData::new(*def_id),
-                    substs,
+                    fn_def_args(substs),
                     self.ctxt.ctxt().def_id(),
                     call_span,
                 )),

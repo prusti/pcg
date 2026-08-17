@@ -113,14 +113,13 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
         TransferFunction(state).visit_statement(statement, location);
     }
 
-    fn apply_terminator_effect<'mir>(
+    fn apply_terminator_effect(
         &self,
         state: &mut Self::Domain,
-        terminator: &'mir mir::Terminator<'tcx>,
+        terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> mir::TerminatorEdges<'mir, 'tcx> {
+    ) {
         TransferFunction(state).visit_terminator(terminator, location);
-        terminator.edges()
     }
 }
 
@@ -178,6 +177,13 @@ impl DefUse {
 
     #[allow(clippy::match_same_arms)]
     fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
+        #[rustversion::before(2026-08-12)]
+        if matches!(
+            context,
+            PlaceContext::MutatingUse(MutatingUseContext::Retag)
+        ) {
+            return Some(DefUse::Use);
+        }
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
             // We don't count drops as use in our analysis because drop
@@ -224,9 +230,7 @@ impl DefUse {
 
             // All other contexts are uses...
             PlaceContext::MutatingUse(
-                MutatingUseContext::RawBorrow
-                | MutatingUseContext::Borrow
-                | MutatingUseContext::Retag,
+                MutatingUseContext::RawBorrow | MutatingUseContext::Borrow,
             )
             | PlaceContext::NonMutatingUse(
                 NonMutatingUseContext::RawBorrow

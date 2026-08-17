@@ -11,12 +11,16 @@ use pcg::{
         borrowck,
         data_structures::fx::FxHashMap,
         hir::def_id::LocalDefId,
-        middle::{
-            query::queries::mir_borrowck::ProvidedValue as MirBorrowck, ty::TyCtxt, util::Providers,
-        },
+        middle::{ty::TyCtxt, util::Providers},
         session::Session,
     },
 };
+
+/// The query list moved out of `rustc_middle::query` into its own module.
+#[rustversion::since(2026-02-04)]
+use pcg::rustc_interface::middle::queries::mir_borrowck::ProvidedValue as MirBorrowck;
+#[rustversion::before(2026-02-04)]
+use pcg::rustc_interface::middle::query::queries::mir_borrowck::ProvidedValue as MirBorrowck;
 
 thread_local! {
     static ALLOW_BORROWCK_ERRORS: Cell<bool> = Cell::new(false);

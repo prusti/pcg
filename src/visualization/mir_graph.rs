@@ -180,8 +180,12 @@ fn format_raw_ptr<'tcx>(
 
 #[allow(unreachable_patterns)]
 fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> String {
+    #[rustversion::before(2026-02-18)]
+    if let Rvalue::ShallowInitBox(operand, _) = rvalue {
+        return format!("Box({})", format_operand(operand, ctxt));
+    }
     match rvalue {
-        Rvalue::Use(operand) => format_operand(operand, ctxt),
+        Rvalue::Use(operand, ..) => format_operand(operand, ctxt),
         Rvalue::Repeat(operand, c) => format!("repeat {} {c}", format_operand(operand, ctxt)),
         Rvalue::Ref(_region, kind, place) => {
             let kind = match kind {
@@ -213,7 +217,6 @@ fn format_rvalue<'tcx>(rvalue: &Rvalue<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> S
                 ops.iter().map(|op| format_operand(op, ctxt)).join(", ")
             )
         }
-        Rvalue::ShallowInitBox(operand, _) => format!("Box({})", format_operand(operand, ctxt)),
         Rvalue::CopyForDeref(place) => format!("CopyForDeref({})", format_place(place, ctxt)),
         _ => todo!(),
     }
@@ -282,7 +285,6 @@ fn format_stmt<'tcx>(stmt: &Statement<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> St
         mir::StatementKind::StorageDead(local) => {
             format!("StorageDead({})", format_local(*local, ctxt))
         }
-        mir::StatementKind::Retag(_, _) => todo!(),
         mir::StatementKind::PlaceMention(place) => {
             format!("PlaceMention({})", format_place(place, ctxt))
         }

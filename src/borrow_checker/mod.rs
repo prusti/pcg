@@ -13,7 +13,7 @@ use crate::{
             BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, places_conflict,
         },
-        data_structures::fx::{FxIndexMap, FxIndexSet},
+        data_structures::fx::FxIndexSet,
         index,
         middle::{
             mir::{self, Location},
@@ -58,15 +58,18 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     }
 
     fn twophase_borrow_activations(&self, location: Location) -> BTreeSet<Location> {
-        let activation_map = self.borrow_set().activation_map();
-        if let Some(borrow_idxs) = activation_map.get(&location) {
-            borrow_idxs
-                .iter()
-                .map(|idx| get_reserve_location(&self.borrow_set()[*idx]))
-                .collect()
-        } else {
-            BTreeSet::new()
-        }
+        #[rustversion::since(2026-07-28)]
+        let borrow_idxs: &[BorrowIndex] = self.borrow_set().activations_at_location(&location);
+        #[rustversion::before(2026-07-28)]
+        let borrow_idxs: &[BorrowIndex] = self
+            .borrow_set()
+            .activation_map()
+            .get(&location)
+            .map_or(&[], |idxs| &idxs[..]);
+        borrow_idxs
+            .iter()
+            .map(|idx| get_reserve_location(&self.borrow_set()[*idx]))
+            .collect()
     }
 
     fn borrows_blocking(
@@ -91,12 +94,7 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     }
 
     fn region_to_borrow_index(&self, region: PcgRegion<'tcx>) -> Option<BorrowIndex> {
-        self.location_map()
-            .iter()
-            .enumerate()
-            .find_map(move |(index, (_, data))| {
-                (data.pcg_region() == region).then_some(index.into())
-            })
+        RustBorrowCheckerInterface::region_to_borrow_index(self, region)
     }
 
     fn is_directly_blocked(
@@ -338,20 +336,26 @@ pub trait RustBorrowCheckerInterface<'tcx> {
     ) -> bool;
 
     fn region_to_borrow_index(&self, region: PcgRegion<'tcx>) -> Option<BorrowIndex> {
-        self.location_map()
-            .iter()
-            .enumerate()
-            .find_map(move |(index, (_, data))| {
-                (data.pcg_region() == region).then_some(index.into())
-            })
+        #[rustversion::since(2026-07-28)]
+        {
+            self.borrow_set()
+                .iter_enumerated()
+                .find_map(|(index, data)| (data.pcg_region() == region).then_some(index))
+        }
+        #[rustversion::before(2026-07-28)]
+        {
+            self.borrow_set()
+                .location_map()
+                .iter()
+                .enumerate()
+                .find_map(move |(index, (_, data))| {
+                    (data.pcg_region() == region).then_some(index.into())
+                })
+        }
     }
 
     fn borrow_index_to_region(&self, borrow_index: BorrowIndex) -> RegionVid {
         self.borrow_set()[borrow_index].region()
-    }
-
-    fn location_map(&self) -> &FxIndexMap<Location, BorrowData<'tcx>> {
-        self.borrow_set().location_map()
     }
 
     /// If the borrow checker is based on Polonius, it can define this method to
@@ -419,7 +423,14 @@ trait BorrowSetLike<'tcx> {
 
 impl<'tcx> BorrowSetLike<'tcx> for BorrowSet<'tcx> {
     fn get_borrows_for_local(&self, local: mir::Local) -> Option<&FxIndexSet<BorrowIndex>> {
-        self.local_map().get(&local)
+        #[rustversion::since(2026-07-28)]
+        {
+            self.borrows_on_local(local)
+        }
+        #[rustversion::before(2026-07-28)]
+        {
+            self.local_map().get(&local)
+        }
     }
 }
 

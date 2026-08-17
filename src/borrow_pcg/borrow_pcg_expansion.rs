@@ -177,9 +177,8 @@ impl<'tcx> PlaceExpansion<'tcx> {
 
         if fields.is_empty() {
             unreachable!()
-        } else {
-            PlaceExpansion::Fields(fields)
         }
+        PlaceExpansion::Fields(fields)
     }
 
     pub(crate) fn elems(&self) -> Vec<PlaceElem<'tcx>> {

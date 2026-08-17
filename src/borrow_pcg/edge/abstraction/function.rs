@@ -20,19 +20,21 @@ use crate::{
     coupling::CoupledEdgeKind,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
+        BoundVariableKind, fn_def_args,
         hir::def_id::DefId,
         infer::{infer::TyCtxtInferExt, traits::ObligationCause},
         middle::{
             mir::{self, Location},
             ty::{self, GenericArgsRef},
         },
+        skip_normalization,
         span::{
             DUMMY_SP, Span,
             def_id::{CRATE_DEF_ID, LocalDefId},
         },
         trait_selection::{
             infer::{RegionVariableOrigin, outlives::env::OutlivesEnvironment},
-            traits::{NormalizeExt, ScrubbedTraitError, TraitEngine, TraitEngineExt},
+            traits::{NormalizeExt, ScrubbedTraitError},
         },
     },
     utils::{
@@ -44,6 +46,11 @@ use crate::{
 };
 
 use crate::coupling::HyperEdge;
+
+#[rustversion::since(2026-08-04)]
+use crate::rustc_interface::trait_selection::traits::FulfillmentEngine;
+#[rustversion::before(2026-08-04)]
+use crate::rustc_interface::trait_selection::traits::{TraitEngine, TraitEngineExt};
 
 #[derive(Clone)]
 pub struct DefinedFnSigShapeDataSource<'tcx> {
@@ -506,8 +513,8 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
                     map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
                 }
             }
-            (_, ty::TyKind::Alias(_, alias_ty)) => {
-                let opaque = OpaqueTy::Alias(*alias_ty);
+            (_, ty::TyKind::Alias(..)) => {
+                let opaque = OpaqueTy::Alias(id_ty);
                 for r in extract_regions(norm_ty) {
                     map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
                 }
@@ -598,13 +605,13 @@ impl<'tcx> FunctionData<'tcx> {
     pub fn identity_fn_sig(self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = if tcx.is_closure_like(self.def_id) {
             let ty::TyKind::Closure(_, args) =
-                tcx.type_of(self.def_id).instantiate_identity().kind()
+                skip_normalization(tcx.type_of(self.def_id).instantiate_identity()).kind()
             else {
                 unreachable!();
             };
             self.closure_fn_sig(tcx, args)
         } else {
-            tcx.fn_sig(self.def_id).instantiate_identity()
+            skip_normalization(tcx.fn_sig(self.def_id).instantiate_identity())
         };
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
@@ -616,7 +623,7 @@ impl<'tcx> FunctionData<'tcx> {
         let fn_sig = if tcx.is_closure_like(self.def_id) {
             self.closure_fn_sig(tcx, substs)
         } else {
-            tcx.fn_sig(self.def_id).instantiate(tcx, substs)
+            skip_normalization(tcx.fn_sig(self.def_id).instantiate(tcx, substs))
         };
         tcx.liberate_late_bound_regions(self.def_id, fn_sig)
     }
@@ -653,16 +660,12 @@ impl<'tcx> FunctionData<'tcx> {
         let closure_ty = ty::Ty::new_closure(tcx, self.def_id, args);
         let env_ty = tcx.closure_env_ty(closure_ty, closure.kind(), env_region);
         let sig = closure_sig.skip_binder();
-        ty::Binder::bind_with_vars(
-            tcx.mk_fn_sig(
-                std::iter::once(env_ty).chain(sig.inputs()[0].tuple_fields()),
-                sig.output(),
-                sig.c_variadic,
-                sig.safety,
-                sig.abi,
-            ),
-            bound_vars,
-        )
+        let inputs = std::iter::once(env_ty).chain(sig.inputs()[0].tuple_fields());
+        #[rustversion::since(2026-04-19)]
+        let fn_sig = tcx.mk_fn_sig(inputs, sig.output(), sig.fn_sig_kind);
+        #[rustversion::before(2026-04-19)]
+        let fn_sig = tcx.mk_fn_sig(inputs, sig.output(), sig.c_variadic, sig.safety, sig.abi);
+        ty::Binder::bind_with_vars(fn_sig, bound_vars)
     }
 }
 
@@ -681,7 +684,7 @@ impl<'tcx> FunctionData<'tcx> {
 fn renumbered_captures<'tcx>(
     tcx: ty::TyCtxt<'tcx>,
     args: GenericArgsRef<'tcx>,
-) -> (GenericArgsRef<'tcx>, Vec<ty::BoundVariableKind>) {
+) -> (GenericArgsRef<'tcx>, Vec<BoundVariableKind<'tcx>>) {
     let closure = args.as_closure();
     let mut regions = Vec::new();
     // Only the captures are renumbered: the regions of the signature are
@@ -740,12 +743,13 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
                     arg.as_region()
                         .is_some_and(|r| PcgRegion::from(r) == region)
                 })?;
-                let fn_ty = tcx.type_of(self.call.fn_def_id()).instantiate_identity();
+                let fn_ty =
+                    skip_normalization(tcx.type_of(self.call.fn_def_id()).instantiate_identity());
                 let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
                     panic!("Expected a function type");
                 };
                 Some(GeneralizedLifetime::Region(
-                    identity_substs.region_at(index).into(),
+                    fn_def_args(identity_substs).region_at(index).into(),
                 ))
             }
             _ => None,
@@ -961,8 +965,12 @@ impl<'tcx> DefinedFnCallWithCallTys<'tcx> {
         } = terminator.kind
             && let ty::TyKind::FnDef(def_id, substs) = func.ty(ctxt.body(), ctxt.tcx()).kind()
         {
-            let defined_fn_call =
-                DefinedFnCall::new(FunctionData::new(*def_id), substs, caller_def_id, fn_span);
+            let defined_fn_call = DefinedFnCall::new(
+                FunctionData::new(*def_id),
+                fn_def_args(substs),
+                caller_def_id,
+                fn_span,
+            );
             Some(Self {
                 defined_fn_call,
                 call_arg_tys: args
@@ -1094,13 +1102,21 @@ impl<'tcx> DefinedFnCall<'tcx> {
         for _ in ctxt.bc_ctxt().borrow_checker().iter_region_vids() {
             infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
         }
-        let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
-            ScrubbedTraitError,
-        >>::new(&infcx);
-        infcx
-            .at(&ObligationCause::dummy(), param_env)
-            .deeply_normalize(subst_sig, &mut *fulfill_cx)
-            .unwrap()
+        let cause = ObligationCause::dummy();
+        let at = infcx.at(&cause, param_env);
+        #[rustversion::since(2026-08-04)]
+        let normalized = {
+            let mut fulfill_cx = FulfillmentEngine::<ScrubbedTraitError>::new(&infcx);
+            at.deeply_normalize(ty::Unnormalized::new(subst_sig), &mut fulfill_cx)
+        };
+        #[rustversion::before(2026-08-04)]
+        let normalized = {
+            let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
+                ScrubbedTraitError,
+            >>::new(&infcx);
+            at.deeply_normalize(subst_sig, &mut *fulfill_cx)
+        };
+        normalized.unwrap()
     }
 }
 

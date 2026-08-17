@@ -274,7 +274,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                             _ => None,
                         })
                         .collect::<Vec<_>>();
-                    assert!(raw_ptr_edge.len() == 1);
+                    assert_eq!(raw_ptr_edge.len(), 1);
                     PlaceUsage {
                         place: raw_ptr_edge[0].aliased_place.place(),
                         usage: p.usage,
