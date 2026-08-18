@@ -11,7 +11,7 @@ use crate::{
         state::BorrowStateRef,
         validity_conditions::ValidityConditions,
     },
-    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
+    r#loop::{PlaceUsage, PlaceUsages},
     pcg::{
         BodyAnalysis, CapabilityKind, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
@@ -330,7 +330,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 place_capabilities: args.capabilities,
                 owned,
             };
-            if !pcg_ref.is_leaf_place(pu.place, ctxt) && pu.usage == PlaceUsageType::Mutate {
+            if !pcg_ref.is_leaf_place(pu.place, ctxt) && !pu.usage.is_read() {
                 let replacements = self.label_place(
                     pu.place,
                     LabelPlaceReason::JoinLoop,
@@ -362,6 +362,28 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Place-Label".to_owned(),
             self.debug_graph(args.capabilities, ctxt),
         ));
+
+        let loop_id = ctxt
+            .body_analysis
+            .loop_analysis
+            .loop_head_of(loop_head)
+            .unwrap();
+        let invariant_capabilities = ctxt.body_analysis.loop_invariant_capabilities(loop_id);
+
+        logging::log!(
+            &LogPredicate::DebugBlock,
+            ctxt,
+            "loop invariant capabilities: {}",
+            invariant_capabilities.display_string(ctxt.ctxt)
+        );
+
+        self.unpack_for_loop_invariant_capabilities(
+            &loop_blocked_places,
+            invariant_capabilities,
+            validity_conditions,
+            &mut args.reborrow(),
+            ctxt,
+        );
 
         let expand_places = loop_blocker_places.joined_with(&loop_blocked_places);
 

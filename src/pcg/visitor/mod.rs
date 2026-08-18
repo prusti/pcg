@@ -305,10 +305,23 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
+    /// The places that must not be collapsed here: an enclosing loop's
+    /// invariant capabilities require them to be individually accessible, and
+    /// the loop head unpacks the PCG accordingly. Collapsing them in the loop
+    /// body would make the shape of the PCG inside the loop disagree with the
+    /// shape at the loop head.
+    fn places_required_by_enclosing_loops(&self) -> Vec<Place<'tcx>> {
+        self.ctxt
+            .body_analysis()
+            .places_required_by_enclosing_loops(self.location().block)
+            .collect()
+    }
+
     fn collapse_iteration(
         &mut self,
         local: mir::Local,
         iteration: usize,
+        places_to_keep_unpacked: &[Place<'tcx>],
     ) -> Result<bool, PcgError> {
         let local_expansions = self.pcg.owned[local].expansions();
         let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
@@ -318,6 +331,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .collect::<HashSet<_>>();
         let places_to_collapse = parent_places
             .into_iter()
+            .filter(|place| {
+                !places_to_keep_unpacked
+                    .iter()
+                    .any(|required| place.is_strict_prefix_of(*required))
+            })
             .filter_map(|place| {
                 let expansion_places = local_expansions.all_children_of(place, self.ctxt);
                 if expansion_places
@@ -365,15 +383,20 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 {
     pub(crate) fn collapse_owned_places(&mut self) -> Result<(), PcgError> {
         let allocated_locals = self.pcg.owned.allocated_locals();
+        let places_to_keep_unpacked = self.places_required_by_enclosing_loops();
         for local in allocated_locals {
-            self.iterations_for_local(local)?;
+            self.iterations_for_local(local, &places_to_keep_unpacked)?;
         }
         Ok(())
     }
 
-    fn iterations_for_local(&mut self, local: mir::Local) -> Result<(), PcgError> {
+    fn iterations_for_local(
+        &mut self,
+        local: mir::Local,
+        places_to_keep_unpacked: &[Place<'tcx>],
+    ) -> Result<(), PcgError> {
         let mut iteration = 1;
-        while self.collapse_iteration(local, iteration)? {
+        while self.collapse_iteration(local, iteration, places_to_keep_unpacked)? {
             iteration += 1;
         }
         Ok(())

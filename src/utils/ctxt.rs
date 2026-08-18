@@ -11,7 +11,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
-    pcg::{CompilerCtxtWithSettings, ctxt::AnalysisCtxt},
+    pcg::{BodyAnalysis, CompilerCtxtWithSettings, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
@@ -383,8 +383,9 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
     HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>
 {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
+    fn body_analysis(self) -> &'a BodyAnalysis<'a, 'tcx>;
     fn compiler_ctxt_with_settings(self) -> CompilerCtxtWithSettings<'a, 'tcx> {
-        CompilerCtxtWithSettings::new(self.bc_ctxt(), self.settings())
+        CompilerCtxtWithSettings::new(self.bc_ctxt(), self.settings(), self.body_analysis())
     }
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:

@@ -19,7 +19,7 @@ use crate::{
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
-    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
+    r#loop::{PlaceUsage, PlaceUsages},
     pcg::{
         self, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
@@ -205,10 +205,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 for blocker in &blockers {
                     add_block_edges(&mut expander, blocked_place.into(), *blocker, ctxt);
                 }
-                if blocked_place_usage.usage == PlaceUsageType::Mutate {
-                    capability_updates.insert(blocked_place, None);
-                } else {
+                if blocked_place_usage.usage.is_read() {
                     capability_updates.insert(blocked_place, Some(CapabilityKind::Read));
+                } else {
+                    capability_updates.insert(blocked_place, None);
                 }
                 for rp in blocked_place.lifetime_projections(ctxt) {
                     to_label.insert(LabelNodePredicate::all_non_future(
@@ -365,10 +365,62 @@ impl<'tcx> BorrowsGraph<'tcx> {
         result
     }
 
+    /// Unpacks the PCG at the loop head so that each place of the loop
+    /// invariant capabilities `U` is accessible with the capability required by
+    /// its usage.
+    ///
+    /// The places of `U` requiring write or exclusive access are unpacked
+    /// before the read-only ones, so that an exclusive unpack is never applied
+    /// to a place that has already been downgraded for a read.
+    pub(crate) fn unpack_for_loop_invariant_capabilities<'a>(
+        &mut self,
+        loop_blocked_places: &PlaceUsages<'tcx>,
+        invariant_capabilities: &PlaceUsages<'tcx>,
+        validity_conditions: &ValidityConditions,
+        args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        self.obtain_places_at_loop_head(
+            loop_blocked_places,
+            &invariant_capabilities.loop_head_unpack_order(),
+            validity_conditions,
+            args,
+            ctxt,
+        );
+    }
+
     pub(crate) fn expand_places_for_abstraction<'a>(
         &mut self,
         loop_blocked_places: &PlaceUsages<'tcx>,
         to_expand: &PlaceUsages<'tcx>,
+        validity_conditions: &ValidityConditions,
+        args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        let mut to_obtain: Vec<PlaceUsage<'tcx>> = vec![];
+        for place_usage in to_expand.iter() {
+            if to_obtain
+                .iter()
+                .any(|p| place_usage.place.is_prefix_of(p.place))
+            {
+                continue;
+            }
+            to_obtain.retain(|p| !place_usage.place.is_prefix_of(p.place));
+            to_obtain.push(place_usage);
+        }
+        self.obtain_places_at_loop_head(
+            loop_blocked_places,
+            &to_obtain,
+            validity_conditions,
+            args,
+            ctxt,
+        );
+    }
+
+    fn obtain_places_at_loop_head<'a>(
+        &mut self,
+        loop_blocked_places: &PlaceUsages<'tcx>,
+        to_obtain: &[PlaceUsage<'tcx>],
         validity_conditions: &ValidityConditions,
         args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
@@ -386,17 +438,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             },
             snapshot_location,
         );
-        let mut to_obtain: Vec<PlaceUsage<'tcx>> = vec![];
-        for place_usage in to_expand.iter() {
-            if to_obtain
-                .iter()
-                .any(|p| place_usage.place.is_prefix_of(p.place))
-            {
-                continue;
-            }
-            to_obtain.retain(|p| !place_usage.place.is_prefix_of(p.place));
-            to_obtain.push(place_usage);
-        }
         obtainer.render_debug_graph(Some(DebugImgcat::JoinLoop), "Before obtaining (self)");
         for place_usage in to_obtain {
             let obtain_type = ObtainType::LoopInvariant {
