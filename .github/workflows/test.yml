@@ -89,7 +89,7 @@ jobs:
         repository: zgrannan/rust-lints
         # actions/checkout needs a full 40-char SHA to check out a commit
         # directly (short SHAs are interpreted as branch/tag patterns).
-        ref: 30f27729f15e030bd3f508df31adfd4906127430
+        ref: 35db4fccbca9d3939fed1fe57580d9fc3bda10de
         path: rust-lints
     - name: Run rust-lints
       id: run_lints
@@ -111,9 +111,10 @@ jobs:
           ls -la rust-lints
           # -- build the dylint libraries --
           (cd rust-lints && cargo build --release)
-          # -- install cargo-dylint if not already on PATH --
-          if ! command -v cargo-dylint >/dev/null; then
-            cargo install cargo-dylint dylint-link --locked --version 5.0.0
+          # -- install cargo-dylint unless the required version is on PATH --
+          dylint_version=6.0.4
+          if [ "$(cargo-dylint dylint --version 2>/dev/null)" != "cargo-dylint $dylint_version" ]; then
+            cargo install cargo-dylint dylint-link --locked --version "$dylint_version" --force
           fi
           # -- stage the .so files with the name dylint expects --
           channel="$(awk -F'"' '/^channel/ {print $2}' rust-toolchain)"
