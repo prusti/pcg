@@ -150,9 +150,6 @@ pub trait Analysis<'tcx> {
         location: Location,
     );
 
-    /// The successor edges the analysis traverses out of `terminator`. This is
-    /// separate from [`Analysis::apply_terminator_effect`] because an analysis
-    /// may deliberately ignore some of the terminator's real edges.
     fn terminator_edges<'mir>(
         &self,
         terminator: &'mir Terminator<'tcx>,
