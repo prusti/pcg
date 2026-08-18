@@ -119,7 +119,7 @@ pub enum OpaqueTy<'tcx> {
     /// A type parameter (e.g., `T`, `Self`).
     Param(ty::ParamTy),
     /// A non-normalizable alias type (e.g., `<Self as Deref>::Target`).
-    Alias(ty::AliasTy<'tcx>),
+    Alias(ty::Ty<'tcx>),
 }
 
 impl<'tcx> TryFrom<ty::Ty<'tcx>> for OpaqueTy<'tcx> {
@@ -128,7 +128,7 @@ impl<'tcx> TryFrom<ty::Ty<'tcx>> for OpaqueTy<'tcx> {
     fn try_from(ty: ty::Ty<'tcx>) -> Result<Self, Self::Error> {
         match ty.kind() {
             ty::TyKind::Param(param_ty) => Ok(Self::Param(*param_ty)),
-            ty::TyKind::Alias(_, alias_ty) => Ok(Self::Alias(*alias_ty)),
+            ty::TyKind::Alias(..) => Ok(Self::Alias(ty)),
             _ => Err(()),
         }
     }
@@ -139,7 +139,7 @@ impl<'tcx> OpaqueTy<'tcx> {
     pub fn ty(self, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
         match self {
             Self::Param(param_ty) => ty::Ty::new_param(tcx, param_ty.index, param_ty.name),
-            Self::Alias(alias_ty) => alias_ty.to_ty(tcx),
+            Self::Alias(alias_ty) => alias_ty,
         }
     }
 
@@ -153,7 +153,7 @@ impl std::fmt::Display for OpaqueTy<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Param(param_ty) => write!(f, "{}", param_ty.name),
-            Self::Alias(alias_ty) => write!(f, "{alias_ty:?}"),
+            Self::Alias(alias_ty) => write!(f, "{alias_ty}"),
         }
     }
 }
@@ -203,8 +203,8 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
                 self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque));
                 self.push_trait_bound_regions_for(opaque);
             }
-            ty::TyKind::Alias(_, alias_ty) => {
-                let opaque = OpaqueTy::Alias(*alias_ty);
+            ty::TyKind::Alias(..) => {
+                let opaque = OpaqueTy::Alias(ty);
                 self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque));
                 self.push_trait_bound_regions_for(opaque);
             }

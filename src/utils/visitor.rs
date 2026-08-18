@@ -56,6 +56,15 @@ pub(crate) trait FallableVisitor<'tcx> {
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
     ) -> Result<(), PcgError> {
+        #[rustversion::before(2026-05-02)]
+        if let mir::StatementKind::Retag(_, place) = &statement.kind {
+            self.visit_place_fallable(
+                (**place).into(),
+                visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Retag),
+                location,
+            );
+            return Ok(());
+        }
         match &statement.kind {
             mir::StatementKind::Assign(box (place, rvalue)) => {
                 self.visit_place_fallable(
@@ -84,13 +93,6 @@ pub(crate) trait FallableVisitor<'tcx> {
             | mir::StatementKind::Coverage(_)
             | mir::StatementKind::ConstEvalCounter
             | mir::StatementKind::Nop => {}
-            mir::StatementKind::Retag(_, place) => {
-                self.visit_place_fallable(
-                    (**place).into(),
-                    visit::PlaceContext::MutatingUse(visit::MutatingUseContext::Retag),
-                    location,
-                );
-            }
             mir::StatementKind::PlaceMention(place) => {
                 self.visit_place_fallable(
                     (**place).into(),
@@ -149,10 +151,13 @@ pub(crate) trait FallableVisitor<'tcx> {
         rvalue: &mir::Rvalue<'tcx>,
         location: mir::Location,
     ) -> Result<(), PcgError> {
+        #[rustversion::before(2026-02-18)]
+        if let mir::Rvalue::ShallowInitBox(operand, _) = rvalue {
+            self.visit_operand_fallable(operand, location)?;
+            return Ok(());
+        }
         match rvalue {
-            mir::Rvalue::Use(operand)
-            | mir::Rvalue::Cast(_, operand, _)
-            | mir::Rvalue::ShallowInitBox(operand, _) => {
+            mir::Rvalue::Use(operand, ..) | mir::Rvalue::Cast(_, operand, _) => {
                 self.visit_operand_fallable(operand, location)?;
             }
             mir::Rvalue::Repeat(value, _ct) => {

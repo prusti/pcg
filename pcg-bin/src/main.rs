@@ -59,6 +59,26 @@ fn main() {
     let sopts = config::build_session_options(&mut default_early_dcx, &matches);
     assert!(matches.free.len() == 1, "Expected exactly one input file");
     let input = config::Input::File(std::path::PathBuf::from(matches.free[0].clone()));
+    #[rustversion::since(2026-03-18)]
+    let config = interface::Config {
+        opts: sopts,
+        crate_cfg: vec![],
+        crate_check_cfg: vec![],
+        input,
+        output_file: None,
+        output_dir: None,
+        ice_file: None,
+        file_loader: None,
+        lint_caps: Default::default(),
+        psess_created: None,
+        track_state: None,
+        register_lints: None,
+        override_queries: Some(set_mir_borrowck),
+        extra_symbols: vec![],
+        make_codegen_backend: None,
+        using_internal_features: &driver::USING_INTERNAL_FEATURES,
+    };
+    #[rustversion::before(2026-03-18)]
     let config = interface::Config {
         opts: sopts,
         crate_cfg: vec![],
@@ -96,6 +116,6 @@ fn main() {
                 eprintln!("Running PCG on all functions");
                 callbacks::run_pcg_on_all_fns(tcx);
             }
-        })
+        });
     })
 }

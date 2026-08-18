@@ -130,13 +130,11 @@ impl LoopAnalysis {
     }
 
     /// Returns an iterator over the loops that `bb` is in.
-    #[must_use]
     pub fn loops(&self, bb: BasicBlock) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
         self.bb_data[bb].iter()
     }
 
     /// Returns an iterator over all loops in the body.
-    #[must_use]
     pub fn all_loops(&self) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
         self.loop_heads.iter_enumerated().map(|(idx, _)| idx)
     }
@@ -177,7 +175,10 @@ impl LoopAnalysis {
         if let Some(l) = start_loops.pop() {
             assert_eq!(self[l], START_BLOCK);
         }
-        assert!(start_loops.is_empty());
+        assert!(
+            start_loops.is_empty(),
+            "start block is in more than one loop: {start_loops:?}"
+        );
         // A bb can only be the loop head of a single loop
         for lh in &self.loop_heads {
             assert_eq!(
@@ -519,19 +520,18 @@ impl<'tcx> Analysis<'tcx> for SingleLoopAnalysis<'_> {
         }
     }
 
-    fn apply_terminator_effect<'mir>(
+    fn apply_terminator_effect(
         &self,
         state: &mut Self::Domain,
-        terminator: &'mir mir::Terminator<'tcx>,
+        terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
-    ) -> mir::TerminatorEdges<'mir, 'tcx> {
+    ) {
         if self.loop_analysis.in_loop(location.block, self.loop_id) {
             let mut visitor = UsageVisitor::new(state);
             visitor
                 .visit_terminator_fallable(terminator, location)
                 .unwrap();
         }
-        terminator.edges()
     }
 }
 

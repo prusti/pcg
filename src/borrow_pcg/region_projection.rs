@@ -16,6 +16,7 @@ use crate::{
     error::PcgError,
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{
+        BoundRegion,
         index::{Idx, IndexVec},
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
@@ -32,6 +33,9 @@ use crate::{
     },
 };
 
+#[rustversion::since(2026-07-21)]
+use crate::rustc_interface::middle::ty::RegionExt;
+
 impl DisplayWithCtxt<ty::TyCtxt<'_>> for RegionVid {
     fn display_output(&self, _ctxt: ty::TyCtxt<'_>, _mode: OutputMode) -> DisplayOutput {
         default_region_display_output(*self)
@@ -46,7 +50,7 @@ pub enum PcgRegion<'tcx> {
     ReErased,
     ReStatic,
     RePlaceholder(ty::PlaceholderRegion<'tcx>),
-    ReBound(ty::BoundVarIndexKind, ty::BoundRegion),
+    ReBound(ty::BoundVarIndexKind, BoundRegion<'tcx>),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
     ReEarlyParam(ty::EarlyParamRegion),
@@ -89,7 +93,7 @@ impl fmt::Display for PcgRegion<'_> {
     }
 }
 
-impl PcgRegion<'_> {
+impl<'tcx> PcgRegion<'tcx> {
     #[must_use]
     pub fn is_static(self) -> bool {
         matches!(self, PcgRegion::ReStatic)
@@ -104,7 +108,7 @@ impl PcgRegion<'_> {
     }
 
     #[rustversion::since(2025-12-01)]
-    pub(crate) fn rust_region<'a, 'tcx: 'a>(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
+    pub(crate) fn rust_region(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
         #[rustversion::since(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
@@ -132,7 +136,7 @@ impl PcgRegion<'_> {
     }
 
     #[rustversion::before(2025-12-01)]
-    pub(crate) fn rust_region<'a, 'tcx: 'a>(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
+    pub(crate) fn rust_region(self, ctxt: ty::TyCtxt<'tcx>) -> ty::Region<'tcx> {
         #[rustversion::before(2025-03-01)]
         fn new_late_param<'a, 'tcx: 'a>(
             late_param_region: ty::LateParamRegion,
@@ -1053,9 +1057,8 @@ impl<'tcx, T, IdxMarker: RegionIdxMarker> LifetimeProjection<'tcx, T, IdxMarker>
             ctxt.extract_regions(self.base_ty(ctxt));
         if self.region_idx.index() >= regions.len() {
             unreachable!()
-        } else {
-            regions[self.region_idx]
         }
+        regions[self.region_idx]
     }
 }
 

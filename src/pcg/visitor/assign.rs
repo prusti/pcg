@@ -111,7 +111,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     }
                 }
             }
-            Rvalue::Use(operand) => {
+            Rvalue::Use(operand, ..) => {
                 let p = operand.place();
                 if let Some(p) = p {
                     let p: Place = p.into();
@@ -164,7 +164,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         })
                         .collect::<Vec<_>>();
                     if !alies_edges.is_empty() {
-                        assert!(alies_edges.len() == 1);
+                        assert_eq!(alies_edges.len(), 1);
                         self.record_and_apply_action(
                             BorrowPcgAction::add_edge(
                                 BorrowPcgEdge::new(
@@ -206,25 +206,23 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 );
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
-            Rvalue::RawPtr(kind, p) => {
-                if !kind.is_fake() {
-                    let p: Place<'tcx> = (*p).into();
-                    let p = p.with_inherent_region(self.ctxt);
-                    self.record_and_apply_action(
-                        BorrowPcgAction::add_edge(
-                            BorrowPcgEdge::new(
-                                DelegationEdge {
-                                    rawptr_place: target.project_deref(ctxt).into(),
-                                    aliased_place: p.into(),
-                                }
-                                .into(),
-                                self.pcg.borrow.validity_conditions.clone(),
-                            ),
-                            "assign_post_main",
-                        )
-                        .into(),
-                    )?;
-                }
+            Rvalue::RawPtr(kind, p) if !kind.is_fake() => {
+                let p: Place<'tcx> = (*p).into();
+                let p = p.with_inherent_region(self.ctxt);
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge(
+                        BorrowPcgEdge::new(
+                            DelegationEdge {
+                                rawptr_place: target.project_deref(ctxt).into(),
+                                aliased_place: p.into(),
+                            }
+                            .into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        "assign_post_main",
+                    )
+                    .into(),
+                )?;
             }
             _ => {}
         }

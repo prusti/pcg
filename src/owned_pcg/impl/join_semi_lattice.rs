@@ -38,7 +38,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        match (&mut self.owned, &mut other.owned) {
+        match (&mut *self.owned, &mut other.owned) {
             (LocalInitState::Unallocated, LocalInitState::Unallocated) => Ok(vec![]),
             (
                 LocalInitState::Allocated {

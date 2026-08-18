@@ -23,6 +23,7 @@ use crate::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
+        field_ty,
         index::IndexVec,
         middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
@@ -396,7 +397,7 @@ impl<'tcx> Place<'tcx> {
                         Some(v) => def.variant(v),
                         None => def.non_enum_variant(),
                     };
-                    variant.fields[field_idx].ty(ctxt.tcx(), substs)
+                    field_ty(&variant.fields[field_idx], ctxt.tcx(), substs)
                 }
                 TyKind::Tuple(tys) => tys[field_idx.as_usize()],
                 _ => proj_ty,
@@ -512,7 +513,7 @@ impl<'tcx> Place<'tcx> {
                             .fields
                             .iter()
                             .enumerate()
-                            .map(|(i, field)| (i.into(), field.ty(ctxt.tcx(), substs)))
+                            .map(|(i, field)| (i.into(), field_ty(field, ctxt.tcx(), substs)))
                             .collect(),
                     )
                 }
