@@ -119,10 +119,6 @@ pub enum OpaqueTy<'tcx> {
     /// A type parameter (e.g., `T`, `Self`).
     Param(ty::ParamTy),
     /// A non-normalizable alias type (e.g., `<Self as Deref>::Target`).
-    ///
-    /// The alias is kept as a whole [`ty::Ty`] rather than as its
-    /// `ty::AliasTy`, because `TyKind::Alias` also carries a rigid-alias marker
-    /// that an `AliasTy` on its own cannot reproduce.
     Alias(ty::Ty<'tcx>),
 }
 

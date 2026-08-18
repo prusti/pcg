@@ -33,8 +33,6 @@ use crate::{
     },
 };
 
-/// The region constructors moved into an extension trait when `Region` was
-/// uplifted from `rustc_middle` into `rustc_type_ir`.
 #[rustversion::since(2026-07-21)]
 use crate::rustc_interface::middle::ty::RegionExt;
 

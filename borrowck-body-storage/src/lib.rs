@@ -16,7 +16,6 @@ use pcg::{
     },
 };
 
-/// The query list moved out of `rustc_middle::query` into its own module.
 #[rustversion::since(2026-02-04)]
 use pcg::rustc_interface::middle::queries::mir_borrowck::ProvidedValue as MirBorrowck;
 #[rustversion::before(2026-02-04)]

@@ -58,8 +58,6 @@ fn main() {
     let sopts = config::build_session_options(&mut default_early_dcx, &matches);
     assert!(matches.free.len() == 1, "Expected exactly one input file");
     let input = config::Input::File(std::path::PathBuf::from(matches.free[0].clone()));
-    // `locale_resources` and `registry` were dropped along with slug-based
-    // diagnostic messages, and `hash_untracked_state` became `track_state`.
     #[rustversion::since(2026-03-18)]
     let config = interface::Config {
         opts: sopts,
