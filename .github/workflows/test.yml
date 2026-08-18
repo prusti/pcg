@@ -112,9 +112,12 @@ jobs:
           # -- build the dylint libraries --
           (cd rust-lints && cargo build --release)
           # -- install cargo-dylint unless the required version is on PATH --
+          # `dylint-link` is only needed to build a library from inside its own
+          # crate directory; this job builds from the workspace root and stages
+          # the toolchain-qualified names itself.
           dylint_version=6.0.4
           if [ "$(cargo-dylint dylint --version 2>/dev/null)" != "cargo-dylint $dylint_version" ]; then
-            cargo install cargo-dylint dylint-link --locked --version "$dylint_version" --force
+            cargo install cargo-dylint --locked --version "$dylint_version" --force
           fi
           # -- stage the .so files with the name dylint expects --
           channel="$(awk -F'"' '/^channel/ {print $2}' rust-toolchain)"
