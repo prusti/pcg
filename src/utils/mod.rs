@@ -55,6 +55,19 @@ impl DebugImgcat {
     }
 }
 
+/// Whether expansion edges in the PCG are packed up as soon as they can be
+/// packed without losing information, or only at the point where a capability
+/// to the packed place is required.
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, Default)]
+pub enum PackStrategy {
+    /// Pack an expansion as soon as it becomes packable.
+    #[default]
+    Eager,
+    /// Pack an expansion of `p` only when a capability that `p` cannot hold
+    /// while it is expanded is required.
+    Lazy,
+}
+
 pub struct GlobalPcgSettings {
     pub allow_borrowck_errors: bool,
     pub skip_bodies_with_loops: bool,
@@ -115,6 +128,7 @@ pub struct PcgSettings {
     pub check_function: Option<String>,
     pub skip_function: Option<String>,
     pub coupling: bool,
+    pub pack_strategy: PackStrategy,
 }
 
 impl Default for PcgSettings {
@@ -180,6 +194,7 @@ impl PcgSettings {
         let check_function = Self::process_string_var(&mut processed_vars, "PCG_CHECK_FUNCTION");
         let skip_function = Self::process_string_var(&mut processed_vars, "PCG_SKIP_FUNCTION");
         let coupling = Self::process_bool_var(&mut processed_vars, "PCG_COUPLING", true);
+        let pack_strategy = Self::process_pack_strategy(&mut processed_vars);
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);
@@ -200,6 +215,7 @@ impl PcgSettings {
             check_function,
             skip_function,
             coupling,
+            pack_strategy,
         }
     }
 
@@ -284,6 +300,20 @@ impl PcgSettings {
                 })
                 .collect(),
             Err(_) => vec![],
+        }
+    }
+
+    fn process_pack_strategy(processed: &mut HashSet<String>) -> PackStrategy {
+        processed.insert("PCG_PACK_STRATEGY".to_owned());
+        match std::env::var("PCG_PACK_STRATEGY") {
+            Ok(val) => match val.trim().to_lowercase().as_str() {
+                "eager" => PackStrategy::Eager,
+                "lazy" => PackStrategy::Lazy,
+                other => panic!(
+                    "Environment variable PCG_PACK_STRATEGY has unexpected value: '{other}'. Expected one of: eager, lazy"
+                ),
+            },
+            Err(_) => PackStrategy::default(),
         }
     }
 

@@ -32,7 +32,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace, PackStrategy,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
@@ -587,6 +587,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt> Act
     }
 }
 
+/// Whether the place must be collapsed before it can hold `obtain_cap`.
+fn requires_collapse(current_cap: Option<CapabilityKind>, obtain_cap: CapabilityKind) -> bool {
+    current_cap
+        .is_none_or(|cap| matches!(cap.partial_cmp(&obtain_cap), Some(Ordering::Less) | None))
+}
+
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
@@ -601,6 +607,16 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         obtain_type: ObtainType,
     ) -> Result<(), PcgError> {
         let obtain_cap = obtain_type.capability(place, self.ctxt);
+
+        // Under `PackStrategy::Lazy` the expansions below `place` were not
+        // packed as soon as they became packable, so they are packed here,
+        // where a capability that `place` cannot hold while it is expanded is
+        // about to be required.
+        if self.ctxt.settings().pack_strategy == PackStrategy::Lazy
+            && requires_collapse(self.pcg.capability_of(place, self.ctxt), obtain_cap)
+        {
+            self.pack_expansions_for_obtain_of(place)?;
+        }
 
         if obtain_cap.is_write() {
             tracing::debug!(
@@ -642,12 +658,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         );
 
         // STEP 2
-        if current_cap.is_none()
-            || matches!(
-                current_cap.unwrap().partial_cmp(&obtain_cap),
-                Some(Ordering::Less) | None
-            )
-        {
+        if requires_collapse(current_cap, obtain_cap) {
             // If we want to get e.g. write permission but we currently have
             // read permission, we will obtain read with the collapse and then
             // upgrade in the subsequent step

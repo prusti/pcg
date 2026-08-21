@@ -13,7 +13,7 @@ use crate::{
         obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
-        DataflowCtxt, DebugCtxt, HasPlace, Place,
+        DataflowCtxt, DebugCtxt, HasPlace, PackStrategy, Place,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -160,6 +160,51 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         }
     }
 
+    /// Packs the expansions at or below `place` that can be packed without
+    /// losing information.
+    ///
+    /// Under [`PackStrategy::Lazy`] this is the only point at which such
+    /// expansions are packed: `place` is about to be required at a capability
+    /// it cannot hold while it is expanded.
+    pub(crate) fn pack_expansions_for_obtain_of(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        loop {
+            let to_pack = self.packable_expansions_at_or_below(place);
+            if to_pack.is_empty() {
+                return Ok(());
+            }
+            for edge in to_pack {
+                self.remove_edge_and_perform_associated_state_updates(
+                    &edge,
+                    &format!(
+                        "Pack expansions to obtain {}",
+                        place.display_string(self.ctxt)
+                    ),
+                )?;
+            }
+        }
+    }
+
+    fn packable_expansions_at_or_below(&self, place: Place<'tcx>) -> Vec<BorrowPcgEdge<'tcx>> {
+        let fg = self.pcg.borrow.graph.frozen_graph();
+        fg.leaf_edges(self.ctxt)
+            .into_iter()
+            .map(BorrowPcgEdgeLike::to_owned_edge)
+            .filter(|edge| {
+                let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) = edge.kind() else {
+                    return false;
+                };
+                expansion
+                    .base()
+                    .as_current_place()
+                    .is_some_and(|base| place.is_prefix_of(base))
+                    && expansion.is_packable(self.pcg.place_capabilities, self.ctxt)
+            })
+            .collect()
+    }
+
     /// Identifies the set of edges that should be removed from the graph
     ///
     /// If `ancestor_place` is defined, we only consider a subset of the edges.
@@ -287,7 +332,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: "Expansion is old or dead".into(),
                     }
-                } else if expansion.is_packable(self.pcg.place_capabilities, self.ctxt) {
+                } else if self.ctxt.settings().pack_strategy == PackStrategy::Eager
+                    && expansion.is_packable(self.pcg.place_capabilities, self.ctxt)
+                {
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",
