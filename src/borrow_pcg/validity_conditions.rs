@@ -38,31 +38,6 @@ impl PathCondition {
     }
 }
 
-/// Represents a path of execution in the code (a sequence of basic blocks)
-#[derive(PartialEq, Eq, Clone, Debug, Hash, PartialOrd, Ord)]
-pub struct Path(Vec<BasicBlock>);
-
-impl Path {
-    #[must_use]
-    pub fn new(block: BasicBlock) -> Self {
-        Self(vec![block])
-    }
-
-    pub fn append(&mut self, block: BasicBlock) {
-        self.0.push(block);
-    }
-
-    #[must_use]
-    pub fn start(&self) -> BasicBlock {
-        self.0[0]
-    }
-
-    #[must_use]
-    pub fn end(&self) -> BasicBlock {
-        self.0[self.0.len() - 1]
-    }
-}
-
 /// Represents a subset of the successors of a block. When checking whether a
 /// path satisfies the given validity conditions, it must be the case that for
 /// every b -> b' in the path, if from = b, then b' must be in one of the
@@ -105,15 +80,12 @@ enum BranchChoicesJoinResult {
 }
 
 impl BranchChoices {
-    fn new(from: BasicBlock, num_successors: usize) -> Self {
+    fn new(from: BasicBlock, num_successors: usize, chosen_idx: usize) -> Self {
+        assert!(chosen_idx < num_successors);
         let mut chosen = BitSet::default();
         chosen.reserve_len_exact(num_successors);
+        chosen.insert(chosen_idx);
         Self { from, chosen }
-    }
-
-    fn insert(&mut self, idx: usize) {
-        assert!(self.chosen.len() <= idx);
-        self.chosen.insert(idx);
     }
 
     #[must_use]
@@ -178,9 +150,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Br
         )
     }
 }
-
-#[deprecated(note = "Use `ValidityConditions` instead")]
-pub type PathConditions = ValidityConditions;
 
 /// Validity conditions describing the control-flow paths for which a given edge
 /// in the PCG applies.
@@ -288,14 +257,7 @@ impl<'a, 'tcx: 'a, Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>> ValidityConditionOps<
     for ValidityConditions
 {
     fn join(&mut self, other: &Self, ctxt: Ctxt) -> bool {
-        if let JoinValidityConditionsResult::Changed(new_validity_conditions) =
-            self.join_result(other, ctxt.body())
-        {
-            *self = *new_validity_conditions;
-            true
-        } else {
-            false
-        }
+        self.join_mut(other, ctxt.body())
     }
 }
 
@@ -321,12 +283,37 @@ impl ValidityConditions {
         self.0.iter()
     }
 
-    fn branch_choices_for(&mut self, from: BasicBlock) -> Option<&mut BranchChoices> {
-        self.0.iter_mut().find(|c| c.from == from)
+    fn branch_choices_for(&self, from: BasicBlock) -> Option<&BranchChoices> {
+        self.0.iter().find(|c| c.from == from)
     }
 
-    fn delete_branch_choices(&mut self, from: BasicBlock) {
-        self.0.retain(|c| c.from != from);
+    /// The join is a disjunction: every path satisfying either operand must
+    /// satisfy the result. A block whose branches are constrained in one
+    /// operand but unconstrained in the other is therefore unconstrained in the
+    /// result.
+    fn join_mut(&mut self, other: &Self, body: &mir::Body<'_>) -> bool {
+        let mut changed = false;
+        let mut unconstrained = Vec::new();
+        for branch_choices in &mut self.0 {
+            let Some(other_branch_choices) = other.branch_choices_for(branch_choices.from) else {
+                unconstrained.push(branch_choices.from);
+                continue;
+            };
+            match branch_choices.join(other_branch_choices, body) {
+                BranchChoicesJoinResult::CoversAllChoices => {
+                    unconstrained.push(branch_choices.from);
+                }
+                BranchChoicesJoinResult::Changed => {
+                    changed = true;
+                }
+                BranchChoicesJoinResult::Unchanged => {}
+            }
+        }
+        if !unconstrained.is_empty() {
+            changed = true;
+            self.0.retain(|c| !unconstrained.contains(&c.from));
+        }
+        changed
     }
 
     pub(crate) fn join_result(
@@ -334,24 +321,9 @@ impl ValidityConditions {
         other: &Self,
         body: &mir::Body<'_>,
     ) -> JoinValidityConditionsResult {
-        let mut slf = self.clone();
-        let mut changed = false;
-        for other_branch_choices in other.all_branch_choices() {
-            if let Some(existing) = slf.branch_choices_for(other_branch_choices.from) {
-                match existing.join(other_branch_choices, body) {
-                    BranchChoicesJoinResult::CoversAllChoices => {
-                        slf.delete_branch_choices(other_branch_choices.from);
-                        changed = true;
-                    }
-                    BranchChoicesJoinResult::Changed => {
-                        changed = true;
-                    }
-                    BranchChoicesJoinResult::Unchanged => {}
-                }
-            }
-        }
-        if changed {
-            JoinValidityConditionsResult::Changed(Box::new(slf))
+        let mut joined = self.clone();
+        if joined.join_mut(other, body) {
+            JoinValidityConditionsResult::Changed(Box::new(joined))
         } else {
             JoinValidityConditionsResult::Unchanged
         }
@@ -374,9 +346,11 @@ impl ValidityConditions {
             .all_branch_choices()
             .position(|bc| bc.from > pc.from)
             .unwrap_or(self.0.len());
-        let mut bc = BranchChoices::new(pc.from, successors.len());
-        bc.insert(successors.iter().position(|s| *s == pc.to).unwrap());
-        self.0.insert(bc_index, bc);
+        let chosen_idx = successors.iter().position(|s| *s == pc.to).unwrap();
+        self.0.insert(
+            bc_index,
+            BranchChoices::new(pc.from, successors.len(), chosen_idx),
+        );
         tracing::debug!("After insert, {self:?}");
         true
     }
