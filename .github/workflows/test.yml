@@ -89,7 +89,7 @@ jobs:
         repository: zgrannan/rust-lints
         # actions/checkout needs a full 40-char SHA to check out a commit
         # directly (short SHAs are interpreted as branch/tag patterns).
-        ref: 600f2a2e1b1711f55e57114424bed797273172f0
+        ref: 5c15424566ec7eb2738005d43087d2ab89adc907
         path: rust-lints
     - name: Run rust-lints
       id: run_lints
