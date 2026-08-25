@@ -501,7 +501,11 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
     /// Returns true iff the expansion is packable, i.e. without losing any
     /// information. This is the case when the expansion node labels (for
     /// places, and for region projections) are the same as the base node
-    /// labels.
+    /// labels, and the expansion nodes all hold the same capability.
+    ///
+    /// A [`CapabilityKind::Write`] expansion node is never packable: packing
+    /// e.g. `x.f: W, x.g: W` into `x: W` would lose the information that the
+    /// fields are individually accessible.
     pub(crate) fn is_packable(
         &self,
         capabilities: &impl PlaceCapabilitiesReader<'tcx>,
@@ -513,12 +517,16 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
         let mut fst_cap = None;
         place_expansion.expansion.iter().all(|p| {
             if let MaybeLabelledPlace::Current(place) = p {
-                if let Some(cap) = fst_cap {
-                    if cap != capabilities.get(*place, ctxt) {
+                let cap = capabilities.get(*place, ctxt);
+                if cap == Some(CapabilityKind::Write) {
+                    return false;
+                }
+                if let Some(fst_cap) = fst_cap {
+                    if fst_cap != cap {
                         return false;
                     }
                 } else {
-                    fst_cap = Some(capabilities.get(*place, ctxt));
+                    fst_cap = Some(cap);
                 }
             }
             place_expansion.base.place().is_prefix_exact(p.place())

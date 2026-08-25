@@ -8,8 +8,6 @@
 
 mod loop_set;
 
-use std::cmp;
-
 use derive_more::{Deref, DerefMut};
 use itertools::Itertools;
 
@@ -25,7 +23,7 @@ use crate::{
         middle::{
             mir::{
                 self, BasicBlock, Body, START_BLOCK,
-                visit::{MutatingUseContext, PlaceContext},
+                visit::{MutatingUseContext, NonMutatingUseContext, PlaceContext},
             },
             ty,
         },
@@ -283,6 +281,112 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod place_usage_tests {
+    use super::*;
+    use crate::rustc_interface::middle::mir::{Local, ProjectionElem};
+
+    /// A projection element that is disjoint from `index(other)` for any other
+    /// offset, and that (unlike a field projection) does not carry a type.
+    const fn index(offset: u64) -> mir::PlaceElem<'static> {
+        ProjectionElem::ConstantIndex {
+            offset,
+            min_length: 2,
+            from_end: false,
+        }
+    }
+
+    const FIRST: &[mir::PlaceElem<'static>] = &[index(0)];
+    const SECOND: &[mir::PlaceElem<'static>] = &[index(1)];
+    const FIRST_FIRST: &[mir::PlaceElem<'static>] = &[index(0), index(0)];
+
+    fn place(projection: &'static [mir::PlaceElem<'static>]) -> Place<'static> {
+        Place::new(Local::from_u32(1), projection)
+    }
+
+    fn usages(usages: &[(Place<'static>, PlaceUsageType)]) -> PlaceUsages<'static> {
+        usages
+            .iter()
+            .map(|(place, usage)| PlaceUsage {
+                place: *place,
+                usage: *usage,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn read_and_write_join_to_exclusive() {
+        assert_eq!(
+            PlaceUsageType::Read.joined(PlaceUsageType::Write),
+            PlaceUsageType::Exclusive
+        );
+        assert_eq!(
+            PlaceUsageType::Read.joined(PlaceUsageType::Read),
+            PlaceUsageType::Read
+        );
+        assert_eq!(
+            PlaceUsageType::Write.joined(PlaceUsageType::Write),
+            PlaceUsageType::Write
+        );
+        assert_eq!(
+            PlaceUsageType::Exclusive.joined(PlaceUsageType::Read),
+            PlaceUsageType::Exclusive
+        );
+    }
+
+    #[test]
+    fn consolidate_merges_overlapping_places() {
+        let consolidated = usages(&[
+            (place(FIRST), PlaceUsageType::Read),
+            (place(FIRST_FIRST), PlaceUsageType::Write),
+        ])
+        .consolidate();
+        assert_eq!(
+            consolidated,
+            usages(&[(place(FIRST), PlaceUsageType::Exclusive)])
+        );
+    }
+
+    #[test]
+    fn consolidate_keeps_disjoint_places_apart() {
+        let original = usages(&[
+            (place(FIRST), PlaceUsageType::Write),
+            (place(SECOND), PlaceUsageType::Read),
+        ]);
+        assert_eq!(original.consolidate(), original);
+    }
+
+    #[test]
+    fn consolidated_places_are_pairwise_disjoint() {
+        let consolidated = usages(&[
+            (place(FIRST_FIRST), PlaceUsageType::Read),
+            (place(SECOND), PlaceUsageType::Read),
+            (place(FIRST), PlaceUsageType::Write),
+        ])
+        .consolidate();
+        let places = consolidated.iter_places().collect::<Vec<_>>();
+        for (idx, p) in places.iter().enumerate() {
+            for other in &places[idx + 1..] {
+                assert!(!p.is_prefix_of(*other) && !other.is_prefix_of(*p));
+            }
+        }
+        assert_eq!(places.len(), 2);
+    }
+
+    #[test]
+    fn unpack_order_puts_read_only_places_last() {
+        let order = usages(&[
+            (place(FIRST), PlaceUsageType::Read),
+            (place(SECOND), PlaceUsageType::Write),
+        ])
+        .loop_head_unpack_order();
+        assert_eq!(
+            order.iter().map(|usage| usage.usage).collect::<Vec<_>>(),
+            vec![PlaceUsageType::Write, PlaceUsageType::Read]
+        );
+    }
+}
+
 #[derive(Clone, Debug, Deref, DerefMut, PartialEq, Eq)]
 struct LoopPlaceUsageDomain<'tcx> {
     used_places: PlaceUsages<'tcx>,
@@ -304,40 +408,47 @@ impl JoinSemiLattice for LoopPlaceUsageDomain<'_> {
     }
 }
 
+/// The way in which a place is used inside a loop.
+///
+/// These are the usage types $M = \{R, W, E\}$ of the loop invariant
+/// capability calculation. `Exclusive` is the top element of the
+/// meet-semilattice; `Read` and `Write` are incomparable, and their join is
+/// `Exclusive`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde_derive::Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(export))]
 pub enum PlaceUsageType {
+    /// The place is read from.
     Read,
-    Mutate,
+    /// The place is assigned to.
+    Write,
+    /// The place is moved out of or mutably borrowed.
+    Exclusive,
 }
 
-impl Ord for PlaceUsageType {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
+impl PlaceUsageType {
+    /// The join of two usage types in the meet-semilattice described above.
+    #[must_use]
+    pub(crate) fn joined(self, other: Self) -> Self {
         match (self, other) {
-            (PlaceUsageType::Read, PlaceUsageType::Read)
-            | (PlaceUsageType::Mutate, PlaceUsageType::Mutate) => cmp::Ordering::Equal,
-            (PlaceUsageType::Read, PlaceUsageType::Mutate) => cmp::Ordering::Less,
-            (PlaceUsageType::Mutate, PlaceUsageType::Read) => cmp::Ordering::Greater,
+            (PlaceUsageType::Read, PlaceUsageType::Read) => PlaceUsageType::Read,
+            (PlaceUsageType::Write, PlaceUsageType::Write) => PlaceUsageType::Write,
+            _ => PlaceUsageType::Exclusive,
         }
     }
-}
 
-impl PartialOrd for PlaceUsageType {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
+    #[must_use]
+    pub(crate) fn is_read(self) -> bool {
+        matches!(self, PlaceUsageType::Read)
     }
 }
 
 impl JoinSemiLattice for PlaceUsageType {
     fn join(&mut self, other: &Self) -> bool {
-        match (*self, *other) {
-            (PlaceUsageType::Read, PlaceUsageType::Mutate) => {
-                *self = PlaceUsageType::Mutate;
-                true
-            }
-            _ => false,
-        }
+        let joined = self.joined(*other);
+        let changed = joined != *self;
+        *self = joined;
+        changed
     }
 }
 
@@ -400,10 +511,13 @@ impl<'tcx> PlaceUsages<'tcx> {
     #[must_use]
     fn update(&mut self, place: Place<'tcx>, usage: PlaceUsageType) -> bool {
         if let Some(existing_usage) = self.0.get(&place) {
-            if usage == PlaceUsageType::Mutate && existing_usage == &PlaceUsageType::Read {
-                self.0.insert(place, PlaceUsageType::Mutate);
+            let joined = existing_usage.joined(usage);
+            if joined == *existing_usage {
+                false
+            } else {
+                self.0.insert(place, joined);
+                true
             }
-            false
         } else {
             self.0.insert(place, usage);
             true
@@ -415,6 +529,53 @@ impl<'tcx> PlaceUsages<'tcx> {
             place: *p,
             usage: *usage,
         })
+    }
+
+    /// Merges the usages of overlapping places: whenever one place is a prefix
+    /// of another, both usages are replaced by a usage of their longest common
+    /// prefix, with the join of their usage types.
+    ///
+    /// The result satisfies the *disjointness property*: for distinct places
+    /// `p`, `p'` in the result, neither is a prefix of the other. Sibling
+    /// places (e.g. `x.f` and `x.g`) are already disjoint and are therefore
+    /// kept apart, which is what allows a loop that writes `x.f` and reads
+    /// `x.g` to require `x.f: E` and `x.g: R` rather than the less precise
+    /// `x: E`.
+    pub(crate) fn consolidate(&self) -> Self {
+        let mut consolidated: HashMap<Place<'tcx>, PlaceUsageType> = HashMap::default();
+        for usage in self.iter() {
+            let mut place = usage.place;
+            let mut usage_type = usage.usage;
+            consolidated.retain(|other_place, other_usage| {
+                if other_place.is_prefix_of(place) || place.is_prefix_of(*other_place) {
+                    place = place.common_prefix(*other_place);
+                    usage_type = usage_type.joined(*other_usage);
+                    false
+                } else {
+                    true
+                }
+            });
+            consolidated.insert(place, usage_type);
+        }
+        PlaceUsages(consolidated)
+    }
+
+    /// The usages of this set in the order in which the corresponding places
+    /// should be unpacked at a loop head: the places requiring write or
+    /// exclusive access first, then the read-only places.
+    ///
+    /// The order matters: unpacking a place for `Read` first would force a
+    /// subsequent exclusive unpack of one of its ancestors to downgrade it.
+    pub(crate) fn loop_head_unpack_order(&self) -> Vec<PlaceUsage<'tcx>> {
+        let mut usages = self.iter().collect::<Vec<_>>();
+        usages.sort_by_key(|usage| {
+            (
+                usage.usage.is_read(),
+                usage.place.local,
+                usage.place.projection.len(),
+            )
+        });
+        usages
     }
 
     /// Convert to a serializable debug representation with string place keys.
@@ -477,8 +638,16 @@ impl<'tcx> FallableVisitor<'tcx> for UsageVisitor<'_, 'tcx> {
         match context {
             PlaceContext::MutatingUse(MutatingUseContext::Projection) | PlaceContext::NonUse(_) => {
             }
+            PlaceContext::MutatingUse(
+                MutatingUseContext::Borrow
+                | MutatingUseContext::RawBorrow
+                | MutatingUseContext::Drop,
+            )
+            | PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) => {
+                let _ = self.used_places.update(place, PlaceUsageType::Exclusive);
+            }
             PlaceContext::MutatingUse(_) => {
-                let _ = self.used_places.update(place, PlaceUsageType::Mutate);
+                let _ = self.used_places.update(place, PlaceUsageType::Write);
             }
             PlaceContext::NonMutatingUse(_) => {
                 let _ = self.used_places.update(place, PlaceUsageType::Read);

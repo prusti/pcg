@@ -86,7 +86,11 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     }
 
     pub fn results_ctxt(&self) -> ResultsCtxt<'a, 'tcx> {
-        ResultsCtxt::new(self.engine().ctxt, self.engine().settings)
+        ResultsCtxt::new(
+            self.engine().ctxt,
+            self.engine().settings,
+            self.engine().body_analysis,
+        )
     }
 
     #[must_use]
@@ -327,7 +331,8 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                 if let Some(initial_capability) = initial_capabilities.get(pl, ctxt) {
                     let usage_capability = match place_usage.usage {
                         PlaceUsageType::Read => CapabilityKind::Read,
-                        PlaceUsageType::Mutate => CapabilityKind::Exclusive,
+                        PlaceUsageType::Write => CapabilityKind::Write,
+                        PlaceUsageType::Exclusive => CapabilityKind::Exclusive,
                     };
                     if let Some(joined_capability) = initial_capability.minimum(usage_capability) {
                         result.insert(pl, joined_capability);

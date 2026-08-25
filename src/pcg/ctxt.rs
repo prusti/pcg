@@ -27,6 +27,10 @@ impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>> {
         Some(self)
     }
+
+    fn body_analysis(self) -> &'a BodyAnalysis<'a, 'tcx> {
+        self.body_analysis
+    }
 }
 
 pub trait HasSettings<'a> {

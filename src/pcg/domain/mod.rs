@@ -24,6 +24,7 @@ use crate::{
     },
     pcg_validity_assert,
     rustc_interface::{
+        index::IndexVec,
         middle::mir::{self, BasicBlock},
         mir_dataflow::{JoinSemiLattice, fmt::DebugWithContext, move_paths::MoveData},
     },
@@ -96,6 +97,7 @@ pub(crate) struct BodyAnalysis<'a, 'tcx> {
     pub(crate) place_liveness: PlaceLiveness<'a, 'tcx>,
     pub(crate) loop_place_usage_analysis: LoopPlaceUsageAnalysis<'tcx>,
     pub(crate) loop_analysis: LoopAnalysis,
+    loop_invariant_capabilities: IndexVec<LoopId, PlaceUsages<'tcx>>,
 }
 
 impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
@@ -105,12 +107,60 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         let loop_analysis = LoopAnalysis::find_loops(ctxt.body());
         let loop_place_usage_analysis =
             LoopPlaceUsageAnalysis::new(ctxt.tcx(), ctxt.body(), &loop_analysis);
-        Self {
+        let mut analysis = Self {
             definitely_initialized,
             place_liveness,
             loop_place_usage_analysis,
             loop_analysis,
-        }
+            loop_invariant_capabilities: IndexVec::new(),
+        };
+        let loops = analysis.loop_analysis.all_loops().collect::<Vec<_>>();
+        analysis.loop_invariant_capabilities = loops
+            .into_iter()
+            .map(|loop_id| analysis.compute_loop_invariant_capabilities(loop_id, ctxt))
+            .collect();
+        analysis
+    }
+
+    /// The loop invariant capabilities of `loop_id`: the places used in the
+    /// loop that are live and initialized at its head, consolidated (c.f.
+    /// [`PlaceUsages::consolidate`]) such that no place in the result is a
+    /// prefix of another.
+    ///
+    /// Places behind a raw pointer dereference are excluded: their capabilities
+    /// are governed by the delegation edges of the borrow PCG rather than by
+    /// unpacking the owned PCG.
+    fn compute_loop_invariant_capabilities(
+        &self,
+        loop_id: LoopId,
+        ctxt: CompilerCtxt<'a, 'tcx>,
+    ) -> PlaceUsages<'tcx> {
+        let loop_head_location = mir::Location {
+            block: self.loop_analysis.loop_head_block(loop_id),
+            statement_index: 0,
+        };
+        self.get_places_used_in_loop(loop_id)
+            .usages_where(|usage| {
+                self.is_live_and_initialized_at(loop_head_location, usage.place)
+                    && !usage.place.contains_unsafe_deref(ctxt)
+            })
+            .consolidate()
+    }
+
+    pub(crate) fn loop_invariant_capabilities(&self, loop_id: LoopId) -> &PlaceUsages<'tcx> {
+        &self.loop_invariant_capabilities[loop_id]
+    }
+
+    /// The places whose expansions must be preserved while `block` executes,
+    /// because the invariant capabilities of a loop containing `block` require
+    /// them to be individually accessible.
+    pub(crate) fn places_required_by_enclosing_loops(
+        &self,
+        block: BasicBlock,
+    ) -> impl Iterator<Item = Place<'tcx>> + '_ {
+        self.loop_analysis
+            .loops(block)
+            .flat_map(|loop_id| self.loop_invariant_capabilities(loop_id).iter_places())
     }
 
     pub(crate) fn is_loop_head(&self, block: BasicBlock) -> bool {
@@ -172,7 +222,7 @@ mod private {
 
     use crate::{
         borrow_checker::BorrowCheckerInterface,
-        pcg::DomainDataWithCtxt,
+        pcg::{BodyAnalysis, DomainDataWithCtxt},
         rustc_interface::middle::ty::{self, TyCtxt},
         utils::{
             CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgSettings,
@@ -221,17 +271,36 @@ mod private {
         }
     }
 
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy)]
     pub struct CompilerCtxtWithSettings<'a, 'tcx> {
         ctxt: CompilerCtxt<'a, 'tcx>,
         pub(crate) settings: &'a PcgSettings,
+        pub(crate) body_analysis: &'a BodyAnalysis<'a, 'tcx>,
+    }
+
+    impl std::fmt::Debug for CompilerCtxtWithSettings<'_, '_> {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "CompilerCtxtWithSettings {{ {} }}",
+                self.ctxt.func_name()
+            )
+        }
     }
 
     pub type ResultsCtxt<'a, 'tcx> = CompilerCtxtWithSettings<'a, 'tcx>;
 
     impl<'a, 'tcx: 'a> ResultsCtxt<'a, 'tcx> {
-        pub(crate) fn new(ctxt: CompilerCtxt<'a, 'tcx>, settings: &'a PcgSettings) -> Self {
-            Self { ctxt, settings }
+        pub(crate) fn new(
+            ctxt: CompilerCtxt<'a, 'tcx>,
+            settings: &'a PcgSettings,
+            body_analysis: &'a BodyAnalysis<'a, 'tcx>,
+        ) -> Self {
+            Self {
+                ctxt,
+                settings,
+                body_analysis,
+            }
         }
     }
 
@@ -407,7 +476,11 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     fn into_results(self) -> DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
         DomainDataWithCtxt::new(
             self.data,
-            ResultsCtxt::new(self.ctxt.bc_ctxt(), self.ctxt.settings),
+            ResultsCtxt::new(
+                self.ctxt.bc_ctxt(),
+                self.ctxt.settings,
+                self.ctxt.body_analysis,
+            ),
         )
     }
 }
@@ -488,6 +561,10 @@ impl<'a, 'tcx: 'a> PcgDomain<'a, 'tcx> {
 impl<'a, 'tcx: 'a> DataflowCtxt<'a, 'tcx> for ResultsCtxt<'a, 'tcx> {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>> {
         None
+    }
+
+    fn body_analysis(self) -> &'a BodyAnalysis<'a, 'tcx> {
+        self.body_analysis
     }
 }
 
