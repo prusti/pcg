@@ -21,4 +21,20 @@ fn client() {
     let j = *x_ref;
 }
 
+/// The same situation for a place reached through a mutable reference. Here
+/// the expansion of `*p` lives in the borrow PCG rather than the owned PCG,
+/// and therefore a different mechanism keeps it in place: the expansion edge
+/// is not a leaf while `(*p).x` is blocked, and re-expanding `*p` for read
+/// downgrades `(*p).y`.
+fn client_reborrow(p: &mut Foo) {
+    let x_ref = &p.x;
+    p.y = false;
+    // PCG: bb0[5] post_operands: {*p} -> {(*p).x, (*p).y}
+    // PCG: bb0[5] post_operands: *p: R
+    // PCG: bb0[5] post_operands: (*p).x: R
+    // PCG: bb0[5] post_operands: (*p).y: R
+    let f_ref = &*p;
+    let j = *x_ref;
+}
+
 fn main() {}
