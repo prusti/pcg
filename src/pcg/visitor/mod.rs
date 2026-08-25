@@ -305,11 +305,10 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    /// The places that must not be collapsed here: an enclosing loop's
-    /// invariant capabilities require them to be individually accessible, and
-    /// the loop head unpacks the PCG accordingly. Collapsing them in the loop
-    /// body would make the shape of the PCG inside the loop disagree with the
-    /// shape at the loop head.
+    /// The places that must not be collapsed here because they are part of the
+    /// loop invariant. For example, if the loop invariant requires `x.f` but
+    /// NOT `x.g`, then `x` must not be collapsed (because the loop invariant
+    /// does not provide permission to `x.g`).
     fn places_required_by_enclosing_loops(&self) -> Vec<Place<'tcx>> {
         self.ctxt
             .body_analysis()

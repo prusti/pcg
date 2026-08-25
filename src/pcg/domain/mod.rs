@@ -122,9 +122,10 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         analysis
     }
 
-    /// The loop invariant capabilities $U$ of `loop_id`: the places used in the
-    /// loop that are live and initialized at its head, consolidated so that no
-    /// place in the result is a prefix of another.
+    /// The loop invariant capabilities of `loop_id`: the places used in the
+    /// loop that are live and initialized at its head, consolidated (c.f.
+    /// [`PlaceUsages::consolidate`]) such that no place in the result is a
+    /// prefix of another.
     ///
     /// Places behind a raw pointer dereference are excluded: their capabilities
     /// are governed by the delegation edges of the borrow PCG rather than by
