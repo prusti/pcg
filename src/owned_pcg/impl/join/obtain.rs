@@ -74,7 +74,7 @@ impl<'a, 'tcx> PlaceCollapser<'a, 'tcx> for JoinObtainer<'_, '_, '_, 'a, 'tcx> {
 
     /// Owned leaf places that are not borrowed.
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
-        let owned_places = self.data.borrows.graph().owned_places(ctxt);
+        let owned_places = self.blocked_owned_places(ctxt);
         self.data
             .owned
             .leaf_places(ctxt)
@@ -82,5 +82,9 @@ impl<'a, 'tcx> PlaceCollapser<'a, 'tcx> for JoinObtainer<'_, '_, '_, 'a, 'tcx> {
             .map(Into::into)
             .filter(|p| !owned_places.contains(p))
             .collect()
+    }
+
+    fn blocked_owned_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
+        self.data.borrows.graph().owned_places(ctxt)
     }
 }

@@ -25,6 +25,7 @@ use crate::{
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
@@ -199,6 +200,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
 
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
 
+    /// Owned places that are blocked by an edge in the borrow PCG.
+    fn blocked_owned_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>>;
+
     fn restore_capability_to_leaf_places(
         &mut self,
         parent_place: Option<Place<'tcx>>,
@@ -247,10 +251,26 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         let to_collapse = self
             .get_local_expansions(place.local)
             .places_to_collapse_for_obtain_of(place, ctxt);
+        // Collapsing a place removes its strict descendants from the owned
+        // PCG, which would leave any borrow-PCG edge blocking such a
+        // descendant referring to a place that is no longer there. Read
+        // capability doesn't require the expansion to be collapsed, and
+        // therefore we downgrade the expansion to read instead. For the other
+        // capabilities the borrow checker guarantees that no descendant is
+        // blocked.
+        let blocked_places = if capability.is_read() {
+            self.blocked_owned_places(ctxt.bc_ctxt())
+        } else {
+            HashSet::default()
+        };
+        let (to_collapse, to_downgrade): (Vec<_>, Vec<_>) = to_collapse
+            .into_iter()
+            .partition(|p| !blocked_places.iter().any(|b| p.is_strict_prefix_of(*b)));
         tracing::debug!(
-            "To obtain {}, will collapse {}",
+            "To obtain {}, will collapse {} and downgrade the expansions of {}",
             place.display_string(ctxt.ctxt()),
-            to_collapse.display_string(ctxt.ctxt())
+            to_collapse.display_string(ctxt.ctxt()),
+            to_downgrade.display_string(ctxt.ctxt())
         );
         for place in to_collapse {
             let expansions = self
@@ -286,6 +306,67 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             }
         }
 
+        for place in to_downgrade {
+            self.downgrade_expansion_to_read(place, ctxt)?;
+        }
+
+        Ok(())
+    }
+
+    /// Gives `place` read capability, downgrading the capabilities of the
+    /// places in its expansion to read.
+    ///
+    /// This is how read capability is obtained for a place that cannot have
+    /// its expansion collapsed, because one of its descendants is blocked by
+    /// an edge in the borrow PCG.
+    fn downgrade_expansion_to_read(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Result<(), PcgError> {
+        let descendants = self
+            .get_local_expansions(place.local)
+            .all_descendants_of(place, ctxt);
+        for descendant in descendants {
+            let Some(cap) = self.capabilities().get(descendant, ctxt) else {
+                continue;
+            };
+            if cap == CapabilityKind::Read {
+                continue;
+            }
+            pcg_validity_assert!(
+                cap == CapabilityKind::Exclusive,
+                [ctxt],
+                "Cannot downgrade capability {:?} of {} to read",
+                cap,
+                descendant.display_string(ctxt.ctxt())
+            );
+            self.apply_action(
+                BorrowPcgAction::weaken(
+                    descendant,
+                    cap,
+                    Some(CapabilityKind::Read),
+                    "downgrade expansion to read",
+                )
+                .into(),
+            )?;
+        }
+        let place_cap = self.capabilities().get(place, ctxt);
+        if place_cap != Some(CapabilityKind::Read) {
+            pcg_validity_assert!(
+                place_cap.is_none(),
+                [ctxt],
+                "Cannot give read capability to {}: it has capability {:?}",
+                place.display_string(ctxt.ctxt()),
+                place_cap
+            );
+            self.apply_action(PcgAction::restore_capability(
+                place,
+                CapabilityKind::Read,
+                "downgrade expansion to read",
+                ctxt,
+            ))?;
+        }
         Ok(())
     }
 

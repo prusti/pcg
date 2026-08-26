@@ -77,7 +77,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
     }
 
     fn leaf_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
-        let owned_places = self.pcg.borrow.graph().owned_places(ctxt);
+        let owned_places = self.blocked_owned_places(ctxt);
         let mut leaf_places: HashSet<Place<'tcx>> = self
             .pcg
             .owned
@@ -96,6 +96,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
                 .filter_map(|node| node.as_current_place()),
         );
         leaf_places
+    }
+
+    fn blocked_owned_places(&self, ctxt: CompilerCtxt<'a, 'tcx>) -> HashSet<Place<'tcx>> {
+        self.pcg.borrow.graph().owned_places(ctxt)
     }
 }
 
