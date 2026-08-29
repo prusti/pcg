@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::{
-    DebugLines, Weaken,
+    DebugLines,
     borrow_pcg::{
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
@@ -321,6 +321,25 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         &self.place_capabilities
     }
 
+    /// The tracked capability of `place`, if any (only leaves of the current
+    /// pack state have entries).
+    pub fn place_capability<'b>(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'b, 'tcx>,
+    ) -> Option<CapabilityKind>
+    where
+        'tcx: 'b,
+    {
+        self.place_capabilities.get(place, ctxt)
+    }
+
+    /// Whether `local` is allocated and currently unpacked into sub-places.
+    #[must_use]
+    pub fn local_is_expanded(&self, local: mir::Local) -> bool {
+        self.owned.is_allocated(local) && self.owned[local].expansions().has_expansions()
+    }
+
     pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
         self.borrow.graph().borrow_created_at(location)
     }
@@ -400,7 +419,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
                 && cap > other_cap
             {
-                repacks.push(RepackOp::Weaken(Weaken::new(place, cap, other_cap)));
+                repacks.push(RepackOp::weaken(place, cap, other_cap));
             }
         }
         Ok(repacks)
