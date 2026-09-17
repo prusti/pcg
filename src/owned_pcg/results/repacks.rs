@@ -7,7 +7,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Weaken,
+    Weaken, pcg_validity_assert,
     rustc_interface::middle::mir::{self, PlaceElem},
 };
 
@@ -422,6 +422,17 @@ impl<Place> RegainedCapability<Place> {
     pub fn new(place: Place, capability: CapabilityKind) -> Self {
         Self { place, capability }
     }
+
+    pub fn place(&self) -> Place
+    where
+        Place: Copy,
+    {
+        self.place
+    }
+
+    pub fn capability(&self) -> CapabilityKind {
+        self.capability
+    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
@@ -483,6 +494,15 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> RepackOp<'tcx> {
+    /// Create a Weaken, checking that it strictly reduces the capability.
+    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
+        pcg_validity_assert!(
+            from > to,
+            "a weaken must strictly reduce the capability ({from:?} -> {to:?})"
+        );
+        Self::Weaken(Weaken::new(place, from, to))
+    }
+
     /// Temporary: create a Weaken for `StorageDead`.
     /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub(crate) fn weaken_for_storage_dead(
@@ -490,6 +510,10 @@ impl<'tcx> RepackOp<'tcx> {
         from: CapabilityKind,
         to: CapabilityKind,
     ) -> Self {
+        pcg_validity_assert!(
+            from > to,
+            "a weaken must strictly reduce the capability ({from:?} -> {to:?})"
+        );
         Self::Weaken(Weaken::new_for_storage_dead(place, from, to))
     }
     pub(crate) fn expand<'a>(

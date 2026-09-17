@@ -1,11 +1,11 @@
 use crate::{
-    DebugLines, Weaken,
+    DebugLines,
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::action::LabelPlaceReason,
     capability_gte,
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, LocalExpansions, RepackExpand, RepackOp,
+        ExpandedPlace, LocalExpansions, RegainedCapability, RepackExpand, RepackOp,
         join::{
             data::JoinOwnedData,
             obtain::{JoinCtxt, JoinObtainer},
@@ -246,8 +246,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                     .owned_capabilities(place.local, ctxt)
                     .filter_map(|(p, k)| {
                         (place.is_prefix_of(p) && *k > CapabilityKind::Write).then(|| {
-                            let weaken =
-                                RepackOp::Weaken(Weaken::new(p, *k, CapabilityKind::Write));
+                            let weaken = RepackOp::weaken(p, *k, CapabilityKind::Write);
                             *k = CapabilityKind::Write;
                             weaken
                         })
@@ -366,7 +365,21 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             .data
             .capabilities
             .insert(place, CapabilityKind::Write, ctxt);
-        Ok(join_obtainer.actions)
+        let mut actions = join_obtainer.actions;
+        // This side's read-lending has ended and the value it still holds is
+        // dropped by the join (the other side moved it out): restore the
+        // place to exclusive and then weaken it, so consumers see a
+        // capability restoration followed by an ordinary value drop.
+        actions.push(RepackOp::RegainLoanedCapability(RegainedCapability::new(
+            place,
+            CapabilityKind::Exclusive,
+        )));
+        actions.push(RepackOp::weaken(
+            place,
+            CapabilityKind::Exclusive,
+            CapabilityKind::Write,
+        ));
+        Ok(actions)
     }
 
     pub(crate) fn join_owned_places(
@@ -401,11 +414,43 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 }
                 Ok(vec![])
             }
-            (CapabilityKind::Read | CapabilityKind::Write | CapabilityKind::Exclusive, _)
-            | (CapabilityKind::ShallowExclusive, CapabilityKind::ShallowExclusive) => Ok(vec![]),
-            (CapabilityKind::ShallowExclusive, _) => {
-                todo!()
+            (CapabilityKind::ShallowExclusive, CapabilityKind::Write) => {
+                // A reference lent through on this side but moved out on the
+                // other: the joined state can only be Write, so the value
+                // still held here must be dropped. Label the place so that
+                // borrow-machinery references to its old value resolve to
+                // this join point (where the value was last held), then
+                // announce the weaken.
+                let mut join_obtainer = JoinObtainer {
+                    ctxt,
+                    data: self,
+                    actions: vec![],
+                };
+                let action = BorrowPcgAction::label_place_and_update_related_capabilities(
+                    place,
+                    join_obtainer.prev_snapshot_location(),
+                    LabelPlaceReason::JoinOwnedReadAndWriteCapabilities,
+                );
+                join_obtainer.apply_action(PcgAction::Borrow(action))?;
+                join_obtainer
+                    .data
+                    .capabilities
+                    .insert(place, CapabilityKind::Write, ctxt);
+                let mut actions = join_obtainer.actions;
+                actions.push(RepackOp::weaken(
+                    place,
+                    CapabilityKind::ShallowExclusive,
+                    CapabilityKind::Write,
+                ));
+                Ok(actions)
             }
+            (
+                CapabilityKind::Read
+                | CapabilityKind::Write
+                | CapabilityKind::Exclusive
+                | CapabilityKind::ShallowExclusive,
+                _,
+            ) => Ok(vec![]),
         }
     }
 

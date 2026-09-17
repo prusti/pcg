@@ -163,7 +163,10 @@ impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
                 ctxt,
             );
         } else {
-            self.insert(ref_place, CapabilityKind::Write, ctxt);
+            // The reference itself is still fully accessible (its pointer
+            // value remains readable and overwritable); only the permission
+            // *through* the dereference is given up.
+            self.insert(ref_place, CapabilityKind::ShallowExclusive, ctxt);
             self.insert(
                 ref_place.project_deref(ctxt.bc_ctxt()),
                 CapabilityKind::Exclusive,
@@ -252,7 +255,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
                 ctxt: Ctxt,
             ) -> bool {
                 match (parent_cap, child_cap) {
-                    (CapabilityKind::Write, _)
+                    (CapabilityKind::Write | CapabilityKind::ShallowExclusive, _)
                         if parent_place.ref_mutability(ctxt).is_some()
                             || parent_place.is_raw_ptr(ctxt) =>
                     {
@@ -303,7 +306,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BlockType {
     /// Derefing a mutable reference, *not* in the context of a two-phase borrow
-    /// of otherwise just for read. The reference will be downgraded to w.
+    /// of otherwise just for read. The reference will be downgraded to e
+    /// (its own cell stays accessible; only the permission through the deref
+    /// is given up).
     DerefMutRefForExclusive,
     /// Dereferencing a mutable reference that is stored under a shared borrow
     DerefMutRefUnderSharedRef,
@@ -316,7 +321,7 @@ impl BlockType {
     pub(crate) fn blocked_place_maximum_retained_capability(self) -> Option<CapabilityKind> {
         match self {
             BlockType::DerefSharedRef => Some(CapabilityKind::Exclusive),
-            BlockType::DerefMutRefForExclusive => Some(CapabilityKind::Write),
+            BlockType::DerefMutRefForExclusive => Some(CapabilityKind::ShallowExclusive),
             BlockType::DerefMutRefUnderSharedRef | BlockType::Read => Some(CapabilityKind::Read),
             BlockType::Other => None,
         }
