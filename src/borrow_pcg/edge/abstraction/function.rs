@@ -640,11 +640,34 @@ impl<'tcx> FunctionData<'tcx> {
         let (args, capture_regions) = renumbered_captures(tcx, args);
         let closure = args.as_closure();
         let closure_sig = closure.sig();
+        // Typeck also erases the regions of the closure's own parameter and
+        // return types (not just its captures, see `renumbered_captures`
+        // above). Give each erased region its own fresh bound var, bound by
+        // this same signature, so they become distinct universal regions
+        // once liberated instead of collapsing to a single erased region.
+        let param_base_vars = closure_sig.bound_vars().len() + capture_regions.len();
+        let mut param_regions = Vec::new();
+        let sig = ty::fold_regions(tcx, closure_sig.skip_binder(), |region, _| {
+            if !region.is_erased() {
+                return region;
+            }
+            let var = ty::BoundVar::from_usize(param_base_vars + param_regions.len());
+            param_regions.push(ty::BoundVariableKind::Region(ty::BoundRegionKind::Anon));
+            ty::Region::new_bound(
+                tcx,
+                ty::INNERMOST,
+                ty::BoundRegion {
+                    var,
+                    kind: ty::BoundRegionKind::Anon,
+                },
+            )
+        });
         let bound_vars = tcx.mk_bound_variable_kinds_from_iter(
             closure_sig
                 .bound_vars()
                 .iter()
                 .chain(capture_regions)
+                .chain(param_regions)
                 .chain(std::iter::once(ty::BoundVariableKind::Region(
                     ty::BoundRegionKind::ClosureEnv,
                 ))),
@@ -659,7 +682,6 @@ impl<'tcx> FunctionData<'tcx> {
         );
         let closure_ty = ty::Ty::new_closure(tcx, self.def_id, args);
         let env_ty = tcx.closure_env_ty(closure_ty, closure.kind(), env_region);
-        let sig = closure_sig.skip_binder();
         let inputs = std::iter::once(env_ty).chain(sig.inputs()[0].tuple_fields());
         #[rustversion::since(2026-04-19)]
         let fn_sig = tcx.mk_fn_sig(inputs, sig.output(), sig.fn_sig_kind);

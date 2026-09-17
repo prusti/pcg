@@ -8,7 +8,7 @@ use crate::{
         action::BorrowPcgActionKind,
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
         edge::{
-            abstraction::{AbstractionBlockEdge, r#loop::LoopAbstraction},
+            abstraction::{AbstractionBlockEdge, AbstractionEdge, r#loop::LoopAbstraction},
             kind::BorrowPcgEdgeKind,
         },
         edge_data::{EdgeData, LabelNodePredicate},
@@ -287,6 +287,37 @@ impl<'tcx> BorrowsGraph<'tcx> {
         for rp in &to_label {
             tracing::debug!("labeling {rp:?}");
             graph.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
+        }
+        // Labeling can unify a loop abstraction edge's input and output onto
+        // the same node: `all_non_future` (used to build `to_label`) matches
+        // every non-future snapshot of a place's region, including ones that
+        // were already labelled (e.g. a prior `Before(..)` snapshot), not
+        // just the still-"current" one. When an edge's input was such an
+        // older snapshot of the same place+region as its (then-current)
+        // output, both endpoints get relabelled to the same loop-head
+        // snapshot and the edge becomes a self-loop (`X --* X`). Such an
+        // edge is a trivial/tautological wand: drop it, since it carries no
+        // information and a self-blocking edge cannot be topologically
+        // sorted by `UnblockGraph::actions`.
+        let self_loop_edges: Vec<BorrowPcgEdgeKind<'tcx>> = graph
+            .edges()
+            .filter_map(|edge| {
+                let BorrowPcgEdgeKind::Abstraction(AbstractionEdge::Loop(loop_edge)) = edge.kind()
+                else {
+                    return None;
+                };
+                let blocked_by: HashSet<_> = loop_edge
+                    .blocked_by_nodes(ctxt)
+                    .map(|n| n.to_pcg_node(ctxt))
+                    .collect();
+                loop_edge
+                    .blocked_nodes(ctxt)
+                    .any(|node| blocked_by.contains(&node))
+                    .then(|| edge.kind().clone())
+            })
+            .collect();
+        for kind in &self_loop_edges {
+            graph.remove(kind);
         }
         tracing::debug!("Completed loop abstraction");
         for (place, capability) in &capability_updates {
