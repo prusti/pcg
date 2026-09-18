@@ -324,19 +324,18 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     ) -> HashMap<Place<'tcx>, CapabilityKind> {
         let initial_capabilities =
             self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
-        let mut result = HashMap::default();
+        let mut required_usages: HashMap<Place<'tcx>, PlaceUsageType> = HashMap::default();
         for place_usage in place_usages.iter() {
             let mut pl = place_usage.place;
             loop {
-                if let Some(initial_capability) = initial_capabilities.get(pl, ctxt) {
-                    let usage_capability = match place_usage.usage {
-                        PlaceUsageType::Read => CapabilityKind::Read,
-                        PlaceUsageType::Write => CapabilityKind::Write,
-                        PlaceUsageType::Exclusive => CapabilityKind::Exclusive,
-                    };
-                    if let Some(joined_capability) = initial_capability.minimum(usage_capability) {
-                        result.insert(pl, joined_capability);
-                    }
+                if initial_capabilities.get(pl, ctxt).is_some() {
+                    // Multiple usages can resolve to the same packed ancestor.
+                    // Combine their requirements before limiting the capability
+                    // to what is available at this block's entry.
+                    required_usages
+                        .entry(pl)
+                        .and_modify(|usage| *usage = usage.joined(place_usage.usage))
+                        .or_insert(place_usage.usage);
                     break;
                 }
                 let parent = pl.parent_place();
@@ -346,7 +345,20 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                 pl = parent.unwrap();
             }
         }
-        result
+        required_usages
+            .into_iter()
+            .filter_map(|(place, usage)| {
+                let usage_capability = match usage {
+                    PlaceUsageType::Read => CapabilityKind::Read,
+                    PlaceUsageType::Write => CapabilityKind::Write,
+                    PlaceUsageType::Exclusive => CapabilityKind::Exclusive,
+                };
+                initial_capabilities
+                    .get(place, ctxt)?
+                    .minimum(usage_capability)
+                    .map(|capability| (place, capability))
+            })
+            .collect()
     }
 
     #[must_use]

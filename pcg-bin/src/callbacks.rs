@@ -5,7 +5,6 @@ use std::{
 };
 
 use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
-use pcg::utils::{PcgSettings, display::DisplayWithCtxt};
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
     borrow_checker::r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
@@ -24,8 +23,9 @@ use pcg::{
         session::{EarlyDiagCtxt, config::ErrorOutputType},
     },
     utils::{
-        CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt,
+        CompilerCtxt, GlobalPcgSettings, HasCompilerCtxt, PcgSettings,
         callbacks::{RustBorrowCheckerImpl, in_cargo_crate},
+        display::DisplayWithCtxt,
     },
     visualization::bc_facts_graph::{
         region_inference_outlives, subset_anywhere, subset_at_location,
@@ -237,6 +237,20 @@ fn emit_and_check_annotations(
         }
         for block in ctxt.body().basic_blocks.indices() {
             if let Ok(Some(state)) = output.get_all_for_bb(block) {
+                if let Some(loop_id) = output.analysis().loop_analysis().loop_head_of(block) {
+                    for (place, capability) in state.loop_invariant_place_capabilities(
+                        output.analysis().loop_place_usages(loop_id),
+                        ctxt,
+                    ) {
+                        debug_lines.push(
+                            format!(
+                                "{block:?} loop invariant: {}: {capability:?}",
+                                place.display_string(ctxt)
+                            )
+                            .into(),
+                        );
+                    }
+                }
                 for line in state.debug_lines(ctxt) {
                     debug_lines.push(line);
                 }
