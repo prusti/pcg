@@ -463,6 +463,8 @@ struct PcgBlockVisualizationData {
     statements: Vec<PcgStmtVisualizationData>,
     successors: std::collections::HashMap<BasicBlock, PcgSuccessorVisualizationData>,
     loop_data: Option<visualization::stmt_graphs::PcgLoopDebugData>,
+    loop_invariant_capabilities:
+        std::collections::HashMap<BasicBlock, std::collections::BTreeMap<String, CapabilityKind>>,
 }
 
 #[cfg(feature = "visualization")]
@@ -540,6 +542,25 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 continue;
             };
             let ctxt = analysis_results.analysis().analysis_ctxt(block);
+            let loop_analysis = analysis_results.analysis().loop_analysis();
+            let loop_invariant_capabilities = loop_analysis
+                .loops(block)
+                .map(|loop_id| {
+                    let capabilities = pcg_block.loop_invariant_place_capabilities(
+                        analysis_results.analysis().loop_place_usages(loop_id),
+                        pcg_ctxt.compiler_ctxt,
+                    );
+                    (
+                        loop_analysis[loop_id].into(),
+                        capabilities
+                            .into_iter()
+                            .map(|(place, capability)| {
+                                (place.display_string(pcg_ctxt.compiler_ctxt), capability)
+                            })
+                            .collect(),
+                    )
+                })
+                .collect();
             let (loop_data, debug_graphs) = if let Some(graphs) = ctxt.graphs {
                 let block_data = graphs.dot_graphs.borrow();
                 (block_data.loop_data.clone(), block_data.graphs.clone())
@@ -639,6 +660,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                     statements,
                     successors,
                     loop_data,
+                    loop_invariant_capabilities,
                 },
             );
         }

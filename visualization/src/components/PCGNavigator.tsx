@@ -670,6 +670,22 @@ export default function PCGNavigator({
             {pcgData.loop_data ? (
               <LoopDebugPanel loopData={pcgData.loop_data} />
             ) : null}
+            {Object.keys(pcgData.loop_invariant_capabilities ?? {}).length > 0 && (
+              <div style={{ marginBottom: "12px" }}>
+                <b>Loop Invariants</b>
+                {Object.entries(pcgData.loop_invariant_capabilities)
+                  .sort(([left], [right]) =>
+                    left.localeCompare(right, undefined, { numeric: true })
+                  )
+                  .map(([head, capabilities]) => (
+                    <CollapsiblePlaceUsages
+                      key={head}
+                      title={`Loop head ${head}`}
+                      usages={capabilities}
+                    />
+                  ))}
+              </div>
+            )}
             {renderItems()}
           </div>
           <button

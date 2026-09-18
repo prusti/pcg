@@ -27,7 +27,7 @@ use crate::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
         },
-        place_capabilities::PlaceCapabilities,
+        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
     },
     pcg_validity_assert,
     rustc_interface::middle::mir,
@@ -418,6 +418,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
             args,
             ctxt,
         );
+        for (place, capability) in args.capabilities.iter_mut() {
+            if capability.is_exclusive()
+                && invariant_capabilities
+                    .iter()
+                    .any(|usage| usage.usage.is_read() && usage.place.is_prefix_of(*place))
+            {
+                *capability = CapabilityKind::Read;
+            }
+        }
     }
 
     pub(crate) fn expand_places_for_abstraction<'a>(
@@ -759,15 +768,14 @@ fn add_block_edges<'mir, 'tcx, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSetti
         blocker.display_string(ctxt),
         blocked_place.display_string(ctxt)
     );
-    let blocker_rps = blocker.lifetime_projections(ctxt);
-    // Add top-level borrow
-    add_block_edge(
-        expander,
-        blocked_place
-            .relevant_place_for_blocking()
-            .to_pcg_node(ctxt),
-        blocker_rps[LifetimeProjectionIdx::from(0)].to_local_node(ctxt),
-        ctxt,
-    );
+    if let MaybeRemoteCurrentPlace::Local(blocked_place) = blocked_place {
+        let blocker_rps = blocker.lifetime_projections(ctxt);
+        add_block_edge(
+            expander,
+            blocked_place.to_pcg_node(ctxt),
+            blocker_rps[LifetimeProjectionIdx::from(0)].to_local_node(ctxt),
+            ctxt,
+        );
+    }
     add_rp_block_edges(expander, blocked_place, blocker, ctxt);
 }

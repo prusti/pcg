@@ -367,6 +367,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             )?;
             if place.projection.is_empty()
                 && self.pcg.capability_of(place, self.ctxt) == Some(CapabilityKind::Read)
+                && !self
+                    .ctxt
+                    .body_analysis()
+                    .is_read_only_in_loop(self.location().block, place)
             {
                 self.pcg
                     .place_capabilities

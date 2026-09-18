@@ -123,7 +123,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // moved out on some incoming path (#137): the join of the init
         // trees would then leave the place as `Uninit`, which maps to
         // `Write`.
-        let restore_cap = if place.place().projects_shared_ref(self.ctxt) {
+        let restore_cap = if place.place().projects_shared_ref(self.ctxt)
+            || self
+                .ctxt
+                .body_analysis()
+                .is_read_only_in_loop(self.location().block, place)
+        {
             CapabilityKind::Read
         } else if let Some(owned) = place.as_owned_place(self.ctxt)
             && let Some(init_cap) = self.pcg.owned.owned_capability(owned)

@@ -310,8 +310,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
             loop_blocked_places.display_string(ctxt.ctxt)
         );
 
-        let loop_blocker_places =
-            live_loop_places.usages_where(|p| !p.place.regions(ctxt.ctxt).is_empty());
+        let loop_blocker_places = live_loop_places
+            .usages_where(|p| !p.usage.is_read() && !p.place.regions(ctxt.ctxt).is_empty());
 
         logging::log!(
             &LogPredicate::DebugBlock,

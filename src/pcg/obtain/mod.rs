@@ -206,6 +206,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
     fn restore_capability_to_leaf_places(
         &mut self,
         parent_place: Option<Place<'tcx>>,
+        can_restore_exclusive: impl Fn(Place<'tcx>) -> bool,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<(), PcgError> {
         let mut leaf_places = self.leaf_places(ctxt.bc_ctxt());
@@ -215,6 +216,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         );
         leaf_places.retain(|p| {
             self.capabilities().get(*p, ctxt) == Some(CapabilityKind::Read)
+                && can_restore_exclusive(*p)
                 && !p.projects_shared_ref(ctxt)
                 && p.parent_place()
                     .is_none_or(|parent| self.capabilities().get(parent, ctxt).is_none())

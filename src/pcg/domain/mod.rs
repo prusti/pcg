@@ -151,6 +151,21 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         &self.loop_invariant_capabilities[loop_id]
     }
 
+    pub(crate) fn is_read_only_in_loop(&self, block: BasicBlock, place: Place<'tcx>) -> bool {
+        self.loop_analysis.loops(block).any(|loop_id| {
+            let mut overlapping_usages = self
+                .loop_invariant_capabilities(loop_id)
+                .iter()
+                .filter(|usage| usage.place.is_prefix_of(place) || place.is_prefix_of(usage.place))
+                .peekable();
+            if overlapping_usages.peek().is_none() {
+                // No usages in the loop
+                return false;
+            }
+            overlapping_usages.all(|usage| usage.usage.is_read())
+        })
+    }
+
     /// The places whose expansions must be preserved while `block` executes,
     /// because the invariant capabilities of a loop containing `block` require
     /// them to be individually accessible.
