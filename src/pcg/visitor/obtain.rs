@@ -559,19 +559,20 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 _ => unreachable!(),
             },
         };
+        #[cfg(feature = "visualization")]
         let location = self.location();
-
-        if let Some(phase) = self.phase()
-            && let Some(actions) = &mut self.actions
-        {
-            // Note: We create the PcgRef here to work around lifetime issues
-            let pcg_ref = PcgRef {
-                borrow: self.pcg.borrow.as_ref(),
-                place_capabilities: self.pcg.place_capabilities,
-                owned: self.pcg.owned,
-            };
+        #[cfg(feature = "visualization")]
+        let phase = self.phase();
+        if let Some(actions) = &mut self.actions {
             #[cfg(feature = "visualization")]
-            if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt() {
+            if let Some(analysis_ctxt) = self.ctxt.try_into_analysis_ctxt()
+                && let Some(phase) = phase
+            {
+                let pcg_ref = PcgRef {
+                    borrow: self.pcg.borrow.as_ref(),
+                    place_capabilities: self.pcg.place_capabilities,
+                    owned: self.pcg.owned,
+                };
                 analysis_ctxt.generate_pcg_debug_visualization_graph(
                     location,
                     stmt_graphs::ToGraph::Action(phase, actions.len()),

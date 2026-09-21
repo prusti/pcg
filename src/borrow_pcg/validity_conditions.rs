@@ -357,6 +357,12 @@ impl ValidityConditions {
 }
 
 impl ValidityConditions {
+    pub(crate) fn without_branch_choice(&self, from: BasicBlock) -> Self {
+        let mut result = self.clone();
+        result.0.retain(|choices| choices.from != from);
+        result
+    }
+
     #[must_use]
     pub fn valid_for_path(&self, path: &[BasicBlock], body: &mir::Body<'_>) -> bool {
         let get_successor_of_block_in_path = |block: BasicBlock| {

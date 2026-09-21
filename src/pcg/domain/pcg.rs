@@ -2,24 +2,28 @@ use std::borrow::Cow;
 
 use crate::{
     DebugLines,
+    action::{AppliedActions, OwnedPcgAction, PcgActions},
     borrow_pcg::{
+        borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
     borrows_imgcat_debug,
     error::PcgError,
+    r#loop::PlaceUsageType,
     owned_pcg::{RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
+        obtain::{ObtainType, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
@@ -400,7 +404,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<PcgActions<'tcx>, PcgError> {
+        let target = other;
         let mut slf = self.clone();
         let mut other = other.clone();
         let mut slf_owned_data = slf.join_owned_data(self_block);
@@ -422,7 +427,83 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 repacks.push(RepackOp::weaken(place, cap, other_cap));
             }
         }
-        Ok(repacks)
+        let mut actions = PcgActions::new(
+            repacks
+                .into_iter()
+                .map(|repack| OwnedPcgAction::new(repack, None).into())
+                .collect(),
+        );
+        if ctxt.is_loop_head(other_block) {
+            actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
+        }
+        Ok(actions)
+    }
+
+    fn bridge_loop_expansions(
+        &mut self,
+        other: &Self,
+        self_block: mir::BasicBlock,
+        loop_head: mir::BasicBlock,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<PcgActions<'tcx>, PcgError> {
+        let mut expansions = Vec::new();
+        for edge in other.borrow.graph().edges() {
+            let conditions = edge.conditions.without_branch_choice(self_block);
+            let (base, target) = match edge.kind() {
+                BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place()),
+                BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
+                    let Some(target) = expansion.expansion().first() else {
+                        continue;
+                    };
+                    (expansion.base(), *target)
+                }
+                _ => continue,
+            };
+            if let (Some(base), Some(target)) = (base.as_current_place(), target.as_current_place())
+            {
+                expansions.push((base, target, conditions));
+            }
+        }
+        expansions.sort_by_key(|(base, _, _)| base.projection.len());
+        let mut applied = AppliedActions::default();
+        for (base, target, conditions) in expansions {
+            let usage_type =
+                if other.place_capabilities.get(base, ctxt) == Some(CapabilityKind::Read) {
+                    PlaceUsageType::Read
+                } else {
+                    PlaceUsageType::Exclusive
+                };
+            let obtain_type = ObtainType::LoopInvariant {
+                is_blocked: false,
+                usage_type,
+            };
+            let expansion = base.expand_one_level(target, ctxt)?;
+            let mut pcg = PcgMutRef::from(&mut *self);
+            // The current CFG edge's branch choice has already been removed.
+            // Keep guards from earlier branches.
+            pcg.borrow.validity_conditions = &conditions;
+            let mut obtainer = PlaceObtainer::new(
+                pcg,
+                Some(&mut applied),
+                ctxt,
+                mir::Location {
+                    block: loop_head,
+                    statement_index: 0,
+                },
+                SnapshotLocation::Loop(loop_head),
+            );
+            if obtainer.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
+                obtainer.expand_lifetime_projections_one_level(
+                    base,
+                    &expansion,
+                    obtain_type,
+                    ctxt,
+                )?;
+            }
+        }
+        Ok(PcgActions::new(
+            applied.actions.into_iter().map(|a| a.action).collect(),
+        ))
     }
 
     #[tracing::instrument(skip(self, other, ctxt))]

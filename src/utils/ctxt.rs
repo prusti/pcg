@@ -384,6 +384,11 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
 {
     fn try_into_analysis_ctxt(self) -> Option<AnalysisCtxt<'a, 'tcx>>;
     fn body_analysis(self) -> &'a BodyAnalysis<'a, 'tcx>;
+
+    fn is_loop_head(self, block: BasicBlock) -> bool {
+        self.body_analysis().is_loop_head(block)
+    }
+
     fn compiler_ctxt_with_settings(self) -> CompilerCtxtWithSettings<'a, 'tcx> {
         CompilerCtxtWithSettings::new(self.bc_ctxt(), self.settings(), self.body_analysis())
     }

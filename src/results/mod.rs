@@ -9,7 +9,7 @@ use std::{borrow::Cow, collections::HashMap};
 use derive_more::Deref;
 
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
+    action::{AppliedActions, BorrowPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
         region_projection::PlaceOrConst,
@@ -164,9 +164,8 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     .pcg
                     .clone();
 
-                let owned_bridge = from_post_main
-                    .bridge(&to.entry_state, location.block, succ, ctxt)
-                    .unwrap();
+                let mut actions =
+                    from_post_main.bridge(&to.entry_state, location.block, succ, ctxt)?;
 
                 let mut borrow_actions = BorrowPcgActions::new();
                 for abstraction in to.entry_state.borrow.graph().abstraction_edges() {
@@ -184,12 +183,6 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     }
                 }
 
-                let mut actions: PcgActions<'tcx> = PcgActions::new(
-                    owned_bridge
-                        .into_iter()
-                        .map(|r| OwnedPcgAction::new(r, None).into())
-                        .collect(),
-                );
                 actions.extend(borrow_actions.into());
 
                 Ok(PcgSuccessor::new(
