@@ -22,7 +22,7 @@ pub(crate) struct JoinObtainer<'pcg: 'exp, 'exp, 'slf, 'a, 'tcx> {
 
 impl HasSnapshotLocation for JoinObtainer<'_, '_, '_, '_, '_> {
     fn prev_snapshot_location(&self) -> SnapshotLocation {
-        SnapshotLocation::BeforeJoin(self.data.block)
+        self.data.snapshot_location
     }
 }
 

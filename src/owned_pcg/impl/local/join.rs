@@ -237,9 +237,9 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             } else if other_expansion.is_enum_expansion() {
                 // The other expansion is a downcast to a variant that is
                 // presumably borrowed or partially-moved (see 206_issue_77.rs).
-                // It won't survive the join, so collapse it, announcing the
-                // ops: leaves still above write capability are weakened
-                // first, so that the emitted collapse meets its guarantee
+                // It won't survive the join, so collapse it, emitting the
+                // operations: leaves with capability greater than write are weakened
+                // first, so that the emitted collape guarantees
                 // that all packed-up places hold exactly its capability.
                 let mut ops: Vec<RepackOp<'tcx>> = other
                     .capabilities
@@ -332,7 +332,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         'tcx: 'a,
     {
         self.borrows.graph.render_debug_graph(
-            self.block,
+            self.snapshot_location.location().block,
             Some(utils::DebugImgcat::JoinOwned),
             self.capabilities,
             comment,
@@ -416,11 +416,9 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             }
             (CapabilityKind::ShallowExclusive, CapabilityKind::Write) => {
                 // A reference lent through on this side but moved out on the
-                // other: the joined state can only be Write, so the value
-                // still held here must be dropped. Label the place so that
-                // borrow-machinery references to its old value resolve to
-                // this join point (where the value was last held), then
-                // announce the weaken.
+                // other: the joined state can only be Write. Preserve the
+                // predecessor's value with a label before emitting the
+                // weaken; outstanding borrows still refer to that value.
                 let mut join_obtainer = JoinObtainer {
                     ctxt,
                     data: self,

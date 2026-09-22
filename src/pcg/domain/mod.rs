@@ -30,6 +30,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, DataflowCtxt, HasBorrowCheckerCtxt, PANIC_ON_ERROR, PcgSettings, Place,
+        SnapshotLocation,
         arena::PcgArenaRef,
         domain_data::{DomainData, DomainDataIndex},
         eval_stmt_data::EvalStmtData,
@@ -364,27 +365,41 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
         self,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Result<DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>>, PcgError> {
-        let (first, rest) = self.take_first();
+        let (mut first, mut rest) = self.take_first();
+        rest.retain(|other| ctxt.should_join_from(other.ctxt.block));
+
+        if !rest.is_empty() {
+            // Determine the common owned state before merging borrow graphs
+            // or applying the loop abstraction.
+            let mut target = (*first.data.pcg.states.0.post_main).clone();
+            for other in &rest {
+                target.join_owned(
+                    &other.data.pcg.states.0.post_main,
+                    SnapshotLocation::BeforeJoin(ctxt.block),
+                    SnapshotLocation::After(other.ctxt.block),
+                    ctxt,
+                )?;
+            }
+
+            // Preserve each predecessor's values before its edge repacks.
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).join_owned(
+                    &target,
+                    SnapshotLocation::After(incoming.ctxt.block),
+                    SnapshotLocation::BeforeJoin(ctxt.block),
+                    ctxt,
+                )?;
+            }
+        }
+
         let mut result: DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> =
             DomainDataWithCtxt::new(PcgDomainData::from_incoming(ctxt.block, &first), ctxt);
         let curr = Rc::make_mut(&mut result.data.pcg.entry_state);
-        if ctxt.body_analysis.is_loop_head(ctxt.block) {
-            curr.join(
-                &first.data.pcg.states.0.post_main,
-                ctxt.block,
-                first.ctxt.block,
-                result.ctxt,
-            )?;
+        for other in &rest {
+            curr.merge_borrows(&other.data.pcg.states.0.post_main, other.ctxt.block, ctxt);
         }
-        for other in rest {
-            if ctxt.should_join_from(other.ctxt.block) {
-                curr.join(
-                    &other.data.pcg.states.0.post_main,
-                    ctxt.block,
-                    other.ctxt.block,
-                    result.ctxt,
-                )?;
-            }
+        if !rest.is_empty() || ctxt.body_analysis.is_loop_head(ctxt.block) {
+            curr.finish_join(ctxt);
         }
         Ok(result)
     }

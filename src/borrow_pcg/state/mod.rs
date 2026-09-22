@@ -485,20 +485,22 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         &self.graph
     }
 
-    pub(crate) fn join(
-        &mut self,
-        other: &Self,
-        args: JoinBorrowsArgs<'_, 'a, 'tcx>,
-        ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) {
-        self.graph
-            .join(&other.graph, self.validity_conditions, args, ctxt);
+    pub(crate) fn merge(&mut self, other: &Self, ctxt: AnalysisCtxt<'a, 'tcx>) {
+        self.graph.merge(&other.graph, ctxt);
         if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self
             .validity_conditions
             .join_result(other.validity_conditions, ctxt.body())
         {
             self.validity_conditions = ctxt.arena.alloc(new_validity_conditions);
         }
+    }
+
+    pub(crate) fn finish_join(
+        &mut self,
+        args: JoinBorrowsArgs<'_, 'a, 'tcx>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        self.graph.finish_join(self.validity_conditions, args, ctxt);
     }
 
     /// Remove all edges that are not valid for `path`, based on their validity

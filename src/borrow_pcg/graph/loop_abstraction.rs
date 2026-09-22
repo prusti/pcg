@@ -495,6 +495,61 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
     }
 
+    /// Cutting a hyperedge can disconnect outputs outside the abstraction,
+    /// including sibling fields introduced by an expansion. Preserve the
+    /// paths to these outputs from the boundary of the removed subgraph.
+    pub(crate) fn reconnect_cut_outputs<'a>(
+        &self,
+        to_cut: &Self,
+        abstraction: &mut Self,
+        loop_head: mir::BasicBlock,
+        validity_conditions: &ValidityConditions,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        let abstraction_nodes = abstraction.nodes(ctxt);
+        let outputs = to_cut
+            .nodes(ctxt)
+            .into_iter()
+            .filter(|node| !abstraction_nodes.contains(node))
+            .filter_map(|node| node.try_to_local_node(ctxt))
+            .filter(|node| {
+                to_cut.edges_blocking((*node).into(), ctxt).next().is_none()
+                    || self
+                        .edges_blocking((*node).into(), ctxt)
+                        .any(|edge| !to_cut.edges.contains_key(edge.kind()))
+            });
+        let mut expander = AbsExpander {
+            loop_head_block: loop_head,
+            graph: abstraction,
+            validity_conditions,
+            ctxt,
+        };
+        for output in outputs {
+            let mut pending = to_cut.nodes_blocked_by(output, ctxt);
+            let mut seen = HashSet::default();
+            while let Some(node) = pending.pop() {
+                if !seen.insert(node) {
+                    continue;
+                }
+                let predecessors = node
+                    .try_to_local_node(ctxt)
+                    .map(|node| to_cut.nodes_blocked_by(node, ctxt))
+                    .unwrap_or_default();
+                let in_abstraction = abstraction_nodes.contains(&node);
+                let has_retained_input = node.try_to_local_node(ctxt).is_some_and(|node| {
+                    self.edges_blocked_by(node, ctxt)
+                        .any(|edge| !to_cut.edges.contains_key(edge.kind()))
+                });
+                if in_abstraction || predecessors.is_empty() || has_retained_input {
+                    add_block_edge(&mut expander, node, output, ctxt);
+                }
+                if !in_abstraction {
+                    pending.extend(predecessors);
+                }
+            }
+        }
+    }
+
     pub(crate) fn identify_subgraph_to_cut<'mir: 'graph, 'graph>(
         &'graph self,
         block: mir::BasicBlock,

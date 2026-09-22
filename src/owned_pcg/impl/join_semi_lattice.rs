@@ -18,7 +18,7 @@ use crate::{
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        DebugCtxt, HasCompilerCtxt, Place,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
@@ -32,7 +32,7 @@ use crate::{
 };
 
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx>> {
-    #[tracing::instrument(skip(self, other, ctxt), fields(self.block = ?self.block, other.block = ?other.block), level = "warn")]
+    #[tracing::instrument(skip(self, other, ctxt), fields(self.snapshot_location = ?self.snapshot_location, other.snapshot_location = ?other.snapshot_location), level = "warn")]
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
@@ -54,14 +54,14 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                     owned: to_places,
                     borrows: self.borrows,
                     capabilities: self.capabilities,
-                    block: self.block,
+                    snapshot_location: self.snapshot_location,
                 };
                 let mut from_places = from_places.clone();
                 let other_allocated = JoinOwnedData {
                     owned: &mut from_places,
                     borrows: other.borrows,
                     capabilities: other.capabilities,
-                    block: other.block,
+                    snapshot_location: other.snapshot_location,
                 };
                 self_allocated.join(other_allocated, ctxt)
             }
@@ -69,7 +69,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                 self.borrows.label_place_and_update_related_capabilities(
                     expansions.local.into(),
                     LabelPlaceReason::StorageDead,
-                    &SetLabel(SnapshotLocation::before_block(self.block)),
+                    &SetLabel(self.snapshot_location),
                     self.capabilities,
                     ctxt,
                 );
@@ -100,7 +100,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                 other.borrows.label_place_and_update_related_capabilities(
                     expansions.local.into(),
                     LabelPlaceReason::StorageDead,
-                    &SetLabel(SnapshotLocation::before_block(self.block)),
+                    &SetLabel(other.snapshot_location),
                     other.capabilities,
                     ctxt,
                 );

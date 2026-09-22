@@ -388,13 +388,13 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 
     pub(crate) fn join_owned_data(
         &mut self,
-        block: mir::BasicBlock,
+        snapshot_location: SnapshotLocation,
     ) -> JoinOwnedData<'a, '_, 'tcx, &mut OwnedPcg<'tcx>> {
         JoinOwnedData {
             owned: &mut self.owned,
             borrows: &mut self.borrow,
             capabilities: &mut self.place_capabilities,
-            block,
+            snapshot_location,
         }
     }
 
@@ -407,26 +407,12 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) -> Result<PcgActions<'tcx>, PcgError> {
         let target = other;
         let mut slf = self.clone();
-        let mut other = other.clone();
-        let mut slf_owned_data = slf.join_owned_data(self_block);
-        let other_owned_data = JoinOwnedData {
-            owned: &other.owned,
-            borrows: &mut other.borrow,
-            capabilities: &mut other.place_capabilities,
-            block: other_block,
-        };
-        let mut repacks =
-            slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
-        for (place, cap) in slf.place_capabilities.iter() {
-            let Some(_owned) = place.as_owned_place(ctxt) else {
-                continue;
-            };
-            if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
-                && cap > other_cap
-            {
-                repacks.push(RepackOp::weaken(place, cap, other_cap));
-            }
-        }
+        let repacks = slf.join_owned(
+            target,
+            SnapshotLocation::After(self_block),
+            SnapshotLocation::BeforeJoin(other_block),
+            ctxt,
+        )?;
         let mut actions = PcgActions::new(
             repacks
                 .into_iter()
@@ -437,6 +423,42 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
         }
         Ok(actions)
+    }
+
+    /// Reconcile owned layouts and capabilities. Repacking can update borrow
+    /// edges, but the borrowed graphs remain separate until all predecessors
+    /// have been normalized.
+    pub(crate) fn join_owned(
+        &mut self,
+        target: &Self,
+        self_snapshot: SnapshotLocation,
+        other_snapshot: SnapshotLocation,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        let mut other = target.clone();
+        let mut slf_owned_data = self.join_owned_data(self_snapshot);
+        let other_owned_data = JoinOwnedData {
+            owned: &other.owned,
+            borrows: &mut other.borrow,
+            capabilities: &mut other.place_capabilities,
+            snapshot_location: other_snapshot,
+        };
+        let mut repacks =
+            slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
+        for (place, cap) in self.place_capabilities.iter() {
+            let Some(_owned) = place.as_owned_place(ctxt) else {
+                continue;
+            };
+            if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
+                && cap > other_cap
+            {
+                repacks.push(RepackOp::weaken(place, cap, other_cap));
+            }
+        }
+        self.place_capabilities
+            .join(&other.place_capabilities, ctxt);
+        self.owned.join_capabilities(&other.owned);
+        Ok(repacks)
     }
 
     fn bridge_loop_expansions(
@@ -507,39 +529,28 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     #[tracing::instrument(skip(self, other, ctxt))]
-    pub(crate) fn join(
+    pub(crate) fn merge_borrows(
         &mut self,
         other: &Self,
-        self_block: mir::BasicBlock,
         other_block: mir::BasicBlock,
         ctxt: AnalysisCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        let mut other_capabilities = other.place_capabilities.clone();
+    ) {
         let mut other_borrows = other.borrow.clone();
-        let mut self_owned_data = self.join_owned_data(self_block);
-        let other_owned_data = JoinOwnedData {
-            owned: &other.owned,
-            borrows: &mut other_borrows,
-            capabilities: &mut other_capabilities,
-            block: other_block,
-        };
-        let repack_ops =
-            self_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
-        // For edges in the other graph that actually belong to it,
-        // add the path condition that leads them to this block
-        let mut other = other.clone();
-        other.borrow.add_cfg_edge(other_block, self_block, ctxt);
-        self.place_capabilities.join(&other_capabilities, ctxt);
+        other_borrows.add_cfg_edge(other_block, ctxt.block, ctxt);
+        self.place_capabilities
+            .join(&other.place_capabilities, ctxt);
         self.owned.join_capabilities(&other.owned);
+        self.borrow.merge(&other_borrows, ctxt);
+    }
+
+    pub(crate) fn finish_join(&mut self, ctxt: AnalysisCtxt<'a, 'tcx>) {
         let borrow_args = JoinBorrowsArgs {
-            self_block,
-            other_block,
+            self_block: ctxt.block,
             body_analysis: ctxt.body_analysis,
             capabilities: &mut self.place_capabilities,
             owned: &mut self.owned,
         };
-        self.borrow.join(&other_borrows, borrow_args, ctxt);
-        Ok(repack_ops)
+        self.borrow.finish_join(borrow_args, ctxt);
     }
 
     pub(crate) fn debug_lines<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(

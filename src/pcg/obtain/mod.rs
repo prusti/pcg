@@ -301,7 +301,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                                 .collect::<Vec<_>>()
                         })
                         .collect();
-                    if rp_expansion.len() > 1 && capability.is_exclusive() {
+                    if capability.is_exclusive() {
                         self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
                     }
                 }

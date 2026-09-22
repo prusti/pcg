@@ -34,6 +34,8 @@ fn conditional_entry(pair: &mut Pair, enter: bool, run: bool) {
     // PCG: bb0 -> bb1: Add Edge {*pair} -> {(*pair).first, (*pair).second}
     // PCG: bb4 -> bb1: Add Edge {pair} -> {*pair} under conditions bb0 -> bb1
     // PCG: bb4 -> bb1: Add Edge {*pair} -> {(*pair).first, (*pair).second} under conditions bb0 -> bb1
+    // Borrow edges created inside the loop retain the outer branch choice.
+    // PCG: bb3[2] pre_operands: {pair} -> {*pair} under conditions bb0 -> bb1, bb2 -> bb3
     if enter {
         while run {
             std::hint::black_box(&pair.first);

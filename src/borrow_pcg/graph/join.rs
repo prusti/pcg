@@ -43,7 +43,6 @@ use super::{BorrowsGraph, borrows_imgcat_debug};
 
 pub(crate) struct JoinBorrowsArgs<'pcg, 'a, 'tcx> {
     pub(crate) self_block: BasicBlock,
-    pub(crate) other_block: BasicBlock,
     pub(crate) body_analysis: &'pcg BodyAnalysis<'a, 'tcx>,
     pub(crate) capabilities: &'pcg mut PlaceCapabilities<'tcx>,
     pub(crate) owned: &'pcg mut OwnedPcg<'tcx>,
@@ -53,7 +52,6 @@ impl<'mir, 'tcx> JoinBorrowsArgs<'_, 'mir, 'tcx> {
     pub(crate) fn reborrow<'slf>(&'slf mut self) -> JoinBorrowsArgs<'slf, 'mir, 'tcx> {
         JoinBorrowsArgs {
             self_block: self.self_block,
-            other_block: self.other_block,
             body_analysis: self.body_analysis,
             capabilities: self.capabilities,
             owned: self.owned,
@@ -127,25 +125,30 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
     }
 
-    pub(crate) fn join<'slf, 'a>(
-        &'slf mut self,
-        other_graph: &'slf BorrowsGraph<'tcx>,
-        validity_conditions: &'slf ValidityConditions,
-        mut args: JoinBorrowsArgs<'slf, 'a, 'tcx>,
+    pub(crate) fn merge<'a>(
+        &mut self,
+        other_graph: &BorrowsGraph<'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
-        let other_block = args.other_block;
-        let self_block = args.self_block;
         pcg_validity_assert!(
             other_graph.is_valid(ctxt.bc_ctxt()),
             [ctxt],
             "Other graph is invalid"
         );
-        pcg_validity_assert!(
-            !ctxt.ctxt.is_back_edge(other_block, self_block),
-            [ctxt],
-            "Joining back edge from {other_block:?} to {self_block:?}"
-        );
+        for other_edge in other_graph.edges() {
+            self.insert(other_edge.to_owned_edge(), ctxt);
+        }
+    }
+
+    /// Finalize the merged graph, constructing a loop abstraction only after
+    /// every incoming graph and its validity conditions have been merged.
+    pub(crate) fn finish_join<'a>(
+        &mut self,
+        validity_conditions: &ValidityConditions,
+        mut args: JoinBorrowsArgs<'_, 'a, 'tcx>,
+        ctxt: AnalysisCtxt<'a, 'tcx>,
+    ) {
+        let self_block = args.self_block;
         let old_self = self.clone();
 
         if let Some(used_places) = args
@@ -171,10 +174,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             );
             return;
         }
-        for other_edge in other_graph.edges() {
-            self.insert(other_edge.to_owned_edge(), ctxt);
-        }
-
         for edge in self
             .edges()
             .map(BorrowPcgEdgeLike::to_owned_edge)
@@ -194,7 +193,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             pcg_validity_assert!(
                 false,
                 [ctxt],
-                "Graph became invalid after join. self: {self_block:?}, other: {other_block:?}"
+                "Graph became invalid after join at {self_block:?}"
             );
             #[cfg(feature = "visualization")]
             {
@@ -215,13 +214,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                             eprintln!("Error rendering old self graph: {e}");
                         },
                     );
-                }
-                if let Ok(dot_graph) =
-                    generate_borrows_dot_graph(ctxt.ctxt, args.capabilities, other_graph)
-                {
-                    DotGraph::render_with_imgcat(&dot_graph, "Other graph").unwrap_or_else(|e| {
-                        eprintln!("Error rendering other graph: {e}");
-                    });
                 }
             }
         }
@@ -446,7 +438,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         let ConstructAbstractionGraphResult {
-            graph: abstraction_graph,
+            graph: mut abstraction_graph,
             to_label,
             capability_updates,
             blocked_root_places,
@@ -511,6 +503,13 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
         let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
         let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
+        self.reconnect_cut_outputs(
+            &to_cut,
+            &mut abstraction_graph,
+            loop_head,
+            validity_conditions,
+            ctxt,
+        );
 
         #[cfg(feature = "visualization")]
         dot_graphs.push((
