@@ -510,6 +510,18 @@ impl<'tcx> PlaceUsages<'tcx> {
         clone
     }
 
+    /// The usages for which `f` returns a (possibly different) usage type.
+    pub(crate) fn filter_map_usages(
+        &self,
+        f: impl Fn(PlaceUsage<'tcx>) -> Option<PlaceUsageType>,
+    ) -> PlaceUsages<'tcx> {
+        PlaceUsages(
+            self.iter()
+                .filter_map(|usage| f(usage).map(|usage_type| (usage.place, usage_type)))
+                .collect(),
+        )
+    }
+
     #[must_use]
     fn update(&mut self, place: Place<'tcx>, usage: PlaceUsageType) -> bool {
         if let Some(existing_usage) = self.0.get(&place) {

@@ -17,7 +17,7 @@ use crate::{
     AnalysisEngine,
     action::AppliedActions,
     error::PcgError,
-    r#loop::{LoopAnalysis, LoopId, LoopPlaceUsageAnalysis, PlaceUsages},
+    r#loop::{LoopAnalysis, LoopId, LoopPlaceUsageAnalysis, PlaceUsageType, PlaceUsages},
     pcg::{
         ctxt::{AnalysisCtxt, HasSettings},
         place_capabilities::PlaceCapabilities,
@@ -123,10 +123,15 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         analysis
     }
 
-    /// The loop invariant capabilities of `loop_id`: the places used in the
-    /// loop that are live and initialized at its head, consolidated (c.f.
+    /// The loop invariant capabilities of `loop_id`, consolidated (c.f.
     /// [`PlaceUsages::consolidate`]) such that no place in the result is a
-    /// prefix of another.
+    /// prefix of another. These comprise the places used in the loop that are
+    /// initialized at its head and either:
+    /// - live at the head, in which case a place that the loop only writes to
+    ///   requires `Exclusive` rather than `Write`, because its value at the
+    ///   head may be read once the loop exits; or
+    /// - only written to by the loop, in which case the place requires
+    ///   `Write`: the value it holds at the head is never read.
     ///
     /// Places behind a raw pointer dereference are excluded: their capabilities
     /// are governed by the delegation edges of the borrow PCG rather than by
@@ -141,9 +146,20 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
             statement_index: 0,
         };
         self.get_places_used_in_loop(loop_id)
-            .usages_where(|usage| {
-                self.is_live_and_initialized_at(loop_head_location, usage.place)
-                    && !usage.place.contains_unsafe_deref(ctxt)
+            .filter_map_usages(|usage| {
+                if usage.place.contains_unsafe_deref(ctxt)
+                    || !self.is_definitely_initialized_at(loop_head_location, usage.place)
+                {
+                    return None;
+                }
+                let is_live = self.place_liveness.is_live(usage.place, loop_head_location);
+                match usage.usage {
+                    PlaceUsageType::Write if is_live => Some(PlaceUsageType::Exclusive),
+                    PlaceUsageType::Write => Some(PlaceUsageType::Write),
+                    PlaceUsageType::Read | PlaceUsageType::Exclusive => {
+                        is_live.then_some(usage.usage)
+                    }
+                }
             })
             .consolidate()
     }

@@ -289,12 +289,12 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
             .get_used_places(block)
     }
 
+    /// The place usages from which the loop invariant capabilities of
+    /// `loop_id` are derived (c.f.
+    /// [`crate::results::PcgBasicBlock::loop_invariant_place_capabilities`]).
     #[must_use]
-    pub fn loop_place_usages(&self, loop_id: LoopId) -> &PlaceUsages<'tcx> {
-        self.body_analysis
-            .loop_place_usage_analysis
-            .get_used_places(self.loop_analysis().loop_head_block(loop_id))
-            .unwrap()
+    pub fn loop_invariant_place_usages(&self, loop_id: LoopId) -> &PlaceUsages<'tcx> {
+        self.body_analysis.loop_invariant_capabilities(loop_id)
     }
 
     pub(crate) fn analysis_ctxt(&self, block: BasicBlock) -> AnalysisCtxt<'a, 'tcx> {

@@ -19,7 +19,7 @@ use crate::{
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
-    r#loop::{PlaceUsage, PlaceUsages},
+    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
     pcg::{
         self, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
@@ -403,6 +403,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// The places of `U` requiring write or exclusive access are unpacked
     /// before the read-only ones, so that an exclusive unpack is never applied
     /// to a place that has already been downgraded for a read.
+    ///
+    /// Afterwards, exclusive capabilities of places covered by a read-only
+    /// (resp. write-only) usage are downgraded to `R` (resp. `W`). The places
+    /// of `U` are pairwise disjoint, so each place is covered by at most one
+    /// usage.
     pub(crate) fn unpack_for_loop_invariant_capabilities<'a>(
         &mut self,
         loop_blocked_places: &PlaceUsages<'tcx>,
@@ -419,12 +424,17 @@ impl<'tcx> BorrowsGraph<'tcx> {
             ctxt,
         );
         for (place, capability) in args.capabilities.iter_mut() {
-            if capability.is_exclusive()
-                && invariant_capabilities
-                    .iter()
-                    .any(|usage| usage.usage.is_read() && usage.place.is_prefix_of(*place))
-            {
-                *capability = CapabilityKind::Read;
+            if !capability.is_exclusive() {
+                continue;
+            }
+            let covering_usage = invariant_capabilities
+                .iter()
+                .find(|usage| usage.place.is_prefix_of(*place))
+                .map(|usage| usage.usage);
+            match covering_usage {
+                Some(PlaceUsageType::Read) => *capability = CapabilityKind::Read,
+                Some(PlaceUsageType::Write) => *capability = CapabilityKind::Write,
+                Some(PlaceUsageType::Exclusive) | None => {}
             }
         }
     }
