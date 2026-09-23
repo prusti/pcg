@@ -500,14 +500,7 @@ impl<'tcx> PlaceUsages<'tcx> {
         &self,
         predicate: impl Fn(PlaceUsage<'tcx>) -> bool,
     ) -> PlaceUsages<'tcx> {
-        let mut clone = self.clone();
-        clone.0.retain(|p, usage| {
-            predicate(PlaceUsage {
-                place: *p,
-                usage: *usage,
-            })
-        });
-        clone
+        self.filter_map_usages(|usage| predicate(usage).then_some(usage.usage))
     }
 
     /// The usages for which `f` returns a (possibly different) usage type.
