@@ -125,13 +125,10 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
 
     /// The loop invariant capabilities of `loop_id`, consolidated (c.f.
     /// [`PlaceUsages::consolidate`]) such that no place in the result is a
-    /// prefix of another. These comprise the places used in the loop that are
-    /// initialized at its head and either:
-    /// - live at the head, in which case a place that the loop only writes to
-    ///   requires `Exclusive` rather than `Write`, because its value at the
-    ///   head may be read once the loop exits; or
-    /// - only written to by the loop, in which case the place requires
-    ///   `Write`: the value it holds at the head is never read.
+    /// prefix of another. A place used in the loop that is not definitely
+    /// initialized at its head (e.g. because the loop moves out of it) requires
+    /// `Write`; otherwise, the place requires `Read` if the loop only reads it,
+    /// and `Exclusive` if it is written to or used exclusively.
     ///
     /// Places behind a raw pointer dereference are excluded: their capabilities
     /// are governed by the delegation edges of the borrow PCG rather than by
@@ -147,18 +144,14 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         };
         self.get_places_used_in_loop(loop_id)
             .filter_map_usages(|usage| {
-                if usage.place.contains_unsafe_deref(ctxt)
-                    || !self.is_definitely_initialized_at(loop_head_location, usage.place)
-                {
-                    return None;
-                }
-                let is_live = self.place_liveness.is_live(usage.place, loop_head_location);
-                match usage.usage {
-                    PlaceUsageType::Write if is_live => Some(PlaceUsageType::Exclusive),
-                    PlaceUsageType::Write => Some(PlaceUsageType::Write),
-                    PlaceUsageType::Read | PlaceUsageType::Exclusive => {
-                        is_live.then_some(usage.usage)
-                    }
+                if usage.place.contains_unsafe_deref(ctxt) {
+                    None
+                } else if !self.is_definitely_initialized_at(loop_head_location, usage.place) {
+                    Some(PlaceUsageType::Write)
+                } else if usage.usage.is_read() {
+                    Some(PlaceUsageType::Read)
+                } else {
+                    Some(PlaceUsageType::Exclusive)
                 }
             })
             .consolidate()

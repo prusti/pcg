@@ -443,6 +443,11 @@ impl PlaceUsageType {
     pub(crate) fn is_read(self) -> bool {
         matches!(self, PlaceUsageType::Read)
     }
+
+    #[must_use]
+    pub(crate) fn is_write(self) -> bool {
+        matches!(self, PlaceUsageType::Write)
+    }
 }
 
 impl JoinSemiLattice for PlaceUsageType {

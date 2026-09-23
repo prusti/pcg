@@ -19,7 +19,7 @@ use crate::{
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
     },
-    r#loop::{PlaceUsage, PlaceUsageType, PlaceUsages},
+    r#loop::{PlaceUsage, PlaceUsages},
     pcg::{
         self, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
@@ -27,6 +27,7 @@ use crate::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
         },
+        owned_state::OwnedCapability,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
     },
     pcg_validity_assert,
@@ -400,14 +401,16 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// invariant capabilities `U` is accessible with the capability required by
     /// its usage.
     ///
-    /// The places of `U` requiring write or exclusive access are unpacked
-    /// before the read-only ones, so that an exclusive unpack is never applied
-    /// to a place that has already been downgraded for a read.
+    /// The places of `U` requiring exclusive access are unpacked before the
+    /// read-only ones, so that an exclusive unpack is never applied to a place
+    /// that has already been downgraded for a read. Afterwards, exclusive
+    /// capabilities of places covered by a read-only usage are downgraded to
+    /// `R`.
     ///
-    /// Afterwards, exclusive capabilities of places covered by a read-only
-    /// (resp. write-only) usage are downgraded to `R` (resp. `W`). The places
-    /// of `U` are pairwise disjoint, so each place is covered by at most one
-    /// usage.
+    /// The places of `U` requiring `W` are those that are not definitely
+    /// initialized at the loop head. Since the state at the loop head is not
+    /// joined with the states at its back edges, these places (and their
+    /// packed ancestors) are marked as uninitialized here instead.
     pub(crate) fn unpack_for_loop_invariant_capabilities<'a>(
         &mut self,
         loop_blocked_places: &PlaceUsages<'tcx>,
@@ -416,25 +419,30 @@ impl<'tcx> BorrowsGraph<'tcx> {
         args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
+        let uninitialized = invariant_capabilities.usages_where(|usage| usage.usage.is_write());
+        let initialized = invariant_capabilities.usages_where(|usage| !usage.usage.is_write());
         self.obtain_places_at_loop_head(
             loop_blocked_places,
-            &invariant_capabilities.loop_head_unpack_order(),
+            &initialized.loop_head_unpack_order(),
             validity_conditions,
             args,
             ctxt,
         );
         for (place, capability) in args.capabilities.iter_mut() {
-            if !capability.is_exclusive() {
-                continue;
-            }
-            let covering_usage = invariant_capabilities
-                .iter()
-                .find(|usage| usage.place.is_prefix_of(*place))
-                .map(|usage| usage.usage);
-            match covering_usage {
-                Some(PlaceUsageType::Read) => *capability = CapabilityKind::Read,
-                Some(PlaceUsageType::Write) => *capability = CapabilityKind::Write,
-                Some(PlaceUsageType::Exclusive) | None => {}
+            if uninitialized
+                .iter_places()
+                .any(|p| p.is_prefix_of(*place) || place.is_prefix_of(p))
+            {
+                *capability = CapabilityKind::Write;
+                if let Some(owned) = place.as_owned_place(ctxt) {
+                    args.owned.set(owned, OwnedCapability::Uninit, ctxt);
+                }
+            } else if capability.is_exclusive()
+                && initialized
+                    .iter()
+                    .any(|usage| usage.usage.is_read() && usage.place.is_prefix_of(*place))
+            {
+                *capability = CapabilityKind::Read;
             }
         }
     }

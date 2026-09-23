@@ -43,8 +43,9 @@ fn read_only(a: H, cont: bool) -> H {
     a
 }
 
-// `a.g.f` is only written to by the loop, but its value at the head is read
-// after the loop exits (c.f. `242_write_loop_capabilities.rs`).
+// `a.g.f` is only written to by the loop, but it is initialized at the loop
+// head regardless of whether the loop is entered
+// (c.f. `242_write_loop_capabilities.rs`).
 fn write_only(mut a: H, cont: bool) -> H {
     // PCG: bb1 loop invariant: a.g.f: E
     // ~PCG: bb1 loop invariant: a.g.f: W
