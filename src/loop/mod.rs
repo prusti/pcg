@@ -128,11 +128,13 @@ impl LoopAnalysis {
     }
 
     /// Returns an iterator over the loops that `bb` is in.
+    #[must_use = "iterators are lazy and do nothing unless consumed"]
     pub fn loops(&self, bb: BasicBlock) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
         self.bb_data[bb].iter()
     }
 
     /// Returns an iterator over all loops in the body.
+    #[must_use = "iterators are lazy and do nothing unless consumed"]
     pub fn all_loops(&self) -> impl DoubleEndedIterator<Item = LoopId> + '_ {
         self.loop_heads.iter_enumerated().map(|(idx, _)| idx)
     }
