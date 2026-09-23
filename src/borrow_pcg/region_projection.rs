@@ -64,7 +64,7 @@ pub enum PcgRegion<'tcx> {
     ReErased,
     ReStatic,
     RePlaceholder(ty::PlaceholderRegion),
-    ReBound(ty::DebruijnIndex, ty::BoundRegion),
+    ReBound(ty::DebruijnIndex, BoundRegion<'tcx>),
     ReLateParam(ty::LateParamRegion),
     PcgInternalError(PcgRegionInternalError),
     ReEarlyParam(ty::EarlyParamRegion),

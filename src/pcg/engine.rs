@@ -257,7 +257,7 @@ pub(crate) fn successor_blocks(terminator: &Terminator<'_>) -> Vec<BasicBlock> {
         TerminatorEdges::AssignOnReturn {
             return_, cleanup, ..
         } => {
-            let mut result: Vec<BasicBlock> = return_.iter().copied().collect();
+            let mut result: Vec<BasicBlock> = return_.to_vec();
             if let Some(cleanup) = cleanup {
                 result.push(cleanup);
             }

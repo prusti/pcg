@@ -72,7 +72,9 @@ pub(crate) fn fn_def_args<'tcx>(
     args.skip_binder()
 }
 
+// Takes a reference to match the signature of the newer version above.
 #[rustversion::before(2026-07-13)]
+#[allow(clippy::trivially_copy_pass_by_ref, clippy::explicit_auto_deref)]
 pub(crate) fn fn_def_args<'tcx>(
     args: &middle::ty::GenericArgsRef<'tcx>,
 ) -> middle::ty::GenericArgsRef<'tcx> {
