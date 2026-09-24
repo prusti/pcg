@@ -85,7 +85,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             Rvalue::Aggregate(
                 box (mir::AggregateKind::Adt(..)
                 | mir::AggregateKind::Tuple
-                | mir::AggregateKind::Array(..)),
+                | mir::AggregateKind::Array(..)
+                | mir::AggregateKind::Closure(..)),
                 fields,
             ) => {
                 let target: Place<'tcx> = (*target).into();
