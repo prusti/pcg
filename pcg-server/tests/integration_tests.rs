@@ -59,7 +59,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{server_url}/upload"))
+        .post(format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -100,7 +100,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{server_url}/upload"))
+        .post(format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -134,7 +134,7 @@ fn test_empty_code_returns_bad_request() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{server_url}/upload"))
+        .post(format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -178,7 +178,7 @@ fn test_non_rust_file_rejected() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{server_url}/upload"))
+        .post(format!("{server_url}/upload"))
         .multipart(form)
         .send();
 
@@ -218,7 +218,7 @@ fn main() {
 
     let client = Client::new();
     let response = client
-        .post(&format!("{server_url}/upload"))
+        .post(format!("{server_url}/upload"))
         .multipart(form)
         .send();
 

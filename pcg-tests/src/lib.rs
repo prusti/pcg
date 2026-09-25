@@ -120,7 +120,7 @@ unsafe fn run_pcg_on_body<'tcx>(
     tcx: TyCtxt<'tcx>,
     selector: BodySelector,
     validity_checks: bool,
-    callback: impl for<'mir, 'arena> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
+    callback: impl for<'mir> Fn(PcgAnalysisResults<'mir, 'tcx>) + Send + Sync + 'static,
 ) {
     let def_id = selector.select(tcx);
     let body = unsafe { take_stored_body(tcx, def_id) };

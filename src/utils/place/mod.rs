@@ -921,7 +921,7 @@ impl<'tcx> Place<'tcx> {
         unreachable!()
     }
 
-    pub(crate) fn is_prefix_or_postfix_of(self, other: Self) -> bool {
+    pub(crate) fn conflicts_with(self, other: Self) -> bool {
         self.is_prefix_of(other) || other.is_prefix_of(self)
     }
 }

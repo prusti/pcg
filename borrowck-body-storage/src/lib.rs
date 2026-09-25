@@ -22,7 +22,7 @@ use pcg::rustc_interface::middle::queries::mir_borrowck::ProvidedValue as MirBor
 use pcg::rustc_interface::middle::query::queries::mir_borrowck::ProvidedValue as MirBorrowck;
 
 thread_local! {
-    static ALLOW_BORROWCK_ERRORS: Cell<bool> = Cell::new(false);
+    static ALLOW_BORROWCK_ERRORS: Cell<bool> = const { Cell::new(false) };
     static BODIES:
         RefCell<FxHashMap<LocalDefId, BodyWithBorrowckFacts<'static>>> =
         RefCell::new(FxHashMap::default());

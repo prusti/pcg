@@ -52,6 +52,17 @@ jobs:
   clippy:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - .
+          - borrowck-body-storage
+          - pcg-bin
+          - pcg-bin-utils
+          - pcg-macros
+          - pcg-server
+          - pcg-tests
     steps:
     - uses: actions/checkout@v4
     - name: Cache Cargo registry and build artifacts
@@ -60,12 +71,13 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          ${{ matrix.crate }}/target
+        key: ${{ runner.os }}-cargo-clippy-${{ matrix.crate }}-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
-          ${{ runner.os }}-cargo-clippy-
+          ${{ runner.os }}-cargo-clippy-${{ matrix.crate }}-
     - name: Run Clippy
-      run: cargo clippy -- -D warnings
+      working-directory: ${{ matrix.crate }}
+      run: cargo clippy --all-targets -- -D warnings
 
   rustfmt:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}

@@ -1,5 +1,4 @@
 #![feature(rustc_private)]
-#![feature(stmt_expr_attributes)]
 #![feature(proc_macro_hygiene)]
 
 mod annotations;

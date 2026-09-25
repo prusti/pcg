@@ -216,7 +216,6 @@ pub fn download_crate(name: &str, version: &str, date: Option<&str>) -> PathBuf 
         .unwrap();
     assert!(status.success());
     let mut file = std::fs::OpenOptions::new()
-        .write(true)
         .append(true)
         .open(format!("{dirname}/Cargo.toml"))
         .unwrap();

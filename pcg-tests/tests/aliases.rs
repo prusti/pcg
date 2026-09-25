@@ -183,7 +183,7 @@ fn main() {
             ],
             ctxt.tcx(),
         );
-        let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
+        let aliases = stmt.aliases(z_deref, ctxt.body(), ctxt.tcx());
         eprintln!("aliases: {aliases:?}");
         eprintln!("deref_target: {deref_target:?}");
         assert!(aliases.contains(&deref_target));
@@ -191,7 +191,7 @@ fn main() {
             analysis
                 .results_for_all_blocks()
                 .unwrap()
-                .all_place_aliases(z_deref, &ctxt.body(), ctxt.tcx())
+                .all_place_aliases(z_deref, ctxt.body(), ctxt.tcx())
                 .contains(&deref_target)
         );
         assert!(!aliases.contains(&deref3));
@@ -229,7 +229,7 @@ fn main() {
             ],
             ctxt.tcx(),
         );
-        let aliases = stmt.aliases(z_deref, &ctxt.body(), ctxt.tcx());
+        let aliases = stmt.aliases(z_deref, ctxt.body(), ctxt.tcx());
         eprintln!("aliases: {aliases:?}");
         eprintln!("deref_target: {deref_target:?}");
         assert!(aliases.contains(&deref_target));
@@ -252,8 +252,8 @@ fn main() {
         let ctxt = analysis.ctxt();
 
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
-        check_all_statements(&ctxt.body(), &mut analysis, |_location, stmt| {
-            let _ = stmt.aliases(x, &ctxt.body(), ctxt.tcx());
+        check_all_statements(ctxt.body(), &mut analysis, |_location, stmt| {
+            let _ = stmt.aliases(x, ctxt.body(), ctxt.tcx());
         });
     });
 
@@ -271,10 +271,10 @@ fn main() {
 
         let temp: mir::Place<'_> = mir::Local::from(4_usize).into();
         let star_temp = temp.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx());
-        check_all_statements(&ctxt.body(), &mut analysis, |location, stmt| {
+        check_all_statements(ctxt.body(), &mut analysis, |location, stmt| {
             assert!(
                 !stmt
-                    .aliases(star_temp, &ctxt.body(), ctxt.tcx())
+                    .aliases(star_temp, ctxt.body(), ctxt.tcx())
                     .contains(&temp),
                 "Bad alias for {:?}",
                 location
@@ -359,24 +359,24 @@ fn main() {
             .to_rust_place(ctxt);
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
         assert!(
-            stmt.aliases(y_deref_3, &ctxt.body(), ctxt.tcx())
+            stmt.aliases(y_deref_3, ctxt.body(), ctxt.tcx())
                 .contains(&x)
         );
         assert!(
             !stmt
-                .aliases(y_deref_3, &ctxt.body(), ctxt.tcx())
+                .aliases(y_deref_3, ctxt.body(), ctxt.tcx())
                 .contains(&mir::Local::from(3usize).into())
         );
         assert!(
             !stmt
-                .aliases(y_deref_3, &ctxt.body(), ctxt.tcx())
+                .aliases(y_deref_3, ctxt.body(), ctxt.tcx())
                 .contains(&mir::Local::from(4usize).into())
         );
         assert!(
             !analysis
                 .results_for_all_blocks()
                 .unwrap()
-                .all_place_aliases(y_deref.to_rust_place(ctxt), &ctxt.body(), ctxt.tcx())
+                .all_place_aliases(y_deref.to_rust_place(ctxt), ctxt.body(), ctxt.tcx())
                 .contains(&mir::Local::from(4usize).into())
         );
     });
@@ -401,7 +401,7 @@ fn main() {
         let x = ctxt.local_place("x").unwrap().to_rust_place(ctxt);
         assert!(
             last_bg
-                .aliases(star_5, &ctxt.body(), ctxt.tcx())
+                .aliases(star_5, ctxt.body(), ctxt.tcx())
                 .contains(&x)
         );
     });
