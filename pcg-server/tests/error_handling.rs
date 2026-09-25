@@ -12,12 +12,19 @@ fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String>
         .env("PCG_VISUALIZATION", "false")
         .env("PCG_VISUALIZATION_DATA_DIR", &data_dir)
         .output()
-        .map_err(|e| format!("Failed to execute pcg-bin at {}: {e}", pcg_bin_path.display()))?;
+        .map_err(|e| {
+            format!(
+                "Failed to execute pcg-bin at {}: {e}",
+                pcg_bin_path.display()
+            )
+        })?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("PCG analysis failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"));
+        return Err(format!(
+            "PCG analysis failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+        ));
     }
 
     Ok(())
@@ -40,7 +47,10 @@ fn test_compilation_error_does_not_crash() {
 
     let result = run_pcg_analysis(test_file, data_dir);
 
-    assert!(result.is_ok() || result.is_err(), "Function should return normally, not crash");
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Function should return normally, not crash"
+    );
 }
 
 #[test]
@@ -58,7 +68,10 @@ fn test_syntax_error_does_not_crash() {
 
     let result = run_pcg_analysis(test_file, data_dir);
 
-    assert!(result.is_ok() || result.is_err(), "Function should return normally, not crash");
+    assert!(
+        result.is_ok() || result.is_err(),
+        "Function should return normally, not crash"
+    );
 }
 
 #[test]
@@ -79,6 +92,8 @@ fn test_successful_compilation() {
 
     let result = run_pcg_analysis(test_file, data_dir);
 
-    assert!(result.is_ok(), "Expected compilation to succeed for valid code, got error: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Expected compilation to succeed for valid code, got error: {result:?}"
+    );
 }
-

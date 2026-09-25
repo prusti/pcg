@@ -1,14 +1,14 @@
 use axum::{
-    Router,
     extract::Multipart,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
+    Router,
 };
 use hyper::StatusCode;
 use std::{fs, net::SocketAddr, path::PathBuf};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
-use tracing::{Level, debug, info};
+use tracing::{debug, info, Level};
 use tracing_subscriber::FmtSubscriber;
 use uuid::Uuid;
 
@@ -90,9 +90,12 @@ fn run_pcg_analysis(
         cmd.env("PCG_POLONIUS", "true");
     }
 
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to execute pcg-bin at {}: {e}", pcg_bin_path.display()))?;
+    let output = cmd.output().map_err(|e| {
+        format!(
+            "Failed to execute pcg-bin at {}: {e}",
+            pcg_bin_path.display()
+        )
+    })?;
 
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);

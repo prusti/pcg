@@ -70,9 +70,21 @@ jobs:
   rustfmt:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        crate:
+          - .
+          - borrowck-body-storage
+          - pcg-bin
+          - pcg-bin-utils
+          - pcg-macros
+          - pcg-server
+          - pcg-tests
     steps:
     - uses: actions/checkout@v4
     - name: Check code formatting
+      working-directory: ${{ matrix.crate }}
       run: cargo fmt --all -- --check
 
   rust_lints:
