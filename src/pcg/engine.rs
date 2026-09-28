@@ -297,6 +297,19 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         self.body_analysis.loop_invariant_capabilities(loop_id)
     }
 
+    /// The place usages from which the loop invariant capabilities of
+    /// `loop_id` are derived, if the invariant is placed at the start of
+    /// `invariant_block` (a block of the loop) rather than at the loop head.
+    #[must_use]
+    pub fn loop_invariant_place_usages_at(
+        &self,
+        loop_id: LoopId,
+        invariant_block: BasicBlock,
+    ) -> PlaceUsages<'tcx> {
+        self.body_analysis
+            .compute_loop_invariant_capabilities(loop_id, invariant_block, self.ctxt)
+    }
+
     pub(crate) fn analysis_ctxt(&self, block: BasicBlock) -> AnalysisCtxt<'a, 'tcx> {
         AnalysisCtxt::new(
             self.ctxt,

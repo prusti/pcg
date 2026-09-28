@@ -118,35 +118,43 @@ impl<'a, 'tcx> BodyAnalysis<'a, 'tcx> {
         let loops = analysis.loop_analysis.all_loops().collect::<Vec<_>>();
         analysis.loop_invariant_capabilities = loops
             .into_iter()
-            .map(|loop_id| analysis.compute_loop_invariant_capabilities(loop_id, ctxt))
+            .map(|loop_id| {
+                analysis.compute_loop_invariant_capabilities(
+                    loop_id,
+                    analysis.loop_analysis.loop_head_block(loop_id),
+                    ctxt,
+                )
+            })
             .collect();
         analysis
     }
 
-    /// The loop invariant capabilities of `loop_id`, consolidated (c.f.
+    /// The loop invariant capabilities of `loop_id` when the invariant is
+    /// placed at the start of `invariant_block`, consolidated (c.f.
     /// [`PlaceUsages::consolidate`]) such that no place in the result is a
     /// prefix of another. A place used in the loop that is not definitely
-    /// initialized at its head (e.g. because the loop moves out of it) requires
-    /// `Write`; otherwise, the place requires `Read` if the loop only reads it,
-    /// and `Exclusive` if it is written to or used exclusively.
+    /// initialized at `invariant_block` (e.g. because the loop moves out of it)
+    /// requires `Write`; otherwise, the place requires `Read` if the loop only
+    /// reads it, and `Exclusive` if it is written to or used exclusively.
     ///
     /// Places behind a raw pointer dereference are excluded: their capabilities
     /// are governed by the delegation edges of the borrow PCG rather than by
     /// unpacking the owned PCG.
-    fn compute_loop_invariant_capabilities(
+    pub(crate) fn compute_loop_invariant_capabilities(
         &self,
         loop_id: LoopId,
+        invariant_block: BasicBlock,
         ctxt: CompilerCtxt<'a, 'tcx>,
     ) -> PlaceUsages<'tcx> {
-        let loop_head_location = mir::Location {
-            block: self.loop_analysis.loop_head_block(loop_id),
+        let invariant_location = mir::Location {
+            block: invariant_block,
             statement_index: 0,
         };
         self.get_places_used_in_loop(loop_id)
             .filter_map_usages(|usage| {
                 if usage.place.contains_unsafe_deref(ctxt) {
                     None
-                } else if !self.is_definitely_initialized_at(loop_head_location, usage.place) {
+                } else if !self.is_definitely_initialized_at(invariant_location, usage.place) {
                     Some(PlaceUsageType::Write)
                 } else if usage.usage.is_read() {
                     Some(PlaceUsageType::Read)
