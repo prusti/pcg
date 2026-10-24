@@ -15,11 +15,87 @@ use crate::{
     pcg::CapabilityKind,
     rustc_interface::{VariantIdx, span::Symbol},
     utils::{
-        CompilerCtxt, ConstantIndex, DebugRepr, HasCompilerCtxt, Place,
+        CompilerCtxt, ConstantIndex, DebugRepr, HasCompilerCtxt, Place, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
 use serde_derive::Serialize;
+
+/// The index local of an [`RepackGuide::Index`] guide. When the local is
+/// overwritten or dies while the expansion it guides is still present, `label`
+/// is the snapshot location that still holds the index value. The label is not
+/// part of the guide's identity: a labelled and an unlabelled guide of the
+/// same local describe the same expansion.
+#[derive(Clone, Copy)]
+pub struct IndexLocal {
+    local: mir::Local,
+    label: Option<SnapshotLocation>,
+}
+
+impl IndexLocal {
+    #[must_use]
+    pub fn local(self) -> mir::Local {
+        self.local
+    }
+
+    /// The snapshot location holding the index value, if the local no longer
+    /// holds it.
+    #[must_use]
+    pub fn label(self) -> Option<SnapshotLocation> {
+        self.label
+    }
+}
+
+impl<D, Default> RepackGuide<IndexLocal, D, Default> {
+    /// Labels an `Index` guide of `index` with `label`, unless already
+    /// labelled: the first overwrite or death of the local after the expansion
+    /// is the last point holding the index value. Returns whether the guide
+    /// changed.
+    pub(crate) fn label_index(&mut self, index: mir::Local, label: SnapshotLocation) -> bool {
+        match self {
+            RepackGuide::Index(local, _) if local.local == index && local.label.is_none() => {
+                local.label = Some(label);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Whether this is an `Index` guide of `index` that [`Self::label_index`]
+    /// would label.
+    pub(crate) fn is_unlabelled_index_of(&self, index: mir::Local) -> bool {
+        matches!(self, RepackGuide::Index(local, _) if local.local == index && local.label.is_none())
+    }
+}
+
+impl From<mir::Local> for IndexLocal {
+    fn from(local: mir::Local) -> Self {
+        Self { local, label: None }
+    }
+}
+
+impl PartialEq for IndexLocal {
+    fn eq(&self, other: &Self) -> bool {
+        self.local == other.local
+    }
+}
+
+impl Eq for IndexLocal {}
+
+impl std::hash::Hash for IndexLocal {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.local.hash(state);
+    }
+}
+
+impl std::fmt::Debug for IndexLocal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.label {
+            None => write!(f, "{:?}", self.local),
+            Some(label) => write!(f, "{:?} at {label:?}", self.local),
+        }
+    }
+}
 
 /// A guide for an expansion that isn't a simple struct-field unpack.
 ///
@@ -28,7 +104,7 @@ use serde_derive::Serialize;
 /// If a guide is required (c.f. [`RequiredGuide`]), `Default`
 /// is instantiated to `!` so the variant is statically unreachable.
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
-pub enum RepackGuide<Local = mir::Local, D = (), Default = D> {
+pub enum RepackGuide<Local = IndexLocal, D = (), Default = D> {
     /// No non-trivial guide (e.g. an ordinary field/tuple expansion).
     Default(Default),
     Downcast(Option<Symbol>, VariantIdx, D),
@@ -44,7 +120,7 @@ pub enum RepackGuide<Local = mir::Local, D = (), Default = D> {
 
 /// A `RepackGuide` guaranteed to not be [`RepackGuide::Default`].
 /// Used for enum downcasts, array accesses etc.
-pub(crate) type RequiredGuide<D = ()> = RepackGuide<mir::Local, D, !>;
+pub(crate) type RequiredGuide<D = ()> = RepackGuide<IndexLocal, D, !>;
 
 /// Custom `Debug` that does not print the per-child data payload, so
 /// that test-visible annotation strings stay stable (`Index(_5)` rather
@@ -101,7 +177,7 @@ impl<Local, D, Default> RepackGuide<Local, D, Default> {
 
     pub(crate) fn into_non_default(self) -> Option<RequiredGuide<D>>
     where
-        Local: Into<mir::Local>,
+        Local: Into<IndexLocal>,
     {
         match self {
             RepackGuide::Default(_) => None,
@@ -128,7 +204,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Re
         DisplayOutput::Text(
             match self {
                 RepackGuide::Index(local, ()) => {
-                    format!("index with local {}", (*local).display_string(ctxt))
+                    format!("index with local {}", local.local().display_string(ctxt))
                 }
                 _ => format!("{self:?}"),
             }
@@ -163,7 +239,7 @@ impl From<RequiredGuide> for PlaceElem<'_> {
     fn from(val: RequiredGuide) -> Self {
         match val {
             RepackGuide::Default(never) => match never {},
-            RepackGuide::Index(local, ()) => PlaceElem::Index(local),
+            RepackGuide::Index(local, ()) => PlaceElem::Index(local.local()),
             RepackGuide::Downcast(symbol, variant_idx, ()) => {
                 PlaceElem::Downcast(symbol, variant_idx)
             }
@@ -196,7 +272,7 @@ impl TryFrom<PlaceElem<'_>> for RepackGuide {
     type Error = ();
     fn try_from(elem: PlaceElem<'_>) -> Result<Self, Self::Error> {
         match elem {
-            PlaceElem::Index(local) => Ok(RepackGuide::Index(local, ())),
+            PlaceElem::Index(local) => Ok(RepackGuide::Index(local.into(), ())),
             PlaceElem::Downcast(symbol, variant_idx) => {
                 Ok(RepackGuide::Downcast(symbol, variant_idx, ()))
             }

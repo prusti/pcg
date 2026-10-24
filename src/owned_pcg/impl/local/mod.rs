@@ -17,7 +17,7 @@ use crate::{
         PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
     },
     rustc_interface::middle::mir::Local,
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
+    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, SnapshotLocation, data_structures::HashSet},
 };
 use itertools::Itertools;
 
@@ -67,6 +67,24 @@ pub struct LocalExpansions<'tcx> {
 }
 
 impl<'tcx> LocalExpansions<'tcx> {
+    /// Labels the `Index` guides of `index`; see [`RepackGuide::label_index`].
+    pub(crate) fn label_index(&mut self, index: Local, label: SnapshotLocation) {
+        if !self.expansions.iter().any(|expanded| {
+            expanded
+                .guide()
+                .is_some_and(|guide| guide.is_unlabelled_index_of(index))
+        }) {
+            return;
+        }
+        self.expansions = std::mem::take(&mut self.expansions)
+            .into_iter()
+            .map(|mut expanded| {
+                expanded.expansion.label_index(index, label);
+                expanded
+            })
+            .collect();
+    }
+
     pub(crate) fn contains_place(&self, place: Place<'tcx>, ctxt: CompilerCtxt<'_, 'tcx>) -> bool {
         place == self.local.into() || self.contains_expansion_to(place, ctxt)
     }

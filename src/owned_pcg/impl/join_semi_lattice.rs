@@ -145,7 +145,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         let target_places = expand.target_places(ctxt);
         self.insert_expansion(
             expand.from,
-            PlaceExpansion::from_places(target_places.clone(), ctxt),
+            PlaceExpansion::from_places(target_places.clone(), ctxt).with_guide(expand.guide),
         );
         let source_cap = if expand.capability.is_read() {
             expand.capability
@@ -215,6 +215,15 @@ impl<'tcx> LocalExpansions<'tcx> {
             HashMap::default();
         for child in children {
             let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
+            // The place does not carry the label of an index guide; the
+            // stored expansion does.
+            let guide = guide.map(|guide| {
+                self.expansions
+                    .iter()
+                    .filter(|expanded| expanded.place == place)
+                    .find_map(|expanded| expanded.guide().filter(|stored| *stored == guide))
+                    .unwrap_or(guide)
+            });
             let child_cap = capabilities.get(child, ctxt).unwrap();
             let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
             *entry = entry.minimum(child_cap).unwrap();

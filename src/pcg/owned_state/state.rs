@@ -25,7 +25,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt, HasCompilerCtxt, HasLocals, OwnedPlace, Place, PlaceLike, PlaceProjectable,
-        data_structures::HashSet,
+        SnapshotLocation, data_structures::HashSet,
     },
 };
 
@@ -136,6 +136,16 @@ impl std::ops::IndexMut<Local> for OwnedPcg<'_> {
 }
 
 impl<'tcx> OwnedPcg<'tcx> {
+    /// Labels the `Index` guides of `index` in every allocated local; see
+    /// [`RepackGuide::label_index`].
+    pub(crate) fn label_index(&mut self, index: Local, label: SnapshotLocation) {
+        for state in &mut self.state {
+            if let LocalInitState::Allocated { expansions, .. } = state {
+                expansions.label_index(index, label);
+            }
+        }
+    }
+
     /// Empty shell used by unit tests of the initialisation state. The
     /// resulting value has no locals.
     #[cfg(test)]
