@@ -134,11 +134,12 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
             ctxt,
         )?;
+        let mut removed_edges = Vec::new();
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
-                break Ok(());
+                break self.finish_weakening_places_with_dead_lifetime_projections(&removed_edges);
             }
             for action in edges_to_remove.removal_actions() {
                 match action {
@@ -150,6 +151,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             &borrow_pcg_edge,
                             &reason,
                         )?;
+                        removed_edges.push(borrow_pcg_edge);
                     }
                 }
             }
