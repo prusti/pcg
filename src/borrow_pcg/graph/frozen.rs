@@ -11,9 +11,9 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::data_structures::fx::{FxHashMap, FxHashSet},
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, PcgNodeComponent, PcgPlace, Place,
+        data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -43,10 +43,10 @@ pub struct FrozenGraphRef<
     VC = ValidityConditions,
 > {
     graph: &'graph BorrowsGraph<'tcx, EdgeKind, VC>,
-    nodes_cache: RefCell<Option<FxHashSet<PcgNodeWithPlace<'tcx, P>>>>,
-    edges_blocking_cache: RefCell<FxHashMap<PcgNode<'tcx>, CachedBlockingEdges<'graph, 'tcx>>>,
+    nodes_cache: RefCell<Option<HashSet<PcgNodeWithPlace<'tcx, P>>>>,
+    edges_blocking_cache: RefCell<HashMap<PcgNode<'tcx>, CachedBlockingEdges<'graph, 'tcx>>>,
     leaf_edges_cache: RefCell<Option<CachedLeafEdges<'graph, 'tcx>>>,
-    roots_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
+    roots_cache: RefCell<Option<HashSet<PcgNode<'tcx>>>>,
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> FrozenGraphRef<'_, 'tcx, P, BorrowPcgEdgeKind<'tcx, P>, VC> {}
@@ -56,7 +56,7 @@ impl<'graph, 'tcx, EdgeKind, VC> FrozenGraphRef<'graph, 'tcx, Place<'tcx>, EdgeK
         Self {
             graph,
             nodes_cache: RefCell::new(None),
-            edges_blocking_cache: RefCell::new(FxHashMap::default()),
+            edges_blocking_cache: RefCell::new(HashMap::default()),
             leaf_edges_cache: RefCell::new(None),
             roots_cache: RefCell::new(None),
         }
@@ -97,7 +97,7 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
     pub fn nodes<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,
         ctxt: Ctxt,
-    ) -> Ref<'slf, FxHashSet<PcgNodeWithPlace<'tcx, P>>>
+    ) -> Ref<'slf, HashSet<PcgNodeWithPlace<'tcx, P>>>
     where
         EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
         P: PcgPlace<'tcx, Ctxt>,
@@ -188,7 +188,7 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     pub fn roots<'slf, 'bc: 'graph>(
         &'slf self,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Ref<'slf, FxHashSet<PcgNode<'tcx>>> {
+    ) -> Ref<'slf, HashSet<PcgNode<'tcx>>> {
         if let Ok(roots) = Ref::filter_map(self.roots_cache.borrow(), Option::as_ref) {
             return roots;
         }

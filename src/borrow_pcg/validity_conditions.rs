@@ -3,7 +3,6 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         DebugRepr, HasCompilerCtxt, StringOf,
-        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -55,7 +54,7 @@ pub struct BranchChoicesDebugRepr {
     #[cfg_attr(feature = "type-export", ts(type = "string"))]
     pub from: StringOf<BasicBlock>,
     #[cfg_attr(feature = "type-export", ts(type = "string[]"))]
-    pub chosen: HashSet<StringOf<BasicBlock>>,
+    pub chosen: Vec<StringOf<BasicBlock>>,
 }
 
 impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
@@ -68,7 +67,7 @@ impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
                 .successors(ctxt)
                 .into_iter()
                 .map(StringOf::new_debug)
-                .collect::<HashSet<_>>(),
+                .collect(),
         }
     }
 }

@@ -2,12 +2,11 @@ use serde_derive::{Deserialize, Serialize};
 
 use crate::{
     rustc_interface::{hir::def_id::LocalDefId, middle::ty::TyCtxt},
-    utils::data_structures::HashMap,
     visualization::mir_graph::SourcePos,
 };
-use std::path::PathBuf;
+use std::{collections::BTreeMap, path::PathBuf};
 
-#[derive(Debug, Clone, Deserialize, Hash, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Deserialize, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub(crate) struct FunctionSlug(PathBuf);
 
@@ -54,13 +53,13 @@ impl FunctionMetadata {
 #[derive(Default, Deserialize, Serialize)]
 #[serde(transparent)]
 pub(crate) struct FunctionsMetadata {
-    functions: HashMap<FunctionSlug, FunctionMetadata>,
+    functions: BTreeMap<FunctionSlug, FunctionMetadata>,
 }
 
 impl FunctionsMetadata {
     pub fn new() -> Self {
         Self {
-            functions: HashMap::default(),
+            functions: BTreeMap::default(),
         }
     }
 

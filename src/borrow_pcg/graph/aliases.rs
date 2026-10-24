@@ -5,7 +5,6 @@ use crate::{
         edge_data::EdgeData,
     },
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
-    rustc_interface::data_structures::fx::FxHashSet,
     utils::{CompilerCtxt, PlaceProjectable, data_structures::HashSet},
 };
 
@@ -22,10 +21,10 @@ impl<'tcx> BorrowsGraph<'tcx> {
         &'graph self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'a, 'tcx>,
-    ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> {
-        let mut result: FxHashSet<BorrowPcgEdgeRef<'tcx, 'graph>> = FxHashSet::default();
+    ) -> HashSet<BorrowPcgEdgeRef<'tcx, 'graph>> {
+        let mut result: HashSet<BorrowPcgEdgeRef<'tcx, 'graph>> = HashSet::default();
         let mut stack = vec![node];
-        let mut seen: FxHashSet<PcgNode<'tcx>> = FxHashSet::default();
+        let mut seen: HashSet<PcgNode<'tcx>> = HashSet::default();
         while let Some(node) = stack.pop() {
             if seen.insert(node.into()) {
                 for edge in self.edges_blocked_by(node, ctxt) {
@@ -44,8 +43,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
         &self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx, ()>,
-    ) -> FxHashSet<PcgNode<'tcx>> {
-        let mut result: FxHashSet<PcgNode<'tcx>> = FxHashSet::default();
+    ) -> HashSet<PcgNode<'tcx>> {
+        let mut result: HashSet<PcgNode<'tcx>> = HashSet::default();
         result.insert(node.into());
         let mut stack = vec![node];
         while let Some(node) = stack.pop() {
@@ -64,14 +63,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
         &self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx, ()>,
-    ) -> FxHashSet<PcgNode<'tcx>> {
-        let mut results: FxHashSet<Alias<'tcx>> = FxHashSet::default();
+    ) -> HashSet<PcgNode<'tcx>> {
+        let mut results: HashSet<Alias<'tcx>> = HashSet::default();
         for (place, proj) in node.iter_projections(ctxt) {
             results.insert(Alias {
                 node: place.into(),
                 exact_alias: true,
             });
-            let candidates: Vec<_> = results.drain().collect();
+            let candidates: Vec<_> = results.drain(..).collect();
             for alias in candidates {
                 if !alias.exact_alias {
                     continue;
@@ -85,7 +84,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 results.extend(self.direct_aliases(
                     local_node,
                     ctxt,
-                    &mut FxHashSet::default(),
+                    &mut HashSet::default(),
                     true,
                 ));
                 if let PcgNode::Place(p) = local_node
@@ -99,7 +98,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                             results.extend(self.direct_aliases(
                                 p.to_local_node(ctxt),
                                 ctxt,
-                                &mut FxHashSet::default(),
+                                &mut HashSet::default(),
                                 true,
                             ));
                         }
@@ -115,9 +114,9 @@ impl<'tcx> BorrowsGraph<'tcx> {
         &self,
         node: LocalNode<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx, ()>,
-        seen: &mut FxHashSet<PcgNode<'tcx>>,
+        seen: &mut HashSet<PcgNode<'tcx>>,
         direct: bool,
-    ) -> FxHashSet<Alias<'tcx>> {
+    ) -> HashSet<Alias<'tcx>> {
         let mut result = HashSet::default();
         result.insert(Alias {
             node: node.into(),
@@ -125,8 +124,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
         });
 
         let extend = |blocked: PcgNode<'tcx>,
-                      seen: &mut FxHashSet<PcgNode<'tcx>>,
-                      result: &mut FxHashSet<Alias<'tcx>>,
+                      seen: &mut HashSet<PcgNode<'tcx>>,
+                      result: &mut HashSet<Alias<'tcx>>,
                       exact_alias: bool| {
             if seen.insert(blocked) {
                 result.insert(Alias {

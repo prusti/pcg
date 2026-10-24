@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, marker::PhantomData};
 
 use derive_more::{Deref, DerefMut};
 
@@ -20,7 +20,9 @@ use crate::{
     coupling::CoupledEdgeKind,
     pcg::PcgNodeWithPlace,
     rustc_interface::{
-        BoundVariableKind, fn_def_args,
+        BoundVariableKind,
+        data_structures::fx::FxHashSet,
+        fn_def_args,
         hir::def_id::DefId,
         infer::{infer::TyCtxtInferExt, traits::ObligationCause},
         middle::{
@@ -39,7 +41,7 @@ use crate::{
     },
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgPlace, Place,
-        data_structures::HashSet,
+        data_structures::{HashMap, HashSet},
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
@@ -580,7 +582,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             param_env,
             vec![],
             vec![],
-            HashSet::default(),
+            FxHashSet::default(),
         );
         let normalized = call.defined_fn_call.normalized_sig(ctxt);
         let identity = call

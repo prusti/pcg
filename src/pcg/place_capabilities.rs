@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, cmp, marker::PhantomData};
 
 use itertools::Itertools;
 
@@ -13,6 +13,7 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
+        data_structures::HashMap,
         display::{DebugLines, DisplayWithCompilerCtxt},
         validity::HasValidityCheck,
     },
@@ -110,7 +111,7 @@ where
     }
 
     fn remove<Ctxt>(&mut self, place: P, _ctxt: Ctxt) -> Option<C> {
-        self.map.remove(&place)
+        self.map.swap_remove(&place)
     }
 
     fn retain(&mut self, predicate: impl Fn(P, C) -> bool) {
@@ -399,7 +400,7 @@ where
                     // self is already minimum, no change needed
                 } else {
                     // incomparable - remove
-                    self.map.remove(&place);
+                    self.map.swap_remove(&place);
                     changed = true;
                 }
             }

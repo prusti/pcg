@@ -32,13 +32,13 @@ use crate::{
     rustc_interface::middle::mir::Location,
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayWithCtxt, OutputMode},
         html::Html,
     },
     visualization::{dot_graph::DotEdgeId, drawer::GraphDrawer},
 };
 use std::{
-    collections::HashSet,
     fs::File,
     io::{self},
     path::Path,

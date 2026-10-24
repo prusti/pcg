@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     borrow_pcg::{
         self, borrow_pcg_edge,
@@ -114,6 +112,6 @@ where
         _labeller: &impl borrow_pcg::has_pcs_elem::PlaceLabeller<'tcx, Ctxt, P>,
         _ctxt: Ctxt,
     ) -> data_structures::HashSet<borrow_pcg::edge_data::NodeReplacement<'tcx, P>> {
-        HashSet::default()
+        data_structures::HashSet::default()
     }
 }

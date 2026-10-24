@@ -12,6 +12,7 @@ use crate::{
     rustc_interface::{borrowck::BorrowIndex, middle::mir},
     utils::{
         CompilerCtxt, Place, SnapshotLocation,
+        data_structures::HashSet,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
     },
 };
@@ -25,7 +26,7 @@ use crate::{
     borrow_pcg::edge::abstraction::AbstractionEdge, utils::place::maybe_old::MaybeLabelledPlace,
 };
 use itertools::Itertools;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 
 pub(super) struct GraphConstructor<'a, 'tcx> {
     place_nodes: IdLookup<(Place<'tcx>, Option<SnapshotLocation>)>,
@@ -42,7 +43,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             place_nodes: IdLookup::new('p'),
             region_projection_nodes: IdLookup::new('r'),
             nodes: vec![],
-            edges: HashSet::new(),
+            edges: HashSet::default(),
             ctxt,
             location,
         }

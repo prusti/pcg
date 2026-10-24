@@ -4,8 +4,7 @@ use crate::{
     HasSettings, Weaken,
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
     pcg_validity_assert,
-    rustc_interface::data_structures::fx::FxHashSet,
-    utils::DebugCtxt,
+    utils::{DebugCtxt, data_structures::HashSet},
 };
 
 use super::BorrowPcgActionKind;
@@ -23,7 +22,7 @@ impl<'tcx> BorrowPcgActions<'tcx> {
     }
 
     #[must_use]
-    pub fn weakens(&self) -> FxHashSet<Weaken<'tcx>> {
+    pub fn weakens(&self) -> HashSet<Weaken<'tcx>> {
         self.0
             .iter()
             .filter_map(|action| match action.kind() {

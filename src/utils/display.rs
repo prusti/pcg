@@ -13,7 +13,6 @@ use std::{
 use itertools::Itertools;
 
 use rustc_interface::{
-    data_structures::fx::FxHashSet,
     middle::{
         mir::{
             PlaceElem, PlaceRef, ProjectionElem, RETURN_PLACE, VarDebugInfo, VarDebugInfoContents,
@@ -26,7 +25,7 @@ use serde_derive::Serialize;
 
 use crate::{
     rustc_interface::{self, middle::mir},
-    utils::{DebugRepr, HasCompilerCtxt, html::Html},
+    utils::{DebugRepr, HasCompilerCtxt, data_structures::HashSet, html::Html},
 };
 
 use super::{CompilerCtxt, Place};
@@ -220,7 +219,7 @@ impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for [T] {
     }
 }
 
-impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for FxHashSet<T> {
+impl<Ctxt: Copy, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for HashSet<T> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         let mut result = vec![DisplayOutput::Text("{".into())];
         for (i, item) in self.iter().enumerate() {

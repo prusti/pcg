@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     fmt::Display,
     fs::File,
     io::Write,
@@ -24,7 +24,7 @@ pub(crate) struct DotEdgeId(String);
 
 pub struct DotGraphWithEdgeCtxt<Ctxt> {
     pub(crate) graph: DotGraph,
-    pub(crate) edge_ctxt: HashMap<DotEdgeId, Ctxt>,
+    pub(crate) edge_ctxt: BTreeMap<DotEdgeId, Ctxt>,
 }
 
 impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
@@ -34,7 +34,7 @@ impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
     ) -> Self {
         let nodes = graph.nodes.iter().map(GraphNode::to_dot_node).collect();
         let mut edges = Vec::new();
-        let mut edge_ctxt = HashMap::new();
+        let mut edge_ctxt = BTreeMap::new();
         for (i, edge) in graph.edges.iter().enumerate() {
             let edge_id = DotEdgeId(format!("edge_{i}"));
             if let Some(validity_conditions) = edge.validity_conditions() {

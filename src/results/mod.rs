@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
 use derive_more::Deref;
 
@@ -21,7 +21,6 @@ use crate::{
         ctxt::HasSettings, place_capabilities::PlaceCapabilitiesReader, successor_blocks,
     },
     rustc_interface::{
-        data_structures::fx::FxHashSet,
         dataflow::AnalysisEngine,
         index::IndexVec,
         middle::{
@@ -31,8 +30,11 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
-        domain_data::DomainDataStates, validity::HasValidityCheck,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        data_structures::{HashMap, HashSet},
+        display::DebugLines,
+        domain_data::DomainDataStates,
+        validity::HasValidityCheck,
     },
 };
 
@@ -136,7 +138,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             .borrow
             .graph()
             .abstraction_edges()
-            .collect::<FxHashSet<_>>();
+            .collect::<HashSet<_>>();
 
         let ctxt: ResultsCtxt<'a, 'tcx> = self.results_ctxt();
         let block = &self.body()[location.block];
@@ -270,9 +272,9 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
 
     fn aggregate<T: std::hash::Hash + Eq>(
         &self,
-        f: impl Fn(&PcgLocation<'_, 'tcx>) -> FxHashSet<T>,
-    ) -> FxHashSet<T> {
-        let mut result = FxHashSet::default();
+        f: impl Fn(&PcgLocation<'_, 'tcx>) -> HashSet<T>,
+    ) -> HashSet<T> {
+        let mut result = HashSet::default();
         for block in &self.0 {
             if let Some(pcg_block) = &block {
                 for stmt in &pcg_block.statements {
@@ -289,7 +291,7 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
         place: mir::Place<'tcx>,
         body: &'mir Body<'tcx>,
         tcx: TyCtxt<'tcx>,
-    ) -> FxHashSet<mir::Place<'tcx>> {
+    ) -> HashSet<mir::Place<'tcx>> {
         self.aggregate(|stmt| stmt.aliases(place, body, tcx))
     }
 }
@@ -412,7 +414,7 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
         &'slf self,
         place: Place<'tcx>,
         ctxt: CompilerCtxt<'mir, 'tcx>,
-    ) -> FxHashSet<BorrowPcgEdgeRef<'tcx, 'slf>> {
+    ) -> HashSet<BorrowPcgEdgeRef<'tcx, 'slf>> {
         let borrows_graph = self.states[EvalStmtPhase::PostMain].borrow.graph();
         let mut ancestors = borrows_graph.ancestor_edges(place.into(), ctxt);
         for rp in place.lifetime_projections(ctxt) {
@@ -426,7 +428,7 @@ impl<'a, 'tcx: 'a> PcgLocation<'a, 'tcx> {
         place: impl Into<Place<'tcx>>,
         body: &'mir Body<'tcx>,
         tcx: TyCtxt<'tcx>,
-    ) -> FxHashSet<mir::Place<'tcx>> {
+    ) -> HashSet<mir::Place<'tcx>> {
         let place: Place<'tcx> = place.into();
         let ctxt = CompilerCtxt::new(body, tcx, ());
         self.states[EvalStmtPhase::PostMain]

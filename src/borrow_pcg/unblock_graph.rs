@@ -68,7 +68,7 @@ impl<'tcx, Edge: std::fmt::Debug + Clone + Eq + std::hash::Hash> UnblockGraph<'t
             for edge in &edges {
                 if should_kill_edge(edge) {
                     actions.push(BorrowPcgUnblockAction::new(edge.clone()));
-                    to_keep.remove(edge);
+                    to_keep.shift_remove(edge);
                 }
             }
             if to_keep.len() >= edges.len() {

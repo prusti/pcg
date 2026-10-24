@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash};
+use std::hash::Hash;
 
 use crate::{
     borrow_pcg::region_projection::region_is_invariant_in_type,
@@ -6,7 +6,7 @@ use crate::{
         index::IndexVec,
         middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
     },
-    utils::HasTyCtxt,
+    utils::{HasTyCtxt, data_structures::HashMap},
 };
 
 use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion, Region};

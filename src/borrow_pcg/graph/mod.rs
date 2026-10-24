@@ -19,7 +19,7 @@ use crate::{
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
     pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::{data_structures::fx::FxHashSet, middle::mir},
+    rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt,
         HasCompilerCtxt, PcgNodeComponent, PcgPlace, Place, PlaceLike,
@@ -146,7 +146,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn nodes<Ctxt: Copy + DebugCtxt, P: PcgPlace<'tcx, Ctxt>>(
         &self,
         ctxt: Ctxt,
-    ) -> FxHashSet<PcgNodeWithPlace<'tcx, P>>
+    ) -> HashSet<PcgNodeWithPlace<'tcx, P>>
     where
         EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
     {
@@ -430,11 +430,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
     pub(crate) fn roots<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
-    ) -> FxHashSet<PcgNode<'tcx>>
+    ) -> HashSet<PcgNode<'tcx>>
     where
         'tcx: 'a,
     {
-        let roots: FxHashSet<PcgNode<'tcx>> = self
+        let roots: HashSet<PcgNode<'tcx>> = self
             .nodes(ctxt)
             .into_iter()
             .filter(|node| self.is_root(*node, ctxt))
@@ -498,7 +498,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
 impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     pub(crate) fn remove(&mut self, edge: &EdgeKind) -> Option<VC> {
-        self.edges.remove(edge)
+        self.edges.swap_remove(edge)
     }
 
     pub fn edges<'slf>(

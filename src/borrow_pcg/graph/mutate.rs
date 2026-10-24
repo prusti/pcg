@@ -6,14 +6,12 @@ use crate::{
         has_pcs_elem::PlaceLabeller,
         validity_conditions::{PathCondition, ValidityConditionOps, ValidityConditions},
     },
-    rustc_interface::middle::mir::BasicBlock,
+    rustc_interface::{data_structures::fx::IndexEntry, middle::mir::BasicBlock},
     utils::{
         CompilerCtxt, FilterMutResult, PcgPlace,
         data_structures::{HashMap, HashSet},
     },
 };
-
-use std::collections::hash_map;
 
 use super::BorrowsGraph;
 
@@ -36,10 +34,10 @@ fn insert_joining_conditions<EdgeKind: Eq + std::hash::Hash, VC, Ctxt: Copy>(
     VC: ValidityConditionOps<Ctxt>,
 {
     match edges.entry(edge.value) {
-        hash_map::Entry::Occupied(mut existing) => {
+        IndexEntry::Occupied(mut existing) => {
             existing.get_mut().join(&edge.conditions, ctxt);
         }
-        hash_map::Entry::Vacant(slot) => {
+        IndexEntry::Vacant(slot) => {
             slot.insert(edge.conditions);
         }
     }
@@ -77,7 +75,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     {
         let mut changed = false;
         let mut new_edges = HashMap::default();
-        for (kind, conditions) in self.edges.drain() {
+        for (kind, conditions) in self.edges.drain(..) {
             let mut edge = Conditioned::new(kind, conditions);
             if f(&mut edge) {
                 changed = true;
@@ -99,7 +97,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     {
         let mut changed = false;
         let mut new_edges = HashMap::default();
-        for (kind, conditions) in self.edges.drain() {
+        for (kind, conditions) in self.edges.drain(..) {
             let mut edge = Conditioned::new(kind, conditions);
             match f(&mut edge) {
                 FilterMutResult::Changed => {
