@@ -59,16 +59,6 @@ impl<'tcx> MaybeRemotePlace<'tcx> {
             MaybeRemotePlace::Remote(rp) => Some(MaybeRemoteCurrentPlace::Remote(*rp)),
         }
     }
-
-    pub(crate) fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        match self {
-            MaybeRemotePlace::Local(p) => p.is_mutable(ctxt),
-            MaybeRemotePlace::Remote(_) => false,
-        }
-    }
 }
 
 impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> HasTy<'tcx, Ctxt> for MaybeRemotePlace<'tcx, P>

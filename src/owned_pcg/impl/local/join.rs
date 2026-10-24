@@ -181,9 +181,37 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             let actions = self.join_leaf_read_and_write_capabilities(other, place, ctxt)?;
             pcg_validity_assert!(!actions.is_empty());
             Ok(actions)
+        } else if self_cap == CapabilityKind::Write && other_cap == CapabilityKind::Read {
+            self.join_write_leaf_with_read_expansion(other, place, ctxt);
+            Ok(vec![])
         } else {
             Ok(vec![])
         }
+    }
+
+    /// Joins `place`, a leaf with [`CapabilityKind::Write`] in `self`, with
+    /// the read-only expansion of `place` in `other`.
+    ///
+    /// Neither capability is available on both paths, so the joined place
+    /// retains the expansion of `other` (whose places may be blocked by
+    /// borrows from that path) without any capability.
+    fn join_write_leaf_with_read_expansion(
+        &mut self,
+        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        place: Place<'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) {
+        tracing::debug!(
+            "Joining write leaf {} with read expansion to no capability",
+            place.display_string(ctxt)
+        );
+        for expansion in other.owned.expansions() {
+            if place.is_prefix_of(expansion.place) {
+                self.owned
+                    .insert_expansion(expansion.place, expansion.expansion.clone());
+            }
+        }
+        self.capabilities.remove_all_postfixes(place, ctxt);
     }
 
     fn join_all_places_in_expansion(

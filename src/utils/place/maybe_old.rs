@@ -18,7 +18,7 @@ use crate::{
         },
     },
     utils::{
-        self, CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
         PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -58,17 +58,6 @@ impl<P: Copy> MaybeLabelledPlace<'_, P> {
             MaybeLabelledPlace::Current(place) => Some(place),
             MaybeLabelledPlace::Labelled(_) => None,
         }
-    }
-}
-
-impl<'tcx> MaybeLabelledPlace<'tcx> {
-    pub fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        self.place()
-            .is_mutable(utils::LocalMutationIsAllowed::Yes, ctxt)
-            .is_ok()
     }
 }
 

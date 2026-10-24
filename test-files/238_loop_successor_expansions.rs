@@ -78,14 +78,10 @@ fn reference_field(pair: &RefPair<'_>, run: bool) {
     // PCG_LIFETIME_DISPLAY: pair 1 'first
     // PCG: bb1[0] pre_operands: pair: R
     // PCG: bb0 -> bb1: Add Edge {pair} -> {*pair}
-    // PCG: bb0 -> bb1: Add Edge {pair↓'first loop bb1} -> {*pair↓'first}
-    // PCG: bb0 -> bb1: Label lifetime projection pair↓'first with label loop bb1
     // PCG: bb0 -> bb1: Add Edge {*pair} -> {(*pair).first, (*pair).second}
     // PCG: bb0 -> bb1: Add Edge {*pair↓'first} -> {(*pair).first↓'first}
     // PCG: bb0 -> bb1: Add Edge {(*pair).first} -> {*(*pair).first}
     // PCG: bb4 -> bb1: Add Edge {pair} -> {*pair}
-    // PCG: bb4 -> bb1: Add Edge {pair↓'first loop bb1} -> {*pair↓'first}
-    // PCG: bb4 -> bb1: Label lifetime projection pair↓'first with label loop bb1
     // PCG: bb4 -> bb1: Add Edge {*pair} -> {(*pair).first, (*pair).second}
     // PCG: bb4 -> bb1: Add Edge {*pair↓'first} -> {(*pair).first↓'first}
     // PCG: bb4 -> bb1: Add Edge {(*pair).first} -> {*(*pair).first}

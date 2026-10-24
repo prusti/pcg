@@ -83,7 +83,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         use LabelForLifetimeProjection::{
             ExistingLabelOfTwoPhaseReservation, NewLabelAtCurrentLocation, NoLabel,
         };
-        if obtain_type.should_label_rp(rp.rebase(), ctxt) {
+        if obtain_type.should_label_rp(rp.base, ctxt) {
             NewLabelAtCurrentLocation(self.prev_snapshot_location())
         } else {
             match self.label_for_shared_expansion_of_rp(rp, ctxt) {
@@ -178,14 +178,15 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             {
                 return Ok(false);
             }
-            let blocked_lifetime_projection_label = if base.is_mut_ref(ctxt) {
-                Some(self.prev_snapshot_location())
-            } else {
-                self.label_for_shared_expansion_of_rp(
-                    base.base_lifetime_projection(ctxt).unwrap(),
-                    ctxt,
-                )
-            };
+            let blocked_lifetime_projection_label =
+                if base.is_mut_ref(ctxt) && obtain_type.should_label_rp(base, ctxt) {
+                    Some(self.prev_snapshot_location())
+                } else {
+                    self.label_for_shared_expansion_of_rp(
+                        base.base_lifetime_projection(ctxt).unwrap(),
+                        ctxt,
+                    )
+                };
             let deref = DerefEdge::new(base, blocked_lifetime_projection_label, ctxt);
             self.render_debug_graph(None, "expand_place_one_level: before apply action");
             let action = BorrowPcgAction::add_edge(

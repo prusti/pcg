@@ -19,7 +19,7 @@ use crate::{
     },
     owned_pcg::{LocalExpansions, RepackOp},
     pcg::{
-        CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgRef, PcgRefLike,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
             RenderDebugGraph, expand::PlaceExpander,
@@ -366,27 +366,47 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     }
                 }
             }
-            BorrowPcgEdgeKind::Borrow(borrow) => {
-                if self.ctxt.bc().is_dead(
-                    borrow
-                        .assigned_lifetime_projection(self.ctxt)
-                        .to_pcg_node(self.ctxt.bc_ctxt()),
-                    self.location(),
-                ) && let MaybeLabelledPlace::Current(place) = borrow.assigned_ref()
-                    && let Some(existing_cap) = self.pcg.capability_of(place, self.ctxt)
-                {
-                    self.record_and_apply_action(
-                        BorrowPcgAction::weaken(
-                            place,
-                            existing_cap,
-                            Some(CapabilityKind::Write),
-                            "remove borrow edge",
-                        )
-                        .into(),
-                    )?;
-                }
+            _ => self.weaken_places_with_dead_lifetime_projections(&edge.value)?,
+        }
+        Ok(())
+    }
+
+    /// A place whose lifetime projection is dead can no longer be used, so once
+    /// the edge into that projection is removed, the place retains only
+    /// [`CapabilityKind::Write`].
+    fn weaken_places_with_dead_lifetime_projections(
+        &mut self,
+        edge: &BorrowPcgEdgeKind<'tcx>,
+    ) -> Result<(), PcgError> {
+        let places = edge
+            .blocked_by_nodes(self.ctxt.bc_ctxt())
+            .filter_map(|node| {
+                let PcgNode::LifetimeProjection(rp) = node else {
+                    return None;
+                };
+                let MaybeLabelledPlace::Current(place) = rp.base() else {
+                    return None;
+                };
+                self.ctxt
+                    .bc()
+                    .is_dead(node.into(), self.location())
+                    .then_some(place)
+            })
+            .collect::<HashSet<_>>();
+        for place in places {
+            if let Some(existing_cap) = self.pcg.capability_of(place, self.ctxt)
+                && existing_cap > CapabilityKind::Write
+            {
+                self.record_and_apply_action(
+                    BorrowPcgAction::weaken(
+                        place,
+                        existing_cap,
+                        Some(CapabilityKind::Write),
+                        "lifetime projection is dead",
+                    )
+                    .into(),
+                )?;
             }
-            _ => {}
         }
         Ok(())
     }
@@ -613,6 +633,44 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ///
     /// This also handles corresponding lifetime projections of the place.
     #[tracing::instrument(skip(self))]
+    /// Owned leaves below `place` without capability (e.g. from joining a
+    /// [`CapabilityKind::Write`] leaf with a read-only expansion) are no longer
+    /// blocked once `place` has been labelled for a write, so they regain
+    /// [`CapabilityKind::Write`].
+    fn restore_write_to_unblocked_owned_leaves(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        let blocked = self.blocked_owned_places(self.ctxt.bc_ctxt());
+        let to_restore = self
+            .pcg
+            .owned
+            .leaf_places(self.ctxt)
+            .into_iter()
+            .map(Place::from)
+            .filter(|p| {
+                place.is_strict_prefix_of(*p) && self.pcg.capability_of(*p, self.ctxt).is_none()
+            })
+            .collect::<Vec<_>>();
+        let ctxt = self.ctxt;
+        for leaf in to_restore {
+            pcg_validity_assert!(
+                !blocked.contains(&leaf),
+                [ctxt],
+                "{} is blocked after labelling {} for a write",
+                leaf.display_string(ctxt),
+                place.display_string(ctxt)
+            );
+            self.record_and_apply_action(PcgAction::restore_capability(
+                leaf,
+                CapabilityKind::Write,
+                "restore write to unblocked owned leaf",
+                self.ctxt,
+            ))?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn obtain(
         &mut self,
         place: Place<'tcx>,
@@ -656,6 +714,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
+            self.restore_write_to_unblocked_owned_leaves(place)?;
             self.render_debug_graph(None, "after step 1");
         }
 

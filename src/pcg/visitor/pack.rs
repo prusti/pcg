@@ -258,39 +258,27 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 return ShouldKillNode::No;
             }
 
-            // Do not kill if there is still a rawptr delegation to this node
-            let node = PcgNode::from(p);
-            let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
-            let alias_edges_cnt = edges
-                .into_iter()
-                .filter_map(|e| match e.kind {
-                    BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
-                    _ => None,
-                })
-                .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))
-                .count();
-
-            if alias_edges_cnt > 0 {
-                return ShouldKillNode::No;
-            }
-
-            if let Ok(lifetime_proj) = p.try_into_lifetime_projection() {
-                let base = lifetime_proj.base();
-                // Do not kill if there is still a rawptr delegation to this node
-                let node = PcgNode::from(base);
-                let edges = self.pcg.borrows_graph().edges_blocking(node, ctxt);
-                let alias_edges_cnt = edges
+            let has_live_rawptr_delegation = |node: PcgNode<'tcx>| {
+                self.pcg
+                    .borrows_graph()
+                    .edges_blocking(node, ctxt)
                     .into_iter()
-                    .filter_map(|e| match e.kind {
-                        BorrowPcgEdgeKind::Delegation(raw_ptr_edge) => Some(raw_ptr_edge),
-                        _ => None,
+                    .any(|e| {
+                        matches!(
+                            e.kind,
+                            BorrowPcgEdgeKind::Delegation(delegation)
+                                if !ctxt.bc().is_dead(
+                                    delegation.rawptr_place.place().into(),
+                                    location,
+                                )
+                        )
                     })
-                    .filter(|ae| !ctxt.bc().is_dead(ae.rawptr_place.place().into(), location))
-                    .count();
-
-                if alias_edges_cnt > 0 {
-                    return ShouldKillNode::No;
-                }
+            };
+            if has_live_rawptr_delegation(PcgNode::from(p))
+                || (matches!(p, PcgNode::LifetimeProjection(_))
+                    && has_live_rawptr_delegation(PcgNode::from(place)))
+            {
+                return ShouldKillNode::No;
             }
 
             if place.is_old() {

@@ -14,7 +14,7 @@ use crate::{
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LifetimeProjection, LocalLifetimeProjection, PcgRegion},
+        region_projection::{LocalLifetimeProjection, PcgRegion},
         state::BorrowStateMutRef,
     },
     error::PcgError,
@@ -29,7 +29,8 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
-        Place, SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        LocalMutationIsAllowed, Place, SnapshotLocation, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -151,18 +152,23 @@ impl ObtainType {
         }
     }
 
+    /// Whether obtaining `place` should label its lifetime projections, i.e.
+    /// whether the obtained capability may be used to modify `place`.
     pub(crate) fn should_label_rp<'a, 'tcx>(
         self,
-        rp: LifetimeProjection<'tcx>,
+        place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> bool
     where
         'tcx: 'a,
     {
         match self {
-            ObtainType::ForStorageDead | ObtainType::TwoPhaseExpand => true,
-            ObtainType::Capability(cap) => !cap.is_read(),
-            ObtainType::LoopInvariant { .. } => rp.base.is_mutable(ctxt),
+            ObtainType::TwoPhaseExpand => true,
+            _ if self.capability(place, ctxt).is_read() => false,
+            ObtainType::LoopInvariant { .. } => {
+                place.is_mutable(LocalMutationIsAllowed::Yes, ctxt).is_ok()
+            }
+            ObtainType::ForStorageDead | ObtainType::Capability(_) => true,
         }
     }
 }

@@ -501,8 +501,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             }
         }
 
-        let abstraction_graph_pcg_nodes = abstraction_graph.nodes(ctxt.ctxt);
-        let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph_pcg_nodes, ctxt);
+        let to_cut = self.identify_subgraph_to_cut(loop_head, &abstraction_graph, ctxt);
         self.reconnect_cut_outputs(
             &to_cut,
             &mut abstraction_graph,

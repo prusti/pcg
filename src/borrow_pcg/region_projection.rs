@@ -425,15 +425,6 @@ impl<'tcx> PcgLifetimeProjectionBase<'tcx> {
             PlaceOrConst::Const(_) => None,
         }
     }
-    pub(crate) fn is_mutable<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
-    where
-        'tcx: 'a,
-    {
-        match self {
-            PlaceOrConst::Place(p) => p.is_mutable(ctxt),
-            PlaceOrConst::Const(_) => false,
-        }
-    }
     pub(crate) fn as_local_place_mut(&mut self) -> Option<&mut MaybeLabelledPlace<'tcx>> {
         match self {
             PlaceOrConst::Place(p) => p.as_local_place_mut(),

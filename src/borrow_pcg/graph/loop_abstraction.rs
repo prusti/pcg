@@ -550,16 +550,28 @@ impl<'tcx> BorrowsGraph<'tcx> {
         }
     }
 
+    /// Identifies the edges of `self` on paths from a node of
+    /// `abstraction_graph` to one of its outputs; these are the edges that the
+    /// abstraction replaces.
+    ///
+    /// A path that reaches an input of the abstraction is not cut: that input
+    /// remains in the graph, so the edges producing it must remain as well.
     pub(crate) fn identify_subgraph_to_cut<'mir: 'graph, 'graph>(
         &'graph self,
         block: mir::BasicBlock,
-        abstraction_graph_nodes: &HashSet<PcgNode<'tcx>>,
+        abstraction_graph: &BorrowsGraph<'tcx>,
         ctxt: impl HasSettings<'mir> + HasBorrowCheckerCtxt<'mir, 'tcx>,
     ) -> BorrowsGraph<'tcx>
     where
         'tcx: 'mir,
     {
         type Path<'tcx, 'graph> = Vec<BorrowPcgEdgeRef<'tcx, 'graph>>;
+        let abstraction_graph_nodes = abstraction_graph.nodes(ctxt);
+        let abstraction_outputs = abstraction_graph
+            .edges()
+            .flat_map(|edge| edge.blocked_by_nodes(ctxt).collect::<Vec<_>>())
+            .map(|node| node.to_pcg_node(ctxt))
+            .collect::<HashSet<_>>();
         let mut to_cut = HashSet::default();
         let mut paths: Vec<Path<'tcx, 'graph>> = abstraction_graph_nodes
             .iter()
@@ -575,9 +587,15 @@ impl<'tcx> BorrowsGraph<'tcx> {
             let blocked_by_nodes = last_edge.blocked_by_nodes(ctxt).collect::<Vec<_>>();
             if blocked_by_nodes
                 .iter()
-                .any(|node| abstraction_graph_nodes.contains(&node.to_pcg_node(ctxt)))
+                .any(|node| abstraction_outputs.contains(&node.to_pcg_node(ctxt)))
             {
                 to_cut.extend(path);
+                continue;
+            }
+            if blocked_by_nodes
+                .iter()
+                .any(|node| abstraction_graph_nodes.contains(&node.to_pcg_node(ctxt)))
+            {
                 continue;
             }
             for blocked_by_node in blocked_by_nodes {
