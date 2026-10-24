@@ -52,7 +52,7 @@ fn test_aliases() {
         let ctxt = analysis.ctxt();
         let bb = analysis.get_all_for_bb(3usize.into()).unwrap().unwrap();
         let stmt = &bb.statements[1];
-        let temp4 = mir::Local::from(4_usize).into();
+        let temp4: mir::Place<'_> = mir::Local::from(4_usize).into();
         let temp: mir::Place<'_> = mir::Local::from(2_usize).into();
         let aliases = stmt.aliases(
             temp.project_deeper(&[mir::ProjectionElem::Deref], ctxt.tcx()),
@@ -365,19 +365,19 @@ fn main() {
         assert!(
             !stmt
                 .aliases(y_deref_3, ctxt.body(), ctxt.tcx())
-                .contains(&mir::Local::from(3usize).into())
+                .contains(&mir::Place::from(mir::Local::from(3usize)))
         );
         assert!(
             !stmt
                 .aliases(y_deref_3, ctxt.body(), ctxt.tcx())
-                .contains(&mir::Local::from(4usize).into())
+                .contains(&mir::Place::from(mir::Local::from(4usize)))
         );
         assert!(
             !analysis
                 .results_for_all_blocks()
                 .unwrap()
                 .all_place_aliases(y_deref.to_rust_place(ctxt), ctxt.body(), ctxt.tcx())
-                .contains(&mir::Local::from(4usize).into())
+                .contains(&mir::Place::from(mir::Local::from(4usize)))
         );
     });
 
