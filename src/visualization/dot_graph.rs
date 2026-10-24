@@ -35,12 +35,15 @@ impl DotGraphWithEdgeCtxt<ValidityConditionsDebugRepr> {
         let nodes = graph.nodes.iter().map(GraphNode::to_dot_node).collect();
         let mut edges = Vec::new();
         let mut edge_ctxt = HashMap::new();
-        for (i, edge) in graph.edges.iter().enumerate() {
-            let edge_id = DotEdgeId(format!("edge_{i}"));
-            if let Some(validity_conditions) = edge.validity_conditions() {
-                edge_ctxt.insert(edge_id.clone(), validity_conditions.debug_repr(ctxt));
+        for edge in &graph.edges {
+            for mut dot_edge in edge.to_dot_edges(ctxt) {
+                let edge_id = DotEdgeId(format!("edge_{}", edges.len()));
+                if let Some(validity_conditions) = edge.validity_conditions() {
+                    edge_ctxt.insert(edge_id.clone(), validity_conditions.debug_repr(ctxt));
+                }
+                dot_edge.id = Some(edge_id);
+                edges.push(dot_edge);
             }
-            edges.push(edge.to_dot_edge(Some(edge_id), ctxt));
         }
         Self {
             graph: DotGraph {

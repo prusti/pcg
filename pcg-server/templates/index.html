@@ -124,6 +124,14 @@
                 </div>
             </div>
 
+            <div class="input-group">
+                <label for="graph-renderer">PCG renderer</label>
+                <select id="graph-renderer" name="graph-renderer">
+                    <option value="svg" {{svg_renderer_selected}}>Rust SVG</option>
+                    <option value="dot" {{dot_renderer_selected}}>Graphviz (legacy)</option>
+                </select>
+            </div>
+
             <div id="file-input" class="input-group">
                 <input type="file" name="file" accept=".rs">
             </div>

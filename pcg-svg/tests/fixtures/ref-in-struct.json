@@ -1,0 +1,333 @@
+{
+  "nodes": [
+    {
+      "label": "(*_5) before bb0[20]",
+      "suffix": null,
+      "tooltip": "i32",
+      "shape": "Rounded",
+      "color": "Gray"
+    },
+    {
+      "label": "(*_7) before bb0[19]",
+      "suffix": null,
+      "tooltip": "i32",
+      "shape": "Rounded",
+      "color": "Gray"
+    },
+    {
+      "label": "*rx",
+      "suffix": "E",
+      "tooltip": "i32",
+      "shape": "Rounded",
+      "color": "Green"
+    },
+    {
+      "label": "RETURN",
+      "suffix": "W",
+      "tooltip": "()",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "_4 before bb0[15]↓'?9",
+      "suffix": null,
+      "tooltip": "&'?9 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "_5 before bb0[20]",
+      "suffix": null,
+      "tooltip": "&'?10 mut i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "_5 before bb0[20]↓'?10 before bb0[10]",
+      "suffix": null,
+      "tooltip": "&'?10 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "_6 before bb0[15]↓'?11",
+      "suffix": null,
+      "tooltip": "&'?11 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "_7 before bb0[19]",
+      "suffix": null,
+      "tooltip": "&'?12 mut i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "_7 before bb0[19]↓'?12 before bb0[14]",
+      "suffix": null,
+      "tooltip": "&'?12 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "rx",
+      "suffix": "W",
+      "tooltip": "&'?13 mut i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "rx↓'?13 before bb0[24]",
+      "suffix": null,
+      "tooltip": "&'?13 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "s",
+      "suffix": null,
+      "tooltip": "S<'?8>",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "s.x",
+      "suffix": "W",
+      "tooltip": "&'?8 mut i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "s.x before bb0[22]↓'?8",
+      "suffix": null,
+      "tooltip": "&'?8 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "s.y",
+      "suffix": "E",
+      "tooltip": "&'?8 mut i32",
+      "shape": "Rectangle",
+      "color": "Black"
+    },
+    {
+      "label": "s.y↓'?8",
+      "suffix": null,
+      "tooltip": "&'?8 mut i32\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "s↓'?8 before bb0[22]",
+      "suffix": null,
+      "tooltip": "S<'?8>\n",
+      "shape": "Octagon",
+      "color": "Blue"
+    },
+    {
+      "label": "x",
+      "suffix": null,
+      "tooltip": "i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    },
+    {
+      "label": "y",
+      "suffix": null,
+      "tooltip": "i32",
+      "shape": "Rectangle",
+      "color": "Gray"
+    }
+  ],
+  "edges": [
+    {
+      "sources": [
+        0
+      ],
+      "targets": [
+        4
+      ],
+      "label": "bw1: Default '?3",
+      "tooltip": "bw1\n",
+      "color": "Orange",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        10,
+        11
+      ],
+      "targets": [
+        2
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Green",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        12
+      ],
+      "targets": [
+        13,
+        15
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Black",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        14
+      ],
+      "targets": [
+        11
+      ],
+      "label": "Move",
+      "tooltip": "",
+      "color": "Purple",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        17
+      ],
+      "targets": [
+        14,
+        16
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Black",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        18
+      ],
+      "targets": [
+        0
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Gray",
+      "dashed": true,
+      "thick": false
+    },
+    {
+      "sources": [
+        18
+      ],
+      "targets": [
+        6
+      ],
+      "label": "bw0: Default '?2",
+      "tooltip": "bw0\n",
+      "color": "Orange",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        19
+      ],
+      "targets": [
+        1
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Gray",
+      "dashed": true,
+      "thick": false
+    },
+    {
+      "sources": [
+        19
+      ],
+      "targets": [
+        9
+      ],
+      "label": "bw2: Default '?4",
+      "tooltip": "bw2\n",
+      "color": "Orange",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        1
+      ],
+      "targets": [
+        7
+      ],
+      "label": "bw3: Default '?5",
+      "tooltip": "bw3\n",
+      "color": "Orange",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        4
+      ],
+      "targets": [
+        17
+      ],
+      "label": "Aggregate(0, 0)",
+      "tooltip": "",
+      "color": "Purple",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        5,
+        6
+      ],
+      "targets": [
+        0
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Green",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        7
+      ],
+      "targets": [
+        17
+      ],
+      "label": "Aggregate(1, 0)",
+      "tooltip": "",
+      "color": "Purple",
+      "dashed": false,
+      "thick": false
+    },
+    {
+      "sources": [
+        8,
+        9
+      ],
+      "targets": [
+        1
+      ],
+      "label": "",
+      "tooltip": "",
+      "color": "Green",
+      "dashed": false,
+      "thick": false
+    }
+  ]
+}

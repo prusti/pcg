@@ -6,12 +6,13 @@ edition = "2024"
 
 [features]
 custom-rust-toolchain = []
-visualization = []
+visualization = ["dep:pcg-svg"]
 debug_info = []
 type-export = ["ts-rs"]
 default = ["visualization", "type-export"]
 
 [dependencies]
+pcg-svg = { path = "pcg-svg", optional = true }
 pcg-macros = { path = "pcg-macros" }
 bytes = "1.11.1" # Earlier versions have security issues
 bit-set = "0.8.0"

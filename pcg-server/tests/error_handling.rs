@@ -11,6 +11,7 @@ fn run_pcg_analysis(file_path: PathBuf, data_dir: PathBuf) -> Result<(), String>
         .arg("--edition=2018")
         .env("PCG_VISUALIZATION", "false")
         .env("PCG_VISUALIZATION_DATA_DIR", &data_dir)
+        .env_remove("PCG_BIN_PATH")
         .output()
         .map_err(|e| {
             format!(

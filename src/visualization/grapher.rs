@@ -10,7 +10,7 @@ use crate::{
     utils::{CompilerCtxt, DebugRepr, Place, maybe_old::MaybeLabelledPlace},
 };
 
-use super::{GraphEdge, NodeId, graph_constructor::GraphConstructor};
+use super::{ExpansionKind, GraphEdge, NodeId, graph_constructor::GraphConstructor};
 
 pub(super) trait CapabilityGetter<'a, 'tcx: 'a> {
     fn get(&self, node: Place<'tcx>) -> Option<CapabilityKind>;
@@ -61,27 +61,32 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
         match edge.kind() {
             BorrowPcgEdgeKind::Deref(deref_edge) => {
                 let deref_place = self.insert_pcg_node(deref_edge.deref_place.into());
-                for blocked in deref_edge.blocked_nodes(self.ctxt()) {
-                    let blocked = self.insert_pcg_node(blocked);
-                    self.constructor().edges.insert(GraphEdge::DerefExpansion {
-                        source: blocked,
-                        target: deref_place,
-                        validity_conditions,
-                    });
-                }
+                let sources = deref_edge
+                    .blocked_nodes(self.ctxt())
+                    .map(|node| self.insert_pcg_node(node))
+                    .collect();
+                self.constructor().edges.insert(GraphEdge::DerefExpansion {
+                    sources,
+                    targets: vec![deref_place],
+                    kind: ExpansionKind::Deref,
+                    validity_conditions,
+                });
             }
             BorrowPcgEdgeKind::BorrowPcgExpansion(deref_expansion) => {
-                for blocked in deref_expansion.blocked_nodes(self.ctxt()) {
-                    let blocked_graph_node = self.insert_pcg_node(blocked);
-                    for blocking in deref_expansion.blocked_by_nodes(self.ctxt()) {
-                        let blocking_graph_node = self.insert_pcg_node(blocking.into());
-                        self.constructor().edges.insert(GraphEdge::DerefExpansion {
-                            source: blocked_graph_node,
-                            target: blocking_graph_node,
-                            validity_conditions,
-                        });
-                    }
-                }
+                let sources = deref_expansion
+                    .blocked_nodes(self.ctxt())
+                    .map(|node| self.insert_pcg_node(node))
+                    .collect();
+                let targets = deref_expansion
+                    .blocked_by_nodes(self.ctxt())
+                    .map(|node| self.insert_pcg_node(node.into()))
+                    .collect();
+                self.constructor().edges.insert(GraphEdge::DerefExpansion {
+                    sources,
+                    targets,
+                    kind: ExpansionKind::Unpack,
+                    validity_conditions,
+                });
             }
             BorrowPcgEdgeKind::Borrow(borrow) => {
                 let borrowed_place = self.insert_maybe_labelled_place(borrow.blocked_place());
@@ -120,16 +125,19 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                 });
             }
             BorrowPcgEdgeKind::Coupled(hyper_edge) => {
-                for input in hyper_edge.inputs(self.ctxt()) {
-                    let input_node = self.insert_pcg_node(input.0);
-                    for output in hyper_edge.outputs() {
-                        let output_node = self.insert_pcg_node(output.to_pcg_node(self.ctxt()));
-                        self.constructor().edges.insert(GraphEdge::Coupled {
-                            source: input_node,
-                            target: output_node,
-                        });
-                    }
-                }
+                let sources = hyper_edge
+                    .inputs(self.ctxt())
+                    .into_iter()
+                    .map(|input| self.insert_pcg_node(input.0))
+                    .collect();
+                let targets = hyper_edge
+                    .outputs()
+                    .into_iter()
+                    .map(|output| self.insert_pcg_node(output.to_pcg_node(self.ctxt())))
+                    .collect();
+                self.constructor()
+                    .edges
+                    .insert(GraphEdge::Coupled { sources, targets });
             }
             BorrowPcgEdgeKind::Delegation(delegation_edge) => {
                 let raw_ptr_place = self.insert_maybe_labelled_place(delegation_edge.rawptr_place);

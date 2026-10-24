@@ -52,6 +52,12 @@ variable to `true` when running the `pcg-bin`, e.g.:
 
 `PCG_VISUALIZATION=true cargo run [FILENAME.rs]`
 
+PCG snapshots use the Rust SVG hypergraph renderer by default. Set
+`PCG_LEGACY_GRAPH_RENDERER=true` (or `1`) to generate only the legacy DOT graphs.
+An unset, empty, `false`, or `0` value uses Rust SVG. Default snapshots also retain
+DOT, and the viewer's **Settings → PCG renderer** selector switches between the
+two views without rerunning the analysis.
+
 To view the output, you need to run the visualization server, by running the following commands (from the base directory of the repository).
 
 `cd visualization && ./serve`
