@@ -485,6 +485,12 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
         &self.graph
     }
 
+    /// The branch choices taken on every path reaching this state.
+    #[must_use]
+    pub fn validity_conditions(&self) -> &ValidityConditions {
+        self.validity_conditions
+    }
+
     pub(crate) fn merge(&mut self, other: &Self, ctxt: AnalysisCtxt<'a, 'tcx>) {
         self.graph.merge(&other.graph, ctxt);
         if let JoinValidityConditionsResult::Changed(new_validity_conditions) = self
