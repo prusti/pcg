@@ -52,6 +52,9 @@ pub fn conditional_reborrow_expiry(mut a: ListNode) {
     // ~PCG: bb6[0] post_operands: a: W
     // ~PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> bb3
     // ~PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> bb2
+    // At the join, `(*x).value` is lent to the reborrow of `*x` made in the
+    // other arm.
+    // PCG: bb4 -> bb5: Lend (*x).value to borrow: x = &mut  *x under conditions bb0 -> bb3
 }
 
 fn main() {}

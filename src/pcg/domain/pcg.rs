@@ -20,7 +20,7 @@ use crate::{
         ctxt::{AnalysisCtxt, HasSettings},
         obtain::{ObtainType, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
+        place_capabilities::{BlockType, PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
     rustc_interface::middle::mir,
@@ -460,6 +460,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         };
         let mut repacks =
             slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
+        repacks.extend(self.join_unpackings(&other, ctxt));
+        other.join_unpackings(self, ctxt);
         for (place, cap) in self.place_capabilities.iter() {
             if other.place_capabilities.get(place, ctxt).is_some() {
                 continue;
@@ -471,11 +473,13 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                         .graph()
                         .edges_blocking(blocked.into(), ctxt.bc_ctxt())
                         .find(|edge| {
-                            !matches!(
-                                edge.kind(),
-                                BorrowPcgEdgeKind::Deref(_)
-                                    | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
-                            ) && !self.borrow.graph().edges().any(|e| e.kind() == edge.kind())
+                            (is_variant_unpacking(edge.kind())
+                                || !matches!(
+                                    edge.kind(),
+                                    BorrowPcgEdgeKind::Deref(_)
+                                        | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                                ))
+                                && !self.borrow.graph().edges().any(|e| e.kind() == edge.kind())
                         })
                 });
             repacks.push(
@@ -500,6 +504,81 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             .join(&other.place_capabilities, ctxt);
         self.owned.join_capabilities(&other.owned);
         Ok(repacks)
+    }
+
+    /// Unpack the places that are unpacked in `other` and still packed here,
+    /// so that the capabilities of their expansions survive the join.
+    fn join_unpackings(
+        &mut self,
+        other: &Self,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Vec<PcgAction<'tcx>> {
+        let mut unpackings = other
+            .borrow
+            .graph()
+            .edges()
+            .filter(|edge| !is_variant_unpacking(edge.kind()))
+            .filter_map(|edge| Some((unpacking_places(edge.kind())?.0, edge.to_owned_edge())))
+            .collect::<Vec<_>>();
+        unpackings.sort_by_key(|(base, _)| base.projection.len());
+        let mut actions = vec![];
+        for (base, edge) in unpackings {
+            let Some(mut capability) = self.place_capabilities.get(base, ctxt) else {
+                continue;
+            };
+            if !matches!(capability, CapabilityKind::Exclusive | CapabilityKind::Read)
+                || self
+                    .borrow
+                    .graph()
+                    .edges()
+                    .any(|e| unpacking_places(e.kind()).is_some_and(|(b, _, _)| b == base))
+            {
+                continue;
+            }
+            let is_deref = matches!(edge.kind(), BorrowPcgEdgeKind::Deref(_));
+            let read = other.place_capabilities.get(base, ctxt) == Some(CapabilityKind::Read)
+                || (is_deref && base.is_shared_ref(ctxt));
+            if read && capability == CapabilityKind::Exclusive {
+                self.apply_join_action(
+                    BorrowPcgAction::freeze(base, "join with a frozen place"),
+                    &mut actions,
+                    ctxt,
+                );
+                capability = CapabilityKind::Read;
+            }
+            let capabilities = match edge.kind() {
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) => {
+                    let block_type = if capability.is_read() {
+                        BlockType::Read
+                    } else {
+                        BlockType::Other
+                    };
+                    self.place_capabilities
+                        .expansion_capabilities(expansion, block_type, ctxt)
+                }
+                _ => PlaceCapabilities::deref_capabilities(base, capability, ctxt),
+            };
+            self.apply_join_action(
+                BorrowPcgAction::add_edge_setting(edge, capabilities, "join with an unpacking"),
+                &mut actions,
+                ctxt,
+            );
+        }
+        actions
+    }
+
+    fn apply_join_action(
+        &mut self,
+        action: BorrowPcgAction<'tcx>,
+        actions: &mut Vec<PcgAction<'tcx>>,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) {
+        self.borrow.apply_action(
+            action.clone(),
+            &mut self.place_capabilities,
+            ctxt.compiler_ctxt_with_settings(),
+        );
+        actions.push(action.into());
     }
 
     fn bridge_loop_expansions(
@@ -628,4 +707,14 @@ fn unpacking_places<'tcx>(
         _ => return None,
     };
     Some((base.as_current_place()?, target.as_current_place()?, guide))
+}
+
+/// Whether the edge unpacks an enum to one of its variants, which is known
+/// only on the paths that took the corresponding branch.
+fn is_variant_unpacking(kind: &BorrowPcgEdgeKind<'_>) -> bool {
+    matches!(
+        kind,
+        BorrowPcgEdgeKind::BorrowPcgExpansion(expansion)
+            if matches!(expansion.guide(), Some(RepackGuide::Downcast(..)))
+    )
 }

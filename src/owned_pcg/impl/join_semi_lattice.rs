@@ -94,6 +94,8 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                     ctxt,
                 ));
                 repacks.push(RepackOp::StorageDead(expansions.local));
+                self.capabilities
+                    .remove_all_for_local(expansions.local, ctxt);
                 *self.owned = LocalInitState::Unallocated;
                 Ok(repacks.into_iter().map(Into::into).collect())
             }
