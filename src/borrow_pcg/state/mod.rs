@@ -14,10 +14,7 @@ use crate::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
     },
-    pcg::{
-        PcgNodeWithPlace,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    },
+    pcg::PcgNodeWithPlace,
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
         data_structures::HashSet,
@@ -36,7 +33,6 @@ use crate::{
     borrow_pcg::{
         action::{BorrowPcgActionKind, LabelPlaceReason},
         edge::{
-            borrow::BorrowEdge,
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
             kind::BorrowPcgEdgeKind,
         },
@@ -49,7 +45,7 @@ use crate::{
     },
     pcg_validity_assert,
     rustc_interface::middle::{
-        mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
+        mir::{self, BasicBlock},
         ty,
     },
     utils::{
@@ -461,8 +457,18 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 }
                 ApplyActionResult::from_changed(removed)
             }
-            BorrowPcgActionKind::AddEdge { edge } => {
-                ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt))
+            BorrowPcgActionKind::AddEdge {
+                edge,
+                capabilities: set,
+            } => {
+                let mut changed = self.graph_mut().insert(edge, ctxt);
+                for (place, cap) in set {
+                    changed |= match cap {
+                        Some(cap) => capabilities.insert(place, cap, ctxt),
+                        None => capabilities.remove(place, ctxt).is_some(),
+                    };
+                }
+                ApplyActionResult::from_changed(changed)
             }
             BorrowPcgActionKind::LabelLifetimeProjection(action) => {
                 let predicate = map_label_predicate(action.predicate());
@@ -665,72 +671,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             .edges_blocking(node, ctxt)
             .flat_map(|e| e.blocked_by_nodes(ctxt).collect::<Vec<_>>())
             .collect()
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
-        &mut self,
-        blocked_place: Place<'tcx>,
-        assigned_place: Place<'tcx>,
-        kind: BorrowKind,
-        location: Location,
-        region: ty::Region<'tcx>,
-        capabilities: &mut PlaceCapabilities<'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        assert!(
-            assigned_place.ty(ctxt).ty.ref_mutability().is_some(),
-            "{:?}:{:?} Assigned place {:?} is not a reference. Ty: {:?}",
-            ctxt.body().source.def_id(),
-            location,
-            assigned_place,
-            assigned_place.ty(ctxt).ty
-        );
-        let borrow_edge = BorrowEdge::new(
-            blocked_place.into(),
-            assigned_place.into(),
-            kind,
-            location,
-            region,
-            ctxt,
-        );
-        assert!(self.graph.insert(
-            BorrowPcgEdge::new(
-                BorrowPcgEdgeKind::Borrow(borrow_edge),
-                self.validity_conditions.clone(),
-            ),
-            ctxt.ctxt()
-        ));
-
-        if let BorrowKind::Mut {
-            kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
-        } = kind
-        {
-            let _ = capabilities.remove(blocked_place, ctxt);
-        } else {
-            let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-            match blocked_place_capability {
-                Some(CapabilityKind::Exclusive) => {
-                    assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
-                }
-                Some(CapabilityKind::Read) => {
-                    // Do nothing, this just adds another shared borrow
-                }
-                other => {
-                    // Shouldn't be None or Write, due to capability updates
-                    // based on the TripleWalker analysis
-                    pcg_validity_assert!(
-                        false,
-                        "{:?}: Unexpected capability for borrow blocked place {:?}: {:?}",
-                        location,
-                        blocked_place,
-                        other
-                    );
-                }
-            }
-        }
     }
 }
 
