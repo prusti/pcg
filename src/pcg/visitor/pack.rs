@@ -403,6 +403,20 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 edges_to_remove.push(&edge, reason);
             }
         }
+        // A raw pointer dereference borrows nothing from the pointer: once the
+        // pointer is gone, the dereferenced place no longer depends on it.
+        if ancestor_place.is_none() {
+            for edge in self.pcg.borrows_graph().edges() {
+                if let BorrowPcgEdgeKind::RawPtrDeref(deref) = edge.kind()
+                    && deref.blocked_place.is_old()
+                {
+                    edges_to_remove.push(
+                        &edge.to_owned_edge(),
+                        "Dereferenced raw pointer is dead".into(),
+                    );
+                }
+            }
+        }
         edges_to_remove
     }
 }

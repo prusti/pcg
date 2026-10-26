@@ -48,6 +48,11 @@ impl<K: Hash + Eq, V, S: BuildHasher> LinkedHashMap<K, V, S> {
         K: Borrow<Q>,
         Q: Eq + Hash,
     {
+        // Once `node` is dead, the raw pointer dereference no longer keeps the
+        // borrow of `self.map` alive, so `*self` is not frozen when `detach`
+        // borrows it.
+        // PCG: bb5[19] pre_operands: Remove Edge {*node before bb5[18]:PreMain} -> {**node before bb5[18]:PreMain} under conditions bb2 -> bb5
+        // ~PCG: bb9[7] pre_operands: Refreeze self to *self
         let (value, node_ptr_opt) = match self.map.get(Qey::from_ref(k)) {
             None => (None, None),
             Some(node) => (Some(unsafe { &mut (**node).value }), Some(*node)),
