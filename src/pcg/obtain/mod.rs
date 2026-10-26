@@ -237,13 +237,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             {
                 continue;
             }
-            let action = PcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "restore capability to leaf place",
-                ctxt,
-            );
-            self.apply_action(action)?;
+            self.apply_action(BorrowPcgAction::unfreeze(place, "unfreeze leaf place").into())?;
         }
         Ok(())
     }

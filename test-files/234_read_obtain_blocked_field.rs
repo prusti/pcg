@@ -37,4 +37,18 @@ fn client_reborrow(p: &mut Foo) {
     let j = *x_ref;
 }
 
+/// Packing the read of `f.x` must not unfreeze `f` while `f_ref` is live.
+fn read_while_shared(mut f: Foo) -> u32 {
+    let f_ref = &f;
+    let k = f.x;
+    let j = f_ref.x;
+    f.x = 3;
+    // PCG: bb0[1] post_operands: Freeze f
+    // PCG: bb0[5] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: None, _marker: PhantomData<&()> })
+    // PCG: bb0[5] post_operands: f: R
+    // ~PCG: bb0[5] pre_operands: Unfreeze f
+    // PCG: bb0[9] pre_operands: Unfreeze f
+    k + j
+}
+
 fn main() {}

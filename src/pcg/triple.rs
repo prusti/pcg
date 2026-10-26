@@ -50,6 +50,8 @@ pub(crate) enum PlaceCondition<'tcx> {
     /// This distinction is relevant for expanding lifetime projections: the lifetime projection base of *x will
     /// be labelled, similarly to the situation where the borrow was exclusive.
     ExpandTwoPhase(Place<'tcx>),
+    /// The place is shared or two-phase borrowed: it is frozen at R.
+    Freeze(Place<'tcx>),
     Capability(Place<'tcx>, CapabilityKind),
     RemoveCapability(Place<'tcx>),
     AllocateOrDeallocate(Local),
@@ -150,13 +152,13 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             &Ref(_, kind, place) => match kind {
                 BorrowKind::Shared => Triple::new(
                     PlaceCondition::read(place),
-                    Some(PlaceCondition::read(place)),
+                    Some(PlaceCondition::Freeze(place.into())),
                 ),
                 BorrowKind::Mut {
                     kind: MutBorrowKind::TwoPhaseBorrow,
                 } => Triple::new(
                     PlaceCondition::ExpandTwoPhase(place.into()),
-                    Some(PlaceCondition::read(place)),
+                    Some(PlaceCondition::Freeze(place.into())),
                 ),
                 BorrowKind::Fake(..) => return Ok(()),
                 BorrowKind::Mut { .. } => Triple::new(

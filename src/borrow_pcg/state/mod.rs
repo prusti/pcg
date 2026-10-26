@@ -318,6 +318,45 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 }
                 ApplyActionResult::changed_no_display()
             }
+            BorrowPcgActionKind::Freeze { place } => {
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Exclusive),
+                    [ctxt],
+                    "Freezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                capabilities.insert(place, CapabilityKind::Read, ctxt);
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::Unfreeze { place } => {
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Unfreezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                capabilities.insert(place, CapabilityKind::Exclusive, ctxt);
+                self.label_lifetime_projections(
+                    &LabelNodePredicate::all_future_postfixes(place),
+                    None,
+                    ctxt,
+                );
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => {
+                let place = borrow.blocked_place.place();
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Activating a two-phase borrow of {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                let _ = capabilities.remove(place, ctxt);
+                ApplyActionResult::changed_no_display()
+            }
             BorrowPcgActionKind::LabelPlace(action) => self
                 .label_place_and_update_related_capabilities(
                     action.place,
