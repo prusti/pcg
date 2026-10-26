@@ -265,8 +265,13 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         // If in a join we don't want to change capabilities because this will
         // essentially be handled by the join logic.
         // See 69_http_header_map.rs
-        if reason != LabelPlaceReason::JoinOwnedReadAndWriteCapabilities {
-            capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt));
+        match reason {
+            LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {}
+            // The referent and its read copies move to the label.
+            LabelPlaceReason::DetachSharedReferent => {
+                capabilities.retain(|p, _| !place.is_prefix_of(p));
+            }
+            _ => capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt)),
         }
         let display = display_node_replacements(&replacements, ctxt, OutputMode::Normal);
         ApplyActionResult {
