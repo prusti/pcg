@@ -465,6 +465,12 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 }
                 ApplyActionResult::from_changed(changed)
             }
+            BorrowPcgActionKind::Lend { place, edge } => {
+                let changed = self.graph_mut().insert(edge, ctxt);
+                ApplyActionResult::from_changed(
+                    capabilities.remove(place, ctxt).is_some() || changed,
+                )
+            }
             BorrowPcgActionKind::LabelLifetimeProjection(action) => {
                 let predicate = map_label_predicate(action.predicate());
                 ApplyActionResult::from_changed(self.label_lifetime_projections(

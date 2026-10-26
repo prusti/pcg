@@ -2,8 +2,10 @@ use std::borrow::Cow;
 
 use crate::{
     DebugLines,
-    action::{AppliedActions, PcgAction, PcgActions},
+    action::{AppliedActions, BorrowPcgAction, PcgAction, PcgActions},
     borrow_pcg::{
+        action::BorrowPcgActionKind,
+        borrow_pcg_edge::BorrowPcgEdgeLike,
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
@@ -407,15 +409,33 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) -> Result<PcgActions<'tcx>, PcgError> {
         let target = other;
         let mut slf = self.clone();
-        let repacks = slf.join_owned(
+        let mut repacks = slf.join_owned(
             target,
             SnapshotLocation::After(self_block),
             SnapshotLocation::BeforeJoin(other_block),
             ctxt,
         )?;
+        // As for loop expansions, the branch choice being taken is implied.
+        let mut unpacked_by_join = HashSet::default();
+        for action in &mut repacks {
+            if let PcgAction::Borrow(action) = action
+                && let BorrowPcgActionKind::AddEdge { edge, .. } = &mut action.kind
+            {
+                edge.conditions = edge.conditions.without_branch_choice(self_block);
+                if let Some((base, _)) = unpacking_places(edge.kind()) {
+                    unpacked_by_join.insert(base);
+                }
+            }
+        }
         let mut actions = PcgActions::new(repacks);
         if ctxt.is_loop_head(other_block) {
-            actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
+            actions.extend(slf.bridge_loop_expansions(
+                target,
+                self_block,
+                other_block,
+                &unpacked_by_join,
+                ctxt,
+            )?);
         }
         Ok(actions)
     }
@@ -441,6 +461,32 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut repacks =
             slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
         for (place, cap) in self.place_capabilities.iter() {
+            if other.place_capabilities.get(place, ctxt).is_some() {
+                continue;
+            }
+            let lending_edge =
+                std::iter::successors(Some(place), |p| p.parent_place()).find_map(|blocked| {
+                    other
+                        .borrow
+                        .graph()
+                        .edges_blocking(blocked.into(), ctxt.bc_ctxt())
+                        .find(|edge| {
+                            !matches!(
+                                edge.kind(),
+                                BorrowPcgEdgeKind::Deref(_)
+                                    | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                            ) && !self.borrow.graph().edges().any(|e| e.kind() == edge.kind())
+                        })
+                });
+            repacks.push(
+                match lending_edge {
+                    Some(edge) => BorrowPcgAction::lend(place, edge.to_owned_edge(), "join"),
+                    None => BorrowPcgAction::weaken(place, cap, None, "join"),
+                }
+                .into(),
+            );
+        }
+        for (place, cap) in self.place_capabilities.iter() {
             let Some(_owned) = place.as_owned_place(ctxt) else {
                 continue;
             };
@@ -461,23 +507,13 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other: &Self,
         self_block: mir::BasicBlock,
         loop_head: mir::BasicBlock,
+        unpacked_by_join: &HashSet<Place<'tcx>>,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
     ) -> Result<PcgActions<'tcx>, PcgError> {
         let mut expansions = Vec::new();
         for edge in other.borrow.graph().edges() {
             let conditions = edge.conditions.without_branch_choice(self_block);
-            let (base, target) = match edge.kind() {
-                BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place()),
-                BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
-                    let Some(target) = expansion.expansion().first() else {
-                        continue;
-                    };
-                    (expansion.base(), *target)
-                }
-                _ => continue,
-            };
-            if let (Some(base), Some(target)) = (base.as_current_place(), target.as_current_place())
-            {
+            if let Some((base, target)) = unpacking_places(edge.kind()) {
                 expansions.push((base, target, conditions));
             }
         }
@@ -509,7 +545,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 },
                 SnapshotLocation::Loop(loop_head),
             );
-            if obtainer.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
+            if obtainer.expand_place_one_level(base, &expansion, obtain_type, ctxt)?
+                || unpacked_by_join.contains(&base)
+            {
                 obtainer.expand_lifetime_projections_one_level(
                     base,
                     &expansion,
@@ -572,4 +610,16 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             owned,
         }
     }
+}
+
+/// The base and the first expanded place of a place unpacking edge.
+fn unpacking_places<'tcx>(kind: &BorrowPcgEdgeKind<'tcx>) -> Option<(Place<'tcx>, Place<'tcx>)> {
+    let (base, target) = match kind {
+        BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place()),
+        BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
+            (expansion.base(), *expansion.expansion().first()?)
+        }
+        _ => return None,
+    };
+    Some((base.as_current_place()?, target.as_current_place()?))
 }
