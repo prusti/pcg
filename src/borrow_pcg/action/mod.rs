@@ -6,7 +6,7 @@ use serde_derive::Serialize;
 
 use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
-    RestoreCapability, Weaken,
+    Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
@@ -83,27 +83,22 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
+        Self::remove_edge_regaining(edge, vec![], context)
+    }
+
+    pub(crate) fn remove_edge_regaining(
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        regained: Vec<(P, CapabilityKind)>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::RemoveEdge(edge),
+            kind: BorrowPcgActionKind::RemoveEdge { edge, regained },
             debug_info: Some(context.into()),
         }
     }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-    pub(crate) fn restore_capability(
-        place: P,
-        capability: CapabilityKind,
-        debug_context: impl Into<DisplayOutput>,
-    ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Restore(
-                RestoreCapability::new(place, capability),
-            ),
-            debug_info: Some(debug_context.into()),
-        }
-    }
-
     pub(crate) fn weaken(
         place: P,
         from: CapabilityKind,
@@ -391,7 +386,6 @@ pub enum BorrowPcgActionKind<
 > {
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
-    Restore(RestoreCapability<'tcx, P>),
     /// The place goes from E to R because it is read or borrowed for read.
     /// Unlike a [`Weaken`], the E capability is only suspended: it comes back
     /// through [`BorrowPcgActionKind::Unfreeze`] or
@@ -438,7 +432,15 @@ pub enum BorrowPcgActionKind<
     /// symbolic-execution based Prusti purification already performs some
     /// filtering on edges based on validity conditions and might want to ignore
     /// removal actions for edges that it already ignored.
-    RemoveEdge(BorrowPcgEdge<'tcx, EdgeKind, VC>),
+    ///
+    /// The places in `regained` were blocked only by the edge and get these
+    /// capabilities back: the edge was an unpacking (its children's
+    /// capability moves back to its base) or a loan (the lent capability
+    /// returns).
+    RemoveEdge {
+        edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
+        regained: Vec<(P, CapabilityKind)>,
+    },
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
@@ -489,9 +491,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 action.display_output(ctxt, mode)
             }
             BorrowPcgActionKind::Weaken(weaken) => weaken.display_output(ctxt, mode),
-            BorrowPcgActionKind::Restore(restore_capability) => {
-                restore_capability.display_output(ctxt, mode)
-            }
             BorrowPcgActionKind::Freeze { place } => DisplayOutput::join(
                 vec!["Freeze".into(), place.display_output(ctxt, mode)],
                 &DisplayOutput::SPACE,
@@ -520,10 +519,26 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 &DisplayOutput::SPACE,
             ),
             BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
-            BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
-                vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
-                &DisplayOutput::SPACE,
-            ),
+            BorrowPcgActionKind::RemoveEdge { edge, regained } => {
+                let mut words = vec!["Remove Edge".into(), edge.display_output(ctxt, mode)];
+                if !regained.is_empty() {
+                    words.push(DisplayOutput::join(
+                        regained.iter().map(|(place, cap)| {
+                            DisplayOutput::join(
+                                vec![
+                                    "returning".into(),
+                                    cap.display_output(ctxt, mode),
+                                    "to".into(),
+                                    place.display_output(ctxt, mode),
+                                ],
+                                &DisplayOutput::SPACE,
+                            )
+                        }),
+                        &", ".into(),
+                    ));
+                }
+                DisplayOutput::join(words, &DisplayOutput::SPACE)
+            }
             BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
                 vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
                 &DisplayOutput::SPACE,

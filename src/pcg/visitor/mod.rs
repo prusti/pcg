@@ -1,9 +1,10 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge_data::LabelNodePredicate,
         region_projection::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
@@ -18,6 +19,7 @@ use crate::{
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
     utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
@@ -116,13 +118,24 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
                 && self.pcg.capability_of(place, self.ctxt).is_none()
             {
-                let action = PcgAction::restore_capability(
-                    place,
-                    CapabilityKind::Exclusive,
-                    "Leaf future node restore cap",
-                    self.ctxt,
+                // The edge that blocked the place would have returned its
+                // capability when it was removed.
+                let ctxt = self.ctxt;
+                pcg_validity_assert!(
+                    false,
+                    [ctxt],
+                    "{:?}: {} is unblocked without a capability",
+                    self.location(),
+                    place.display_string(ctxt)
                 );
-                self.record_and_apply_action(action)?;
+                self.record_and_apply_action(
+                    BorrowPcgAction::label_lifetime_projection(
+                        LabelNodePredicate::all_future_postfixes(place),
+                        None,
+                        "Leaf future node: remove future label",
+                    )
+                    .into(),
+                )?;
             }
         }
         Ok(())

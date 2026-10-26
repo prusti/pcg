@@ -106,16 +106,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn restore_place(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
-        // The place to restore could come from a local that was conditionally
-        // allocated and therefore we can't get back to it, and certainly
-        // shouldn't give it any capability
-        // TODO: Perhaps the join should label such places?
-        if !self.pcg.owned.is_allocated(place.local) {
-            return Ok(());
-        }
-        let blocked_cap = self.pcg.capability_of(place, self.ctxt);
-
+    /// The capability that `place` has once nothing blocks it.
+    fn unblocked_capability(&self, place: Place<'tcx>) -> CapabilityKind {
         // TODO: If the place projects a shared ref, do we even need to restore a capability?
         //
         // For owned places we consult the initialisation state so we
@@ -123,7 +115,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // moved out on some incoming path (#137): the join of the init
         // trees would then leave the place as `Uninit`, which maps to
         // `Write`.
-        let restore_cap = if place.place().projects_shared_ref(self.ctxt)
+        if place.place().projects_shared_ref(self.ctxt)
             || self
                 .ctxt
                 .body_analysis()
@@ -136,25 +128,40 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             init_cap
         } else {
             CapabilityKind::Exclusive
-        };
+        }
+    }
 
-        // The blocked capability would be None if the place was mutably
-        // borrowed. The capability would be ShallowExclusive if the place is
-        // a mutable reference (when dereferencing a mutable ref, the ref
-        // place retains shallow-exclusive capability).
-        if matches!(
+    /// The capability that `place` gets back when the edge blocking it is
+    /// removed: it was lent (no capability), packed (no capability), or a
+    /// mutable reference whose dereference is packed (`e`).
+    fn regained_capability(&self, place: Place<'tcx>) -> Option<CapabilityKind> {
+        // The place could come from a local that was conditionally allocated
+        // and therefore we can't get back to it, and certainly shouldn't give
+        // it any capability
+        // TODO: Perhaps the join should label such places?
+        if !self.pcg.owned.is_allocated(place.local) {
+            return None;
+        }
+        let blocked_cap = self.pcg.capability_of(place, self.ctxt);
+        let unblocked_cap = self.unblocked_capability(place);
+        (matches!(
             blocked_cap,
             None | Some(CapabilityKind::Write | CapabilityKind::ShallowExclusive)
-        ) && blocked_cap != Some(restore_cap)
-        {
-            self.record_and_apply_action(PcgAction::restore_capability(
-                place,
-                restore_cap,
-                context.to_owned(),
-                self.ctxt,
-            ))?;
-        } else if blocked_cap == Some(CapabilityKind::Read)
-            && restore_cap == CapabilityKind::Exclusive
+        ) && blocked_cap != Some(unblocked_cap))
+        .then_some(unblocked_cap)
+    }
+
+    /// Updates `place` after the edge blocking it was removed: a frozen leaf
+    /// is unfrozen, and the placeholder labels of its lifetime projections
+    /// are removed.
+    fn place_unblocked(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
+        if !self.pcg.owned.is_allocated(place.local) {
+            return Ok(());
+        }
+        if self
+            .pcg
+            .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
+            && self.unblocked_capability(place) == CapabilityKind::Exclusive
             && self.frozen_ancestor(place) == place
             && self
                 .pcg
@@ -181,44 +188,25 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
         Ok(())
     }
-    fn update_unblocked_node_capabilities_and_remove_placeholder_projections(
-        &mut self,
-        edge: &BorrowPcgEdgeKind<'tcx>,
-    ) -> Result<(), PcgError> {
-        // Snapshot the borrow-graph places *before* acquiring `fg` so the
-        // owned HashSet doesn't hold a borrow of the graph across the
-        // restore_place call below.
+    /// The places blocked by `edge` that, after its removal, are no longer
+    /// blocked and are still tracked.
+    fn places_unblocked_by_removal(&self, edge: &BorrowPcgEdgeKind<'tcx>) -> Vec<Place<'tcx>> {
         let borrow_places = self.pcg.borrow.graph.places(self.ctxt.bc_ctxt());
-
         let fg = self.pcg.borrow.graph.frozen_graph();
-        let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
-
-        // After removing an edge, some nodes may become accessible, their capabilities should be restored
-        let to_restore = blocked_nodes
-            .into_iter()
+        edge.blocked_nodes(self.ctxt.bc_ctxt())
             .filter(|node| !fg.has_edge_blocking(*node, self.ctxt.bc_ctxt()))
-            .collect::<Vec<_>>();
-
-        for node in to_restore {
-            if let Some(place) = node.as_current_place() {
-                // Only restore if the place is still tracked somewhere.  After
-                // a loop abstraction edge is removed, the blocked place (e.g.
-                // `(*variant).fields`) may no longer appear in either the owned
-                // PCG or the borrow graph; restoring a capability there would
-                // violate the invariant that every capability-holding place must
-                // be tracked.
-                if !borrow_places.contains(&place)
-                    && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
-                {
-                    continue;
-                }
-                self.restore_place(
-                    place,
-                    "update_unblocked_node_capabilities_and_remove_placeholder_projections",
-                )?;
-            }
-        }
-        Ok(())
+            .filter_map(|node| node.as_current_place())
+            // Only places that are still tracked somewhere. After a loop
+            // abstraction edge is removed, the blocked place (e.g.
+            // `(*variant).fields`) may no longer appear in either the owned
+            // PCG or the borrow graph; giving a capability there would
+            // violate the invariant that every capability-holding place must
+            // be tracked.
+            .filter(|place| {
+                borrow_places.contains(place)
+                    || self.pcg.owned.contains_place(*place, self.ctxt.bc_ctxt())
+            })
+            .collect()
     }
 
     /// If the following conditions apply:
@@ -263,12 +251,26 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         edges: HashSet<Conditioned<DerefEdge<'tcx>>>,
         context: &str,
     ) -> Result<(), PcgError> {
-        for edge in edges {
+        let ref_place = deref_place
+            .as_current_place()
+            .map(|deref_place| deref_place.parent_place().unwrap());
+        let edges = edges.into_iter().collect::<Vec<_>>();
+        let mut unblocked = vec![];
+        for (i, edge) in edges.iter().enumerate() {
             let borrow_edge: BorrowPcgEdge<'tcx> =
-                BorrowPcgEdge::new(edge.value.into(), edge.conditions);
-            self.apply_action(
-                BorrowPcgAction::remove_edge(borrow_edge, context.to_owned()).into(),
-            )?;
+                BorrowPcgEdge::new(edge.value.into(), edge.conditions.clone());
+            // Removing the last edge packs the dereference into the reference.
+            unblocked = self.remove_edge_regaining(borrow_edge, context.to_owned(), |slf| {
+                // Perhaps the place isn't yet a leaf(e.g. the ref itself is
+                // conditionally borrowed): then it stays without its
+                // capability
+                ref_place
+                    .filter(|ref_place| {
+                        i + 1 == edges.len() && slf.pcg.is_leaf_place(*ref_place, slf.ctxt)
+                    })
+                    .into_iter()
+                    .collect()
+            })?;
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
         if let Some(deref_place) = deref_place.as_current_place() {
@@ -280,15 +282,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
-            let ref_place = deref_place.parent_place().unwrap();
-            // Perhaps the place isn't yet a leaf(e.g. the ref itself is conditionally borrowed)
-            // In that case we shouldn't restore its caps
-            if self.pcg.is_leaf_place(ref_place, self.ctxt) {
-                self.restore_place(
-                    ref_place,
-                    &format!("{context}: remove_deref_edges_to: restore parent place"),
-                )?;
-            }
+        }
+        for place in unblocked {
+            self.place_unblocked(place, &format!("{context}: remove_deref_edges_to"))?;
         }
         Ok(())
     }
@@ -308,10 +304,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context,
             );
         }
-        self.record_and_apply_action(
-            BorrowPcgAction::remove_edge(edge.clone(), context.to_owned()).into(),
-        )?;
-
         // This is true iff the expansion is for a place (not a region projection), and changes
         // could have been made to the root place via the expansion
         // We check that the base is place and either:
@@ -329,7 +321,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             false
         };
 
-        self.update_unblocked_node_capabilities_and_remove_placeholder_projections(&edge.value)?;
+        // After removing an edge, some nodes may become accessible: an
+        // unpacking is packed, or a loan ends.
+        let unblocked = self.remove_edge_regaining(edge.clone(), context.to_owned(), |slf| {
+            slf.places_unblocked_by_removal(&edge.value)
+        })?;
+        for place in unblocked {
+            self.place_unblocked(place, context)?;
+        }
 
         match &edge.value {
             BorrowPcgEdgeKind::Deref(deref) => {
@@ -516,23 +515,49 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     where
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
+        let result = self.apply_action_without_recording(&action)?;
+        self.record_applied_action(action, result);
+        Ok(())
+    }
+
+    /// Removes `edge`; the places `unblocked` finds unblocked afterwards get
+    /// their capability back as part of the removal. Returns those places.
+    pub(crate) fn remove_edge_regaining(
+        &mut self,
+        edge: BorrowPcgEdge<'tcx>,
+        context: String,
+        unblocked: impl FnOnce(&Self) -> Vec<Place<'tcx>>,
+    ) -> Result<Vec<Place<'tcx>>, PcgError> {
+        let result = self.apply_action_without_recording(
+            &BorrowPcgAction::remove_edge(edge.clone(), context.clone()).into(),
+        )?;
+        let unblocked = unblocked(self);
+        let regained = unblocked
+            .iter()
+            .filter_map(|place| {
+                self.regained_capability(*place)
+                    .map(|capability| (*place, capability))
+            })
+            .collect::<Vec<_>>();
+        let action = BorrowPcgAction::remove_edge_regaining(edge, regained, context).into();
+        // The edge is already removed, this only gives back the capabilities.
+        self.apply_action_without_recording(&action)?;
+        self.record_applied_action(action, result);
+        Ok(unblocked)
+    }
+
+    fn apply_action_without_recording(
+        &mut self,
+        action: &PcgAction<'tcx>,
+    ) -> Result<ApplyActionResult, PcgError> {
         tracing::debug!("Applying Action: {}", action.debug_line(self.ctxt));
-        let result = match &action {
+        Ok(match action {
             PcgAction::Borrow(action) => {
                 self.pcg
                     .borrow
                     .apply_action(action.clone(), self.pcg.place_capabilities, self.ctxt)
             }
             PcgAction::Owned(owned_action) => match owned_action.kind {
-                RepackOp::RegainLoanedCapability(regained_capability) => {
-                    self.pcg.place_capabilities.regain_loaned_capability(
-                        regained_capability.place,
-                        regained_capability.capability,
-                        self.pcg.borrow.as_mut_ref(),
-                        self.ctxt,
-                    );
-                    ApplyActionResult::changed_no_display()
-                }
                 RepackOp::Expand(expand) => {
                     self.pcg.owned.perform_expand_action(
                         expand,
@@ -579,7 +604,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
                 _ => unreachable!(),
             },
-        };
+        })
+    }
+
+    fn record_applied_action(&mut self, action: PcgAction<'tcx>, result: ApplyActionResult) {
         #[cfg(feature = "visualization")]
         let location = self.location();
         #[cfg(feature = "visualization")]
@@ -602,7 +630,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             }
             actions.push(AppliedAction::new(action, result));
         }
-        Ok(())
     }
     pub(crate) fn phase(&self) -> Option<EvalStmtPhase> {
         match self.prev_snapshot_location {

@@ -668,7 +668,10 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
                         self.ctxt,
                     );
                 }
-                BorrowPcgActionKind::RemoveEdge(borrow_pcg_edge) => {
+                BorrowPcgActionKind::RemoveEdge {
+                    edge: borrow_pcg_edge,
+                    ..
+                } => {
                     self.graph.remove(borrow_pcg_edge.kind());
                 }
                 _ => unreachable!(),
