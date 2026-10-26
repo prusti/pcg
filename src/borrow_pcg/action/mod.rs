@@ -134,6 +134,16 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
         }
     }
 
+    pub(crate) fn refreeze(place: P, to: Vec<P>, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Refreeze {
+                place,
+                to,
+            },
+            debug_info: Some(context.into()),
+        }
+    }
+
     pub(crate) fn activate_two_phase_borrow(
         borrow: BorrowEdge<'tcx, P>,
         context: impl Into<DisplayOutput>,
@@ -382,17 +392,37 @@ pub enum BorrowPcgActionKind<
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
     Restore(RestoreCapability<'tcx, P>),
-    /// The place goes from E to R because a shared or two-phase borrow of it
-    /// is created. Unlike a [`Weaken`], the E capability is only suspended:
-    /// it comes back through [`BorrowPcgActionKind::Unfreeze`] of the same
-    /// place, or is lent by [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`].
+    /// The place goes from E to R because it is read or borrowed for read.
+    /// Unlike a [`Weaken`], the E capability is only suspended: it comes back
+    /// through [`BorrowPcgActionKind::Unfreeze`] or
+    /// [`BorrowPcgActionKind::Refreeze`] of the same place, or is lent by
+    /// [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`].
+    ///
+    /// If the place is unpacked, it has no capability and its descendants
+    /// hold the E or are frozen; they all become read copies under the
+    /// frozen place.
+    ///
+    /// A place with R whose parent has R is a read copy of a frozen
+    /// ancestor, not frozen itself.
     Freeze {
         place: P,
     },
     /// The place goes from R back to the E suspended by
-    /// [`BorrowPcgActionKind::Freeze`], because no borrow of it is left.
+    /// [`BorrowPcgActionKind::Freeze`], because no borrow of it is left. If
+    /// the place is unpacked, the read unpacking becomes an exclusive one (as
+    /// for [`BorrowPcgActionKind::Refreeze`] with no `to`).
     Unfreeze {
         place: P,
+    },
+    /// The freeze of the unpacked `place` ends while its descendants `to` are
+    /// still borrowed: the freeze moves to `to`, which become frozen, and the
+    /// rest of the unpacking of `place` gets its E back. The unpacking becomes
+    /// an exclusive one: `place` and the places between it and `to` keep no
+    /// capability (`e` for a mutable reference), and the other read copies
+    /// get E (R if they are behind a shared reference).
+    Refreeze {
+        place: P,
+        to: Vec<P>,
     },
     /// The two-phase borrow is activated: its blocked place goes from R to
     /// lent, i.e. the E suspended by the reservation's
@@ -468,6 +498,18 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             ),
             BorrowPcgActionKind::Unfreeze { place } => DisplayOutput::join(
                 vec!["Unfreeze".into(), place.display_output(ctxt, mode)],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::Refreeze { place, to } => DisplayOutput::join(
+                vec![
+                    "Refreeze".into(),
+                    place.display_output(ctxt, mode),
+                    "to".into(),
+                    DisplayOutput::join(
+                        to.iter().map(|p| p.display_output(ctxt, mode)),
+                        &", ".into(),
+                    ),
+                ],
                 &DisplayOutput::SPACE,
             ),
             BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => DisplayOutput::join(

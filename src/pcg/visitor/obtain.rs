@@ -153,6 +153,19 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context.to_owned(),
                 self.ctxt,
             ))?;
+        } else if blocked_cap == Some(CapabilityKind::Read)
+            && restore_cap == CapabilityKind::Exclusive
+            && self.frozen_ancestor(place) == place
+            && self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_none()
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::unfreeze(place, context.to_owned()).into(),
+            )?;
         }
         for rp in place.lifetime_projections(self.ctxt) {
             self.record_and_apply_action(
@@ -414,22 +427,35 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn remove_read_permission_downwards(
-        &mut self,
-        upgraded_place: Place<'tcx>,
-    ) -> Result<(), PcgError> {
-        let to_remove = self
+    /// Returns the read copies in the unpacking of `place` to it, for an
+    /// unpacking that cannot be packed (because places in it are borrowed).
+    /// Borrowed copies cannot be returned and are kept.
+    pub(crate) fn drop_read_copies(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        let copies = self
             .pcg
             .place_capabilities
-            .iter()
-            .filter(|(p, _)| {
-                p.projection.len() > upgraded_place.projection.len()
-                    && upgraded_place.is_prefix_of(*p)
-            })
+            .capabilities_for_strict_postfixes_of(place)
             .collect::<Vec<_>>();
-        for (p, cap) in to_remove {
+        let borrowed = copies
+            .iter()
+            .map(|(p, _)| *p)
+            .filter(|p| self.holds_freeze(*p))
+            .collect::<Vec<_>>();
+        let ctxt = self.ctxt;
+        for (p, cap) in copies {
+            if borrowed.iter().any(|b| b.is_prefix_of(p)) {
+                continue;
+            }
+            pcg_validity_assert!(
+                cap.is_read(),
+                [ctxt],
+                "{} in the read unpacking of {} has capability {:?}",
+                p.display_string(self.ctxt),
+                place.display_string(self.ctxt),
+                cap
+            );
             self.record_and_apply_action(
-                BorrowPcgAction::weaken(p, cap, None, "Remove read permission downwards").into(),
+                BorrowPcgAction::weaken(p, cap, None, "return read copy").into(),
             )?;
         }
         Ok(())
@@ -440,18 +466,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())
         );
-        self.record_and_apply_action(
-            BorrowPcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "upgrade_read_to_exclusive",
-            )
-            .into(),
-        )?;
-        self.remove_read_permission_downwards(place)?;
-        if let Some(parent) = place.parent_place() {
-            self.remove_read_permission_upwards_and_label_rps(
-                parent,
+        self.drop_read_copies(place)?;
+        let frozen = self.frozen_ancestor(place);
+        self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+        if frozen != place {
+            self.label_rps_up_to(
+                place.parent_place().unwrap(),
+                frozen,
                 AdjustCapabilityReason::UpgradeReadToExclusive,
             )?;
         }
@@ -724,6 +745,23 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             );
         }
 
+        // An unpacked borrowed place is read by freezing its unpacking (owned
+        // places are frozen by the collapse above).
+        if obtain_cap.is_read()
+            && place.as_owned_place(self.ctxt).is_none()
+            && self.pcg.capability_of(place, self.ctxt).is_none()
+            && self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::freeze(place, "read an unpacked place").into(),
+            )?;
+        }
+
         // STEP 3
         if !obtain_cap.is_read() {
             tracing::debug!(
@@ -825,6 +863,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg
             .place_capabilities
             .update_for_deref(ref_place, capability, self.ctxt)
+    }
+
+    fn freeze_for_read_unpacking(&mut self, base: Place<'tcx>) -> Result<(), PcgError> {
+        if self
+            .pcg
+            .place_capability_equals(base, CapabilityKind::Exclusive, self.ctxt)
+        {
+            self.record_and_apply_action(BorrowPcgAction::freeze(base, "unpack for read").into())?;
+        }
+        Ok(())
     }
 
     fn capability_for_expand(
