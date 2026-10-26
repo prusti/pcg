@@ -375,11 +375,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// the edge into that projection is removed, the place retains only
     /// [`CapabilityKind::Write`].
     ///
-    /// The place may still be dereferenced, or the borrow assigned to it still
-    /// be in the graph, in edges that are removed only later; consumers of the
-    /// actions may need the place's value to apply those removals. Such a place
-    /// is weakened only once all edges removed together with `edge` are gone,
-    /// see [`Self::finish_weakening_places_with_dead_lifetime_projections`].
+    /// The place may still be dereferenced, reached by a dereference of its
+    /// parent, or the borrow assigned to it still be in the graph, in edges
+    /// that are removed only later; consumers of the actions may need the
+    /// place's value to apply those removals. Such a place is weakened only
+    /// once all edges removed together with `edge` are gone, see
+    /// [`Self::finish_weakening_places_with_dead_lifetime_projections`].
     fn weaken_places_with_dead_lifetime_projections(
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
@@ -457,8 +458,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    /// Whether the graph still dereferences `place` or contains the borrow
-    /// assigned to it.
+    /// Whether the graph still dereferences `place`, reaches it by a
+    /// dereference of its parent (whose removal packs `place` back into the
+    /// parent), or contains the borrow assigned to it.
     fn reference_in_use(&self, place: Place<'tcx>) -> bool {
         let place = MaybeLabelledPlace::Current(place);
         self.pcg
@@ -466,7 +468,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .graph()
             .edges()
             .any(|edge| match edge.kind() {
-                BorrowPcgEdgeKind::Deref(deref) => deref.blocked_place == place,
+                BorrowPcgEdgeKind::Deref(deref) => {
+                    deref.blocked_place == place || deref.deref_place == place
+                }
                 BorrowPcgEdgeKind::Borrow(borrow) => borrow.assigned_ref == place,
                 _ => false,
             })
