@@ -17,7 +17,7 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     error::PcgError,
-    owned_pcg::{ExpandedPlace, RepackOp},
+    owned_pcg::{ExpandedPlace, RepackGuide, RepackOp},
     pcg::{
         CapabilityKind, PcgNodeLike,
         obtain::{
@@ -63,7 +63,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
-            if self.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
+            if self.expand_place_one_level(base, &expansion, None, obtain_type, ctxt)? {
                 tracing::debug!(
                     "expand region projections for {} one level",
                     base.display_string(ctxt.ctxt())
@@ -167,10 +167,12 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
+        guide: Option<RepackGuide>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<bool, PcgError> {
-        let place_expansion = PlaceExpansion::from_places(expansion.expansion(), ctxt);
+        let place_expansion =
+            PlaceExpansion::from_places(expansion.expansion(), ctxt).with_guide(guide);
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
             if self
                 .borrows_graph()

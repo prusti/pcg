@@ -17,7 +17,8 @@ use std::{
 };
 
 use crate::{
-    borrow_pcg::borrow_pcg_expansion::PlaceExpansion, owned_pcg::RepackGuide,
+    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    owned_pcg::{RepackGuide, RequiredGuide},
     rustc_interface::middle,
 };
 
@@ -196,9 +197,9 @@ fn join_expansions<'tcx>(
 }
 
 fn join_guides<'tcx>(
-    lhs: &RepackGuide<middle::mir::Local, BoxedSubtree<'tcx>, !>,
-    rhs: &RepackGuide<middle::mir::Local, BoxedSubtree<'tcx>, !>,
-) -> Option<RepackGuide<middle::mir::Local, BoxedSubtree<'tcx>, !>> {
+    lhs: &RequiredGuide<BoxedSubtree<'tcx>>,
+    rhs: &RequiredGuide<BoxedSubtree<'tcx>>,
+) -> Option<RequiredGuide<BoxedSubtree<'tcx>>> {
     match (lhs, rhs) {
         (RepackGuide::Default(never), _) | (_, RepackGuide::Default(never)) => match *never {},
         (RepackGuide::Downcast(ls, lv, lt), RepackGuide::Downcast(rs, rv, rt))

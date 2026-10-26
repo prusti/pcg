@@ -5,7 +5,7 @@ use crate::{
     action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
     borrow_pcg::{
         self,
-        action::{ApplyActionResult, LabelPlaceReason},
+        action::{ApplyActionResult, BorrowPcgActionKind, LabelPlaceReason},
         borrow_pcg_edge::BorrowPcgEdge,
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
@@ -518,6 +518,23 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         tracing::debug!("Applying Action: {}", action.debug_line(self.ctxt));
         let result = match &action {
             PcgAction::Borrow(action) => {
+                // An expansion guided by the index local outlives the local's
+                // value: its guide refers to the value at the label instead.
+                if let BorrowPcgActionKind::LabelPlace(label) = &action.kind
+                    && matches!(
+                        label.reason,
+                        LabelPlaceReason::StorageDead
+                            | LabelPlaceReason::Write
+                            | LabelPlaceReason::MoveOut
+                    )
+                    && let Some(index) = label.place.as_local()
+                {
+                    self.pcg.owned.label_index(index, label.location);
+                    self.pcg
+                        .borrow
+                        .graph
+                        .label_index(index, label.location, self.ctxt);
+                }
                 self.pcg
                     .borrow
                     .apply_action(action.clone(), self.pcg.place_capabilities, self.ctxt)

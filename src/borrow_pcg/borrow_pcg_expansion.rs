@@ -36,11 +36,14 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx,
-        middle::{mir::PlaceElem, ty},
+        middle::{
+            mir::{self, PlaceElem},
+            ty,
+        },
     },
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, PcgNodeComponent, PcgPlace,
-        Place, PlaceLike, PlaceProjectable,
+        Place, PlaceLike, PlaceProjectable, SnapshotLocation,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{corrected::CorrectedPlace, maybe_old::MaybeLabelledPlace},
@@ -85,6 +88,25 @@ impl<D> PlaceExpansion<'_, D> {
 
     pub(crate) fn is_deref(&self) -> bool {
         matches!(self, PlaceExpansion::Deref(_))
+    }
+
+    /// See [`RepackGuide::label_index`].
+    pub(crate) fn label_index(&mut self, index: mir::Local, label: SnapshotLocation) -> bool {
+        match self {
+            PlaceExpansion::Guided(guide) => guide.label_index(index, label),
+            PlaceExpansion::Fields(_) | PlaceExpansion::Deref(_) => false,
+        }
+    }
+}
+
+impl PlaceExpansion<'_> {
+    /// Replaces the guide of a guided expansion by `guide`: an expansion built
+    /// from places does not carry the label of an index guide.
+    pub(crate) fn with_guide(self, guide: Option<RepackGuide>) -> Self {
+        match (self, guide.and_then(RepackGuide::into_non_default)) {
+            (PlaceExpansion::Guided(_), Some(guide)) => PlaceExpansion::Guided(guide),
+            (expansion, _) => expansion,
+        }
     }
 }
 
@@ -496,6 +518,17 @@ impl<'tcx> BorrowPcgExpansion<'tcx> {
                 lifetime_projection_expansion.guide
             }
         }
+    }
+
+    /// See [`RepackGuide::label_index`].
+    pub(crate) fn label_index(&mut self, index: mir::Local, label: SnapshotLocation) -> bool {
+        let guide = match self {
+            BorrowPcgExpansion::Place(expansion) => &mut expansion.guide,
+            BorrowPcgExpansion::LifetimeProjection(expansion) => &mut expansion.guide,
+        };
+        guide
+            .as_mut()
+            .is_some_and(|guide| guide.label_index(index, label))
     }
 
     /// Returns true iff the expansion is packable, i.e. without losing any

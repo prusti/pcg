@@ -1,14 +1,15 @@
 use crate::{
     borrow_pcg::{
         action::LabelPlaceReason,
+        edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgePlaces, NodeReplacement},
         graph::Conditioned,
         has_pcs_elem::PlaceLabeller,
         validity_conditions::{PathCondition, ValidityConditionOps, ValidityConditions},
     },
-    rustc_interface::middle::mir::BasicBlock,
+    rustc_interface::middle::mir::{BasicBlock, Local},
     utils::{
-        CompilerCtxt, FilterMutResult, PcgPlace,
+        CompilerCtxt, FilterMutResult, PcgPlace, SnapshotLocation,
         data_structures::{HashMap, HashSet},
     },
 };
@@ -137,5 +138,36 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
             ctxt,
         );
         all_replacements
+    }
+}
+
+impl<'tcx, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx>, VC> {
+    /// Labels the `Index` guides of `index` in the expansion edges; see
+    /// [`crate::owned_pcg::RepackGuide::label_index`].
+    pub(crate) fn label_index<Ctxt: Copy>(
+        &mut self,
+        index: Local,
+        label: SnapshotLocation,
+        ctxt: Ctxt,
+    ) -> bool
+    where
+        VC: ValidityConditionOps<Ctxt>,
+    {
+        let guided_by_index = |kind: &BorrowPcgEdgeKind<'tcx>| {
+            matches!(kind, BorrowPcgEdgeKind::BorrowPcgExpansion(expansion)
+                if expansion.guide().is_some_and(|guide| guide.is_unlabelled_index_of(index)))
+        };
+        if !self.edges.keys().any(guided_by_index) {
+            return false;
+        }
+        self.mut_edges(
+            |edge| match &mut edge.value {
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) => {
+                    expansion.label_index(index, label)
+                }
+                _ => false,
+            },
+            ctxt,
+        )
     }
 }

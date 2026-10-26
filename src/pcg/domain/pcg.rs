@@ -471,24 +471,28 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut expansions = Vec::new();
         for edge in other.borrow.graph().edges() {
             let conditions = edge.conditions.without_branch_choice(self_block);
-            let (base, target) = match edge.kind() {
-                BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place()),
+            // The guide is kept: the target place does not carry the label of
+            // an index guide.
+            let (base, target, guide) = match edge.kind() {
+                BorrowPcgEdgeKind::Deref(deref) => {
+                    (deref.blocked_place(), deref.deref_place(), None)
+                }
                 BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
                     let Some(target) = expansion.expansion().first() else {
                         continue;
                     };
-                    (expansion.base(), *target)
+                    (expansion.base(), *target, expansion.guide)
                 }
                 _ => continue,
             };
             if let (Some(base), Some(target)) = (base.as_current_place(), target.as_current_place())
             {
-                expansions.push((base, target, conditions));
+                expansions.push((base, target, guide, conditions));
             }
         }
-        expansions.sort_by_key(|(base, _, _)| base.projection.len());
+        expansions.sort_by_key(|(base, _, _, _)| base.projection.len());
         let mut applied = AppliedActions::default();
-        for (base, target, conditions) in expansions {
+        for (base, target, guide, conditions) in expansions {
             let usage_type =
                 if other.place_capabilities.get(base, ctxt) == Some(CapabilityKind::Read) {
                     PlaceUsageType::Read
@@ -514,7 +518,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 },
                 SnapshotLocation::Loop(loop_head),
             );
-            if obtainer.expand_place_one_level(base, &expansion, obtain_type, ctxt)? {
+            if obtainer.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
                 obtainer.expand_lifetime_projections_one_level(
                     base,
                     &expansion,
