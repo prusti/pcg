@@ -443,6 +443,11 @@ impl PlaceUsageType {
     pub(crate) fn is_read(self) -> bool {
         matches!(self, PlaceUsageType::Read)
     }
+
+    #[must_use]
+    pub(crate) fn is_write(self) -> bool {
+        matches!(self, PlaceUsageType::Write)
+    }
 }
 
 impl JoinSemiLattice for PlaceUsageType {
@@ -500,14 +505,19 @@ impl<'tcx> PlaceUsages<'tcx> {
         &self,
         predicate: impl Fn(PlaceUsage<'tcx>) -> bool,
     ) -> PlaceUsages<'tcx> {
-        let mut clone = self.clone();
-        clone.0.retain(|p, usage| {
-            predicate(PlaceUsage {
-                place: *p,
-                usage: *usage,
-            })
-        });
-        clone
+        self.filter_map_usages(|usage| predicate(usage).then_some(usage.usage))
+    }
+
+    /// The usages for which `f` returns a (possibly different) usage type.
+    pub(crate) fn filter_map_usages(
+        &self,
+        f: impl Fn(PlaceUsage<'tcx>) -> Option<PlaceUsageType>,
+    ) -> PlaceUsages<'tcx> {
+        PlaceUsages(
+            self.iter()
+                .filter_map(|usage| f(usage).map(|usage_type| (usage.place, usage_type)))
+                .collect(),
+        )
     }
 
     #[must_use]
