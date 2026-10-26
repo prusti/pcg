@@ -15,6 +15,7 @@ use crate::{
         validity_conditions::ValidityConditions,
     },
     owned_pcg::RepackOp,
+    pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     rustc_interface::middle::mir,
     utils::{
         DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place,
@@ -165,46 +166,151 @@ impl<'tcx> PcgActions<'tcx> {
     }
 }
 
-/// A pair of a PCG action and a debug context (indicating the source of the
-/// action and possibly its effects).
+/// The capability changes of an action: each place gets the capability, or
+/// loses its capability (`None`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
+#[cfg_attr(feature = "type-export", ts(export, concrete(P = String)))]
+pub struct CapabilityChanges<P>(Vec<(P, Option<CapabilityKind>)>);
+
+impl<P> Default for CapabilityChanges<P> {
+    fn default() -> Self {
+        Self(vec![])
+    }
+}
+
+impl<P> From<Vec<(P, Option<CapabilityKind>)>> for CapabilityChanges<P> {
+    fn from(changes: Vec<(P, Option<CapabilityKind>)>) -> Self {
+        Self(changes)
+    }
+}
+
+impl<P: Copy + Eq + std::hash::Hash> CapabilityChanges<P> {
+    /// Sets the change of `place`, replacing an earlier change of it.
+    pub(crate) fn set(&mut self, place: P, capability: Option<CapabilityKind>) {
+        if let Some(change) = self.0.iter_mut().find(|(p, _)| *p == place) {
+            change.1 = capability;
+        } else {
+            self.0.push((place, capability));
+        }
+    }
+
+    pub(crate) fn extend(&mut self, other: &Self) {
+        for (place, capability) in other.iter() {
+            self.set(place, capability);
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (P, Option<CapabilityKind>)> + '_ {
+        self.0.iter().copied()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(crate) fn apply<'tcx, Ctxt: Copy>(
+        &self,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
+        ctxt: Ctxt,
+    ) -> bool {
+        let mut changed = false;
+        for (place, capability) in self.iter() {
+            changed |= match capability {
+                Some(capability) => capabilities.insert(place, capability, ctxt),
+                None => capabilities.remove(place, ctxt).is_some(),
+            };
+        }
+        changed
+    }
+}
+
+impl<Ctxt: Copy, P: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for CapabilityChanges<P> {
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        DisplayOutput::join(
+            self.0.iter().map(|(place, capability)| {
+                DisplayOutput::Seq(vec![
+                    place.display_output(ctxt, mode),
+                    ": ".into(),
+                    match capability {
+                        Some(capability) => capability.display_output(ctxt, mode),
+                        None => "None".into(),
+                    },
+                ])
+            }),
+            &", ".into(),
+        )
+    }
+}
+
+/// A PCG action, the capability changes it makes, and a debug context
+/// (indicating the source of the action and possibly its effects).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(export))]
-pub struct ActionKindWithDebugInfo<T, DebugInfo = Option<DisplayOutput>> {
+pub struct ActionKindWithDebugInfo<T, P, DebugInfo = Option<DisplayOutput>> {
     pub(crate) kind: T,
+    /// The capability changes of the action. Every capability change of an
+    /// action is listed here.
+    pub(crate) capabilities: CapabilityChanges<P>,
     pub(crate) debug_info: DebugInfo,
 }
 
-impl<T> ActionKindWithDebugInfo<T> {
+impl<T, P> ActionKindWithDebugInfo<T, P> {
     pub fn kind(&self) -> &T {
         &self.kind
     }
 
+    pub fn capabilities(&self) -> &CapabilityChanges<P> {
+        &self.capabilities
+    }
+
     pub(crate) fn new(kind: T, debug_info: Option<DisplayOutput>) -> Self {
-        Self { kind, debug_info }
+        Self {
+            kind,
+            capabilities: CapabilityChanges::default(),
+            debug_info,
+        }
+    }
+
+    pub(crate) fn with_capabilities(mut self, capabilities: CapabilityChanges<P>) -> Self {
+        self.capabilities = capabilities;
+        self
     }
 
     pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
-        T: DisplayWithCtxt<Ctxt>,
+        Self: DisplayWithCtxt<Ctxt>,
     {
-        self.kind.display_output(ctxt, OutputMode::Test).into_text()
+        self.display_output(ctxt, OutputMode::Test).into_text()
     }
 }
 
-impl<Ctxt, T: DebugRepr<Ctxt>> DebugRepr<Ctxt> for ActionKindWithDebugInfo<T> {
-    type Repr = ActionKindWithDebugInfo<T::Repr, Option<String>>;
+impl<Ctxt: Copy, T: DebugRepr<Ctxt>, P: DisplayWithCtxt<Ctxt>> DebugRepr<Ctxt>
+    for ActionKindWithDebugInfo<T, P>
+{
+    type Repr = ActionKindWithDebugInfo<T::Repr, String, Option<String>>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         ActionKindWithDebugInfo {
             kind: self.kind.debug_repr(ctxt),
+            capabilities: CapabilityChanges(
+                self.capabilities
+                    .0
+                    .iter()
+                    .map(|(place, capability)| {
+                        (
+                            place
+                                .display_output(ctxt, OutputMode::Normal)
+                                .into_text()
+                                .to_string(),
+                            *capability,
+                        )
+                    })
+                    .collect(),
+            ),
             debug_info: self.debug_info.as_ref().map(|ctxt| ctxt.debug_repr(())),
         }
-    }
-}
-
-impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDebugInfo<T> {
-    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        self.kind.display_output(ctxt, mode)
     }
 }
 
@@ -212,7 +318,15 @@ impl<Ctxt, T: DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt> for ActionKindWithDeb
 /// for which consumers (e.g. Prusti) may wish to perform
 /// their own effect (e.g. folding a predicate).
 pub type OwnedPcgAction<'tcx, P = Place<'tcx>> =
-    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>>;
+    ActionKindWithDebugInfo<RepackOp<'tcx, mir::Local, P>, P>;
+
+impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
+    for OwnedPcgAction<'_, P>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        self.kind.display_output(ctxt, mode)
+    }
+}
 
 /// An action applied to the Borrow PCG during the PCG analysis
 /// for which consumers (e.g. Prusti) may wish to perform
@@ -222,7 +336,7 @@ pub type BorrowPcgAction<
     EdgeKind = BorrowPcgEdgeKind<'tcx>,
     P = Place<'tcx>,
     VC = ValidityConditions,
-> = ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P, VC>>;
+> = ActionKindWithDebugInfo<BorrowPcgActionKind<'tcx, EdgeKind, P, VC>, P>;
 
 mod private {
     use serde_derive::Serialize;
@@ -269,8 +383,8 @@ pub type PcgAction<
 > = private::GenericPcgAction<BorrowPcgAction<'tcx, EdgeKind, P, VC>, OwnedPcgAction<'tcx, P>>;
 
 pub(crate) type PcgActionDebugRepr = private::GenericPcgAction<
-    ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, Option<String>>,
-    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, Option<String>>,
+    ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, String, Option<String>>,
+    ActionKindWithDebugInfo<RepackOp<'static, String, String, String>, String, Option<String>>,
 >;
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for PcgAction<'tcx> {
@@ -287,9 +401,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
 impl<'tcx, EdgeKind, P: PcgNodeComponent, VC> PcgAction<'tcx, EdgeKind, P, VC> {
     pub(crate) fn debug_line<Ctxt>(&self, ctxt: Ctxt) -> Cow<'static, str>
     where
-        BorrowPcgActionKind<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
+        BorrowPcgAction<'tcx, EdgeKind, P, VC>: DisplayWithCtxt<Ctxt>,
         OwnedPcgAction<'tcx, P>: DisplayWithCtxt<Ctxt>,
-        P: DisplayWithCtxt<Ctxt>,
     {
         match self {
             PcgAction::Borrow(action) => action.debug_line(ctxt),

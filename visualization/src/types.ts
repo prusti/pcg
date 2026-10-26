@@ -64,8 +64,8 @@ export type ReactFlowNodeData = BasicBlockData & {
 };
 
 export type PcgAction = GenericPcgAction<
-  ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>,
-  ActionKindWithDebugInfo<RepackOp, string | null>
+  ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string, string | null>,
+  ActionKindWithDebugInfo<RepackOp, string, string | null>
 >;
 
 export type PcgActions = PcgAction[];

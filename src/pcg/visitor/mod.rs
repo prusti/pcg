@@ -1,5 +1,5 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction},
+    action::{AppliedActions, BorrowPcgAction, CapabilityChanges},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
@@ -15,7 +15,7 @@ use crate::{
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
-        place_capabilities::PlaceCapabilitiesInterface,
+        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
@@ -465,7 +465,17 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         self.place_obtainer()
             .detach_borrowed_shared_referents(blocked_place)?;
         self.place_obtainer().pack_read_unpacking(blocked_place)?;
-        self.place_obtainer().drop_read_copies(blocked_place)?;
+        let ctxt = self.ctxt;
+        pcg_validity_assert!(
+            self.pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(blocked_place)
+                .next()
+                .is_none(),
+            [ctxt],
+            "Activating a two-phase borrow of {} whose read unpacking is still borrowed",
+            blocked_place.display_string(ctxt)
+        );
         self.record_and_apply_action(
             BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
         )?;
@@ -484,10 +494,11 @@ impl<'tcx> OwnedPcg<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].expansions_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt);
+        expansions.perform_expand_action(expand, capabilities, ctxt)
     }
 }
