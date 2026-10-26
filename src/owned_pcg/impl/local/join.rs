@@ -1,7 +1,14 @@
 use crate::{
-    DebugLines,
+    DebugLines, HasSettings,
     action::{BorrowPcgAction, PcgAction},
-    borrow_pcg::action::LabelPlaceReason,
+    borrow_pcg::{
+        action::LabelPlaceReason,
+        borrow_pcg_edge::{BorrowPcgEdgeLike, LocalNode},
+        borrow_pcg_expansion::BorrowPcgExpansion,
+        edge::kind::BorrowPcgEdgeKind,
+        edge_data::EdgeData,
+        state::BorrowsStateLike,
+    },
     capability_gte,
     error::PcgError,
     owned_pcg::{
@@ -404,6 +411,78 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         Ok(actions)
     }
 
+    /// `place` is frozen on the other side, possibly with read unpackings
+    /// below it: freeze it here too and add those unpackings.
+    fn join_frozen_place(
+        &mut self,
+        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        place: Place<'tcx>,
+        self_cap: CapabilityKind,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> Vec<PcgAction<'tcx>> {
+        let mut actions = vec![];
+        if self_cap == CapabilityKind::Exclusive {
+            let action = BorrowPcgAction::freeze(place, "join with a frozen place");
+            self.borrows
+                .apply_action(action.clone(), self.capabilities, ctxt);
+            actions.push(action.into());
+        }
+        let mut unpackings = other
+            .borrows
+            .graph()
+            .edges()
+            .filter_map(|edge| {
+                let base = match edge.kind() {
+                    BorrowPcgEdgeKind::Deref(deref) => deref.blocked_place(),
+                    BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
+                        expansion.base()
+                    }
+                    _ => return None,
+                }
+                .as_current_place()?;
+                place
+                    .is_prefix_of(base)
+                    .then(|| (base, edge.to_owned_edge()))
+            })
+            .collect::<Vec<_>>();
+        unpackings.sort_by_key(|(base, _)| base.projection.len());
+        for (base, edge) in unpackings {
+            let targets = edge
+                .value
+                .blocked_by_nodes(ctxt)
+                .filter_map(LocalNode::as_current_place)
+                .collect::<Vec<_>>();
+            if targets
+                .iter()
+                .all(|p| self.capabilities.get(*p, ctxt).is_some())
+            {
+                continue;
+            }
+            let capabilities = std::iter::once(base)
+                .chain(targets)
+                .map(|p| (p, other.capabilities.get(p, ctxt)))
+                .collect();
+            let action =
+                BorrowPcgAction::add_edge_setting(edge, capabilities, "join with a read unpacking");
+            self.borrows
+                .apply_action(action.clone(), self.capabilities, ctxt);
+            actions.push(action.into());
+        }
+        for (p, c) in other
+            .capabilities
+            .capabilities_for_strict_postfixes_of(place)
+        {
+            pcg_validity_assert!(
+                self.capabilities.get(p, ctxt) == Some(c),
+                [ctxt],
+                "Join of frozen {} leaves {} without {c:?}",
+                place.display_string(ctxt),
+                p.display_string(ctxt)
+            );
+        }
+        actions
+    }
+
     pub(crate) fn join_owned_places(
         &mut self,
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
@@ -421,8 +500,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         };
         match (self_cap, other_cap) {
             (capability_gte!(Read), CapabilityKind::Read) => {
-                copy_read_capabilities(other.capabilities, self.capabilities, place, ctxt);
-                Ok(vec![])
+                Ok(self.join_frozen_place(other, place, self_cap, ctxt))
             }
             (CapabilityKind::Read, CapabilityKind::Write) => {
                 self.join_leaf_read_and_write_capabilities(other, place, ctxt)
@@ -541,18 +619,5 @@ impl<'tcx> LocalExpansions<'tcx> {
                 false
             }
         })
-    }
-}
-
-fn copy_read_capabilities<'a, 'tcx: 'a>(
-    cap_source: &impl PlaceCapabilitiesInterface<'tcx>,
-    cap_target: &mut impl PlaceCapabilitiesInterface<'tcx>,
-    place: Place<'tcx>,
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-) {
-    cap_target.insert(place, CapabilityKind::Read, ctxt);
-    for (p, c) in cap_source.capabilities_for_strict_postfixes_of(place) {
-        pcg_validity_assert!(c.is_read());
-        cap_target.insert(p, c, ctxt);
     }
 }

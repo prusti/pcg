@@ -104,6 +104,17 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
             debug_info: Some(context.into()),
         }
     }
+
+    pub(crate) fn lend(
+        place: P,
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction {
+            kind: BorrowPcgActionKind::Lend { place, edge },
+            debug_info: Some(context.into()),
+        }
+    }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -470,6 +481,14 @@ pub enum BorrowPcgActionKind<
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
         capabilities: Vec<(P, Option<CapabilityKind>)>,
     },
+    /// At a join, `place` is blocked by `edge`, which exists only on another
+    /// incoming path. The capability of `place` is held by the edge (nothing
+    /// is given up) and returns through the [`BorrowPcgActionKind::RemoveEdge`]
+    /// of the edge.
+    Lend {
+        place: P,
+        edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
+    },
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgActionKind<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -585,6 +604,15 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 }
                 DisplayOutput::join(words, &DisplayOutput::SPACE)
             }
+            BorrowPcgActionKind::Lend { place, edge } => DisplayOutput::join(
+                vec![
+                    "Lend".into(),
+                    place.display_output(ctxt, mode),
+                    "to".into(),
+                    edge.display_output(ctxt, mode),
+                ],
+                &DisplayOutput::SPACE,
+            ),
         }
     }
 }
