@@ -409,12 +409,17 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) -> Result<PcgActions<'tcx>, PcgError> {
         let target = other;
         let mut slf = self.clone();
-        let mut repacks = slf.join_owned(
+        let mut repacks = if ctxt.is_loop_head(other_block) {
+            slf.bridge_loop_upgrades(target, other_block, ctxt)?
+        } else {
+            vec![]
+        };
+        repacks.extend(slf.join_owned(
             target,
             SnapshotLocation::After(self_block),
             SnapshotLocation::BeforeJoin(other_block),
             ctxt,
-        )?;
+        )?);
         // As for loop expansions, the branch choice being taken is implied.
         let mut unpacked_by_join = HashSet::default();
         for action in &mut repacks {
@@ -581,6 +586,45 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         actions.push(action.into());
     }
 
+    /// The loop head obtains E for the places the loop uses exclusively: the
+    /// places that are read on this path get E as in that obtain.
+    fn bridge_loop_upgrades(
+        &mut self,
+        target: &Self,
+        loop_head: mir::BasicBlock,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
+        let mut places = self
+            .place_capabilities
+            .iter()
+            .filter(|(place, cap)| {
+                *cap == CapabilityKind::Read
+                    && target.place_capabilities.get(*place, ctxt)
+                        == Some(CapabilityKind::Exclusive)
+            })
+            .map(|(place, _)| place)
+            .collect::<Vec<_>>();
+        places.sort_by_key(|place| place.projection.len());
+        let mut applied = AppliedActions::default();
+        for place in places {
+            if self.place_capabilities.get(place, ctxt) != Some(CapabilityKind::Read) {
+                continue;
+            }
+            PlaceObtainer::new(
+                PcgMutRef::from(&mut *self),
+                Some(&mut applied),
+                ctxt,
+                mir::Location {
+                    block: loop_head,
+                    statement_index: 0,
+                },
+                SnapshotLocation::Loop(loop_head),
+            )
+            .upgrade_read_to_exclusive(place)?;
+        }
+        Ok(applied.actions.into_iter().map(|a| a.action).collect())
+    }
+
     fn bridge_loop_expansions(
         &mut self,
         other: &Self,
@@ -692,7 +736,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 }
 
 /// The base and the first expanded place of a place unpacking edge.
-fn unpacking_places<'tcx>(kind: &BorrowPcgEdgeKind<'tcx>) -> Option<(Place<'tcx>, Place<'tcx>)> {
+pub(crate) fn unpacking_places<'tcx>(
+    kind: &BorrowPcgEdgeKind<'tcx>,
+) -> Option<(Place<'tcx>, Place<'tcx>)> {
     let (base, target) = match kind {
         BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place()),
         BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
