@@ -37,6 +37,7 @@ export function actionLine(
     case "Restore":
     case "Freeze":
     case "Unfreeze":
+    case "Refreeze":
     case "ActivateTwoPhaseBorrow":
       return typeof action.data === "string" ? action.data : JSON.stringify(action.data);
     case "LabelPlace":

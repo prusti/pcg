@@ -5,9 +5,11 @@ use crate::{
     pcg::{
         CapabilityKind, PcgRefLike,
         obtain::ObtainType,
+        place_capabilities::PlaceCapabilitiesReader,
         triple::{PlaceCondition, Triple},
     },
-    utils::{DataflowCtxt, Place},
+    pcg_validity_assert,
+    utils::{DataflowCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgVisitor;
@@ -79,12 +81,30 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
     #[tracing::instrument(skip(self, triple))]
     pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
         self.pcg.ensure_triple(triple, self.ctxt);
-        if let Some(PlaceCondition::Freeze(place)) = triple.post()
-            && self.pcg.capability_of(place, self.ctxt) == Some(CapabilityKind::Exclusive)
-        {
-            self.record_and_apply_action(
-                BorrowPcgAction::freeze(place, "shared or two-phase borrow").into(),
-            )?;
+        if let Some(PlaceCondition::Freeze(place)) = triple.post() {
+            let cap = self.pcg.capability_of(place, self.ctxt);
+            let unpacked = cap.is_none()
+                && self
+                    .pcg
+                    .place_capabilities
+                    .capabilities_for_strict_postfixes_of(place)
+                    .next()
+                    .is_some();
+            if cap == Some(CapabilityKind::Exclusive) || unpacked {
+                self.record_and_apply_action(
+                    BorrowPcgAction::freeze(place, "shared or two-phase borrow").into(),
+                )?;
+            } else {
+                let ctxt = self.ctxt;
+                pcg_validity_assert!(
+                    cap == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "{:?}: Borrowing {} for read with capability {:?}",
+                    self.location(),
+                    place.display_string(self.ctxt),
+                    cap
+                );
+            }
         }
         Ok(())
     }
