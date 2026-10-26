@@ -14,7 +14,7 @@ use crate::{
     borrows_imgcat_debug,
     error::PcgError,
     r#loop::PlaceUsageType,
-    owned_pcg::{RepackGuide, RepackOp, join::data::JoinOwnedData},
+    owned_pcg::{RepackGuide, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
@@ -23,6 +23,7 @@ use crate::{
         place_capabilities::{BlockType, PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
@@ -456,6 +457,8 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         ctxt: impl DataflowCtxt<'a, 'tcx>,
     ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let mut other = target.clone();
+        let given_up = self.give_up_frozen_unpacked_places(&other, self_snapshot, ctxt)?;
+        other.give_up_frozen_unpacked_places(self, other_snapshot, ctxt)?;
         let mut slf_owned_data = self.join_owned_data(self_snapshot);
         let other_owned_data = JoinOwnedData {
             owned: &other.owned,
@@ -463,11 +466,12 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             capabilities: &mut other.place_capabilities,
             snapshot_location: other_snapshot,
         };
-        let mut repacks =
-            slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
+        let mut repacks = given_up;
+        repacks.extend(slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?);
         repacks.extend(self.join_unpackings(&other, ctxt));
         other.join_unpackings(self, ctxt);
-        for (place, cap) in self.place_capabilities.iter() {
+        let held = self.place_capabilities.iter().collect::<Vec<_>>();
+        for (place, cap) in held {
             if other.place_capabilities.get(place, ctxt).is_some() {
                 continue;
             }
@@ -486,23 +490,36 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                                 ))
                                 && !self.borrow.graph().edges().any(|e| e.kind() == edge.kind())
                         })
+                        .map(BorrowPcgEdgeLike::to_owned_edge)
                 });
-            repacks.push(
-                match lending_edge {
-                    Some(edge) => BorrowPcgAction::lend(place, edge.to_owned_edge(), "join"),
-                    None => BorrowPcgAction::weaken(place, cap, None, "join"),
-                }
-                .into(),
-            );
-        }
-        for (place, cap) in self.place_capabilities.iter() {
-            let Some(_owned) = place.as_owned_place(ctxt) else {
+            let Some(edge) = lending_edge else {
+                pcg_validity_assert!(
+                    false,
+                    [ctxt],
+                    "{} loses {cap:?} at the join without being lent",
+                    place.display_string(ctxt.bc_ctxt())
+                );
                 continue;
             };
+            self.apply_join_action(
+                BorrowPcgAction::lend(place, edge, "join"),
+                &mut repacks,
+                ctxt,
+            );
+        }
+        let held = self.place_capabilities.iter().collect::<Vec<_>>();
+        for (place, cap) in held {
+            if place.as_owned_place(ctxt).is_none() {
+                continue;
+            }
             if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
                 && cap > other_cap
             {
-                repacks.push(RepackOp::weaken(place, cap, other_cap).into());
+                self.apply_join_action(
+                    BorrowPcgAction::weaken(place, cap, other_cap, "join"),
+                    &mut repacks,
+                    ctxt,
+                );
             }
         }
         self.place_capabilities
@@ -574,16 +591,61 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
 
     fn apply_join_action(
         &mut self,
-        action: BorrowPcgAction<'tcx>,
+        mut action: BorrowPcgAction<'tcx>,
         actions: &mut Vec<PcgAction<'tcx>>,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
     ) {
         self.borrow.apply_action(
-            action.clone(),
+            &mut action,
             &mut self.place_capabilities,
             ctxt.compiler_ctxt_with_settings(),
         );
         actions.push(action.into());
+    }
+
+    /// Gives up the value of each place that is frozen and read-unpacked here
+    /// and moved out (W, possibly as part of an ancestor) in `other`: the
+    /// freeze ends, then the place is weakened to W.
+    fn give_up_frozen_unpacked_places(
+        &mut self,
+        other: &Self,
+        snapshot: SnapshotLocation,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
+        let moved_out = |place: Place<'tcx>| {
+            std::iter::successors(Some(place), |p| p.parent_place())
+                .find_map(|p| other.place_capabilities.get(p, ctxt))
+                == Some(CapabilityKind::Write)
+        };
+        let places = self
+            .place_capabilities
+            .iter()
+            .filter(|(place, cap)| {
+                *cap == CapabilityKind::Read
+                    && moved_out(*place)
+                    && place.parent_place().is_none_or(|parent| {
+                        self.place_capabilities.get(parent, ctxt) != Some(CapabilityKind::Read)
+                    })
+                    && self
+                        .place_capabilities
+                        .capabilities_for_strict_postfixes_of(*place)
+                        .next()
+                        .is_some()
+            })
+            .map(|(place, _)| place)
+            .collect::<Vec<_>>();
+        let mut applied = AppliedActions::default();
+        for place in places {
+            PlaceObtainer::new(
+                PcgMutRef::from(&mut *self),
+                Some(&mut applied),
+                ctxt,
+                snapshot.location(),
+                snapshot,
+            )
+            .obtain(place, ObtainType::Capability(CapabilityKind::Write))?;
+        }
+        Ok(applied.actions.into_iter().map(|a| a.action).collect())
     }
 
     /// The loop head obtains E for the places the loop uses exclusively: the

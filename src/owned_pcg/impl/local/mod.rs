@@ -10,6 +10,7 @@ use std::fmt::Debug;
 
 use crate::{
     HasSettings,
+    action::OwnedPcgAction,
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgUnsupportedError,
     owned_pcg::RepackGuide,
@@ -228,7 +229,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         _for_cap: Option<CapabilityKind>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) -> Vec<RepackOp<'tcx>>
+    ) -> Vec<OwnedPcgAction<'tcx>>
     where
         'tcx: 'a,
     {
@@ -236,19 +237,19 @@ impl<'tcx> LocalExpansions<'tcx> {
             return vec![];
         }
         let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
-        let ops: Vec<RepackOp<'tcx>> = places_to_collapse
+        places_to_collapse
             .into_iter()
             .flat_map(|place| {
                 let actions = self.collapse_actions_for(place, capabilities, ctxt);
                 actions
                     .into_iter()
                     .map(|action| {
-                        self.perform_collapse_action(action, capabilities, ctxt);
-                        RepackOp::Collapse(action)
+                        let changes = self.perform_collapse_action(action, capabilities, ctxt);
+                        OwnedPcgAction::new(RepackOp::Collapse(action), None)
+                            .with_capabilities(changes)
                     })
                     .collect::<Vec<_>>()
             })
-            .collect();
-        ops
+            .collect()
     }
 }

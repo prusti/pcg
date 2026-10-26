@@ -3,4 +3,4 @@
 /**
  * Auto-generated discriminant enum variants
  */
-export type BorrowPcgActionKindDiscriminants = "LabelLifetimeProjection" | "Weaken" | "Freeze" | "Unfreeze" | "Refreeze" | "ActivateTwoPhaseBorrow" | "LabelPlace" | "RemoveEdge" | "AddEdge" | "Lend";
+export type BorrowPcgActionKindDiscriminants = "LabelLifetimeProjection" | "Weaken" | "Freeze" | "Unfreeze" | "ActivateTwoPhaseBorrow" | "LabelPlace" | "RemoveEdge" | "AddEdge" | "Lend";

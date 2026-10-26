@@ -7,6 +7,7 @@ export type { BasicBlock } from "./BasicBlock";
 export type { BorrowPcgActionKindDebugRepr } from "./BorrowPcgActionKindDebugRepr";
 export type { BorrowPcgActionKindDiscriminants } from "./BorrowPcgActionKindDiscriminants";
 export type { BranchChoicesDebugRepr } from "./BranchChoicesDebugRepr";
+export type { CapabilityChanges } from "./CapabilityChanges";
 export type { CapabilityKind } from "./CapabilityKind";
 export type { Conditioned } from "./Conditioned";
 export type { DataflowStmtPhase } from "./DataflowStmtPhase";

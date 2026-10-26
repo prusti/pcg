@@ -6,10 +6,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{
-    Weaken, pcg_validity_assert,
-    rustc_interface::middle::mir::{self, PlaceElem},
-};
+use crate::rustc_interface::middle::mir::{self, PlaceElem};
 
 use crate::{
     pcg::CapabilityKind,
@@ -377,19 +374,6 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     /// handling blocks, but can also appear in regular code for example in the MIR of
     /// [this function](https://github.com/dtolnay/syn/blob/3da56a712abf7933b91954dbfb5708b452f88504/src/attr.rs#L623-L628).
     StorageDead(Local),
-    /// This Op only appears within a `BasicBlock` and is attached to a
-    /// [`mir::StatementKind::StorageDead`](https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.StatementKind.html#variant.StorageDead)
-    /// statement. We emit it for any such statement where the local may already be dead. We
-    /// guarantee to have inserted a [`RepackOp::StorageDead`] before this Op so that one can
-    /// safely ignore the statement this is attached to.
-    IgnoreStorageDead(Local),
-    /// Instructs that the current capability to the place (first [`CapabilityKind`]) should
-    /// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
-    ///
-    /// This Op is used prior to a [`RepackOp::Collapse`] to ensure that all packed up places have
-    /// the same capability. It can also appear at basic block join points, where one branch has
-    /// a weaker capability than the other.
-    Weaken(Weaken<'tcx, Place, CapabilityKind>),
     /// Instructs that one should unpack `place` with the capability.
     /// We guarantee that the current state holds exactly the given capability for the given place.
     /// `guide` denotes e.g. the enum variant to unpack to. One can use
@@ -411,10 +395,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         match self {
             RepackOp::StorageDead(local) => RepackOp::StorageDead(local.display_string(ctxt)),
-            RepackOp::IgnoreStorageDead(local) => {
-                RepackOp::IgnoreStorageDead(local.display_string(ctxt))
-            }
-            RepackOp::Weaken(weaken) => RepackOp::Weaken(weaken.debug_repr(ctxt)),
             RepackOp::Expand(expand) => RepackOp::Expand(expand.debug_repr(ctxt)),
             RepackOp::Collapse(collapse) => RepackOp::Collapse(collapse.debug_repr(ctxt)),
             RepackOp::DerefShallowInit(place, place2) => {
@@ -443,28 +423,6 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
 }
 
 impl<'tcx> RepackOp<'tcx> {
-    /// Create a Weaken, checking that it strictly reduces the capability.
-    pub(crate) fn weaken(place: Place<'tcx>, from: CapabilityKind, to: CapabilityKind) -> Self {
-        pcg_validity_assert!(
-            from > to,
-            "a weaken must strictly reduce the capability ({from:?} -> {to:?})"
-        );
-        Self::Weaken(Weaken::new(place, from, to))
-    }
-
-    /// Temporary: create a Weaken for `StorageDead`.
-    /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
-    pub(crate) fn weaken_for_storage_dead(
-        place: Place<'tcx>,
-        from: CapabilityKind,
-        to: CapabilityKind,
-    ) -> Self {
-        pcg_validity_assert!(
-            from > to,
-            "a weaken must strictly reduce the capability ({from:?} -> {to:?})"
-        );
-        Self::Weaken(Weaken::new_for_storage_dead(place, from, to))
-    }
     pub(crate) fn expand<'a>(
         from: Place<'tcx>,
         guide: Option<RepackGuide>,
@@ -484,9 +442,8 @@ impl<'tcx> RepackOp<'tcx> {
     #[must_use]
     pub fn affected_place(&self) -> Place<'tcx> {
         match *self {
-            RepackOp::StorageDead(local) | RepackOp::IgnoreStorageDead(local) => local.into(),
-            RepackOp::Weaken(Weaken { place, .. })
-            | RepackOp::Collapse(RepackCollapse { to: place, .. })
+            RepackOp::StorageDead(local) => local.into(),
+            RepackOp::Collapse(RepackCollapse { to: place, .. })
             | RepackOp::Expand(RepackExpand { from: place, .. })
             | RepackOp::DerefShallowInit(place, _) => place,
         }
