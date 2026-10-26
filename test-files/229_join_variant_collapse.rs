@@ -14,11 +14,11 @@ enum E {
 // the local; the local stays live so nothing collapses it earlier.
 fn repro(mut x: E, y: E) {
     if let E::V(B { f: z, .. }) = x {}
-    // PCG: bb2 -> bb4: Weaken(Weaken { place: (_1@V).0.1, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb2 -> bb4: Weaken x@V.0.g from E to W
     // PCG: bb2 -> bb4: Collapse(RepackCollapse { to: (_1@V).0, capability: W, guide: None, _marker: PhantomData<&()> })
     // PCG: bb2 -> bb4: Collapse(RepackCollapse { to: (_1@V), capability: W, guide: None, _marker: PhantomData<&()> })
     // PCG: bb2 -> bb4: Collapse(RepackCollapse { to: _1, capability: W, guide: Some(Downcast(Some("V"), 0)), _marker: PhantomData<&()> })
-    // PCG: bb3 -> bb4: Weaken(Weaken { place: _1, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb3 -> bb4: Weaken x from E to W
     x = y;
 }
 

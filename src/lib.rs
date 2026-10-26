@@ -82,16 +82,15 @@ use visualization::mir_graph::generate_json_from_mir;
 
 /// The result of the PCG analysis.
 pub type PcgOutput<'a, 'tcx> = results::PcgAnalysisResults<'a, 'tcx>;
-/// Instructs that the current capability to the place (first [`CapabilityKind`]) should
-/// be weakened to the second given capability. We guarantee that `_.1 > _.2`.
-/// If `_.2` is `None`, the capability is removed.
+/// The capability of the place goes from `from` down to the strictly lower
+/// `to`: the place's value is given up (`to` is W), or part of it.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
 #[cfg_attr(feature = "type-export", ts(export, concrete(Place = String)))]
-pub struct Weaken<'tcx, Place = utils::Place<'tcx>, ToCap = Option<CapabilityKind>> {
+pub struct Weaken<'tcx, Place = utils::Place<'tcx>> {
     pub(crate) place: Place,
     pub(crate) from: CapabilityKind,
-    pub(crate) to: ToCap,
+    pub(crate) to: CapabilityKind,
     /// Temporary flag indicating this Weaken was emitted due to a `StorageDead`.
     /// Required until <https://github.com/prusti/pcg/issues/137> is resolved.
     pub(crate) for_storage_dead: bool,
@@ -99,10 +98,8 @@ pub struct Weaken<'tcx, Place = utils::Place<'tcx>, ToCap = Option<CapabilityKin
     _marker: PhantomData<&'tcx ()>,
 }
 
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Serialize> DebugRepr<Ctxt>
-    for Weaken<'tcx, Place<'tcx>, ToCap>
-{
-    type Repr = Weaken<'static, String, ToCap>;
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Weaken<'tcx, Place<'tcx>> {
+    type Repr = Weaken<'static, String>;
     fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
         Weaken {
             place: self.place.display_string(ctxt),
@@ -114,8 +111,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, ToCap: Copy + serde::Seriali
     }
 }
 
-impl<Place, ToCap> Weaken<'_, Place, ToCap> {
-    pub(crate) fn new(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+impl<Place> Weaken<'_, Place> {
+    pub(crate) fn new(place: Place, from: CapabilityKind, to: CapabilityKind) -> Self {
         Self {
             place,
             from,
@@ -127,7 +124,11 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
 
     /// Create a Weaken that is due to a `StorageDead`.
     /// Temporary workaround until <https://github.com/prusti/pcg/issues/137> is resolved.
-    pub(crate) fn new_for_storage_dead(place: Place, from: CapabilityKind, to: ToCap) -> Self {
+    pub(crate) fn new_for_storage_dead(
+        place: Place,
+        from: CapabilityKind,
+        to: CapabilityKind,
+    ) -> Self {
         Self {
             place,
             from,
@@ -148,10 +149,7 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
         self.place
     }
 
-    pub fn to_cap(&self) -> ToCap
-    where
-        ToCap: Copy,
-    {
+    pub fn to_cap(&self) -> CapabilityKind {
         self.to
     }
 
@@ -164,10 +162,6 @@ impl<Place, ToCap> Weaken<'_, Place, ToCap> {
 
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Weaken<'tcx> {
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
-        let to_str = match self.to {
-            Some(to) => to.display_output(ctxt, mode),
-            None => "None".into(),
-        };
         DisplayOutput::join(
             vec![
                 "Weaken".into(),
@@ -175,7 +169,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> f
                 "from".into(),
                 self.from.display_output(ctxt, mode),
                 "to".into(),
-                to_str,
+                self.to.display_output(ctxt, mode),
             ],
             &DisplayOutput::SPACE,
         )

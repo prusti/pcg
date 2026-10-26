@@ -84,7 +84,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             BorrowPcgAction::weaken(
                                 target,
                                 target_cap,
-                                Some(CapabilityKind::Write),
+                                CapabilityKind::Write,
                                 "pre_main",
                             )
                             .into(),
