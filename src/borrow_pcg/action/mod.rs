@@ -224,6 +224,10 @@ pub enum LabelPlaceReason {
     Collapse,
     /// Label lifetime projections of places that are mutated in a loop.
     JoinLoop,
+    /// The referent of a shared reference is detached from the place holding
+    /// the reference, so that the latter can be packed: the borrows of the
+    /// referent keep the labelled referent.
+    DetachSharedReferent,
 }
 
 impl LabelPlaceReason {
@@ -241,9 +245,8 @@ impl LabelPlaceReason {
             ]),
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
-                LabelNodePredicate::PlaceIsPostfixOf(place)
-            }
+            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities
+            | LabelPlaceReason::DetachSharedReferent => LabelNodePredicate::PlaceIsPostfixOf(place),
             LabelPlaceReason::Write => LabelNodePredicate::And(vec![
                 LabelNodePredicate::PlaceIsPostfixOf(place),
                 // If the place is e.g *x or x.f, don't label it if it

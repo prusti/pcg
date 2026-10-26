@@ -462,6 +462,9 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     ctxt,
                 )?;
         }
+        self.place_obtainer()
+            .detach_borrowed_shared_referents(blocked_place)?;
+        self.place_obtainer().pack_read_unpacking(blocked_place)?;
         self.place_obtainer().drop_read_copies(blocked_place)?;
         self.record_and_apply_action(
             BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),

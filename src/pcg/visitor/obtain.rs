@@ -6,7 +6,7 @@ use crate::{
     borrow_pcg::{
         self,
         action::{ApplyActionResult, BorrowPcgActionKind, LabelPlaceReason},
-        borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
             borrow_flow::private::FutureEdgeKind,
@@ -27,6 +27,7 @@ use crate::{
         place_capabilities::{
             BlockType, PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
+        unpacking_places,
         visitor::upgrade::AdjustCapabilityReason,
     },
     pcg_validity_assert,
@@ -545,14 +546,125 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
+    /// Detaches the borrowed referents of shared references below `place`:
+    /// the referent is labelled, so that its borrows keep the labelled
+    /// referent, and the dereference edge is removed. The referent of a shared
+    /// reference does not depend on the place holding the reference.
+    pub(crate) fn detach_borrowed_shared_referents(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let graph = &self.pcg.borrow.graph;
+        let is_borrowed = |referent: Place<'tcx>| {
+            graph.edges().any(|edge| {
+                !matches!(
+                    edge.kind(),
+                    BorrowPcgEdgeKind::Deref(_) | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                ) && edge.kind().blocked_nodes(ctxt.bc_ctxt()).any(|node| {
+                    node.related_maybe_labelled_place()
+                        .and_then(MaybeLabelledPlace::as_current_place)
+                        .is_some_and(|p| referent.is_prefix_of(p))
+                })
+            })
+        };
+        let mut referents = graph
+            .edges()
+            .filter_map(|edge| {
+                let BorrowPcgEdgeKind::Deref(deref) = edge.kind() else {
+                    return None;
+                };
+                let reference = deref.blocked_place().as_current_place()?;
+                let referent = deref.deref_place().as_current_place()?;
+                (place.is_prefix_of(reference)
+                    && reference.is_shared_ref(ctxt)
+                    && is_borrowed(referent))
+                .then_some(referent)
+            })
+            .collect::<Vec<_>>();
+        referents.sort_by_key(|referent| referent.projection.len());
+        let mut detached: Vec<Place<'tcx>> = vec![];
+        for referent in referents {
+            if detached.iter().any(|d| d.is_prefix_of(referent)) {
+                continue;
+            }
+            detached.push(referent);
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    referent,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::DetachSharedReferent,
+                )
+                .into(),
+            )?;
+            let reference = referent.parent_place().unwrap();
+            let derefs = self
+                .pcg
+                .borrow
+                .graph
+                .edges()
+                .filter_map(|edge| match edge.kind() {
+                    BorrowPcgEdgeKind::Deref(deref)
+                        if deref.blocked_place().as_current_place() == Some(reference) =>
+                    {
+                        Some(Conditioned::new(*deref, edge.conditions.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<HashSet<_>>();
+            let Some(deref) = derefs.iter().next() else {
+                continue;
+            };
+            let deref_place = deref.value.deref_place();
+            self.remove_deref_edges_to(deref_place, derefs, "detach shared referent")?;
+        }
+        Ok(())
+    }
+
+    /// Packs the read unpacking below `place`, deepest first, except where
+    /// places in it are borrowed.
+    pub(crate) fn pack_read_unpacking(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        loop {
+            let fg = self.pcg.borrow.graph.frozen_graph();
+            let packable = fg
+                .leaf_edges(self.ctxt)
+                .into_iter()
+                .map(BorrowPcgEdgeLike::to_owned_edge)
+                .find(|edge| {
+                    unpacking_places(edge.kind()).is_some_and(|(base, _, _)| {
+                        place.is_prefix_of(base)
+                            && self.pcg.capability_of(base, self.ctxt) == Some(CapabilityKind::Read)
+                            && edge.kind().blocked_by_nodes(self.ctxt).all(|node| {
+                                node.as_current_place().is_some_and(|p| {
+                                    self.pcg.capability_of(p, self.ctxt)
+                                        == Some(CapabilityKind::Read)
+                                })
+                            })
+                    })
+                });
+            let Some(edge) = packable else {
+                return Ok(());
+            };
+            self.remove_edge_and_perform_associated_state_updates(&edge, "pack read unpacking")?;
+        }
+    }
+
     pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
         tracing::debug!(
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())
         );
+        self.detach_borrowed_shared_referents(place)?;
+        self.pack_read_unpacking(place)?;
         self.drop_read_copies(place)?;
         let frozen = self.frozen_ancestor(place);
-        self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+        // Packing the whole read unpacking already unfreezes the frozen place.
+        if self
+            .pcg
+            .place_capability_equals(frozen, CapabilityKind::Read, self.ctxt)
+        {
+            self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+        }
         if frozen != place {
             self.label_rps_up_to(
                 place.parent_place().unwrap(),
