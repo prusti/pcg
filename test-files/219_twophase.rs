@@ -16,7 +16,7 @@ fn foo() {
     // The reservation freezes `x`; the activation lends the frozen capability.
     // PCG: bb0[5] post_operands: Freeze x
     // PCG: bb1[1] pre_operands: Activate two-phase borrow borrow: _3 = &mut  x
-    // PCG: bb2[0] pre_operands: Restore capability E to x
+    // PCG: bb2[0] pre_operands: Remove Edge borrow: _3 before bb1[1]:PostOperands <before bb1[1]:PostMain> = &mut  x returning E to x
     // ~PCG: bb1[1] pre_operands: Weaken x from R to None
 }
 
@@ -43,7 +43,7 @@ fn field_read(mut v: V) -> V {
     // PCG: bb0[4] pre_operands: unpack v with capability R
     // PCG: bb0[5] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: None, _marker: PhantomData<&()> })
     // PCG: bb0[5] pre_operands: Activate two-phase borrow borrow: _3 = &mut  v
-    // PCG: bb1[0] pre_operands: Restore capability E to v
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: _3 before bb0[5]:PostOperands <before bb0[5]:PostMain> = &mut  v returning E to v
     v
 }
 
@@ -51,7 +51,7 @@ fn field_read_borrowed(v: &mut V) {
     v.set(v.n);
     // PCG: bb0[2] post_operands: Freeze *v
     // PCG: bb0[5] pre_operands: Activate two-phase borrow borrow: _3 = &mut  *v
-    // PCG: bb1[0] pre_operands: Restore *v to E
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: _3 before bb0[5]:PostOperands <before bb0[5]:PostMain> = &mut  *v returning E to *v
 }
 
 fn under_mut_ref(w: &mut W) {
@@ -60,7 +60,7 @@ fn under_mut_ref(w: &mut W) {
     // PCG: bb0[2] post_operands: Freeze (*w).v
     // PCG: bb0[2] post_operands: (*w).k: E
     // PCG: bb0[5] pre_operands: Activate two-phase borrow borrow: _3 = &mut  (*w).v
-    // PCG: bb1[0] pre_operands: Restore (*w).v to E
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: _3 before bb0[5]:PostOperands <before bb0[5]:PostMain> = &mut  (*w).v returning E to (*w).v
 }
 
 impl W {
@@ -78,7 +78,7 @@ fn under_shared_borrow(mut w: W) -> W {
     // PCG: bb0[8] pre_operands: Refreeze w to w.v
     // PCG: bb0[8] pre_operands: Activate two-phase borrow borrow: _4 = &mut  w.v
     // ~PCG: bb0[8] pre_operands: Weaken w from R to None
-    // ~PCG: bb1[0] pre_operands: Restore capability E to w.k
+    // ~PCG: bb1[0] pre_operands: Unfreeze w.k
     w
 }
 

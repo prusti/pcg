@@ -30,7 +30,6 @@ export type { PcgLoopDebugData } from "./PcgLoopDebugData";
 export type { PcgStmtVisualizationData } from "./PcgStmtVisualizationData";
 export type { PcgSuccessorVisualizationData } from "./PcgSuccessorVisualizationData";
 export type { PcgVisualizationData } from "./PcgVisualizationData";
-export type { RegainedCapability } from "./RegainedCapability";
 export type { RepackCollapse } from "./RepackCollapse";
 export type { RepackExpand } from "./RepackExpand";
 export type { RepackOp } from "./RepackOp";

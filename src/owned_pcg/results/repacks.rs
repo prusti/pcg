@@ -480,47 +480,6 @@ pub enum RepackOp<'tcx, Local = mir::Local, Place = crate::utils::Place<'tcx>, G
     Collapse(RepackCollapse<'tcx, Place, Guide>),
     /// TODO
     DerefShallowInit(Place, Place),
-    /// This place should have its capability changed from `Lent` (for mutably
-    /// borrowed places) or `Read` (for shared borrow places), to the given
-    /// capability, because it is no longer lent out.
-    RegainLoanedCapability(RegainedCapability<Place>),
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
-#[cfg_attr(feature = "type-export", ts(export))]
-pub struct RegainedCapability<Place> {
-    pub(crate) place: Place,
-    pub(crate) capability: CapabilityKind,
-}
-
-impl<Place> RegainedCapability<Place> {
-    pub fn new(place: Place, capability: CapabilityKind) -> Self {
-        Self { place, capability }
-    }
-
-    pub fn place(&self) -> Place
-    where
-        Place: Copy,
-    {
-        self.place
-    }
-
-    pub fn capability(&self) -> CapabilityKind {
-        self.capability
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt>
-    for RegainedCapability<Place<'tcx>>
-{
-    type Repr = RegainedCapability<String>;
-    fn debug_repr(&self, ctxt: Ctxt) -> Self::Repr {
-        RegainedCapability {
-            place: self.place.display_string(ctxt),
-            capability: self.capability,
-        }
-    }
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp<'tcx> {
@@ -530,9 +489,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackOp
             RepackOp::StorageDead(local) => RepackOp::StorageDead(local.display_string(ctxt)),
             RepackOp::IgnoreStorageDead(local) => {
                 RepackOp::IgnoreStorageDead(local.display_string(ctxt))
-            }
-            RepackOp::RegainLoanedCapability(regained_capability) => {
-                RepackOp::RegainLoanedCapability(regained_capability.debug_repr(ctxt))
             }
             RepackOp::Weaken(weaken) => RepackOp::Weaken(weaken.debug_repr(ctxt)),
             RepackOp::Expand(expand) => RepackOp::Expand(expand.debug_repr(ctxt)),
@@ -550,13 +506,6 @@ impl<Ctxt, P: std::fmt::Debug + DisplayWithCtxt<Ctxt>> DisplayWithCtxt<Ctxt>
     fn display_output(&self, ctxt: Ctxt, _mode: OutputMode) -> DisplayOutput {
         DisplayOutput::Text(
             match self {
-                RepackOp::RegainLoanedCapability(regained_capability) => {
-                    format!(
-                        "Restore capability {:?} to {}",
-                        regained_capability.capability,
-                        regained_capability.place.display_string(ctxt),
-                    )
-                }
                 RepackOp::Expand(expand) => format!(
                     "unpack {} with capability {:?}",
                     expand.from.display_string(ctxt),
@@ -615,7 +564,6 @@ impl<'tcx> RepackOp<'tcx> {
             RepackOp::Weaken(Weaken { place, .. })
             | RepackOp::Collapse(RepackCollapse { to: place, .. })
             | RepackOp::Expand(RepackExpand { from: place, .. })
-            | RepackOp::RegainLoanedCapability(RegainedCapability { place, .. })
             | RepackOp::DerefShallowInit(place, _) => place,
         }
     }

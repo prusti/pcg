@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::{
     DebugLines,
-    action::{AppliedActions, OwnedPcgAction, PcgActions},
+    action::{AppliedActions, PcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
@@ -413,12 +413,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             SnapshotLocation::BeforeJoin(other_block),
             ctxt,
         )?;
-        let mut actions = PcgActions::new(
-            repacks
-                .into_iter()
-                .map(|repack| OwnedPcgAction::new(repack, None).into())
-                .collect(),
-        );
+        let mut actions = PcgActions::new(repacks);
         if ctxt.is_loop_head(other_block) {
             actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
         }
@@ -434,7 +429,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         self_snapshot: SnapshotLocation,
         other_snapshot: SnapshotLocation,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let mut other = target.clone();
         let mut slf_owned_data = self.join_owned_data(self_snapshot);
         let other_owned_data = JoinOwnedData {
@@ -452,7 +447,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
                 && cap > other_cap
             {
-                repacks.push(RepackOp::weaken(place, cap, other_cap));
+                repacks.push(RepackOp::weaken(place, cap, other_cap).into());
             }
         }
         self.place_capabilities

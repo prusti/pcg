@@ -4,11 +4,7 @@ use itertools::Itertools;
 
 use crate::{
     HasSettings,
-    borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion,
-        edge_data::LabelNodePredicate,
-        state::{BorrowStateMutRef, BorrowsStateLike},
-    },
+    borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     pcg::CapabilityKind,
     rustc_interface::middle::mir,
     utils::{
@@ -346,28 +342,6 @@ impl<'tcx> PlaceCapabilities<'tcx>
 where
     Self: PlaceCapabilitiesInterface<'tcx>,
 {
-    pub(crate) fn regain_loaned_capability<
-        'a,
-        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    >(
-        &mut self,
-        place: Place<'tcx>,
-        capability: CapabilityKind,
-        mut borrows: BorrowStateMutRef<'_, 'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        self.insert((*place).into(), capability, ctxt);
-        if capability == CapabilityKind::Exclusive {
-            borrows.label_lifetime_projections(
-                &LabelNodePredicate::all_future_postfixes(place),
-                None,
-                ctxt,
-            );
-        }
-    }
-
     pub(crate) fn remove_all_for_local(
         &mut self,
         local: mir::Local,

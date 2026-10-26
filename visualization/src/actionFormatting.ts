@@ -30,11 +30,8 @@ export function actionLine(
         return action.data;
       }
       return `${action.data.place}: ${capabilityLetter(action.data.from)} -> ${action.data.to ? capabilityLetter(action.data.to) : "None"}`;
-    case "RegainLoanedCapability":
-      return `Restore capability ${capabilityLetter(action.data.capability)} to ${action.data.place}`;
     case "AddEdge":
     case "RemoveEdge":
-    case "Restore":
     case "Freeze":
     case "Unfreeze":
     case "Refreeze":

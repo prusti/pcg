@@ -14,11 +14,10 @@ use crate::{
         unblock_graph::BorrowPcgUnblockAction,
         validity_conditions::ValidityConditions,
     },
-    owned_pcg::{RegainedCapability, RepackOp},
-    pcg::capabilities::CapabilityKind,
+    owned_pcg::RepackOp,
     rustc_interface::middle::mir,
     utils::{
-        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place, PlaceLike,
+        DebugRepr, HasBorrowCheckerCtxt, PcgNodeComponent, Place,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
     },
 };
@@ -157,7 +156,7 @@ impl<'tcx> PcgActions<'tcx> {
             .iter()
             .filter_map(|action| match action {
                 PcgAction::Borrow(BorrowPcgAction {
-                    kind: BorrowPcgActionKind::RemoveEdge(edge),
+                    kind: BorrowPcgActionKind::RemoveEdge { edge, .. },
                     ..
                 }) => Some(BorrowPcgUnblockAction::new(edge.clone())),
                 _ => None,
@@ -255,6 +254,12 @@ impl<'tcx, EdgeKind, P, VC> From<OwnedPcgAction<'tcx, P>> for PcgAction<'tcx, Ed
     }
 }
 
+impl<'tcx, EdgeKind, VC> From<RepackOp<'tcx>> for PcgAction<'tcx, EdgeKind, Place<'tcx>, VC> {
+    fn from(repack: RepackOp<'tcx>) -> Self {
+        OwnedPcgAction::new(repack, None).into()
+    }
+}
+
 /// An action applied to the PCG during the PCG analysis.
 pub type PcgAction<
     'tcx,
@@ -275,28 +280,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for Pcg
         match self {
             PcgAction::Borrow(action) => PcgActionDebugRepr::Borrow(action.debug_repr(ctxt)),
             PcgAction::Owned(action) => PcgActionDebugRepr::Owned(action.debug_repr(ctxt)),
-        }
-    }
-}
-
-impl<'tcx, P: PcgNodeComponent, VC> PcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-    pub(crate) fn restore_capability<Ctxt>(
-        place: P,
-        capability: CapabilityKind,
-        debug_context: impl Into<DisplayOutput>,
-        ctxt: Ctxt,
-    ) -> Self
-    where
-        P: PlaceLike<'tcx, Ctxt>,
-    {
-        let debug_context: DisplayOutput = debug_context.into();
-        if place.is_owned(ctxt) {
-            PcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Owned(OwnedPcgAction {
-                kind: RepackOp::RegainLoanedCapability(RegainedCapability::new(place, capability)),
-                debug_info: Some(debug_context),
-            })
-        } else {
-            BorrowPcgAction::restore_capability(place, capability, debug_context).into()
         }
     }
 }

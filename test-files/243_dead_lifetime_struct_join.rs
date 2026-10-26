@@ -26,8 +26,7 @@ fn local<'a>(t: T<'a>) -> Option<&'a i32> {
     // PCG: bb3[0] pre_operands: Weaken u from E to W
     // ~PCG: bb4[0] pre_operands: u: W
     // ~PCG: bb4[0] pre_operands: u: R
-    // PCG: bb4[1] pre_main: Restore capability W to u.ctx
-    // PCG: bb4[1] pre_main: Restore capability W to u.valid
+    // PCG: bb4[1] pre_main: Label place u (Write) setting u.ctx: W, u.valid: W
     let u = t;
     if u.valid { Some(u.ctx.row()) } else { None }
 }
