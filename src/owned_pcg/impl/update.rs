@@ -75,7 +75,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     [ctxt]
                 );
             }
-            PlaceCondition::RemoveCapability(_) => unreachable!(),
+            PlaceCondition::RemoveCapability(_) | PlaceCondition::Freeze(_) => unreachable!(),
         }
     }
 
@@ -122,6 +122,18 @@ impl<'tcx> OwnedPcg<'tcx> {
             }
             PlaceCondition::ExpandTwoPhase(place) => {
                 place_capabilities.insert(place, CapabilityKind::Read, ctxt);
+            }
+            // A place with E is frozen by `PcgVisitor::ensure_triple`.
+            PlaceCondition::Freeze(place) => {
+                if place_capabilities.get(place, ctxt) != Some(CapabilityKind::Exclusive) {
+                    place_capabilities.insert(place, CapabilityKind::Read, ctxt);
+                }
+                for (p, _) in place_capabilities
+                    .capabilities_for_strict_postfixes_of(place)
+                    .collect::<Vec<_>>()
+                {
+                    place_capabilities.insert(p, CapabilityKind::Read, ctxt);
+                }
             }
             PlaceCondition::RemoveCapability(place) => {
                 place_capabilities.remove(place, ctxt);

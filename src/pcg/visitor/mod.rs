@@ -371,10 +371,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .ctxt
                     .body_analysis()
                     .is_read_only_in_loop(self.location().block, place)
+                && !self
+                    .blocked_owned_places(self.ctxt.bc_ctxt())
+                    .contains(&place)
             {
-                self.pcg
-                    .place_capabilities
-                    .insert(place, CapabilityKind::Exclusive, self.ctxt);
+                self.record_and_apply_action(
+                    BorrowPcgAction::unfreeze(place, "unfreeze collapsed local").into(),
+                )?;
             }
         }
         Ok(true)
@@ -420,11 +423,48 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
-        self.place_obtainer()
-            .remove_read_permission_upwards_and_label_rps(
+        if !self
+            .pcg
+            .place_capability_equals(blocked_place, CapabilityKind::Read, self.ctxt)
+        {
+            return Ok(());
+        }
+        let borrow = borrow.clone();
+        // Reads during the reservation may have unpacked the place at R.
+        if blocked_place.as_owned_place(self.ctxt).is_some() {
+            let ctxt = self.ctxt;
+            self.place_obtainer()
+                .collapse_owned_places_and_lifetime_projections_to(
+                    blocked_place,
+                    CapabilityKind::Read,
+                    "pack the reads of a two-phase borrowed place".to_owned(),
+                    ctxt,
+                )?;
+        }
+        self.record_and_apply_action(
+            BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
+        )?;
+        let regions = blocked_place.regions(self.ctxt);
+        self.place_obtainer().label_rps_for_exclusive_access(
+            blocked_place,
+            &regions,
+            AdjustCapabilityReason::TwoPhaseBorrowActivation,
+        )?;
+        // An ancestor still holds R if it was read during the reservation, or
+        // if the reservation was made under a shared borrow of it. That R
+        // is not part of the reservation, and is removed as before.
+        if let Some(parent) = blocked_place.parent_place()
+            && self
+                .pcg
+                .place_capability_equals(parent, CapabilityKind::Read, self.ctxt)
+        {
+            self.place_obtainer().remove_read_permission_upwards_from(
                 blocked_place,
+                parent,
+                Some(blocked_place),
                 AdjustCapabilityReason::TwoPhaseBorrowActivation,
             )?;
+        }
         Ok(())
     }
 }

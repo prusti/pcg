@@ -10,6 +10,7 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
+            borrow::BorrowEdge,
             borrow_flow::private::FutureEdgeKind,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
@@ -113,6 +114,34 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
             kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Weaken(
                 Weaken::new(place, from, to),
             ),
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn freeze(place: P, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Freeze { place },
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn unfreeze(place: P, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Unfreeze {
+                place,
+            },
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn activate_two_phase_borrow(
+        borrow: BorrowEdge<'tcx, P>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::ActivateTwoPhaseBorrow {
+                borrow,
+            },
             debug_info: Some(context.into()),
         }
     }
@@ -353,6 +382,24 @@ pub enum BorrowPcgActionKind<
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
     Restore(RestoreCapability<'tcx, P>),
+    /// The place goes from E to R because a shared or two-phase borrow of it
+    /// is created. Unlike a [`Weaken`], the E capability is only suspended:
+    /// it comes back through [`BorrowPcgActionKind::Unfreeze`] of the same
+    /// place, or is lent by [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`].
+    Freeze {
+        place: P,
+    },
+    /// The place goes from R back to the E suspended by
+    /// [`BorrowPcgActionKind::Freeze`], because no borrow of it is left.
+    Unfreeze {
+        place: P,
+    },
+    /// The two-phase borrow is activated: its blocked place goes from R to
+    /// lent, i.e. the E suspended by the reservation's
+    /// [`BorrowPcgActionKind::Freeze`] is lent to the borrow.
+    ActivateTwoPhaseBorrow {
+        borrow: BorrowEdge<'tcx, P>,
+    },
     LabelPlace(LabelPlaceAction<'tcx, P>),
     /// Remove an edge from the PCG. In terms of the PCG itself, the validity
     /// conditions associated with the edge are not relevant (there is no
@@ -415,6 +462,21 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::Restore(restore_capability) => {
                 restore_capability.display_output(ctxt, mode)
             }
+            BorrowPcgActionKind::Freeze { place } => DisplayOutput::join(
+                vec!["Freeze".into(), place.display_output(ctxt, mode)],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::Unfreeze { place } => DisplayOutput::join(
+                vec!["Unfreeze".into(), place.display_output(ctxt, mode)],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => DisplayOutput::join(
+                vec![
+                    "Activate two-phase borrow".into(),
+                    borrow.display_output(ctxt, mode),
+                ],
+                &DisplayOutput::SPACE,
+            ),
             BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
             BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
                 vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],
