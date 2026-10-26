@@ -25,7 +25,6 @@ use crate::{
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
-    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
@@ -315,8 +314,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         Ok(())
     }
 
-    /// Gives `place` read capability, downgrading the capabilities of the
-    /// places in its expansion to read.
+    /// Gives `place` read capability by freezing it, which makes the places in
+    /// its expansion read copies.
     ///
     /// This is how read capability is obtained for a place that cannot have
     /// its expansion collapsed, because one of its descendants is blocked by
@@ -326,48 +325,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         place: Place<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
-        let descendants = self
-            .get_local_expansions(place.local)
-            .all_descendants_of(place, ctxt);
-        for descendant in descendants {
-            let Some(cap) = self.capabilities().get(descendant, ctxt) else {
-                continue;
-            };
-            if cap == CapabilityKind::Read {
-                continue;
-            }
-            pcg_validity_assert!(
-                cap == CapabilityKind::Exclusive,
-                [ctxt],
-                "Cannot downgrade capability {:?} of {} to read",
-                cap,
-                descendant.display_string(ctxt.ctxt())
-            );
-            self.apply_action(
-                BorrowPcgAction::weaken(
-                    descendant,
-                    cap,
-                    Some(CapabilityKind::Read),
-                    "downgrade expansion to read",
-                )
-                .into(),
-            )?;
-        }
-        let place_cap = self.capabilities().get(place, ctxt);
-        if place_cap != Some(CapabilityKind::Read) {
-            pcg_validity_assert!(
-                place_cap.is_none(),
-                [ctxt],
-                "Cannot give read capability to {}: it has capability {:?}",
-                place.display_string(ctxt.ctxt()),
-                place_cap
-            );
-            self.apply_action(PcgAction::restore_capability(
-                place,
-                CapabilityKind::Read,
-                "downgrade expansion to read",
-                ctxt,
-            ))?;
+        if self.capabilities().get(place, ctxt) != Some(CapabilityKind::Read) {
+            self.apply_action(BorrowPcgAction::freeze(place, "read an unpacked place").into())?;
         }
         Ok(())
     }

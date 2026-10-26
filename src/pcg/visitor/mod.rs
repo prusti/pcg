@@ -430,6 +430,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             return Ok(());
         }
         let borrow = borrow.clone();
+        // If the place is a read copy of a frozen ancestor (the ancestor was
+        // read during the reservation, or the reservation was made under a
+        // shared borrow of it), the freeze moves to the place first.
+        let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
+        if frozen != blocked_place {
+            self.place_obtainer()
+                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+        }
         // Reads during the reservation may have unpacked the place at R.
         if blocked_place.as_owned_place(self.ctxt).is_some() {
             let ctxt = self.ctxt;
@@ -441,30 +449,15 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     ctxt,
                 )?;
         }
+        self.place_obtainer().drop_read_copies(blocked_place)?;
         self.record_and_apply_action(
             BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
         )?;
-        let regions = blocked_place.regions(self.ctxt);
-        self.place_obtainer().label_rps_for_exclusive_access(
+        self.place_obtainer().label_rps_up_to(
             blocked_place,
-            &regions,
+            frozen,
             AdjustCapabilityReason::TwoPhaseBorrowActivation,
         )?;
-        // An ancestor still holds R if it was read during the reservation, or
-        // if the reservation was made under a shared borrow of it. That R
-        // is not part of the reservation, and is removed as before.
-        if let Some(parent) = blocked_place.parent_place()
-            && self
-                .pcg
-                .place_capability_equals(parent, CapabilityKind::Read, self.ctxt)
-        {
-            self.place_obtainer().remove_read_permission_upwards_from(
-                blocked_place,
-                parent,
-                Some(blocked_place),
-                AdjustCapabilityReason::TwoPhaseBorrowActivation,
-            )?;
-        }
         Ok(())
     }
 }
