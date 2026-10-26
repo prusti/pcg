@@ -339,23 +339,6 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         MaybeRemotePlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
     {
         match action.kind {
-            BorrowPcgActionKind::Restore(restore) => {
-                let restore_place = restore.place();
-                if let Some(cap) = capabilities.get(restore_place, ctxt) {
-                    pcg_validity_assert!(cap < restore.capability());
-                }
-                if !capabilities.insert(restore_place, restore.capability(), ctxt) {
-                    // panic!("Capability should have been updated")
-                }
-                if restore.capability() == CapabilityKind::Exclusive {
-                    self.label_lifetime_projections(
-                        &LabelNodePredicate::all_future_postfixes(restore_place),
-                        None,
-                        ctxt,
-                    );
-                }
-                ApplyActionResult::changed_no_display()
-            }
             BorrowPcgActionKind::Weaken(weaken) => {
                 let weaken_place = weaken.place();
                 pcg_validity_assert!(
@@ -448,16 +431,35 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 let _ = capabilities.remove(place, ctxt);
                 ApplyActionResult::changed_no_display()
             }
-            BorrowPcgActionKind::LabelPlace(action) => self
-                .label_place_and_update_related_capabilities(
+            BorrowPcgActionKind::LabelPlace(action) => {
+                let result = self.label_place_and_update_related_capabilities(
                     action.place,
                     action.reason,
                     &SetLabel(action.location),
                     capabilities,
                     ctxt,
-                ),
-            BorrowPcgActionKind::RemoveEdge(edge) => {
-                ApplyActionResult::from_changed(self.remove(&edge.value, capabilities, ctxt))
+                );
+                for (place, cap) in action.capabilities {
+                    capabilities.insert(place, cap, ctxt);
+                }
+                result
+            }
+            BorrowPcgActionKind::RemoveEdge { edge, regained } => {
+                let removed = self.remove(&edge.value, capabilities, ctxt);
+                for (place, cap) in regained {
+                    if let Some(current) = capabilities.get(place, ctxt) {
+                        pcg_validity_assert!(current < cap);
+                    }
+                    capabilities.insert(place, cap, ctxt);
+                    if cap == CapabilityKind::Exclusive {
+                        self.label_lifetime_projections(
+                            &LabelNodePredicate::all_future_postfixes(place),
+                            None,
+                            ctxt,
+                        );
+                    }
+                }
+                ApplyActionResult::from_changed(removed)
             }
             BorrowPcgActionKind::AddEdge { edge } => {
                 ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt))

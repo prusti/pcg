@@ -17,7 +17,7 @@ pub(crate) type JoinCtxt<'a, 'tcx> = CompilerCtxtWithSettings<'a, 'tcx>;
 pub(crate) struct JoinObtainer<'pcg: 'exp, 'exp, 'slf, 'a, 'tcx> {
     pub(crate) ctxt: JoinCtxt<'a, 'tcx>,
     pub(crate) data: &'slf mut JoinOwnedData<'a, 'pcg, 'tcx, &'exp mut LocalExpansions<'tcx>>,
-    pub(crate) actions: Vec<RepackOp<'tcx>>,
+    pub(crate) actions: Vec<PcgAction<'tcx>>,
 }
 
 impl HasSnapshotLocation for JoinObtainer<'_, '_, '_, '_, '_> {
@@ -41,16 +41,7 @@ impl<'tcx> ActionApplier<'tcx> for JoinObtainer<'_, '_, '_, '_, 'tcx> {
                         self.data.capabilities,
                         self.ctxt,
                     );
-                    self.actions.push(action.kind);
-                }
-                RepackOp::RegainLoanedCapability(regained_capability) => {
-                    self.data.capabilities.regain_loaned_capability(
-                        regained_capability.place,
-                        regained_capability.capability,
-                        self.data.borrows.as_mut_ref(),
-                        self.ctxt,
-                    );
-                    self.actions.push(action.kind);
+                    self.actions.push(action.into());
                 }
                 _ => unreachable!(),
             },
