@@ -676,7 +676,7 @@ impl<'tcx> ActionApplier<'tcx> for AbsExpander<'_, '_, 'tcx> {
         tracing::debug!("applying action: {}", action.debug_line(self.ctxt));
         match action {
             PcgAction::Borrow(action) => match action.kind {
-                BorrowPcgActionKind::AddEdge { edge } => {
+                BorrowPcgActionKind::AddEdge { edge, .. } => {
                     self.graph.insert(edge, self.ctxt);
                 }
                 BorrowPcgActionKind::LabelLifetimeProjection(action) => {
@@ -714,21 +714,21 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         true
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
+    fn borrow_expansion_capabilities(
+        &self,
         _expansion: &borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
         _block_type: pcg::place_capabilities::BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        true
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        vec![]
     }
-    fn update_capabilities_for_deref(
-        &mut self,
+    fn deref_capabilities(
+        &self,
         _ref_place: Place<'tcx>,
         _capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        true
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        vec![]
     }
 
     fn location(&self) -> mir::Location {

@@ -1008,30 +1008,28 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg.borrow.validity_conditions.clone()
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
+    fn borrow_expansion_capabilities(
+        &self,
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
         self.pcg
             .place_capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt)
+            .expansion_capabilities(expansion, block_type, self.ctxt)
     }
 
     fn location(&self) -> mir::Location {
         self.location
     }
 
-    fn update_capabilities_for_deref(
-        &mut self,
+    fn deref_capabilities(
+        &self,
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.pcg
-            .place_capabilities
-            .update_for_deref(ref_place, capability, self.ctxt)
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        PlaceCapabilities::deref_capabilities(ref_place, capability, self.ctxt)
     }
 
     fn freeze_for_read_unpacking(&mut self, base: Place<'tcx>) -> Result<(), PcgError> {

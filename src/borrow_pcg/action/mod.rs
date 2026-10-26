@@ -73,8 +73,16 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
+        Self::add_edge_setting(edge, vec![], context)
+    }
+
+    pub(crate) fn add_edge_setting(
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        capabilities: Vec<(P, Option<CapabilityKind>)>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
         BorrowPcgAction {
-            kind: BorrowPcgActionKind::AddEdge { edge },
+            kind: BorrowPcgActionKind::AddEdge { edge, capabilities },
             debug_info: Some(context.into()),
         }
     }
@@ -454,8 +462,13 @@ pub enum BorrowPcgActionKind<
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
         regained: Vec<(P, CapabilityKind)>,
     },
+    /// Add an edge to the PCG. `capabilities` are the capabilities the edge
+    /// sets (`None` removes one): an unpacking (a borrow-PCG expansion or a
+    /// dereference) moves the capability of its base to its expansion, and a
+    /// mutable borrow takes the capability of the borrowed place.
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
+        capabilities: Vec<(P, Option<CapabilityKind>)>,
     },
 }
 
@@ -552,10 +565,26 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 }
                 DisplayOutput::join(words, &DisplayOutput::SPACE)
             }
-            BorrowPcgActionKind::AddEdge { edge } => DisplayOutput::join(
-                vec!["Add Edge".into(), edge.display_output(ctxt, mode)],
-                &DisplayOutput::SPACE,
-            ),
+            BorrowPcgActionKind::AddEdge { edge, capabilities } => {
+                let mut words = vec!["Add Edge".into(), edge.display_output(ctxt, mode)];
+                if !capabilities.is_empty() {
+                    words.push("setting".into());
+                    words.push(DisplayOutput::join(
+                        capabilities.iter().map(|(place, cap)| {
+                            DisplayOutput::Seq(vec![
+                                place.display_output(ctxt, mode),
+                                ": ".into(),
+                                match cap {
+                                    Some(cap) => cap.display_output(ctxt, mode),
+                                    None => "None".into(),
+                                },
+                            ])
+                        }),
+                        &", ".into(),
+                    ));
+                }
+                DisplayOutput::join(words, &DisplayOutput::SPACE)
+            }
         }
     }
 }
