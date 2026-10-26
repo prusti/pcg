@@ -374,12 +374,54 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// A place whose lifetime projection is dead can no longer be used, so once
     /// the edge into that projection is removed, the place retains only
     /// [`CapabilityKind::Write`].
+    ///
+    /// The place may still be dereferenced, or the borrow assigned to it still
+    /// be in the graph, in edges that are removed only later; consumers of the
+    /// actions may need the place's value to apply those removals. Such a place
+    /// is weakened only once all edges removed together with `edge` are gone,
+    /// see [`Self::finish_weakening_places_with_dead_lifetime_projections`].
     fn weaken_places_with_dead_lifetime_projections(
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
-        let places = edge
-            .blocked_by_nodes(self.ctxt.bc_ctxt())
+        for place in self.places_with_dead_lifetime_projections(edge) {
+            if !self.reference_in_use(place) {
+                self.weaken_place_with_dead_lifetime_projection(place)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Called once all of `removed_edges`, which are removed together, are
+    /// gone: weakens the places whose lifetime projections their removal left
+    /// dead and that still have a capability above [`CapabilityKind::Write`],
+    /// e.g. because they were in use when the edge was removed.
+    pub(crate) fn finish_weakening_places_with_dead_lifetime_projections(
+        &mut self,
+        removed_edges: &[BorrowPcgEdge<'tcx>],
+    ) -> Result<(), PcgError> {
+        for edge in removed_edges {
+            for place in self.places_with_dead_lifetime_projections(edge.kind()) {
+                self.weaken_place_with_dead_lifetime_projection(place)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The current places whose lifetime projections `edge` is blocked by and
+    /// are dead. Dereferences and expansions do not leave a place's lifetime
+    /// projection dead.
+    fn places_with_dead_lifetime_projections(
+        &self,
+        edge: &BorrowPcgEdgeKind<'tcx>,
+    ) -> HashSet<Place<'tcx>> {
+        if matches!(
+            edge,
+            BorrowPcgEdgeKind::Deref(_) | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+        ) {
+            return HashSet::default();
+        }
+        edge.blocked_by_nodes(self.ctxt.bc_ctxt())
             .filter_map(|node| {
                 let PcgNode::LifetimeProjection(rp) = node else {
                     return None;
@@ -392,23 +434,42 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .is_dead(node.into(), self.location())
                     .then_some(place)
             })
-            .collect::<HashSet<_>>();
-        for place in places {
-            if let Some(existing_cap) = self.pcg.capability_of(place, self.ctxt)
-                && existing_cap > CapabilityKind::Write
-            {
-                self.record_and_apply_action(
-                    BorrowPcgAction::weaken(
-                        place,
-                        existing_cap,
-                        Some(CapabilityKind::Write),
-                        "lifetime projection is dead",
-                    )
-                    .into(),
-                )?;
-            }
+            .collect()
+    }
+
+    fn weaken_place_with_dead_lifetime_projection(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        if let Some(existing_cap) = self.pcg.capability_of(place, self.ctxt)
+            && existing_cap > CapabilityKind::Write
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::weaken(
+                    place,
+                    existing_cap,
+                    Some(CapabilityKind::Write),
+                    "lifetime projection is dead",
+                )
+                .into(),
+            )?;
         }
         Ok(())
+    }
+
+    /// Whether the graph still dereferences `place` or contains the borrow
+    /// assigned to it.
+    fn reference_in_use(&self, place: Place<'tcx>) -> bool {
+        let place = MaybeLabelledPlace::Current(place);
+        self.pcg
+            .borrow
+            .graph()
+            .edges()
+            .any(|edge| match edge.kind() {
+                BorrowPcgEdgeKind::Deref(deref) => deref.blocked_place == place,
+                BorrowPcgEdgeKind::Borrow(borrow) => borrow.assigned_ref == place,
+                _ => false,
+            })
     }
 
     /// As an optimization, for expansions of the form {y, y|'y at l} -> *y,

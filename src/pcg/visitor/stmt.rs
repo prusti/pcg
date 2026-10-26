@@ -99,6 +99,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         )?;
                     }
                 }
+                let mut removed_edges = Vec::new();
                 for rp in target.lifetime_projections(self.ctxt) {
                     let blocked_edges = self
                         .pcg
@@ -115,9 +116,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                                 .remove_edge_and_perform_associated_state_updates(
                                     &edge, "Assign",
                                 )?;
+                            removed_edges.push(edge);
                         }
                     }
                 }
+                self.place_obtainer()
+                    .finish_weakening_places_with_dead_lifetime_projections(&removed_edges)?;
             }
             _ => {}
         }
