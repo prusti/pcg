@@ -19,7 +19,7 @@ use crate::{
     },
     owned_pcg::{LocalExpansions, RepackOp},
     pcg::{
-        CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
+        CapabilityKind, EvalStmtPhase, PcgNode, PcgNodeLike, PcgRef, PcgRefLike, meet,
         obtain::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceCollapser, PlaceObtainer,
             RenderDebugGraph, expand::PlaceExpander,
@@ -32,7 +32,7 @@ use crate::{
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace, PackStrategy,
+        CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, PackStrategy,
         data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
     },
 };
@@ -106,55 +106,42 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    /// The capability that `place` has once nothing blocks it.
-    fn unblocked_capability(&self, place: Place<'tcx>) -> CapabilityKind {
-        // TODO: If the place projects a shared ref, do we even need to restore a capability?
-        //
-        // For owned places we consult the initialisation state so we
-        // don't unsoundly restore to `Exclusive` when the place was
-        // moved out on some incoming path (#137): the join of the init
-        // trees would then leave the place as `Uninit`, which maps to
-        // `Write`.
-        if place.place().projects_shared_ref(self.ctxt)
-            || self
-                .ctxt
-                .body_analysis()
-                .is_read_only_in_loop(self.location().block, place)
-        {
-            CapabilityKind::Read
-        } else if let Some(owned) = place.as_owned_place(self.ctxt)
-            && let Some(init_cap) = self.pcg.owned.owned_capability(owned)
-        {
-            init_cap
-        } else {
-            CapabilityKind::Exclusive
-        }
-    }
-
-    /// The capability that `place` gets back when the edge blocking it is
-    /// removed: it was lent (no capability), packed (no capability), or a
-    /// mutable reference whose dereference is packed (`e`). An unpacked place
+    /// The capabilities that the places `unblocked` by removing an edge get
+    /// back: what each lent. The base of an unpacking gets `packed`, what its
+    /// expansion held, lowered to what it lent at a join. An unpacked place
     /// gets nothing back: its parts are unblocked.
-    fn regained_capability(&self, place: Place<'tcx>) -> Option<CapabilityKind> {
-        // The place could come from a local that was conditionally allocated
-        // and therefore we can't get back to it, and certainly shouldn't give
-        // it any capability
-        // TODO: Perhaps the join should label such places?
-        if !self.pcg.owned.is_allocated(place.local) || self.pcg.place_capabilities.unpacks(place) {
-            return None;
+    fn regained_capabilities(
+        &self,
+        unblocked: &[Place<'tcx>],
+        packed: Option<CapabilityKind>,
+    ) -> CapabilityChanges<Place<'tcx>> {
+        let capabilities = &*self.pcg.place_capabilities;
+        let mut regained = CapabilityChanges::default();
+        for &place in unblocked {
+            // The place could come from a local that was conditionally
+            // allocated and therefore we can't get back to it.
+            if !self.pcg.owned.is_allocated(place.local) || capabilities.unpacks(place) {
+                continue;
+            }
+            let suspended = capabilities.suspended(place);
+            match (capabilities.get(place, self.ctxt), packed, suspended) {
+                (None | Some(CapabilityKind::ShallowExclusive), Some(packed), _) => {
+                    regained.set(
+                        place,
+                        Some(suspended.map_or(packed, |lent| meet(lent, packed))),
+                    );
+                }
+                (None, None, Some(lent)) => regained.set(place, Some(lent)),
+                _ => {}
+            }
         }
-        let blocked_cap = self.pcg.capability_of(place, self.ctxt);
-        let unblocked_cap = self.unblocked_capability(place);
-        (matches!(
-            blocked_cap,
-            None | Some(CapabilityKind::Write | CapabilityKind::ShallowExclusive)
-        ) && blocked_cap != Some(unblocked_cap))
-        .then_some(unblocked_cap)
+        regained
     }
 
     /// Updates `place` after the edge blocking it was removed: a frozen leaf
-    /// is unfrozen, and the placeholder labels of its lifetime projections
-    /// are removed.
+    /// is unfrozen unless the loop it is in only reads it (the loop holds the
+    /// freeze), and the placeholder labels of its lifetime projections are
+    /// removed.
     fn place_unblocked(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
         if !self.pcg.owned.is_allocated(place.local) {
             return Ok(());
@@ -162,7 +149,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if self
             .pcg
             .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
-            && self.unblocked_capability(place) == CapabilityKind::Exclusive
+            && self.pcg.place_capabilities.suspended(place).is_some()
+            && !self
+                .ctxt
+                .body_analysis()
+                .is_read_only_in_loop(self.location().block, place)
             && self.frozen_ancestor(place) == place
             && !self.pcg.place_capabilities.unpacks(place)
         {
@@ -627,20 +618,31 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         context: String,
         unblocked: impl FnOnce(&Self) -> Vec<Place<'tcx>>,
     ) -> Vec<Place<'tcx>> {
+        let packed = matches!(
+            edge.kind(),
+            BorrowPcgEdgeKind::Deref(_)
+                | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                | BorrowPcgEdgeKind::RawPtrDeref(_)
+        )
+        .then(|| {
+            edge.kind()
+                .blocked_by_nodes(self.ctxt.bc_ctxt())
+                .filter_map(|node| {
+                    node.as_current_place()
+                        .map(|place| self.pcg.capability_of(place, self.ctxt))
+                })
+                .collect::<Option<Vec<_>>>()?
+                .into_iter()
+                .reduce(meet)
+        })
+        .flatten();
         let mut action = BorrowPcgAction::remove_edge(edge, context);
         let result =
             self.pcg
                 .borrow
                 .apply_action(&mut action, self.pcg.place_capabilities, self.ctxt);
         let unblocked = unblocked(self);
-        let regained: CapabilityChanges<_> = unblocked
-            .iter()
-            .filter_map(|place| {
-                self.regained_capability(*place)
-                    .map(|capability| (*place, Some(capability)))
-            })
-            .collect::<Vec<_>>()
-            .into();
+        let regained = self.regained_capabilities(&unblocked, packed);
         self.pcg
             .borrow
             .regain(&regained, self.pcg.place_capabilities, self.ctxt);
@@ -702,6 +704,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                             .collect::<Vec<_>>()
                             .into();
                         changes.apply(self.pcg.place_capabilities, self.ctxt);
+                        self.pcg
+                            .place_capabilities
+                            .retain_suspended(|place, _| place.local != local);
                         self.pcg.owned.deallocate(local);
                         changes
                     }

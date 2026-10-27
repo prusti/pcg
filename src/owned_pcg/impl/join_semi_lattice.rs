@@ -104,7 +104,18 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        let expansion_places = self.all_children_of(collapse.to, ctxt);
+        // Only the expansion with the collapse's guide is packed: a place
+        // can be read-unpacked at several indices.
+        let collapsed = self
+            .expansions
+            .iter()
+            .filter(|ep| ep.place == collapse.to && ep.guide() == collapse.guide)
+            .cloned()
+            .collect::<Vec<_>>();
+        let expansion_places = collapsed
+            .iter()
+            .flat_map(|ep| ep.expansion_places(ctxt).unwrap())
+            .collect::<Vec<_>>();
         let mut changes = CapabilityChanges::default();
         let retained_cap: CapabilityKind =
             expansion_places
@@ -129,7 +140,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                         acc
                     )
                 });
-        self.remove_all_expansions_from(collapse.to, ctxt);
+        self.expansions.retain(|ep| !collapsed.contains(ep));
         changes.set(collapse.to, Some(retained_cap));
         changes.apply(place_capabilities, ctxt);
         changes

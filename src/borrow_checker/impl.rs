@@ -215,19 +215,14 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
             .map(|r| (*r).into())
             .collect::<BTreeSet<_>>();
         regions.iter().any(|region| match region {
-            PcgRegion::RegionVid(region_vid) => live_loans.iter().any(|loan| {
-                if live_origins.contains(region_vid) {
-                    return true;
-                }
-                if self
-                    .borrow_checker_data
-                    .region_cx
-                    .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
-                {
-                    return true;
-                }
-                false
-            }),
+            PcgRegion::RegionVid(region_vid) => {
+                live_origins.contains(region_vid)
+                    || live_loans.iter().any(|loan| {
+                        self.borrow_checker_data
+                            .region_cx
+                            .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
+                    })
+            }
             _ => todo!(),
         })
     }

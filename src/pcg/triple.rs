@@ -53,7 +53,6 @@ pub(crate) enum PlaceCondition<'tcx> {
     /// The place is shared or two-phase borrowed: it is frozen at R.
     Freeze(Place<'tcx>),
     Capability(Place<'tcx>, CapabilityKind),
-    RemoveCapability(Place<'tcx>),
     AllocateOrDeallocate(Local),
     Unalloc(Local),
     Return,
@@ -161,10 +160,10 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
                     Some(PlaceCondition::Freeze(place.into())),
                 ),
                 BorrowKind::Fake(..) => return Ok(()),
-                BorrowKind::Mut { .. } => Triple::new(
-                    PlaceCondition::exclusive(place, self.ctxt),
-                    Some(PlaceCondition::RemoveCapability(place.into())),
-                ),
+                // The borrow edge takes the capability.
+                BorrowKind::Mut { .. } => {
+                    Triple::new(PlaceCondition::exclusive(place, self.ctxt), None)
+                }
             },
             &RawPtr(mutbl, place) => {
                 #[rustversion::since(2025-03-02)]

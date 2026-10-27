@@ -36,7 +36,7 @@ use super::{Pcg, is_variant_unpacking};
 /// the other with its referent lent (e) keeps its own value: e. A place that
 /// one path holds frozen and the other has moved out (W) can only be
 /// overwritten: W.
-fn meet(a: CapabilityKind, b: CapabilityKind) -> CapabilityKind {
+pub(crate) fn meet(a: CapabilityKind, b: CapabilityKind) -> CapabilityKind {
     match (a, b) {
         (CapabilityKind::Read, CapabilityKind::ShallowExclusive)
         | (CapabilityKind::ShallowExclusive, CapabilityKind::Read) => {
@@ -221,12 +221,32 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         .reach(target, other, self_block)?;
         self.owned.join_capabilities(&other.owned);
         pcg_validity_assert!(
-            self.place_capabilities == *target,
+            self.place_capabilities.map == target.map,
             [ctxt],
             "the join reaches {:?} instead of {:?}",
             self.place_capabilities.debug_lines(ctxt),
             target.debug_lines(ctxt)
         );
+        Ok(applied.actions.into_iter().map(|a| a.action).collect())
+    }
+
+    /// Weakens the capabilities this state suspends to the ones `target`
+    /// suspends, recording the actions.
+    pub(crate) fn weaken_suspended_to(
+        &mut self,
+        target: &PlaceCapabilities<'tcx>,
+        snapshot: SnapshotLocation,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
+        let mut applied = AppliedActions::default();
+        PlaceObtainer::new(
+            PcgMutRef::from(self),
+            Some(&mut applied),
+            ctxt,
+            snapshot.location(),
+            snapshot,
+        )
+        .weaken_suspended_to(target)?;
         Ok(applied.actions.into_iter().map(|a| a.action).collect())
     }
 }
@@ -248,6 +268,29 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
         self.move_capabilities_to(target, other)?;
         self.pack_to(target)?;
         self.give_up_places_outside(target, other, self_block)
+    }
+
+    /// Weakens each capability this state suspends to the meet with the one
+    /// `target` suspends, or drops it if `target` does not suspend one.
+    pub(crate) fn weaken_suspended_to(
+        &mut self,
+        target: &PlaceCapabilities<'tcx>,
+    ) -> Result<(), PcgError> {
+        let weakened = self
+            .pcg
+            .place_capabilities
+            .iter_suspended()
+            .filter_map(|(place, from)| {
+                let to = target.suspended(place).map(|to| meet(from, to));
+                (to != Some(from)).then_some((place, from, to))
+            })
+            .collect::<Vec<_>>();
+        for (place, from, to) in weakened {
+            self.record_and_apply_action(
+                BorrowPcgAction::weaken_suspended(place, from, to, "join").into(),
+            )?;
+        }
+        Ok(())
     }
 
     fn storage_dead(&mut self, local: mir::Local) -> Result<(), PcgError> {
@@ -367,6 +410,17 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 self.upgrade_read_to_exclusive(place, &|base| target.unpacks(base))?;
                 self.weaken_to(place, to)
             }
+            // The referent of a mutable reference is given up: dereferenced
+            // here, it is lent to the edge of `other` that blocks it.
+            (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive)
+                if place.is_mut_ref(self.ctxt) =>
+            {
+                self.expand_to(
+                    place.project_deref(self.ctxt),
+                    ObtainType::Capability(CapabilityKind::Exclusive),
+                    self.ctxt,
+                )
+            }
             (
                 CapabilityKind::Exclusive,
                 CapabilityKind::ShallowExclusive | CapabilityKind::Write,
@@ -441,11 +495,34 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
         }
     }
 
-    /// Weakens the owned places that are not definitely initialized here to
-    /// [`CapabilityKind::Write`].
+    /// Weakens the owned places that are not definitely initialized here,
+    /// held or suspended, to [`CapabilityKind::Write`].
     pub(super) fn weaken_maybe_uninitialized(&mut self) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         let location = self.location();
+        let suspended = self
+            .pcg
+            .place_capabilities
+            .iter_suspended()
+            .filter(|(place, capability)| {
+                *capability > CapabilityKind::Write
+                    && place.as_owned_place(ctxt).is_some()
+                    && !ctxt
+                        .body_analysis()
+                        .is_definitely_initialized_at(location, *place)
+            })
+            .collect::<Vec<_>>();
+        for (place, from) in suspended {
+            self.record_and_apply_action(
+                BorrowPcgAction::weaken_suspended(
+                    place,
+                    from,
+                    Some(CapabilityKind::Write),
+                    "loop head",
+                )
+                .into(),
+            )?;
+        }
         let mut places = self
             .pcg
             .place_capabilities
