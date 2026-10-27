@@ -519,10 +519,23 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 // which is `place`, a part of it or the place `place` is part
                 // of (not through a dereference: a referent is not part of
                 // the reference's value). A frozen place lends the capability
-                // its freeze suspends.
+                // its freeze suspends; the referent of a mutable reference
+                // held with E is lent through it, and the reference keeps e.
+                let reference = capabilities
+                    .iter()
+                    .find(|(reference, cap)| {
+                        *cap == CapabilityKind::Exclusive
+                            && reference.is_strict_prefix_of(*place)
+                            && place.projects_indirection_from(*reference, ctxt)
+                    })
+                    .map(|(reference, _)| reference);
+                if let Some(reference) = reference {
+                    changes.set(reference, Some(CapabilityKind::ShallowExclusive));
+                }
                 if let Some(lent) = capabilities
                     .resume(*place)
                     .or_else(|| capabilities.get(*place, ctxt))
+                    .or(reference.map(|_| CapabilityKind::Exclusive))
                 {
                     for node in edge.value.blocked_nodes(ctxt) {
                         if let PcgNode::Place(MaybeLabelledPlace::Current(blocked)) = node
