@@ -1,11 +1,9 @@
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    HasSettings, Weaken,
+    Weaken,
     borrow_pcg::{action::BorrowPcgAction, unblock_graph::BorrowPcgUnblockAction},
-    pcg_validity_assert,
     rustc_interface::data_structures::fx::FxHashSet,
-    utils::DebugCtxt,
 };
 
 use super::BorrowPcgActionKind;
@@ -44,29 +42,5 @@ impl<'tcx> BorrowPcgActions<'tcx> {
                 _ => None,
             })
             .collect()
-    }
-}
-
-impl<'tcx> BorrowPcgActions<'tcx> {
-    pub(crate) fn new() -> Self {
-        Self(vec![])
-    }
-
-    pub(crate) fn last(&self) -> Option<&BorrowPcgAction<'tcx>> {
-        self.0.last()
-    }
-
-    pub(crate) fn push(
-        &mut self,
-        action: BorrowPcgAction<'tcx>,
-        ctxt: impl HasSettings<'_> + DebugCtxt,
-    ) {
-        pcg_validity_assert!(
-            self.last() != Some(&action),
-            [ctxt],
-            "Action {:?} to be pushed is the same as the last pushed action, this is probably a bug.",
-            action
-        );
-        self.0.push(action);
     }
 }

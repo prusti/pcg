@@ -58,7 +58,7 @@ impl<'data, R: ReadRef<'data>> Iterator for ArchiveMemberIterator<'data, R> {
         // `index` is frozen by the read of `**index`; when it is dead, its
         // freeze ends before its value is given up.
         // PCG: bb4[1] pre_operands: Unfreeze index
-        // PCG: bb4[1] pre_operands: Weaken index from e to W
+        // PCG: bb4[1] pre_operands: Weaken index from E to W
         // ~PCG: bb4[1] pre_operands: Weaken index from R to W
         match &mut self.members {
             Members::AixBig { ref mut index } => match **index {

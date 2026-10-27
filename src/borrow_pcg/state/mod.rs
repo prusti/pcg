@@ -125,10 +125,7 @@ pub(crate) fn label_place_changes<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     ctxt: Ctxt,
 ) -> CapabilityChanges<P> {
     let labelled = |p: P| match reason {
-        // The join of the place handles its capabilities (see
-        // 69_http_header_map.rs).
-        LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => false,
-        LabelPlaceReason::DetachSharedReferent => place.is_prefix_of(p),
+        LabelPlaceReason::Detach => place.is_prefix_of(p),
         _ => p.projects_indirection_from(place, ctxt),
     };
     capabilities
@@ -342,7 +339,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 pcg_validity_assert!(
                     matches!(
                         capabilities.get(*place, ctxt),
-                        Some(CapabilityKind::Exclusive) | None
+                        Some(CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive) | None
                     ),
                     [ctxt],
                     "Freezing {} with capability {:?}",
@@ -423,24 +420,42 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             }
         }
         changes.extend(&action.capabilities);
-        result.changed |= changes.apply(capabilities, ctxt);
-        if matches!(
+        result.changed |= if matches!(
             action.kind,
             BorrowPcgActionKind::Unfreeze { .. } | BorrowPcgActionKind::RemoveEdge { .. }
         ) {
-            // The places that get E back are accessed exclusively again.
-            for (place, cap) in changes.iter() {
-                if cap == Some(CapabilityKind::Exclusive) {
-                    self.label_lifetime_projections(
-                        &LabelNodePredicate::all_future_postfixes(place),
-                        None,
-                        ctxt,
-                    );
-                }
-            }
-        }
+            self.regain(&changes, capabilities, ctxt)
+        } else {
+            changes.apply(capabilities, ctxt)
+        };
         action.capabilities = changes;
         result
+    }
+
+    /// Gives back the capabilities `changes`; the places that get E back are
+    /// accessed exclusively again.
+    fn regain<'a, Ctxt: Copy, P: Copy + Eq + std::hash::Hash>(
+        &mut self,
+        changes: &CapabilityChanges<P>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
+        ctxt: Ctxt,
+    ) -> bool
+    where
+        'tcx: 'a,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: ValidityConditionOps<Ctxt>,
+    {
+        let changed = changes.apply(capabilities, ctxt);
+        for (place, cap) in changes.iter() {
+            if cap == Some(CapabilityKind::Exclusive) {
+                self.label_lifetime_projections(
+                    &LabelNodePredicate::all_future_postfixes(place),
+                    None,
+                    ctxt,
+                );
+            }
+        }
+        changed
     }
 
     fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt>(

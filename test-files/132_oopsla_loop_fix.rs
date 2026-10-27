@@ -22,9 +22,11 @@ fn main() {
     // PCG_LIFETIME_DISPLAY: list2 0 'b
     let mut list3 = List { head: rv3, tail: None};
     // PCG_LIFETIME_DISPLAY: list3 0 'c
-// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 -> list1↓'a
-// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 -> list2↓'b
-// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 -> list3↓'c
+// `rv1` is dead at the loop head, so the loop abstracts its referent as of the
+// head.
+// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 loop bb4 -> list1↓'a
+// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 loop bb4 -> list2↓'b
+// PCG: bb4[0] pre_operands: Loop(bb4): *rv1 loop bb4 -> list3↓'c
 // PCG: bb4[0] pre_operands: Loop(bb4): v2 -> list2↓'b
 // PCG: bb4[0] pre_operands: Loop(bb4): v2 -> list3↓'c
 // PCG: bb4[0] pre_operands: Loop(bb4): v3 -> list3↓'c
