@@ -161,4 +161,27 @@ impl<'h, 'b> Request<'h, 'b> {
     }
 }
 
+struct Tree<'u> {
+    unit: &'u u32,
+    depth: u32,
+}
+
+impl Tree<'_> {
+    fn set(&mut self, depth: u32) {
+        self.depth = depth;
+    }
+
+    // `*self` is unpacked when the reservation freezes it: it suspends what
+    // its fields hold (E), not the R of the referent of `(*self).unit`, which
+    // is behind a shared reference. The activation lends that E.
+    fn reset(&mut self) {
+        // PCG: bb0[6] post_operands: Freeze *self
+        // PCG: bb0[6] post_operands: *self: suspended E
+        // PCG: bb0[9] pre_operands: Activate two-phase borrow borrow: _4 = &mut  *self
+        let unit = &*self.unit;
+        self.depth = 0;
+        self.set(*unit);
+    }
+}
+
 fn main() {}

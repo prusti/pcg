@@ -91,11 +91,14 @@ fn read_or_lent(x: &mut i32, c: bool) {
 }
 
 // One branch moves `x.fst` out, the other lends `x` as a whole: the first
-// collapses `x` to W and lends it, so `x` gets only W back.
+// collapses `x` to W and lends it, so the join records W for `x` and `x` gets
+// only W back.
 fn moved_part_or_lent(c: bool, x0: Pair, mut z: Pair) {
     // PCG: bb2 -> bb4: Collapse(RepackCollapse { to: _4, capability: W, guide: None, _marker: PhantomData<&()> })
     // PCG: bb2 -> bb4: Lend x to borrow: _13 before bb3[6]:PreMain <before bb3[3]:PreOperands> = &mut  x under conditions bb0 -> bb3
     // ~PCG: bb2 -> bb4: Label place x.snd (Detach)
+    // PCG: bb3 -> bb4: Weaken suspended x from E to W
+    // PCG: bb4[0] pre_operands: x: suspended W
     // PCG: bb6[1] pre_operands: Remove Edge borrow: _13 before bb3[6]:PreMain <before bb3[3]:PreOperands> = &mut  x under conditions bb0 -> bb3 returning W to x
     let mut x = x0;
     let r: &mut Pair;

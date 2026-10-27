@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     HasSettings,
     borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
-    pcg::CapabilityKind,
+    pcg::{CapabilityKind, meet},
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
@@ -25,6 +25,12 @@ mod private {
         fn get<Ctxt>(&self, place: P, ctxt: Ctxt) -> Option<C>;
 
         fn iter(&self) -> impl Iterator<Item = (P, C)> + '_;
+
+        /// The capability `place` gets back when the loan or freeze that
+        /// suspended it ends.
+        fn suspended(&self, place: P) -> Option<C>;
+
+        fn iter_suspended(&self) -> impl Iterator<Item = (P, C)> + '_;
 
         fn capabilities_for_strict_postfixes_of<'slf>(
             &'slf self,
@@ -60,6 +66,15 @@ mod private {
         fn remove<Ctxt>(&mut self, place: P, ctxt: Ctxt) -> Option<C>;
 
         fn retain(&mut self, predicate: impl Fn(P, C) -> bool);
+
+        /// Records that `place` gets `capability` back when the loan or
+        /// freeze that takes its capability ends.
+        fn suspend(&mut self, place: P, capability: C);
+
+        /// Removes the record of `place`, returning the suspended capability.
+        fn resume(&mut self, place: P) -> Option<C>;
+
+        fn retain_suspended(&mut self, predicate: impl Fn(P, C) -> bool);
 
         fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
         where
@@ -104,6 +119,14 @@ where
     fn iter(&self) -> impl Iterator<Item = (P, C)> + '_ {
         self.map.iter().map(|(k, v)| (*k, *v))
     }
+
+    fn suspended(&self, place: P) -> Option<C> {
+        self.suspended.get(&place).copied()
+    }
+
+    fn iter_suspended(&self) -> impl Iterator<Item = (P, C)> + '_ {
+        self.suspended.iter().map(|(k, v)| (*k, *v))
+    }
 }
 
 impl<'tcx, C, P> PlaceCapabilitiesInterface<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
@@ -123,6 +146,18 @@ where
         self.map.retain(|place, cap| predicate(*place, *cap));
     }
 
+    fn suspend(&mut self, place: P, capability: C) {
+        self.suspended.insert(place, capability);
+    }
+
+    fn resume(&mut self, place: P) -> Option<C> {
+        self.suspended.remove(&place)
+    }
+
+    fn retain_suspended(&mut self, predicate: impl Fn(P, C) -> bool) {
+        self.suspended.retain(|place, cap| predicate(*place, *cap));
+    }
+
     fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
     where
         C: 'slf,
@@ -139,6 +174,9 @@ where
     P: Eq + std::hash::Hash,
 {
     pub(crate) map: HashMap<P, C>,
+    /// The capabilities of the lent and frozen places, which they get back
+    /// when the loan or freeze ends.
+    pub(crate) suspended: HashMap<P, C>,
     pub(crate) _marker: PhantomData<&'tcx ()>,
 }
 
@@ -149,12 +187,24 @@ where
     fn default() -> Self {
         Self {
             map: HashMap::default(),
+            suspended: HashMap::default(),
             _marker: PhantomData,
         }
     }
 }
 
 impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
+    /// Keeps the suspended capabilities that `other` suspends too, at their
+    /// meet.
+    pub(crate) fn meet_suspended(&mut self, other: &Self) {
+        self.suspended.retain(|place, capability| {
+            other.suspended(*place).is_some_and(|theirs| {
+                *capability = meet(*capability, theirs);
+                true
+            })
+        });
+    }
+
     /// The capabilities set by dereferencing `ref_place` for `capability`.
     pub(crate) fn deref_capabilities<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         ref_place: Place<'tcx>,
@@ -285,6 +335,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
             .map(|(node, capability)| {
                 Cow::Owned(format!("{}: {:?}", node.display_string(ctxt), capability))
             })
+            .chain(self.iter_suspended().map(|(node, capability)| {
+                Cow::Owned(format!(
+                    "{}: suspended {:?}",
+                    node.display_string(ctxt),
+                    capability
+                ))
+            }))
             .sorted()
             .collect()
     }

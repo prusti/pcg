@@ -107,6 +107,18 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
             Some(context.into()),
         )
     }
+
+    pub(crate) fn weaken_suspended(
+        place: P,
+        from: CapabilityKind,
+        to: Option<CapabilityKind>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::WeakenSuspended { place, from, to },
+            Some(context.into()),
+        )
+    }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -397,34 +409,40 @@ pub enum BorrowPcgActionKind<
     /// strictly lower `to`.
     Weaken(Weaken<'tcx, P>),
     /// The place goes from E to R because it is read or borrowed for read.
-    /// Unlike a [`Weaken`], the E capability is only suspended: it comes back
-    /// through [`BorrowPcgActionKind::Unfreeze`] of the same place, or is lent
-    /// by [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`].
+    /// Unlike a [`Weaken`], the E capability is only suspended: it is
+    /// recorded, and comes back through [`BorrowPcgActionKind::Unfreeze`] of
+    /// the same place, or is lent by
+    /// [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`]. Until then the place
+    /// holds at most R.
     ///
     /// If the place is unpacked, it has no capability and its descendants
     /// hold the E or are frozen; they all become read copies under the
-    /// frozen place.
+    /// frozen place, which records what they hold together.
     ///
     /// A place with R whose parent has R is a read copy of a frozen
     /// ancestor, not frozen itself.
     Freeze {
         place: P,
     },
-    /// The freeze of `place` ends: it gets back the E suspended by
+    /// The freeze of `place` ends: it gets back the capability recorded by
     /// [`BorrowPcgActionKind::Freeze`]. The descendants `refrozen` are still
     /// borrowed: the freeze moves to them and they stay frozen.
     ///
     /// If `place` is unpacked, the read unpacking becomes an exclusive one:
     /// `place` and the places on the way to `refrozen` keep no capability
-    /// (`e` for a mutable reference), and the other read copies get E (R if
-    /// they are behind a shared reference).
+    /// (`e` for a mutable reference, R for a shared reference, which stays
+    /// frozen), and the other read copies get what is recorded for them or
+    /// the place they are copies of (R if they are behind a shared
+    /// reference).
     Unfreeze {
         place: P,
         refrozen: Vec<P>,
     },
-    /// The two-phase borrow is activated: its blocked place goes from R to
-    /// lent, i.e. the E suspended by the reservation's
-    /// [`BorrowPcgActionKind::Freeze`] is lent to the borrow.
+    /// The two-phase borrow is activated: its blocked place, which is frozen,
+    /// goes from R to lent, i.e. the capability suspended by its freeze is
+    /// lent to the borrow. A blocked place that is a read copy of a frozen
+    /// ancestor is refrozen first ([`BorrowPcgActionKind::Unfreeze`] of the
+    /// ancestor, with the place in `refrozen`), so no ancestor keeps R.
     ActivateTwoPhaseBorrow {
         borrow: BorrowEdge<'tcx, P>,
     },
@@ -443,24 +461,37 @@ pub enum BorrowPcgActionKind<
     ///
     /// The places the edge blocked by that no other edge refers to lose their
     /// capabilities, and the places it blocked that are unblocked get theirs
-    /// back: the edge was an unpacking (the capability of its expansion moves
-    /// back to its base) or a loan (the lent capability returns).
+    /// back: the edge was an unpacking (its base gets what its expansion
+    /// holds) or a loan (the lent place gets exactly what was recorded when
+    /// it was lent).
     RemoveEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
     /// Add an edge to the PCG. An unpacking (a borrow-PCG expansion or a
     /// dereference) moves the capability of its base to its expansion, and a
-    /// mutable borrow takes the capability of the borrowed place.
+    /// mutable borrow takes the capability of the borrowed place, which is
+    /// recorded.
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
     /// At a join, `place` is blocked by `edge`, which exists only on another
     /// incoming path. The capability of `place` is held by the edge (nothing
-    /// is given up) and returns through the [`BorrowPcgActionKind::RemoveEdge`]
-    /// of the edge.
+    /// is given up): it is recorded for the place the edge blocks (`place`,
+    /// a part of it, or the place it is part of, at the meet with what is
+    /// already recorded there) and returns through the
+    /// [`BorrowPcgActionKind::RemoveEdge`] of the edge.
     Lend {
         place: P,
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
+    },
+    /// At a join, the capability that the lent or frozen `place` gets back
+    /// when its loan or freeze ends goes down from `from` to the meet of the
+    /// incoming paths, or to none if another path does not suspend it. The
+    /// capability `place` holds does not change.
+    WeakenSuspended {
+        place: P,
+        from: CapabilityKind,
+        to: Option<CapabilityKind>,
     },
 }
 
@@ -553,6 +584,20 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                     place.display_output(ctxt, mode),
                     "to".into(),
                     edge.display_output(ctxt, mode),
+                ],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::WeakenSuspended { place, from, to } => DisplayOutput::join(
+                vec![
+                    "Weaken suspended".into(),
+                    place.display_output(ctxt, mode),
+                    "from".into(),
+                    from.display_output(ctxt, mode),
+                    "to".into(),
+                    match to {
+                        Some(to) => to.display_output(ctxt, mode),
+                        None => "None".into(),
+                    },
                 ],
                 &DisplayOutput::SPACE,
             ),

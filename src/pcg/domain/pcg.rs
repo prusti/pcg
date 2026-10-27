@@ -256,6 +256,37 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        for (place, suspended) in self.place_capabilities.iter_suspended() {
+            if let Some(cap) = self.place_capabilities.get(place, ctxt)
+                && !cap.is_read()
+            {
+                return Err(format!(
+                    "Place {} suspends {:?} but holds {:?}",
+                    place.display_string(ctxt.bc_ctxt()),
+                    suspended,
+                    cap
+                ));
+            }
+        }
+
+        // A frozen place, which holds R below no place holding R, records what
+        // its freeze suspends.
+        for (place, cap) in self.place_capabilities.iter() {
+            if cap.is_read()
+                && !place.projects_shared_ref(ctxt)
+                && !place.contains_unsafe_deref(ctxt)
+                && self.place_capabilities.suspended(place).is_none()
+                && place
+                    .parent_place()
+                    .is_none_or(|parent| self.place_capabilities.get(parent, ctxt) != Some(cap))
+            {
+                return Err(format!(
+                    "Frozen place {} suspends no capability",
+                    place.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
         for edge in self.borrow.graph.edges() {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
@@ -406,6 +437,14 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut reached = self.clone();
         let mut actions =
             reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
+        actions.extend(reached.weaken_suspended_to(&other.place_capabilities, snapshot, ctxt)?);
+        pcg_validity_assert!(
+            reached.place_capabilities.suspended == other.place_capabilities.suspended,
+            [ctxt],
+            "the edge into {other_block:?} reaches the suspended capabilities {:?} instead of {:?}",
+            reached.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
+        );
         // The edges of the loop abstraction of `other` are introduced on the
         // edge into the loop.
         actions.extend(

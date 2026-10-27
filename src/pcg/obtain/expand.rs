@@ -237,9 +237,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if capability.is_read() {
                 self.freeze_for_read_unpacking(base)?;
             }
+            // Dereferencing a raw pointer only reads its value: the pointer
+            // keeps its capability.
             let action = BorrowPcgAction::add_edge_setting(
                 BorrowPcgEdge::new(deref.into(), self.path_conditions()),
-                self.deref_capabilities(base, capability, ctxt.bc_ctxt()),
+                vec![(base.project_deref(ctxt), Some(capability))],
                 "expand_place_one_level: add rawptr deref edge",
             );
             self.apply_action(action.into())?;

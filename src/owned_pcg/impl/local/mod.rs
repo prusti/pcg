@@ -100,20 +100,6 @@ impl<'tcx> LocalExpansions<'tcx> {
         !self.expansions.is_empty()
     }
 
-    pub(crate) fn remove_all_expansions_from<'a>(
-        &mut self,
-        place: Place<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) where
-        'tcx: 'a,
-    {
-        tracing::debug!(
-            "Removing all expansions from {}",
-            place.display_string(ctxt.ctxt())
-        );
-        self.expansions.retain(|pe| pe.place != place);
-    }
-
     pub(crate) fn insert_expansion(&mut self, place: Place<'tcx>, expansion: PlaceExpansion<'tcx>) {
         self.expansions.insert(ExpandedPlace { place, expansion });
     }

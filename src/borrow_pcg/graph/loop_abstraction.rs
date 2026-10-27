@@ -27,7 +27,9 @@ use crate::{
             ActionApplier, HasSnapshotLocation, ObtainType, PlaceObtainer, RenderDebugGraph,
             expand::PlaceExpander,
         },
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
+        place_capabilities::{
+            PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
+        },
     },
     pcg_validity_assert,
     rustc_interface::middle::mir,
@@ -417,14 +419,21 @@ impl<'tcx> BorrowsGraph<'tcx> {
             args,
             ctxt,
         );
-        for (place, capability) in args.capabilities.iter_mut() {
-            if capability.is_exclusive()
-                && invariant_capabilities
-                    .iter()
-                    .any(|usage| usage.usage.is_read() && usage.place.is_prefix_of(*place))
-            {
-                *capability = CapabilityKind::Read;
-            }
+        // The places the loop only reads are frozen at the loop head.
+        let frozen = args
+            .capabilities
+            .iter()
+            .filter(|(place, capability)| {
+                capability.is_exclusive()
+                    && invariant_capabilities
+                        .iter()
+                        .any(|usage| usage.usage.is_read() && usage.place.is_prefix_of(*place))
+            })
+            .collect::<Vec<_>>();
+        for (place, capability) in frozen {
+            args.capabilities.suspend(place, capability);
+            args.capabilities
+                .insert(place, CapabilityKind::Read, ctxt.ctxt);
         }
     }
 

@@ -394,7 +394,10 @@ fn cap_at<'tcx>(
             }
         }
     }
-    Some(tree.capability())
+    match tree {
+        InitialisationTree::Leaf(cap) => Some(*cap),
+        InitialisationTree::Internal(_) => None,
+    }
 }
 
 fn set_cap_at<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
