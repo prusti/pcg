@@ -69,3 +69,58 @@ fn moved_parent_or_frozen(o: Occupied<'_>, b: bool) -> Entry<'_> {
         })
     }
 }
+
+fn read(_r: &i32) {}
+
+// One branch reads through `x` (x: R), the other lends its referent (x: e):
+// `x` itself is kept by both, so the join holds it with e.
+fn read_or_lent(x: &mut i32, c: bool) {
+    // PCG: bb1 -> bb3: Refreeze x to *x
+    // PCG: bb3[0] pre_operands: x: e
+    // ~PCG: bb2 -> bb3: Weaken x from e to W
+    // PCG: bb4[0] pre_operands: x: E
+    let r: &i32;
+    if c {
+        r = &*x;
+    } else {
+        let m = &mut *x;
+        r = &*m;
+    }
+    read(r);
+    *x = 2;
+}
+
+// One branch moves `x.fst` out, the other lends `x` as a whole: the first
+// collapses `x` to W and lends it, so `x` gets only W back.
+fn moved_part_or_lent(c: bool, x0: Pair, mut z: Pair) {
+    // PCG: bb2 -> bb4: Collapse(RepackCollapse { to: _4, capability: W, guide: None, _marker: PhantomData<&()> })
+    // PCG: bb2 -> bb4: Lend x to borrow: _13 before bb3[6]:PreMain <before bb3[3]:PreOperands> = &mut  x under conditions bb0 -> bb3
+    // ~PCG: bb2 -> bb4: Label place x.snd (Detach)
+    // PCG: bb6[1] pre_operands: Remove Edge borrow: _13 before bb3[6]:PreMain <before bb3[3]:PreOperands> = &mut  x under conditions bb0 -> bb3 returning W to x
+    let mut x = x0;
+    let r: &mut Pair;
+    if c {
+        drop(x.fst);
+        r = &mut z;
+    } else {
+        r = &mut x;
+    }
+    r.snd = String::new();
+}
+
+// One branch borrows `x` as a whole, the other only `x.fst`: `x.snd` stays
+// read while the borrow of `x` lives.
+fn borrowed_whole_or_part(c: bool) {
+    // ~PCG: bb11[0] pre_operands: Unfreeze x.snd
+    // PCG: bb11[4] pre_operands: x.snd: R
+    let mut x = Pair { fst: String::new(), snd: String::new() };
+    let r: &String;
+    if c {
+        let t = &x;
+        r = &t.snd;
+    } else {
+        r = &x.fst;
+        x.snd = String::new();
+    }
+    let _ = r.len();
+}

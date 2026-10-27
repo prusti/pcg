@@ -116,6 +116,13 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
+                && self
+                    .pcg
+                    .borrow
+                    .graph
+                    .edges_blocking(place.into(), self.ctxt.bc_ctxt())
+                    .next()
+                    .is_none()
                 && self.pcg.capability_of(place, self.ctxt).is_none()
             {
                 // The edge that blocked the place would have returned its
@@ -436,10 +443,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
+        let ctxt = self.ctxt;
         if !self
             .pcg
-            .place_capability_equals(blocked_place, CapabilityKind::Read, self.ctxt)
+            .place_capability_equals(blocked_place, CapabilityKind::Read, ctxt)
         {
+            pcg_validity_assert!(
+                false,
+                [ctxt],
+                "Activating a two-phase borrow of {} with capability {:?}",
+                blocked_place.display_string(ctxt),
+                self.pcg.capability_of(blocked_place, ctxt)
+            );
             return Ok(());
         }
         let borrow = borrow.clone();
@@ -463,15 +478,32 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 )?;
         }
         self.place_obtainer()
-            .detach_borrowed_shared_referents(blocked_place)?;
-        self.place_obtainer().pack_read_unpacking(blocked_place)?;
+            .detach_borrowed_shared_referents(blocked_place, &|_| false)?;
+        self.place_obtainer()
+            .pack_read_unpacking(blocked_place, &|_| false)?;
+        // The borrow checker allows the activation, so the loans that keep
+        // the rest of the read unpacking from being packed are dead (the PCG
+        // can keep them, e.g. for a raw pointer derived from their value):
+        // the remaining read copies are detached.
+        while let Some(read_copy) = self
+            .pcg
+            .place_capabilities
+            .capabilities_for_strict_postfixes_of(blocked_place)
+            .map(|(place, _)| place)
+            .min_by_key(|place| place.projection.len())
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    read_copy,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::Detach,
+                )
+                .into(),
+            )?;
+        }
         let ctxt = self.ctxt;
         pcg_validity_assert!(
-            self.pcg
-                .place_capabilities
-                .capabilities_for_strict_postfixes_of(blocked_place)
-                .next()
-                .is_none(),
+            !self.pcg.place_capabilities.unpacks(blocked_place),
             [ctxt],
             "Activating a two-phase borrow of {} whose read unpacking is still borrowed",
             blocked_place.display_string(ctxt)

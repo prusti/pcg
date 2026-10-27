@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use itertools::Itertools;
 
@@ -37,6 +37,16 @@ mod private {
         {
             self.iter()
                 .filter(move |&(p, _)| place.is_strict_prefix_of(p))
+        }
+
+        /// Whether a place below `place` has a capability.
+        fn unpacks(&self, place: P) -> bool
+        where
+            P: PrefixRelation,
+        {
+            self.capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
         }
     }
 
@@ -329,37 +339,6 @@ where
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) {
         self.map.retain(|place, _| place.place().local != local);
-    }
-}
-
-impl<C: Copy + PartialEq, P> PlaceCapabilities<'_, C, P>
-where
-    P: Copy + Eq + std::hash::Hash,
-{
-    pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, _ctxt: Ctxt) -> bool
-    where
-        C: PartialOrd,
-    {
-        let mut changed = false;
-        self.map.retain(|place, _| other.map.contains_key(place));
-        for (place, other_capability) in &other.map {
-            let place = *place;
-            let other_capability = *other_capability;
-            if let Some(self_capability) = self.map.get(&place) {
-                if self_capability.partial_cmp(&other_capability) == Some(cmp::Ordering::Greater) {
-                    changed |= self.map.insert(place, other_capability) != Some(other_capability);
-                } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
-                    self_capability.partial_cmp(&other_capability)
-                {
-                    // self is already minimum, no change needed
-                } else {
-                    // incomparable - remove
-                    self.map.remove(&place);
-                    changed = true;
-                }
-            }
-        }
-        changed
     }
 }
 

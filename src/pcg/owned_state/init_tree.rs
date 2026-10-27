@@ -77,6 +77,17 @@ impl<'tcx> InitialisationTree<'tcx> {
         Self::Internal(expansion)
     }
 
+    /// The capability of the place at the root of this subtree as a whole:
+    /// an unpacked place is not fully initialised, so only a box keeps its
+    /// allocation.
+    pub(crate) fn capability(&self) -> OwnedCapability {
+        match self {
+            Self::Leaf(cap) => *cap,
+            Self::Internal(PlaceExpansion::Deref(_)) => OwnedCapability::Shallow,
+            Self::Internal(_) => OwnedCapability::Uninit,
+        }
+    }
+
     /// Returns `true` iff every leaf in this subtree is `Deep`.
     pub(crate) fn is_fully_deep(&self) -> bool {
         match self {

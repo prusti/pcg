@@ -244,19 +244,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DebugRepr<Ctxt> for RepackEx
 }
 
 impl<'tcx> RepackExpand<'tcx> {
-    pub(crate) fn new(
-        from: Place<'tcx>,
-        guide: Option<RepackGuide>,
-        capability: CapabilityKind,
-    ) -> Self {
-        Self {
-            from,
-            guide,
-            capability,
-            _marker: PhantomData,
-        }
-    }
-
     #[must_use]
     pub fn capability(&self) -> CapabilityKind {
         self.capability

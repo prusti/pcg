@@ -26,4 +26,20 @@ fn from_nth(r: &mut List, n: usize) -> &mut List {
     }
 }
 
+// The `None`-like path lends `x` to the borrow made after `bb0` chose the
+// other branch; the lent edge does not carry that choice into this path.
+fn lend_without_branch_choice(c: bool, d: bool) {
+    // PCG: bb0 -> bb3: Lend x to borrow: _11 before bb1[7]:PreMain <before bb1[4]:PreOperands> = &mut  x
+    let mut x = (1, 2);
+    let mut z = (3, 4);
+    let mut r: &mut (i32, i32) = &mut z;
+    if c && {
+        r = &mut x;
+        d
+    } {
+        return;
+    }
+    *r = (0, 0);
+}
+
 fn main() {}

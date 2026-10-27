@@ -94,4 +94,45 @@ fn reference_field(pair: &RefPair<'_>, run: bool) {
     }
 }
 
+struct File<'data> {
+    symbols: &'data [u8],
+}
+
+struct Iter<'data, 'file> {
+    file: &'file File<'data>,
+    index: usize,
+}
+
+struct Comdat<'data, 'file> {
+    file: &'file File<'data>,
+    symbol: &'data u8,
+}
+
+fn parse<'data, 'file>(
+    file: &'file File<'data>,
+    symbol: &'data u8,
+) -> Option<Comdat<'data, 'file>> {
+    if *symbol > 0 {
+        Some(Comdat { file, symbol })
+    } else {
+        None
+    }
+}
+
+impl<'data, 'file> Iter<'data, 'file> {
+    // The back edge unpacks `(*self).file` with the loop's snapshot, which
+    // labels its current lifetime projection as the loop's: the flow from the
+    // loop's value into it collapses.
+    fn next(&mut self) -> Option<Comdat<'data, 'file>> {
+        loop {
+            let index = self.index;
+            let symbol = self.file.symbols.get(index)?;
+            self.index += 1;
+            if let Some(comdat) = parse(self.file, symbol) {
+                return Some(comdat);
+            }
+        }
+    }
+}
+
 fn main() {}

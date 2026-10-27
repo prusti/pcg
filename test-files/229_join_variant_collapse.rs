@@ -22,4 +22,20 @@ fn repro(mut x: E, y: E) {
     x = y;
 }
 
+// The `None` path did not match `Some`: it lends `x` itself to the borrow of
+// the `Some` field instead of unpacking `x` to that variant.
+fn lent_variant_field(mut x: Option<i32>) {
+    // PCG: bb3 -> bb5: Lend x to borrow: v before bb4[7]:PreMain <before bb4[3]:PreOperands> = &mut  x@Some.0 under conditions bb0 -> bb2
+    // ~PCG: bb3 -> bb5: unpack x@Some with capability E
+    let r: &mut i32;
+    let mut y = 0;
+    match x {
+        Some(ref mut v) => r = v,
+        None => r = &mut y,
+    }
+    *r = 1;
+    x = None;
+    let _ = x;
+}
+
 fn main() {}

@@ -4,26 +4,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-pub(crate) mod join;
-
 use std::fmt::Debug;
 
 use crate::{
-    HasSettings,
-    action::OwnedPcgAction,
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     error::PcgUnsupportedError,
     owned_pcg::RepackGuide,
-    pcg::place_capabilities::{
-        PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
-    },
+    pcg::place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     rustc_interface::middle::mir::Local,
-    utils::{DebugCtxt, HasCompilerCtxt, PlaceLike, data_structures::HashSet},
+    utils::{HasCompilerCtxt, PlaceLike, data_structures::HashSet},
 };
 use itertools::Itertools;
 
 use crate::{
-    owned_pcg::RepackOp,
     pcg::CapabilityKind,
     utils::{CompilerCtxt, OwnedPlace, Place, display::DisplayWithCompilerCtxt},
 };
@@ -37,9 +30,6 @@ pub(crate) struct ExpandedPlace<'tcx, P = Place<'tcx>> {
 }
 
 impl ExpandedPlace<'_> {
-    pub(crate) fn is_enum_expansion(&self) -> bool {
-        self.expansion.is_enum_expansion()
-    }
     pub(crate) fn guide(&self) -> Option<RepackGuide> {
         self.expansion.guide()
     }
@@ -133,19 +123,6 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn is_leaf_place<'a>(
-        &self,
-        place: Place<'tcx>,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> bool
-    where
-        'tcx: 'a,
-    {
-        place
-            .as_owned_place(ctxt)
-            .is_some_and(|p| self.leaf_places(ctxt).contains(&p))
-    }
-
     pub fn leaf_places<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> HashSet<OwnedPlace<'tcx>>
     where
         'tcx: 'a,
@@ -195,10 +172,6 @@ impl<'tcx> LocalExpansions<'tcx> {
             .any(|e| e.expansion_places(ctxt).unwrap().contains(&place))
     }
 
-    pub(crate) fn get_local(&self) -> Local {
-        self.local
-    }
-
     pub(crate) fn places_to_collapse_for_obtain_of<'a>(
         &self,
         place: Place<'tcx>,
@@ -221,35 +194,5 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect::<Vec<_>>();
         places.push(place);
         places
-    }
-
-    pub(crate) fn collapse<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>>(
-        &mut self,
-        to: Place<'tcx>,
-        _for_cap: Option<CapabilityKind>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
-        ctxt: Ctxt,
-    ) -> Vec<OwnedPcgAction<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        if !self.contains_expansion_from(to) {
-            return vec![];
-        }
-        let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
-        places_to_collapse
-            .into_iter()
-            .flat_map(|place| {
-                let actions = self.collapse_actions_for(place, capabilities, ctxt);
-                actions
-                    .into_iter()
-                    .map(|action| {
-                        let changes = self.perform_collapse_action(action, capabilities, ctxt);
-                        OwnedPcgAction::new(RepackOp::Collapse(action), None)
-                            .with_capabilities(changes)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect()
     }
 }
