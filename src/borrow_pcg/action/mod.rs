@@ -7,7 +7,7 @@ use serde_derive::Serialize;
 use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
     Weaken,
-    action::{BorrowPcgAction, CapabilityChanges},
+    action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
             borrow::BorrowEdge,
@@ -201,22 +201,16 @@ pub type MakePlaceOldReason = LabelPlaceReason;
 pub enum LabelPlaceReason {
     StorageDead,
     MoveOut,
-    /// When joining an owned place where one place has capability Read and the
-    /// other has capability Write, all borrowed expansions of the place with
-    /// Read capability should be labelled.
-    ///
-    /// In particular, the Read capability place could be a shared reference that is dereferenced.
-    /// The place will not have any capability after the join, but reborrows derived from the dereference
-    /// may still have capability.
-    JoinOwnedReadAndWriteCapabilities,
     Write,
     Collapse,
     /// Label lifetime projections of places that are mutated in a loop.
     JoinLoop,
-    /// The referent of a shared reference is detached from the place holding
-    /// the reference, so that the latter can be packed: the borrows of the
-    /// referent keep the labelled referent.
-    DetachSharedReferent,
+    /// The value of the place is detached from it: the place and its postfixes
+    /// lose their capabilities, and the borrows of the value keep the
+    /// labelled place. This detaches the referent of a shared reference from
+    /// the place holding the reference, and the value of a place that the
+    /// joined state does not hold from the place.
+    Detach,
 }
 
 impl LabelPlaceReason {
@@ -234,8 +228,7 @@ impl LabelPlaceReason {
             ]),
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities
-            | LabelPlaceReason::DetachSharedReferent => LabelNodePredicate::PlaceIsPostfixOf(place),
+            | LabelPlaceReason::Detach => LabelNodePredicate::PlaceIsPostfixOf(place),
             LabelPlaceReason::Write => LabelNodePredicate::And(vec![
                 LabelNodePredicate::PlaceIsPostfixOf(place),
                 // If the place is e.g *x or x.f, don't label it if it
@@ -564,8 +557,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
 }
 
 /// Shows the capability changes that the kind does not determine on its own:
-/// the capabilities an added edge sets, the ones a label gives, and the ones a
-/// removed edge returns.
+/// the capabilities an added edge sets, and the ones a removed edge returns.
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
     DisplayWithCtxt<Ctxt> for BorrowPcgAction<'tcx, EdgeKind>
 {
@@ -581,18 +573,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 vec![
                     "setting".into(),
                     self.capabilities.display_output(ctxt, mode),
-                ]
-            }
-            BorrowPcgActionKind::LabelPlace(_) if !gained.is_empty() => {
-                vec![
-                    "setting".into(),
-                    CapabilityChanges::from(
-                        gained
-                            .into_iter()
-                            .map(|(place, cap)| (place, Some(cap)))
-                            .collect::<Vec<_>>(),
-                    )
-                    .display_output(ctxt, mode),
                 ]
             }
             BorrowPcgActionKind::RemoveEdge { .. } if !gained.is_empty() => {

@@ -93,4 +93,72 @@ fn ancestor_read(mut w: W) -> W {
     w
 }
 
+struct Bytes {
+    pos: usize,
+}
+
+impl Bytes {
+    fn advance(&mut self, n: usize) {
+        self.pos += n;
+    }
+}
+
+impl AsRef<usize> for Bytes {
+    fn as_ref(&self) -> &usize {
+        &self.pos
+    }
+}
+
+fn reservation_reads_reference(bytes: &mut Bytes) {
+    // `bytes.as_ref()` borrows the reference `bytes` itself (through the
+    // `AsRef` impl for `&mut Bytes`) while `*bytes` is reserved: `bytes`,
+    // whose referent is unpacked (e), is frozen.
+    // PCG: bb0[2] post_operands: Freeze *bytes
+    // PCG: bb0[6] post_operands: Freeze bytes
+    // PCG: bb1[2] pre_operands: Refreeze bytes to *bytes
+    // PCG: bb1[2] pre_operands: Activate two-phase borrow borrow: _3 = &mut  *bytes
+    bytes.advance(*bytes.as_ref());
+}
+
+pub struct Header<'a> {
+    pub name: &'a str,
+}
+
+pub struct Request<'h, 'b> {
+    pub method: Option<&'b str>,
+    pub headers: &'h mut [Header<'b>],
+}
+
+impl<'h, 'b> Request<'h, 'b> {
+    fn parse_uninit(
+        &mut self,
+        buf: &'b [u8],
+        headers: &'h mut [std::mem::MaybeUninit<Header<'b>>],
+    ) -> Result<usize, ()> {
+        let _ = (buf, headers);
+        Err(())
+    }
+
+    // The raw pointer `headers` keeps the loan of `(*self).headers` taken by
+    // `mem::take` in the PCG, although its loan is dead: activating the
+    // two-phase borrow of `*self` detaches the read copy `(*self).method`
+    // that cannot be packed.
+    pub fn parse(&mut self, buf: &'b [u8]) -> Result<usize, ()> {
+        // PCG: bb1[26] pre_operands: Label place (*self).method (Detach)
+        // PCG: bb1[26] pre_operands: Activate two-phase borrow borrow: _11 = &mut  *self
+        let headers = std::mem::take(&mut self.headers);
+        unsafe {
+            let headers: *mut [Header<'_>] = headers;
+            let headers = headers as *mut [std::mem::MaybeUninit<Header<'_>>];
+            match self.parse_uninit(buf, &mut *headers) {
+                Ok(idx) => Ok(idx),
+                other => {
+                    self.headers = &mut *(headers as *mut [Header<'_>]);
+                    other
+                }
+            }
+        }
+    }
+}
+
 fn main() {}

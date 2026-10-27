@@ -660,6 +660,7 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
             tracing::debug!("loop expanding to {}", place.display_string(self.ctxt));
             self.expand_to(
                 place.place,
+                None,
                 ObtainType::LoopInvariant {
                     is_blocked: blocked_places.contains(place.place),
                     usage_type: place.usage,

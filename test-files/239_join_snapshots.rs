@@ -53,4 +53,24 @@ fn snapshots_from_multiple_predecessors(mut node: BranchNode) {
     x.next = Next::None;
 }
 
+struct RawCell {
+    p: *mut i32,
+    n: i32,
+}
+
+// The dereference of a raw pointer is an unpacking, not a loan: the path
+// that read it directly gives up its value.
+unsafe fn raw_deref_read_or_frozen(mut s: RawCell, c: bool) -> i32 {
+    // PCG: bb2 -> bb3: Label place *s.p (Detach)
+    let v;
+    if c {
+        let q = &s;
+        v = *(*q).p;
+    } else {
+        v = *s.p;
+    }
+    s.n = v;
+    s.n
+}
+
 fn main() {}

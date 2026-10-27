@@ -247,8 +247,4 @@ pub(crate) enum AdjustCapabilityReason {
     /// To handle this case, we would remove capability from `pair` and upgrade
     /// `pair.1` to `E`.
     UpgradeReadToExclusive,
-
-    /// A frozen reference is dead: its freeze ends before its value is given
-    /// up.
-    DeadReference,
 }

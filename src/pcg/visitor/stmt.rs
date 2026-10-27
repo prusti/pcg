@@ -69,7 +69,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // The target may have been frozen originally. Now, because
                     // its dereference has been made old, the freeze ends.
                     if self.pcg.capability_of(target, self.ctxt) == Some(CapabilityKind::Read) {
-                        self.place_obtainer().upgrade_read_to_exclusive(target)?;
+                        self.place_obtainer()
+                            .upgrade_read_to_exclusive(target, &|_| false)?;
                     }
                 }
 

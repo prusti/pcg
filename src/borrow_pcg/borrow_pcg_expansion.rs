@@ -82,10 +82,6 @@ impl<Ctxt: DebugCtxt> HasValidityCheck<Ctxt> for PlaceExpansion<'_> {
 }
 
 impl<D> PlaceExpansion<'_, D> {
-    pub(crate) fn is_enum_expansion(&self) -> bool {
-        matches!(self, PlaceExpansion::Guided(RepackGuide::Downcast(..)))
-    }
-
     pub(crate) fn is_deref(&self) -> bool {
         matches!(self, PlaceExpansion::Deref(_))
     }

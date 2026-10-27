@@ -12,9 +12,9 @@ const NONE: u16 = u16::MAX;
 impl PathAndQuery {
     pub fn path(&self) -> &str {
         // The path that read `*self` joins the early return, where `self` is
-        // dead: the read copies are dropped and `self` is unfrozen.
-        // PCG: bb8 -> bb9: Weaken *self from R to None
+        // dead: `self` is unfrozen and its value given up.
         // PCG: bb8 -> bb9: Unfreeze self
+        // PCG: bb8 -> bb9: Weaken self from E to W
         let ret = if self.query == NONE {
             &self.data[..]
         } else {

@@ -78,7 +78,7 @@ impl<'a> Lazy<'a> {
     /// The loop head holds `*self` with E while the iterator still borrows
     /// `classes`: entering the loop detaches the referent of `self.dfa`.
     fn loop_entry(&mut self) {
-        // PCG: bb3 -> bb4: Label place *(*self).dfa (DetachSharedReferent)
+        // PCG: bb3 -> bb4: Label place *(*self).dfa (Detach)
         // PCG: bb3 -> bb4: Remove Edge {(*self).dfa} -> {*(*self).dfa loop bb4}
         // PCG: bb3 -> bb4: Remove Edge {*self} -> {(*self).dfa, (*self).cache}
         // PCG: bb3 -> bb4: Unfreeze self
@@ -94,7 +94,7 @@ impl<'a> Lazy<'a> {
     /// `classes`.
     fn activation(&mut self) {
         // PCG: bb2[6] pre_operands: Refreeze self to *self
-        // PCG: bb2[6] pre_operands: Label place *(*self).dfa (DetachSharedReferent)
+        // PCG: bb2[6] pre_operands: Label place *(*self).dfa (Detach)
         // PCG: bb2[6] pre_operands: Remove Edge {(*self).dfa} -> {*(*self).dfa before bb2[6]:PreOperands}
         // PCG: bb2[6] pre_operands: Remove Edge {*self} -> {(*self).dfa, (*self).cache}
         // PCG: bb2[6] pre_operands: Activate two-phase borrow borrow: _7 = &mut  *self
@@ -107,7 +107,7 @@ impl<'a> Lazy<'a> {
 
     /// `*self` is reborrowed mutably while `c` borrows `classes`.
     fn reborrow(&mut self) -> u8 {
-        // PCG: bb1[4] pre_operands: Label place *(*self).dfa (DetachSharedReferent)
+        // PCG: bb1[4] pre_operands: Label place *(*self).dfa (Detach)
         // PCG: bb1[4] pre_operands: Remove Edge {(*self).dfa} -> {*(*self).dfa before bb1[4]:PreOperands}
         // PCG: bb1[4] pre_operands: Remove Edge {*self} -> {(*self).dfa, (*self).cache}
         // PCG: bb1[4] pre_operands: Unfreeze self
@@ -119,8 +119,8 @@ impl<'a> Lazy<'a> {
 
     /// Only the outermost borrowed referent is detached.
     fn nested(&mut self) -> u8 {
-        // PCG: bb1[4] pre_operands: Label place *(*self).dfa (DetachSharedReferent)
-        // ~PCG: bb1[4] pre_operands: Label place *(*(*self).dfa).inner (DetachSharedReferent)
+        // PCG: bb1[4] pre_operands: Label place *(*self).dfa (Detach)
+        // ~PCG: bb1[4] pre_operands: Label place *(*(*self).dfa).inner (Detach)
         // PCG: bb1[4] pre_operands: Unfreeze self
         let c = &self.dfa.inner.classes[0];
         let r = &mut *self;
@@ -132,7 +132,7 @@ impl<'a> Lazy<'a> {
 /// The upgraded place is the frozen reference itself: packing its read
 /// unpacking ends its freeze, once.
 fn frozen_root<'a>(mut x: &mut Lazy<'a>) -> u8 {
-    // PCG: bb1[4] pre_operands: Label place *(*x).dfa (DetachSharedReferent)
+    // PCG: bb1[4] pre_operands: Label place *(*x).dfa (Detach)
     // PCG: bb1[4] pre_operands: Remove Edge {x} -> {*x}
     // PCG: bb1[4] pre_operands: Unfreeze x
     let c = &x.dfa.classes[0];
@@ -142,7 +142,7 @@ fn frozen_root<'a>(mut x: &mut Lazy<'a>) -> u8 {
 }
 
 fn frozen_root_in_loop<'a>(mut y: &mut Lazy<'a>) {
-    // PCG: bb3 -> bb4: Label place *(*y).dfa (DetachSharedReferent)
+    // PCG: bb3 -> bb4: Label place *(*y).dfa (Detach)
     // PCG: bb3 -> bb4: Remove Edge {y} -> {*y}
     // PCG: bb3 -> bb4: Unfreeze y
     for c in y.dfa.classes.iter() {

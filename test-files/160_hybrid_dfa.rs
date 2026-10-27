@@ -52,7 +52,7 @@ impl<'i, 'c> Lazy<'i, 'c> {
     fn set_all_transitions(&mut self, from: LazyStateID, to: LazyStateID) {
         // The loop borrows `*self` mutably while the iterator borrows the
         // classes behind the shared reference `self.dfa`.
-        // PCG: bb2 -> bb3: Label place *(*self).dfa (DetachSharedReferent)
+        // PCG: bb2 -> bb3: Label place *(*self).dfa (Detach)
         // PCG: bb2 -> bb3: Remove Edge {(*self).dfa} -> {*(*self).dfa loop bb3}
         // PCG: bb2 -> bb3: Remove Edge {*self} -> {(*self).dfa, (*self).cache}
         // PCG: bb2 -> bb3: Unfreeze self
