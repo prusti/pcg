@@ -2,11 +2,11 @@
 use crate::visualization::stmt_graphs;
 use crate::{
     HasSettings,
-    action::{AppliedAction, BorrowPcgAction, OwnedPcgAction, PcgAction},
+    action::{AppliedAction, BorrowPcgAction, CapabilityChanges, PcgAction},
     borrow_pcg::{
         self,
         action::{ApplyActionResult, BorrowPcgActionKind, LabelPlaceReason},
-        borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
             borrow_flow::private::FutureEdgeKind,
@@ -27,9 +27,9 @@ use crate::{
         place_capabilities::{
             BlockType, PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
+        unpacking_places,
         visitor::upgrade::AdjustCapabilityReason,
     },
-    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasPlace, PackStrategy,
@@ -84,7 +84,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
             .leaf_places(ctxt)
             .into_iter()
             .map(Into::into)
-            .filter(|p| !owned_places.contains(p))
+            .filter(|p| !owned_places.iter().any(|blocked| blocked.is_prefix_of(*p)))
             .collect();
         leaf_places.extend(
             self.pcg
@@ -106,16 +106,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceCollapser<
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn restore_place(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
-        // The place to restore could come from a local that was conditionally
-        // allocated and therefore we can't get back to it, and certainly
-        // shouldn't give it any capability
-        // TODO: Perhaps the join should label such places?
-        if !self.pcg.owned.is_allocated(place.local) {
-            return Ok(());
-        }
-        let blocked_cap = self.pcg.capability_of(place, self.ctxt);
-
+    /// The capability that `place` has once nothing blocks it.
+    fn unblocked_capability(&self, place: Place<'tcx>) -> CapabilityKind {
         // TODO: If the place projects a shared ref, do we even need to restore a capability?
         //
         // For owned places we consult the initialisation state so we
@@ -123,7 +115,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         // moved out on some incoming path (#137): the join of the init
         // trees would then leave the place as `Uninit`, which maps to
         // `Write`.
-        let restore_cap = if place.place().projects_shared_ref(self.ctxt)
+        if place.place().projects_shared_ref(self.ctxt)
             || self
                 .ctxt
                 .body_analysis()
@@ -136,23 +128,47 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             init_cap
         } else {
             CapabilityKind::Exclusive
-        };
+        }
+    }
 
-        // The blocked capability would be None if the place was mutably
-        // borrowed. The capability would be ShallowExclusive if the place is
-        // a mutable reference (when dereferencing a mutable ref, the ref
-        // place retains shallow-exclusive capability).
-        if matches!(
+    /// The capability that `place` gets back when the edge blocking it is
+    /// removed: it was lent (no capability), packed (no capability), or a
+    /// mutable reference whose dereference is packed (`e`). An unpacked place
+    /// gets nothing back: its parts are unblocked.
+    fn regained_capability(&self, place: Place<'tcx>) -> Option<CapabilityKind> {
+        // The place could come from a local that was conditionally allocated
+        // and therefore we can't get back to it, and certainly shouldn't give
+        // it any capability
+        // TODO: Perhaps the join should label such places?
+        if !self.pcg.owned.is_allocated(place.local) || self.pcg.place_capabilities.unpacks(place) {
+            return None;
+        }
+        let blocked_cap = self.pcg.capability_of(place, self.ctxt);
+        let unblocked_cap = self.unblocked_capability(place);
+        (matches!(
             blocked_cap,
             None | Some(CapabilityKind::Write | CapabilityKind::ShallowExclusive)
-        ) && blocked_cap != Some(restore_cap)
+        ) && blocked_cap != Some(unblocked_cap))
+        .then_some(unblocked_cap)
+    }
+
+    /// Updates `place` after the edge blocking it was removed: a frozen leaf
+    /// is unfrozen, and the placeholder labels of its lifetime projections
+    /// are removed.
+    fn place_unblocked(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
+        if !self.pcg.owned.is_allocated(place.local) {
+            return Ok(());
+        }
+        if self
+            .pcg
+            .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
+            && self.unblocked_capability(place) == CapabilityKind::Exclusive
+            && self.frozen_ancestor(place) == place
+            && !self.pcg.place_capabilities.unpacks(place)
         {
-            self.record_and_apply_action(PcgAction::restore_capability(
-                place,
-                restore_cap,
-                context.to_owned(),
-                self.ctxt,
-            ))?;
+            self.record_and_apply_action(
+                BorrowPcgAction::unfreeze(place, context.to_owned()).into(),
+            )?;
         }
         for rp in place.lifetime_projections(self.ctxt) {
             self.record_and_apply_action(
@@ -168,44 +184,25 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         }
         Ok(())
     }
-    fn update_unblocked_node_capabilities_and_remove_placeholder_projections(
-        &mut self,
-        edge: &BorrowPcgEdgeKind<'tcx>,
-    ) -> Result<(), PcgError> {
-        // Snapshot the borrow-graph places *before* acquiring `fg` so the
-        // owned HashSet doesn't hold a borrow of the graph across the
-        // restore_place call below.
+    /// The places blocked by `edge` that, after its removal, are no longer
+    /// blocked and are still tracked.
+    fn places_unblocked_by_removal(&self, edge: &BorrowPcgEdgeKind<'tcx>) -> Vec<Place<'tcx>> {
         let borrow_places = self.pcg.borrow.graph.places(self.ctxt.bc_ctxt());
-
         let fg = self.pcg.borrow.graph.frozen_graph();
-        let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
-
-        // After removing an edge, some nodes may become accessible, their capabilities should be restored
-        let to_restore = blocked_nodes
-            .into_iter()
+        edge.blocked_nodes(self.ctxt.bc_ctxt())
             .filter(|node| !fg.has_edge_blocking(*node, self.ctxt.bc_ctxt()))
-            .collect::<Vec<_>>();
-
-        for node in to_restore {
-            if let Some(place) = node.as_current_place() {
-                // Only restore if the place is still tracked somewhere.  After
-                // a loop abstraction edge is removed, the blocked place (e.g.
-                // `(*variant).fields`) may no longer appear in either the owned
-                // PCG or the borrow graph; restoring a capability there would
-                // violate the invariant that every capability-holding place must
-                // be tracked.
-                if !borrow_places.contains(&place)
-                    && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
-                {
-                    continue;
-                }
-                self.restore_place(
-                    place,
-                    "update_unblocked_node_capabilities_and_remove_placeholder_projections",
-                )?;
-            }
-        }
-        Ok(())
+            .filter_map(|node| node.as_current_place())
+            // Only places that are still tracked somewhere. After a loop
+            // abstraction edge is removed, the blocked place (e.g.
+            // `(*variant).fields`) may no longer appear in either the owned
+            // PCG or the borrow graph; giving a capability there would
+            // violate the invariant that every capability-holding place must
+            // be tracked.
+            .filter(|place| {
+                borrow_places.contains(place)
+                    || self.pcg.owned.contains_place(*place, self.ctxt.bc_ctxt())
+            })
+            .collect()
     }
 
     /// If the following conditions apply:
@@ -250,12 +247,26 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         edges: HashSet<Conditioned<DerefEdge<'tcx>>>,
         context: &str,
     ) -> Result<(), PcgError> {
-        for edge in edges {
+        let ref_place = deref_place
+            .as_current_place()
+            .map(|deref_place| deref_place.parent_place().unwrap());
+        let edges = edges.into_iter().collect::<Vec<_>>();
+        let mut unblocked = vec![];
+        for (i, edge) in edges.iter().enumerate() {
             let borrow_edge: BorrowPcgEdge<'tcx> =
-                BorrowPcgEdge::new(edge.value.into(), edge.conditions);
-            self.apply_action(
-                BorrowPcgAction::remove_edge(borrow_edge, context.to_owned()).into(),
-            )?;
+                BorrowPcgEdge::new(edge.value.into(), edge.conditions.clone());
+            // Removing the last edge packs the dereference into the reference.
+            unblocked = self.remove_edge_regaining(borrow_edge, context.to_owned(), |slf| {
+                // Perhaps the place isn't yet a leaf(e.g. the ref itself is
+                // conditionally borrowed): then it stays without its
+                // capability
+                ref_place
+                    .filter(|ref_place| {
+                        i + 1 == edges.len() && slf.pcg.is_leaf_place(*ref_place, slf.ctxt)
+                    })
+                    .into_iter()
+                    .collect()
+            });
             self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
         }
         if let Some(deref_place) = deref_place.as_current_place() {
@@ -267,15 +278,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
-            let ref_place = deref_place.parent_place().unwrap();
-            // Perhaps the place isn't yet a leaf(e.g. the ref itself is conditionally borrowed)
-            // In that case we shouldn't restore its caps
-            if self.pcg.is_leaf_place(ref_place, self.ctxt) {
-                self.restore_place(
-                    ref_place,
-                    &format!("{context}: remove_deref_edges_to: restore parent place"),
-                )?;
-            }
+        }
+        for place in unblocked {
+            self.place_unblocked(place, &format!("{context}: remove_deref_edges_to"))?;
         }
         Ok(())
     }
@@ -295,10 +300,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context,
             );
         }
-        self.record_and_apply_action(
-            BorrowPcgAction::remove_edge(edge.clone(), context.to_owned()).into(),
-        )?;
-
         // This is true iff the expansion is for a place (not a region projection), and changes
         // could have been made to the root place via the expansion
         // We check that the base is place and either:
@@ -316,7 +317,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             false
         };
 
-        self.update_unblocked_node_capabilities_and_remove_placeholder_projections(&edge.value)?;
+        // After removing an edge, some nodes may become accessible: an
+        // unpacking is packed, or a loan ends.
+        let unblocked = self.remove_edge_regaining(edge.clone(), context.to_owned(), |slf| {
+            slf.places_unblocked_by_removal(&edge.value)
+        });
+        for place in unblocked {
+            self.place_unblocked(place, context)?;
+        }
 
         match &edge.value {
             BorrowPcgEdgeKind::Deref(deref) => {
@@ -395,7 +403,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
     /// Called once all of `removed_edges`, which are removed together, are
     /// gone: weakens the places whose lifetime projections their removal left
-    /// dead and that still have a capability above [`CapabilityKind::Write`],
+    /// dead and that still have [`CapabilityKind::Exclusive`],
     /// e.g. because they were in use when the edge was removed.
     pub(crate) fn finish_weakening_places_with_dead_lifetime_projections(
         &mut self,
@@ -442,14 +450,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         place: Place<'tcx>,
     ) -> Result<(), PcgError> {
-        if let Some(existing_cap) = self.pcg.capability_of(place, self.ctxt)
-            && existing_cap > CapabilityKind::Write
-        {
+        if self.pcg.capability_of(place, self.ctxt) == Some(CapabilityKind::Exclusive) {
             self.record_and_apply_action(
                 BorrowPcgAction::weaken(
                     place,
-                    existing_cap,
-                    Some(CapabilityKind::Write),
+                    CapabilityKind::Exclusive,
+                    CapabilityKind::Write,
                     "lifetime projection is dead",
                 )
                 .into(),
@@ -499,44 +505,144 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn remove_read_permission_downwards(
+    /// Detaches the borrowed referents of shared references below `place`,
+    /// except of the references `keep` keeps dereferenced: the referent is
+    /// labelled, so that its borrows keep the labelled referent, and the
+    /// dereference edge is removed. The referent of a shared reference does
+    /// not depend on the place holding the reference.
+    pub(crate) fn detach_borrowed_shared_referents(
         &mut self,
-        upgraded_place: Place<'tcx>,
+        place: Place<'tcx>,
+        keep: &impl Fn(Place<'tcx>) -> bool,
     ) -> Result<(), PcgError> {
-        let to_remove = self
-            .pcg
-            .place_capabilities
-            .iter()
-            .filter(|(p, _)| {
-                p.projection.len() > upgraded_place.projection.len()
-                    && upgraded_place.is_prefix_of(*p)
+        let ctxt = self.ctxt;
+        let graph = &self.pcg.borrow.graph;
+        let is_borrowed = |referent: Place<'tcx>| {
+            graph.edges().any(|edge| {
+                !matches!(
+                    edge.kind(),
+                    BorrowPcgEdgeKind::Deref(_) | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                ) && edge.kind().blocked_nodes(ctxt.bc_ctxt()).any(|node| {
+                    node.related_maybe_labelled_place()
+                        .and_then(MaybeLabelledPlace::as_current_place)
+                        .is_some_and(|p| referent.is_prefix_of(p))
+                })
+            })
+        };
+        let mut referents = graph
+            .edges()
+            .filter_map(|edge| {
+                let BorrowPcgEdgeKind::Deref(deref) = edge.kind() else {
+                    return None;
+                };
+                let reference = deref.blocked_place().as_current_place()?;
+                let referent = deref.deref_place().as_current_place()?;
+                (place.is_prefix_of(reference)
+                    && reference.is_shared_ref(ctxt)
+                    && !keep(reference)
+                    && is_borrowed(referent))
+                .then_some(referent)
             })
             .collect::<Vec<_>>();
-        for (p, cap) in to_remove {
+        referents.sort_by_key(|referent| referent.projection.len());
+        let mut detached: Vec<Place<'tcx>> = vec![];
+        for referent in referents {
+            if detached.iter().any(|d| d.is_prefix_of(referent)) {
+                continue;
+            }
+            detached.push(referent);
             self.record_and_apply_action(
-                BorrowPcgAction::weaken(p, cap, None, "Remove read permission downwards").into(),
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    referent,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::Detach,
+                )
+                .into(),
             )?;
+            let reference = referent.parent_place().unwrap();
+            let derefs = self
+                .pcg
+                .borrow
+                .graph
+                .edges()
+                .filter_map(|edge| match edge.kind() {
+                    BorrowPcgEdgeKind::Deref(deref)
+                        if deref.blocked_place().as_current_place() == Some(reference) =>
+                    {
+                        Some(Conditioned::new(*deref, edge.conditions.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<HashSet<_>>();
+            let Some(deref) = derefs.iter().next() else {
+                continue;
+            };
+            let deref_place = deref.value.deref_place();
+            self.remove_deref_edges_to(deref_place, derefs, "detach shared referent")?;
         }
         Ok(())
     }
 
-    pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+    /// Packs the read unpacking below `place`, deepest first, except where
+    /// places in it are borrowed and the unpackings of the places `keep`
+    /// keeps.
+    pub(crate) fn pack_read_unpacking(
+        &mut self,
+        place: Place<'tcx>,
+        keep: &impl Fn(Place<'tcx>) -> bool,
+    ) -> Result<(), PcgError> {
+        loop {
+            let fg = self.pcg.borrow.graph.frozen_graph();
+            let packable = fg
+                .leaf_edges(self.ctxt)
+                .into_iter()
+                .map(BorrowPcgEdgeLike::to_owned_edge)
+                .find(|edge| {
+                    unpacking_places(edge.kind()).is_some_and(|(base, _, _)| {
+                        place.is_prefix_of(base)
+                            && !keep(base)
+                            && self.pcg.capability_of(base, self.ctxt) == Some(CapabilityKind::Read)
+                            && edge.kind().blocked_by_nodes(self.ctxt).all(|node| {
+                                node.as_current_place().is_some_and(|p| {
+                                    self.pcg.capability_of(p, self.ctxt)
+                                        == Some(CapabilityKind::Read)
+                                })
+                            })
+                    })
+                });
+            let Some(edge) = packable else {
+                return Ok(());
+            };
+            self.remove_edge_and_perform_associated_state_updates(&edge, "pack read unpacking")?;
+        }
+    }
+
+    /// Unfreezes the frozen place `place` or that `place` is a read copy of,
+    /// packing its read unpacking except the unpackings of the places `keep`
+    /// keeps, which become exclusive.
+    pub(crate) fn upgrade_read_to_exclusive(
+        &mut self,
+        place: Place<'tcx>,
+        keep: &impl Fn(Place<'tcx>) -> bool,
+    ) -> Result<(), PcgError> {
         tracing::debug!(
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())
         );
-        self.record_and_apply_action(
-            BorrowPcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "upgrade_read_to_exclusive",
-            )
-            .into(),
-        )?;
-        self.remove_read_permission_downwards(place)?;
-        if let Some(parent) = place.parent_place() {
-            self.remove_read_permission_upwards_and_label_rps(
-                parent,
+        self.detach_borrowed_shared_referents(place, keep)?;
+        self.pack_read_unpacking(place, keep)?;
+        let frozen = self.frozen_ancestor(place);
+        // Packing the whole read unpacking already unfreezes the frozen place.
+        if self
+            .pcg
+            .place_capability_equals(frozen, CapabilityKind::Read, self.ctxt)
+        {
+            self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+        }
+        if frozen != place {
+            self.label_rps_up_to(
+                place.parent_place().unwrap(),
+                frozen,
                 AdjustCapabilityReason::UpgradeReadToExclusive,
             )?;
         }
@@ -561,7 +667,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         loop {
             if let Some(cap) = self.pcg.capability_of(expand_root, self.ctxt) {
                 if cap.is_read() {
-                    self.upgrade_read_to_exclusive(expand_root)?;
+                    self.upgrade_read_to_exclusive(expand_root, &|_| false)?;
                 }
                 return Ok(());
             }
@@ -580,8 +686,49 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     where
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
+        let mut action = action;
+        let result = self.apply_action_without_recording(&mut action)?;
+        self.record_applied_action(action, result);
+        Ok(())
+    }
+
+    /// Removes `edge`; the places `unblocked` finds unblocked afterwards get
+    /// their capability back as part of the removal. Returns those places.
+    pub(crate) fn remove_edge_regaining(
+        &mut self,
+        edge: BorrowPcgEdge<'tcx>,
+        context: String,
+        unblocked: impl FnOnce(&Self) -> Vec<Place<'tcx>>,
+    ) -> Vec<Place<'tcx>> {
+        let mut action = BorrowPcgAction::remove_edge(edge, context);
+        let result =
+            self.pcg
+                .borrow
+                .apply_action(&mut action, self.pcg.place_capabilities, self.ctxt);
+        let unblocked = unblocked(self);
+        let regained: CapabilityChanges<_> = unblocked
+            .iter()
+            .filter_map(|place| {
+                self.regained_capability(*place)
+                    .map(|capability| (*place, Some(capability)))
+            })
+            .collect::<Vec<_>>()
+            .into();
+        self.pcg
+            .borrow
+            .regain(&regained, self.pcg.place_capabilities, self.ctxt);
+        action.capabilities.extend(&regained);
+        self.record_applied_action(action.into(), result);
+        unblocked
+    }
+
+    /// Applies `action` and records its capability changes in it.
+    fn apply_action_without_recording(
+        &mut self,
+        action: &mut PcgAction<'tcx>,
+    ) -> Result<ApplyActionResult, PcgError> {
         tracing::debug!("Applying Action: {}", action.debug_line(self.ctxt));
-        let result = match &action {
+        Ok(match action {
             PcgAction::Borrow(action) => {
                 // An expansion guided by the index local outlives the local's
                 // value: its guide refers to the value at the label instead.
@@ -602,65 +749,59 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 }
                 self.pcg
                     .borrow
-                    .apply_action(action.clone(), self.pcg.place_capabilities, self.ctxt)
+                    .apply_action(action, self.pcg.place_capabilities, self.ctxt)
             }
-            PcgAction::Owned(owned_action) => match owned_action.kind {
-                RepackOp::RegainLoanedCapability(regained_capability) => {
-                    self.pcg.place_capabilities.regain_loaned_capability(
-                        regained_capability.place,
-                        regained_capability.capability,
-                        self.pcg.borrow.as_mut_ref(),
-                        self.ctxt,
-                    );
-                    ApplyActionResult::changed_no_display()
-                }
-                RepackOp::Expand(expand) => {
-                    self.pcg.owned.perform_expand_action(
+            PcgAction::Owned(owned_action) => {
+                owned_action.capabilities = match owned_action.kind {
+                    RepackOp::Expand(expand) => self.pcg.owned.perform_expand_action(
                         expand,
                         self.pcg.place_capabilities,
                         self.ctxt,
-                    );
-                    ApplyActionResult::changed_no_display()
-                }
-                RepackOp::DerefShallowInit(from, to) => {
-                    let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
-                    let capability_projections = self.pcg.owned[from.local].expansions_mut();
-                    capability_projections.insert_expansion(
-                        from,
-                        PlaceExpansion::from_places(target_places.clone(), self.ctxt),
-                    );
-                    for target_place in target_places {
-                        self.pcg.place_capabilities.insert(
-                            target_place,
-                            CapabilityKind::Read,
-                            self.ctxt,
+                    ),
+                    RepackOp::DerefShallowInit(from, to) => {
+                        let target_places = from.expand_one_level(to, self.ctxt)?.expansion();
+                        let capability_projections = self.pcg.owned[from.local].expansions_mut();
+                        capability_projections.insert_expansion(
+                            from,
+                            PlaceExpansion::from_places(target_places.clone(), self.ctxt),
                         );
+                        let changes: CapabilityChanges<Place<'tcx>> = target_places
+                            .into_iter()
+                            .map(|place| (place, Some(CapabilityKind::Read)))
+                            .collect::<Vec<_>>()
+                            .into();
+                        changes.apply(self.pcg.place_capabilities, self.ctxt);
+                        changes
                     }
-                    ApplyActionResult::changed_no_display()
-                }
-                RepackOp::Collapse(collapse) => {
-                    let capability_projections = self.pcg.owned[collapse.local()].expansions_mut();
-                    capability_projections.perform_collapse_action(
-                        collapse,
-                        self.pcg.place_capabilities,
-                        self.ctxt,
-                    );
-                    ApplyActionResult::changed_no_display()
-                }
-                RepackOp::Weaken(weaken) => {
-                    pcg_validity_assert!(
-                        self.pcg
-                            .place_capability_equals(weaken.place, weaken.from, self.ctxt)
-                            || weaken.place.contains_unsafe_deref(self.ctxt)
-                    );
-                    self.pcg
-                        .place_capabilities
-                        .insert(weaken.place, weaken.to, self.ctxt);
-                    ApplyActionResult::changed_no_display()
-                }
-                _ => unreachable!(),
-            },
-        };
+                    RepackOp::Collapse(collapse) => {
+                        let capability_projections =
+                            self.pcg.owned[collapse.local()].expansions_mut();
+                        capability_projections.perform_collapse_action(
+                            collapse,
+                            self.pcg.place_capabilities,
+                            self.ctxt,
+                        )
+                    }
+                    RepackOp::StorageDead(local) => {
+                        let changes: CapabilityChanges<Place<'tcx>> = self
+                            .pcg
+                            .place_capabilities
+                            .iter()
+                            .filter(|(place, _)| place.local == local)
+                            .map(|(place, _)| (place, None))
+                            .collect::<Vec<_>>()
+                            .into();
+                        changes.apply(self.pcg.place_capabilities, self.ctxt);
+                        self.pcg.owned.deallocate(local);
+                        changes
+                    }
+                };
+                ApplyActionResult::changed_no_display()
+            }
+        })
+    }
+
+    fn record_applied_action(&mut self, action: PcgAction<'tcx>, result: ApplyActionResult) {
         #[cfg(feature = "visualization")]
         let location = self.location();
         #[cfg(feature = "visualization")]
@@ -683,7 +824,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             }
             actions.push(AppliedAction::new(action, result));
         }
-        Ok(())
     }
     pub(crate) fn phase(&self) -> Option<EvalStmtPhase> {
         match self.prev_snapshot_location {
@@ -715,44 +855,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ///
     /// This also handles corresponding lifetime projections of the place.
     #[tracing::instrument(skip(self))]
-    /// Owned leaves below `place` without capability (e.g. from joining a
-    /// [`CapabilityKind::Write`] leaf with a read-only expansion) are no longer
-    /// blocked once `place` has been labelled for a write, so they regain
-    /// [`CapabilityKind::Write`].
-    fn restore_write_to_unblocked_owned_leaves(
-        &mut self,
-        place: Place<'tcx>,
-    ) -> Result<(), PcgError> {
-        let blocked = self.blocked_owned_places(self.ctxt.bc_ctxt());
-        let to_restore = self
-            .pcg
-            .owned
-            .leaf_places(self.ctxt)
-            .into_iter()
-            .map(Place::from)
-            .filter(|p| {
-                place.is_strict_prefix_of(*p) && self.pcg.capability_of(*p, self.ctxt).is_none()
-            })
-            .collect::<Vec<_>>();
-        let ctxt = self.ctxt;
-        for leaf in to_restore {
-            pcg_validity_assert!(
-                !blocked.contains(&leaf),
-                [ctxt],
-                "{} is blocked after labelling {} for a write",
-                leaf.display_string(ctxt),
-                place.display_string(ctxt)
-            );
-            self.record_and_apply_action(PcgAction::restore_capability(
-                leaf,
-                CapabilityKind::Write,
-                "restore write to unblocked owned leaf",
-                self.ctxt,
-            ))?;
-        }
-        Ok(())
-    }
-
     pub(crate) fn obtain(
         &mut self,
         place: Place<'tcx>,
@@ -796,7 +898,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
-            self.restore_write_to_unblocked_owned_leaves(place)?;
             self.render_debug_graph(None, "after step 1");
         }
 
@@ -837,13 +938,16 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .collect::<Vec<_>>();
                 for (p, from_cap) in to_weaken {
                     let weaken = if obtain_type == ObtainType::ForStorageDead {
-                        RepackOp::weaken_for_storage_dead(p, from_cap, CapabilityKind::Write)
+                        BorrowPcgAction::weaken_for_storage_dead(
+                            p,
+                            from_cap,
+                            CapabilityKind::Write,
+                            "obtain for storage dead",
+                        )
                     } else {
-                        RepackOp::weaken(p, from_cap, CapabilityKind::Write)
+                        BorrowPcgAction::weaken(p, from_cap, CapabilityKind::Write, "obtain W")
                     };
-                    self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                        weaken, None,
-                    )))?;
+                    self.record_and_apply_action(weaken.into())?;
                 }
             }
             tracing::debug!(
@@ -863,6 +967,18 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     place.display_string(self.ctxt.bc_ctxt())
                 ),
             );
+        }
+
+        // An unpacked borrowed place is read by freezing its unpacking (owned
+        // places are frozen by the collapse above).
+        if obtain_cap.is_read()
+            && place.as_owned_place(self.ctxt).is_none()
+            && self.pcg.capability_of(place, self.ctxt).is_none()
+            && self.pcg.place_capabilities.unpacks(place)
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::freeze(place, "read an unpacked place").into(),
+            )?;
         }
 
         // STEP 3
@@ -905,7 +1021,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.render_debug_graph(None, "after step 4");
         }
 
-        self.expand_to(place, obtain_type, self.ctxt)?;
+        self.expand_to(place, None, obtain_type, self.ctxt)?;
 
         if obtain_type == ObtainType::ForStorageDead
             && let Some(cap @ (CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive)) =
@@ -913,10 +1029,15 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         {
             // Temporary: mark as for_storage_dead until
             // https://github.com/prusti/pcg/issues/137 is resolved.
-            self.record_and_apply_action(PcgAction::Owned(OwnedPcgAction::new(
-                RepackOp::weaken_for_storage_dead(place, cap, CapabilityKind::Write),
-                None,
-            )))?;
+            self.record_and_apply_action(
+                BorrowPcgAction::weaken_for_storage_dead(
+                    place,
+                    cap,
+                    CapabilityKind::Write,
+                    "obtain for storage dead",
+                )
+                .into(),
+            )?;
         }
 
         self.render_debug_graph(None, "after step 5");
@@ -942,30 +1063,38 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg.borrow.validity_conditions.clone()
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
+    fn borrow_expansion_capabilities(
+        &self,
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
         self.pcg
             .place_capabilities
-            .update_for_expansion(expansion, block_type, self.ctxt)
+            .expansion_capabilities(expansion, block_type, self.ctxt)
     }
 
     fn location(&self) -> mir::Location {
         self.location
     }
 
-    fn update_capabilities_for_deref(
-        &mut self,
+    fn deref_capabilities(
+        &self,
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        self.pcg
-            .place_capabilities
-            .update_for_deref(ref_place, capability, self.ctxt)
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        PlaceCapabilities::deref_capabilities(ref_place, capability, self.ctxt)
+    }
+
+    fn freeze_for_read_unpacking(&mut self, base: Place<'tcx>) -> Result<(), PcgError> {
+        if self
+            .pcg
+            .place_capability_equals(base, CapabilityKind::Exclusive, self.ctxt)
+        {
+            self.record_and_apply_action(BorrowPcgAction::freeze(base, "unpack for read").into())?;
+        }
+        Ok(())
     }
 
     fn capability_for_expand(

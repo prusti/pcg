@@ -21,13 +21,15 @@ fn arg<'a>(t: T<'a>) -> Option<&'a i32> {
 }
 
 fn local<'a>(t: T<'a>) -> Option<&'a i32> {
-    // `u` is W on the `else` branch and read-expanded on the other, so the
-    // join leaves it without capability until its StorageDead.
+    // `u` is W on the `else` branch and read-expanded on the other: the read
+    // path labels the value of `u` that the result borrows from, unfreezes
+    // `u` and weakens it to W.
     // PCG: bb3[0] pre_operands: Weaken u from E to W
-    // ~PCG: bb4[0] pre_operands: u: W
+    // PCG: bb2 -> bb4: Label place u (Write)
+    // PCG: bb2 -> bb4: Unfreeze u
+    // PCG: bb2 -> bb4: Weaken u from E to W
+    // PCG: bb4[0] pre_operands: u: W
     // ~PCG: bb4[0] pre_operands: u: R
-    // PCG: bb4[1] pre_main: Restore capability W to u.ctx
-    // PCG: bb4[1] pre_main: Restore capability W to u.valid
     let u = t;
     if u.valid { Some(u.ctx.row()) } else { None }
 }

@@ -9,11 +9,8 @@ use std::{borrow::Cow, collections::HashMap};
 use derive_more::Deref;
 
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgActions},
-    borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::PlaceOrConst,
-    },
+    action::{AppliedActions, PcgActions},
+    borrow_pcg::{borrow_pcg_edge::BorrowPcgEdgeRef, region_projection::PlaceOrConst},
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
     pcg::{
@@ -37,7 +34,6 @@ use crate::{
 };
 
 use crate::{
-    borrow_pcg::action::actions::BorrowPcgActions,
     owned_pcg::RepackOp,
     utils::{CompilerCtxt, eval_stmt_data::EvalStmtData},
 };
@@ -132,24 +128,29 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         let from_pcg = &state.data.pcg;
         let from_post_main = from_pcg.states[EvalStmtPhase::PostMain].clone();
         let states = state.data.pcg.states.to_owned();
-        let self_abstraction_edges = from_post_main
-            .borrow
-            .graph()
-            .abstraction_edges()
-            .collect::<FxHashSet<_>>();
 
         let ctxt: ResultsCtxt<'a, 'tcx> = self.results_ctxt();
         let block = &self.body()[location.block];
 
+        // The imaginary target of a false edge is never taken.
+        let imaginary_target = match block.terminator().kind {
+            mir::TerminatorKind::FalseEdge {
+                real_target,
+                imaginary_target,
+            } if imaginary_target != real_target => Some(imaginary_target),
+            _ => None,
+        };
         let succ_blocks = successor_blocks(block.terminator())
             .into_iter()
             .filter(|succ| {
-                self.cursor
-                    .analysis()
-                    .0
-                    .reachable_blocks
-                    .borrow()
-                    .contains(succ.index())
+                Some(*succ) != imaginary_target
+                    && self
+                        .cursor
+                        .analysis()
+                        .0
+                        .reachable_blocks
+                        .borrow()
+                        .contains(succ.index())
             })
             .collect::<Vec<_>>();
         let succs = succ_blocks
@@ -164,27 +165,7 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     .pcg
                     .clone();
 
-                let mut actions =
-                    from_post_main.bridge(&to.entry_state, location.block, succ, ctxt)?;
-
-                let mut borrow_actions = BorrowPcgActions::new();
-                for abstraction in to.entry_state.borrow.graph().abstraction_edges() {
-                    if !self_abstraction_edges.contains(&abstraction) {
-                        borrow_actions.push(
-                            BorrowPcgAction::add_edge(
-                                BorrowPcgEdge::new(
-                                    abstraction.value.clone().into(),
-                                    abstraction.conditions,
-                                ),
-                                "terminator",
-                            ),
-                            self.engine(),
-                        );
-                    }
-                }
-
-                actions.extend(borrow_actions.into());
-
+                let actions = from_post_main.bridge(&to.entry_state, location.block, succ, ctxt)?;
                 Ok(PcgSuccessor::new(
                     succ,
                     actions,

@@ -5,4 +5,4 @@ import type { BorrowPcgActionKindDebugRepr } from "./BorrowPcgActionKindDebugRep
 import type { GenericPcgAction } from "./GenericPcgAction";
 import type { RepackOp } from "./RepackOp";
 
-export type AppliedAction = { action: GenericPcgAction<ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string | null>, ActionKindWithDebugInfo<RepackOp, string | null>>, result: ApplyActionResult<string>, _marker: null, };
+export type AppliedAction = { action: GenericPcgAction<ActionKindWithDebugInfo<BorrowPcgActionKindDebugRepr, string, string | null>, ActionKindWithDebugInfo<RepackOp, string, string | null>>, result: ApplyActionResult<string>, _marker: null, };

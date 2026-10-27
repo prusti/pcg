@@ -1,14 +1,10 @@
-use std::{borrow::Cow, cmp, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use itertools::Itertools;
 
 use crate::{
     HasSettings,
-    borrow_pcg::{
-        borrow_pcg_expansion::BorrowPcgExpansion,
-        edge_data::LabelNodePredicate,
-        state::{BorrowStateMutRef, BorrowsStateLike},
-    },
+    borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
     pcg::CapabilityKind,
     rustc_interface::middle::mir,
     utils::{
@@ -41,6 +37,16 @@ mod private {
         {
             self.iter()
                 .filter(move |&(p, _)| place.is_strict_prefix_of(p))
+        }
+
+        /// Whether a place below `place` has a capability.
+        fn unpacks(&self, place: P) -> bool
+        where
+            P: PrefixRelation,
+        {
+            self.capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
         }
     }
 
@@ -149,72 +155,53 @@ where
 }
 
 impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
-    pub(crate) fn update_for_deref<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &mut self,
+    /// The capabilities set by dereferencing `ref_place` for `capability`.
+    pub(crate) fn deref_capabilities<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         ref_place: Place<'tcx>,
         capability: CapabilityKind,
         ctxt: Ctxt,
-    ) -> bool {
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        let deref_place = ref_place.project_deref(ctxt.bc_ctxt());
         if capability.is_read() || ref_place.is_shared_ref(ctxt.bc_ctxt()) {
-            self.insert(ref_place, CapabilityKind::Read, ctxt);
-            self.insert(
-                ref_place.project_deref(ctxt.bc_ctxt()),
-                CapabilityKind::Read,
-                ctxt,
-            );
+            vec![
+                (ref_place, Some(CapabilityKind::Read)),
+                (deref_place, Some(CapabilityKind::Read)),
+            ]
         } else {
             // The reference itself is still fully accessible (its pointer
             // value remains readable and overwritable); only the permission
             // *through* the dereference is given up.
-            self.insert(ref_place, CapabilityKind::ShallowExclusive, ctxt);
-            self.insert(
-                ref_place.project_deref(ctxt.bc_ctxt()),
-                CapabilityKind::Exclusive,
-                ctxt,
-            );
+            vec![
+                (ref_place, Some(CapabilityKind::ShallowExclusive)),
+                (deref_place, Some(CapabilityKind::Exclusive)),
+            ]
         }
-        true
     }
 
-    pub(crate) fn update_for_expansion<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &mut self,
+    /// The capabilities set by the borrow-PCG expansion `expansion`.
+    pub(crate) fn expansion_capabilities<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
+        &self,
         expansion: &BorrowPcgExpansion<'tcx>,
         block_type: BlockType,
         ctxt: Ctxt,
-    ) -> bool {
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
         // We don't change if only expanding region projections
         let BorrowPcgExpansion::Place(expansion) = expansion else {
-            return false;
+            return vec![];
         };
-        let mut changed = false;
-        let base = expansion.base;
-        let base_capability = self.get(base.place(), ctxt);
-        let expanded_capability = if let Some(capability) = base_capability {
-            block_type.expansion_capability(base.place(), capability, ctxt)
-        } else {
-            return true;
+        let base = expansion.base.place();
+        let Some(base_capability) = self.get(base, ctxt) else {
+            return vec![];
         };
-
-        changed |= self.update_capabilities_for_block_of_place(base.place(), block_type, ctxt);
-
-        for p in &expansion.expansion {
-            changed |= self.insert(p.place(), expanded_capability, ctxt);
-        }
-        changed
-    }
-
-    pub(crate) fn update_capabilities_for_block_of_place<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
-        &mut self,
-        blocked_place: Place<'tcx>,
-        block_type: BlockType,
-        ctxt: Ctxt,
-    ) -> bool {
-        let retained_capability = block_type.blocked_place_maximum_retained_capability();
-        if let Some(capability) = retained_capability {
-            self.insert(blocked_place, capability, ctxt)
-        } else {
-            self.remove(blocked_place, ctxt).is_some()
-        }
+        let expanded_capability = block_type.expansion_capability(base, base_capability, ctxt);
+        std::iter::once((base, block_type.blocked_place_maximum_retained_capability()))
+            .chain(
+                expansion
+                    .expansion
+                    .iter()
+                    .map(|p| (p.place(), Some(expanded_capability))),
+            )
+            .collect()
     }
 }
 
@@ -346,65 +333,12 @@ impl<'tcx> PlaceCapabilities<'tcx>
 where
     Self: PlaceCapabilitiesInterface<'tcx>,
 {
-    pub(crate) fn regain_loaned_capability<
-        'a,
-        Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-    >(
-        &mut self,
-        place: Place<'tcx>,
-        capability: CapabilityKind,
-        mut borrows: BorrowStateMutRef<'_, 'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        self.insert((*place).into(), capability, ctxt);
-        if capability == CapabilityKind::Exclusive {
-            borrows.label_lifetime_projections(
-                &LabelNodePredicate::all_future_postfixes(place),
-                None,
-                ctxt,
-            );
-        }
-    }
-
     pub(crate) fn remove_all_for_local(
         &mut self,
         local: mir::Local,
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) {
         self.map.retain(|place, _| place.place().local != local);
-    }
-}
-
-impl<C: Copy + PartialEq, P> PlaceCapabilities<'_, C, P>
-where
-    P: Copy + Eq + std::hash::Hash,
-{
-    pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, _ctxt: Ctxt) -> bool
-    where
-        C: PartialOrd,
-    {
-        let mut changed = false;
-        self.map.retain(|place, _| other.map.contains_key(place));
-        for (place, other_capability) in &other.map {
-            let place = *place;
-            let other_capability = *other_capability;
-            if let Some(self_capability) = self.map.get(&place) {
-                if self_capability.partial_cmp(&other_capability) == Some(cmp::Ordering::Greater) {
-                    changed |= self.map.insert(place, other_capability) != Some(other_capability);
-                } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
-                    self_capability.partial_cmp(&other_capability)
-                {
-                    // self is already minimum, no change needed
-                } else {
-                    // incomparable - remove
-                    self.map.remove(&place);
-                    changed = true;
-                }
-            }
-        }
-        changed
     }
 }
 

@@ -75,7 +75,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     [ctxt]
                 );
             }
-            PlaceCondition::RemoveCapability(_) => unreachable!(),
+            PlaceCondition::RemoveCapability(_) | PlaceCondition::Freeze(_) => unreachable!(),
         }
     }
 
@@ -123,6 +123,8 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::ExpandTwoPhase(place) => {
                 place_capabilities.insert(place, CapabilityKind::Read, ctxt);
             }
+            // The place is frozen by `PcgVisitor::ensure_triple`.
+            PlaceCondition::Freeze(_) => {}
             PlaceCondition::RemoveCapability(place) => {
                 place_capabilities.remove(place, ctxt);
             }

@@ -25,6 +25,10 @@ fn write_field_in_loop(mut pair: Pair) {
 // A field that is only read in the loop is unpacked for `Read`, while the field
 // that is written to keeps exclusive capability.
 fn read_and_write_fields_in_loop(mut pair: Pair, other: &Pair) {
+    // The back edge freezes the whole of `pair` for the loop head's read
+    // expansion.
+    // PCG: bb8 -> bb1: Freeze pair
+    // ~PCG: bb8 -> bb1: Freeze pair.fst
     let mut cond = false;
     while !cond {
         pair.fst = other.snd.clone();
