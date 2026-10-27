@@ -394,14 +394,28 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
                 )?;
             }
 
+            let layouts = std::iter::once(&first)
+                .chain(rest.iter())
+                .map(|incoming| incoming.data.pcg.states.0.post_main.clone())
+                .collect::<Vec<_>>();
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                let pcg = Rc::make_mut(&mut incoming.data.pcg.states.0.post_main);
+                for layout in &layouts {
+                    pcg.join_lent_layout(layout, ctxt);
+                }
+            }
+
             // The joined state gets back what every predecessor suspends, at
             // the meet.
-            let mut joined = first.data.pcg.states.0.post_main.place_capabilities.clone();
-            for other in &rest {
-                joined.meet_suspended(&other.data.pcg.states.0.post_main.place_capabilities);
-            }
+            let joined = Pcg::joined_suspended(
+                &std::iter::once(&first)
+                    .chain(rest.iter())
+                    .map(|incoming| &*incoming.data.pcg.states.0.post_main)
+                    .collect::<Vec<_>>(),
+                ctxt,
+            );
             for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
-                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).weaken_suspended_to(
+                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).reach_suspended(
                     &joined,
                     SnapshotLocation::After(incoming.ctxt.block),
                     ctxt,
