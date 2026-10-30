@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use super::PcgError;
 use crate::{
+    action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
         edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
@@ -9,7 +10,7 @@ use crate::{
         graph::{Conditioned, frozen::FrozenGraphRef},
     },
     pcg::{
-        PcgNode, PcgRefLike,
+        CapabilityKind, PcgNode, PcgRefLike,
         obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
@@ -166,6 +167,102 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 "Packing old and dead borrow leaves took more than {debug_iteration_limit} iterations"
             );
         }
+    }
+
+    /// Cuts the delegations that keep a loan of `place` alive.
+    ///
+    /// A delegation stays alive for as long as its raw pointer is used, which
+    /// also keeps alive the borrows leading to it. The borrow checker doesn't
+    /// see this: for `let r = &mut x; let p = r as *mut i32; x = 1; *p = 2;` it
+    /// accepts the access to `x`, since `r` is dead. Such an access invalidates
+    /// the raw pointers derived from the loan, so the delegations are removed
+    /// and the raw pointers lose their capability. A delegation of `place`
+    /// itself is unaffected, since `place` is not lent out to the raw pointer.
+    pub(crate) fn cut_delegations_through_loans_of(
+        &mut self,
+        place: Place<'tcx>,
+        obtain_cap: CapabilityKind,
+    ) -> Result<(), PcgError> {
+        let has_capability = match self.pcg.capability_of(place, self.ctxt) {
+            None => false,
+            Some(CapabilityKind::Read) => obtain_cap.is_read(),
+            Some(_) => true,
+        };
+        if has_capability {
+            return Ok(());
+        }
+        let delegations = self.delegations_through_loans_of(place);
+        if delegations.is_empty() {
+            return Ok(());
+        }
+        let context = format!("Access to {}", place.display_string(self.ctxt));
+        for edge in delegations {
+            let BorrowPcgEdgeKind::Delegation(delegation) = edge.kind() else {
+                unreachable!()
+            };
+            let rawptr = delegation
+                .rawptr_place
+                .as_current_place()
+                .and_then(|place| place.parent_place());
+            self.record_and_apply_action(
+                BorrowPcgAction::remove_edge(edge.clone(), context.clone()).into(),
+            )?;
+            if let Some(rawptr) = rawptr
+                && self.pcg.capability_of(rawptr, self.ctxt) == Some(CapabilityKind::Exclusive)
+            {
+                self.record_and_apply_action(
+                    BorrowPcgAction::weaken(
+                        rawptr,
+                        CapabilityKind::Exclusive,
+                        Some(CapabilityKind::Write),
+                        context.clone(),
+                    )
+                    .into(),
+                )?;
+            }
+        }
+        self.pack_old_and_dead_borrow_leaves(None)
+    }
+
+    /// The delegation edges that (transitively) block a loan of `place`, or of
+    /// a place overlapping with it.
+    fn delegations_through_loans_of(&self, place: Place<'tcx>) -> Vec<BorrowPcgEdge<'tcx>> {
+        let ctxt = self.ctxt.bc_ctxt();
+        let graph = self.pcg.borrows_graph();
+        let mut worklist = graph
+            .edges()
+            .filter(|edge| {
+                let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind else {
+                    return false;
+                };
+                borrow
+                    .blocked_place
+                    .as_current_place()
+                    .is_some_and(|blocked| {
+                        blocked.is_prefix_of(place) || place.is_prefix_of(blocked)
+                    })
+            })
+            .map(BorrowPcgEdgeLike::to_owned_edge)
+            .collect::<Vec<_>>();
+        let mut seen = HashSet::default();
+        let mut delegations = Vec::new();
+        while let Some(edge) = worklist.pop() {
+            if !seen.insert(edge.clone()) {
+                continue;
+            }
+            if matches!(edge.kind(), BorrowPcgEdgeKind::Delegation(_)) {
+                delegations.push(edge);
+                continue;
+            }
+            for node in edge.blocked_by_nodes(ctxt) {
+                worklist.extend(
+                    graph
+                        .edges_blocking(node.into(), ctxt)
+                        .map(BorrowPcgEdgeLike::to_owned_edge),
+                );
+            }
+        }
+        delegations
     }
 
     /// Packs the expansions at or below `place` that can be packed without
