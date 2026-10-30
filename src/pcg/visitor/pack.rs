@@ -203,7 +203,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             let rawptr = delegation
                 .rawptr_place
                 .as_current_place()
-                .and_then(|place| place.parent_place());
+                .and_then(Place::parent_place);
             self.record_and_apply_action(
                 BorrowPcgAction::remove_edge(edge.clone(), context.clone()).into(),
             )?;
