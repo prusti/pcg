@@ -195,7 +195,10 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         if delegations.is_empty() {
             return Ok(());
         }
-        let context = format!("Access to {}", place.display_string(self.ctxt));
+        let context = format!(
+            "Delegation is cut because access to {} is needed",
+            place.display_string(self.ctxt)
+        );
         for edge in delegations {
             let BorrowPcgEdgeKind::Delegation(delegation) = edge.kind() else {
                 unreachable!()
