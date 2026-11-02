@@ -406,7 +406,9 @@ impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, PcgRegi
     }
 }
 
-impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, GeneralizedLifetime<'tcx>> for Ctxt {
+impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, GeneralizedLifetime<'tcx>>
+    for Ctxt
+{
     fn extract_regions(
         self,
         data: T,

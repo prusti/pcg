@@ -1,8 +1,14 @@
 use crate::{
-    borrow_pcg::{GeneralizedLifetime, region_projection::{
-        HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
-        PlaceOrConst,
-    }}, pcg::PcgNode, rustc_interface::middle::{mir, ty}, utils::{
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::{
+            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+            PlaceOrConst,
+        },
+    },
+    pcg::PcgNode,
+    rustc_interface::middle::{mir, ty},
+    utils::{
         CompilerCtxt, HasCompilerCtxt, LocalTys,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,

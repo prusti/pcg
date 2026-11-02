@@ -14,7 +14,17 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    Sealed, borrow_pcg::{GeneralizedLifetime, borrow_pcg_expansion::PlaceExpansion, region_projection::{HasTy, Region}, visitor::extract_generalized_lifetimes}, error::{PcgError, PcgUnsupportedError}, owned_pcg::RepackGuide, pcg::PcgNodeWithPlace, rustc_interface::{
+    Sealed,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        borrow_pcg_expansion::PlaceExpansion,
+        region_projection::{HasTy, Region},
+        visitor::extract_generalized_lifetimes,
+    },
+    error::{PcgError, PcgUnsupportedError},
+    owned_pcg::RepackGuide,
+    pcg::PcgNodeWithPlace,
+    rustc_interface::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
@@ -24,7 +34,8 @@ use crate::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{Ty, TyKind},
         },
-    }, utils::{
+    },
+    utils::{
         HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -554,8 +565,10 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        self.ty_region(ctxt)
-            .map(|region| LifetimeProjection::new(self, GeneralizedLifetime::from(region), None, ctxt.ctxt()).unwrap())
+        self.ty_region(ctxt).map(|region| {
+            LifetimeProjection::new(self, GeneralizedLifetime::from(region), None, ctxt.ctxt())
+                .unwrap()
+        })
     }
 
     #[must_use]

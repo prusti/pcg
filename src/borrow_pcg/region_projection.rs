@@ -7,16 +7,24 @@ use super::{
     borrow_pcg_edge::LocalNode, has_pcs_elem::LabelLifetimeProjection, visitor::extract_regions,
 };
 use crate::{
-    Sealed, borrow_pcg::{
-        GeneralizedLifetime, graph::loop_abstraction::MaybeRemoteCurrentPlace, has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller}, visitor::{LifetimeDataCtxt, LifetimeKind},
-    }, error::PcgError, pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
+    Sealed,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        graph::loop_abstraction::MaybeRemoteCurrentPlace,
+        has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
+        visitor::{LifetimeDataCtxt, LifetimeKind},
+    },
+    error::PcgError,
+    pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    rustc_interface::{
         BoundRegion,
         index::{Idx, IndexVec},
         middle::{
             mir::{Const, Local, PlaceElem, interpret::Scalar},
             ty::{self, RegionVid, TyKind, TypeSuperVisitable, TypeVisitable, TypeVisitor},
         },
-    }, utils::{
+    },
+    utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
         PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -387,13 +395,6 @@ impl<'tcx> From<Place<'tcx>> for PlaceOrConst<'tcx, MaybeRemotePlace<'tcx>> {
 }
 
 impl<T> PlaceOrConst<'_, T> {
-    pub(crate) fn expect_place(self) -> T {
-        match self {
-            PlaceOrConst::Place(p) => p,
-            PlaceOrConst::Const(_) => todo!(),
-        }
-    }
-
     pub(crate) fn mut_place<U>(&mut self, f: impl FnOnce(&mut T) -> U) -> Option<U> {
         match self {
             PlaceOrConst::Place(p) => Some(f(p)),
@@ -513,7 +514,11 @@ impl<Base, Kind: RegionIdxMarker> Sealed for LifetimeProjection<'_, Base, Kind> 
 pub(crate) type LifetimeProjectionWithPlace<'tcx, P = Place<'tcx>> =
     LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>;
 
-pub(crate) trait PcgLifetimeProjectionLike<'tcx, P = PcgLifetimeProjectionBase<'tcx>, Kind = Generalized>
+pub(crate) trait PcgLifetimeProjectionLike<
+    'tcx,
+    P = PcgLifetimeProjectionBase<'tcx>,
+    Kind = Generalized,
+>
 {
     fn to_pcg_lifetime_projection(self) -> LifetimeProjection<'tcx, P, Kind>;
 }
@@ -1139,8 +1144,12 @@ impl<'tcx> LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx>> {
     /// this returns `*x`.
     #[must_use]
     pub fn deref(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> Option<MaybeLabelledPlace<'tcx>> {
-        (self.base.ty_region(ctxt).map(Into::<GeneralizedLifetime<'tcx>>::into) == Some(self.region(ctxt)))
-            .then(|| self.base.project_deref(ctxt))
+        (self
+            .base
+            .ty_region(ctxt)
+            .map(Into::<GeneralizedLifetime<'tcx>>::into)
+            == Some(self.region(ctxt)))
+        .then(|| self.base.project_deref(ctxt))
     }
 }
 

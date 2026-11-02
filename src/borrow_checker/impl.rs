@@ -4,7 +4,14 @@ use polonius_engine::Output;
 #[cfg(feature = "visualization")]
 use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
-    BodyAndBorrows, borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface}, borrow_pcg::{GeneralizedLifetime, region_projection::{ExtractRegionsCtxt, PcgRegion}}, pcg::PcgNode, rustc_interface::{
+    BodyAndBorrows,
+    borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::{ExtractRegionsCtxt, PcgRegion},
+    },
+    pcg::PcgNode,
+    rustc_interface::{
         borrowck::{
             BorrowData, BorrowIndex, BorrowSet, Borrows, LocationTable, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, RichLocation,
@@ -15,7 +22,8 @@ use crate::{
             ty::{self, RegionVid},
         },
         mir_dataflow::ResultsCursor,
-    }, utils::{
+    },
+    utils::{
         CompilerCtxt,
         display::{DisplayCtxtFor, DisplayOutput, OutputMode},
         liveness::PlaceLiveness,
@@ -210,19 +218,21 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
             .map(|r| (*r).into())
             .collect::<BTreeSet<_>>();
         regions.iter().any(|region| match region {
-            GeneralizedLifetime::Region(PcgRegion::RegionVid(region_vid)) => live_loans.iter().any(|loan| {
-                if live_origins.contains(region_vid) {
-                    return true;
-                }
-                if self
-                    .borrow_checker_data
-                    .region_cx
-                    .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
-                {
-                    return true;
-                }
-                false
-            }),
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(region_vid)) => {
+                live_loans.iter().any(|loan| {
+                    if live_origins.contains(region_vid) {
+                        return true;
+                    }
+                    if self
+                        .borrow_checker_data
+                        .region_cx
+                        .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
+                    {
+                        return true;
+                    }
+                    false
+                })
+            }
             // Regions in `T` are chosen by the caller, so they outlive the body
             GeneralizedLifetime::RegionsIn(_) => true,
             _ => todo!(),

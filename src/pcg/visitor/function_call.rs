@@ -1,17 +1,28 @@
 use super::PcgVisitor;
 use crate::{
-    action::BorrowPcgAction, borrow_pcg::{
-        FunctionData, abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape}, borrow_pcg_edge::BorrowPcgEdge, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::{
+    action::BorrowPcgAction,
+    borrow_pcg::{
+        FunctionData,
+        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
+        borrow_pcg_edge::BorrowPcgEdge,
+        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
+        edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
             function::{
                 DefinedFnCall, FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata,
             },
-        }, edge_data::LabelNodePredicate, region_projection::{ExtractRegionsCtxt, HasTy, LifetimeProjection, PlaceOrConst},
-    }, coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind}, pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander}, rustc_interface::{
+        },
+        edge_data::LabelNodePredicate,
+        region_projection::{HasTy, LifetimeProjection, PlaceOrConst},
+    },
+    coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
+    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
+    rustc_interface::{
         fn_def_args,
         middle::mir::{Location, Operand},
         span::Span,
-    }, utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    },
+    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -48,12 +59,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 let operand = call.inputs[*arg_idx];
                 // Constants are never targets of borrow flow (they have no place)
                 if let PlaceOrConst::Place(place) = self.maybe_labelled_operand(operand) {
-                    Some(LifetimeProjection::from_index(place, output.region_idx)
-                        .with_label(
-                            Some(SnapshotLocation::After(self.location().block).into()),
-                            self.ctxt,
-                        )
-                        .into())
+                    Some(
+                        LifetimeProjection::from_index(place, output.region_idx)
+                            .with_label(
+                                Some(SnapshotLocation::After(self.location().block).into()),
+                                self.ctxt,
+                            )
+                            .into(),
+                    )
                 } else {
                     None
                 }

@@ -1,16 +1,25 @@
 use itertools::Itertools;
 
 use crate::{
-    action::BorrowPcgAction, borrow_pcg::{
-        GeneralizedLifetime, borrow_pcg_edge::BorrowPcgEdge, edge::{
+    action::BorrowPcgAction,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        borrow_pcg_edge::BorrowPcgEdge,
+        edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             kind::BorrowPcgEdgeKind,
-        }, edge_data::LabelNodePredicate, region_projection::LifetimeProjection, state::BorrowsStateLike,
-    }, error::PcgError, pcg::{
+        },
+        edge_data::LabelNodePredicate,
+        region_projection::LifetimeProjection,
+        state::BorrowsStateLike,
+    },
+    error::PcgError,
+    pcg::{
         CapabilityKind, PcgNode, PcgRefLike,
         obtain::{HasSnapshotLocation, PlaceObtainer},
         place_capabilities::BlockType,
-    }, utils::{
+    },
+    utils::{
         DataflowCtxt, DebugCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
     },
 };
@@ -101,8 +110,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             }
             for r in &place_regions {
-                let Some(current_rp) = LifetimeProjection::new(current, GeneralizedLifetime::from(*r), None, self.ctxt.ctxt())
-                else {
+                let Some(current_rp) = LifetimeProjection::new(
+                    current,
+                    GeneralizedLifetime::from(*r),
+                    None,
+                    self.ctxt.ctxt(),
+                ) else {
                     // e.g. for ReStatic
                     continue;
                 };

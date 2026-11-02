@@ -5,7 +5,14 @@
 use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
-    borrow_checker::r#impl::get_reserve_location, borrow_pcg::{GeneralizedLifetime, region_projection::PcgRegion, visitor::{OpaqueTy, extract_regions}}, pcg::PcgNode, rustc_interface::{
+    borrow_checker::r#impl::get_reserve_location,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::PcgRegion,
+        visitor::{OpaqueTy, extract_regions},
+    },
+    pcg::PcgNode,
+    rustc_interface::{
         borrowck::{
             BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, places_conflict,
@@ -16,7 +23,8 @@ use crate::{
             mir::{self, Location},
             ty::RegionVid,
         },
-    }, utils::{
+    },
+    utils::{
         CompilerCtxt, Place,
         display::{
             DisplayCtxtFor, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -204,7 +212,12 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     ///
     /// Must return `true` whenever borrows under `sup` may flow into `sub`.
     /// Currently, we conservatively return `true` if `sup` is `RegionsIn(T)`.
-    fn outlives_generalized(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, location: Location) -> bool {
+    fn outlives_generalized(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        location: Location,
+    ) -> bool {
         match (sup, sub) {
             (GeneralizedLifetime::Region(sup), GeneralizedLifetime::Region(sub)) => {
                 self.outlives(sup, sub, location)
@@ -234,9 +247,9 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                 "unexpected region {other:?} in a borrow-checked body (all regions are renumbered)"
             ),
         };
-        let bc = self
-            .rust_borrow_checker()
-            .unwrap_or_else(|| panic!("region_may_flow_into_opaque requires rustc borrow checker facts"));
+        let bc = self.rust_borrow_checker().unwrap_or_else(|| {
+            panic!("region_may_flow_into_opaque requires rustc borrow checker facts")
+        });
         let visible_regions = match opaque {
             OpaqueTy::Param(_) => vec![],
             OpaqueTy::Alias(ty) => extract_regions(ty).raw,
@@ -272,10 +285,16 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     }
 
     /// Like [`Self::same_region`], but for generalized lifetimes.
-    fn same_region_generalized(&self, reg1: GeneralizedLifetime<'tcx>, reg2: GeneralizedLifetime<'tcx>, location: Location) -> bool {
+    fn same_region_generalized(
+        &self,
+        reg1: GeneralizedLifetime<'tcx>,
+        reg2: GeneralizedLifetime<'tcx>,
+        location: Location,
+    ) -> bool {
         // TODO: outlives_generalized currently returns true for any `Regions(T)` argument.
         // This currently makes all RegionsIn(T) equal to each other
-        self.outlives_generalized(reg1, reg2, location) && self.outlives_generalized(reg2, reg1, location)
+        self.outlives_generalized(reg1, reg2, location)
+            && self.outlives_generalized(reg2, reg1, location)
     }
 
     // Implementors of this trait should be dyn-safe

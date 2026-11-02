@@ -49,7 +49,8 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     let (defined_fn_call, location) = find_call(callee_name, ctxt);
 
     let sig_shape: SigShape = SigShape::for_fn_sig(defined_fn_call.fn_def_id(), ctxt).unwrap();
-    let call_shape: FunctionShape = FunctionShape::for_fn_call(defined_fn_call, location, ctxt).unwrap();
+    let call_shape: FunctionShape =
+        FunctionShape::for_fn_call(defined_fn_call, location, ctxt).unwrap();
 
     let sig_str = sig_shape.to_string();
     let call_str = call_shape.to_string();

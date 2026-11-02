@@ -336,7 +336,8 @@ impl<Kind: RegionIdxMarker> FunctionShapeInput<Kind> {
     }
 }
 
-pub type FunctionShapeOutput<Kind = Generalized> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;
+pub type FunctionShapeOutput<Kind = Generalized> =
+    LifetimeProjection<'static, ArgIdxOrResult, Kind>;
 
 /// Either an input or output in the shape of the function.
 pub type FunctionShapeNode<Kind = Generalized> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;

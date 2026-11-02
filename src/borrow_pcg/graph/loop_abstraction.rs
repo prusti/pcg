@@ -1,14 +1,26 @@
 use derive_more::From;
 
 use crate::{
-    HasSettings, action::PcgAction, borrow_pcg::{
-        self, action::BorrowPcgActionKind, borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode}, edge::{
+    HasSettings,
+    action::PcgAction,
+    borrow_pcg::{
+        self,
+        action::BorrowPcgActionKind,
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
+        edge::{
             abstraction::{AbstractionBlockEdge, AbstractionEdge, r#loop::LoopAbstraction},
             kind::BorrowPcgEdgeKind,
-        }, edge_data::{EdgeData, LabelNodePredicate}, graph::{BorrowsGraph, join::JoinBorrowsArgs}, region_projection::{
-            ExtractRegionsCtxt, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel, HasTy,
-        }, state::BorrowStateMutRef, validity_conditions::ValidityConditions,
-    }, r#loop::{PlaceUsage, PlaceUsages}, pcg::{
+        },
+        edge_data::{EdgeData, LabelNodePredicate},
+        graph::{BorrowsGraph, join::JoinBorrowsArgs},
+        region_projection::{
+            HasTy, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
+        },
+        state::BorrowStateMutRef,
+        validity_conditions::ValidityConditions,
+    },
+    r#loop::{PlaceUsage, PlaceUsages},
+    pcg::{
         self, CapabilityKind, LocalNodeLike, PcgMutRef, PcgNode, PcgNodeLike,
         ctxt::AnalysisCtxt,
         obtain::{
@@ -16,7 +28,10 @@ use crate::{
             expand::PlaceExpander,
         },
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesInterface},
-    }, pcg_validity_assert, rustc_interface::middle::mir, utils::{
+    },
+    pcg_validity_assert,
+    rustc_interface::middle::mir,
+    utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
         data_structures::{HashMap, HashSet},
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},

@@ -410,7 +410,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.output_ty
     }
-    fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
+    fn outlives(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        ctxt: Ctxt,
+    ) -> bool {
         ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
@@ -507,7 +512,6 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         id_ty: ty::Ty<'tcx>,
         map: &mut HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>>,
     ) {
-        use crate::borrow_pcg::visitor::extract_regions;
         match (norm_ty.kind(), id_ty.kind()) {
             // Identity type is a type parameter or non-normalizable alias: all
             // regions from the concrete normalized type map to RegionsIn(T).
@@ -744,9 +748,14 @@ fn renumbered_captures<'tcx>(
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     /// Like [`FunctionShapeDataSource::outlives`], restricted to regions.
-    fn outlives_region(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, tcx: ty::TyCtxt<'tcx>) -> bool {
+    fn outlives_region(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> bool {
         if sup == sub || matches!(sup, GeneralizedLifetime::Region(r) if r.is_static()) {
-           return true;
+            return true;
         }
 
         // Map call-site regions to normalized sig regions.
@@ -774,13 +783,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             return true;
         }
         let identity_input_tys = self.identity_input_tys(tcx);
-        if generalized_outlives(
-            sup_gl,
-            sub_gl,
-            &self.outlives,
-            &identity_input_tys,
-            tcx,
-        ) {
+        if generalized_outlives(sup_gl, sub_gl, &self.outlives, &identity_input_tys, tcx) {
             return true;
         }
 
@@ -807,13 +810,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             let bound_regions = extract_generalized_lifetimes(param_ty, Some(tbr_map));
             for gl in bound_regions {
                 if matches!(gl, GeneralizedLifetime::Region(_))
-                    && generalized_outlives(
-                        sup_gl,
-                        gl,
-                        &self.outlives,
-                        &identity_input_tys,
-                        tcx,
-                    )
+                    && generalized_outlives(sup_gl, gl, &self.outlives, &identity_input_tys, tcx)
                 {
                     return true;
                 }
@@ -852,7 +849,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         tcx: ty::TyCtxt<'tcx>,
     ) -> Option<GeneralizedLifetime<'tcx>> {
         let GeneralizedLifetime::Region(region) = lifetime else {
-            return self.norm_to_generalized_map.get(&lifetime).copied()
+            return self.norm_to_generalized_map.get(&lifetime).copied();
         };
         match region {
             PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
@@ -896,8 +893,14 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         self.call.call_result_ty
     }
 
-    fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
-        self.outlives_region(sup, sub, ctxt.tcx()) && ctxt.bc().outlives_generalized(sup, sub, self.location)
+    fn outlives(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        ctxt: Ctxt,
+    ) -> bool {
+        self.outlives_region(sup, sub, ctxt.tcx())
+            && ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
 

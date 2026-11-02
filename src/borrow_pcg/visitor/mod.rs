@@ -1,11 +1,16 @@
-use std::{collections::HashMap, hash::Hash};
 use derive_more::From;
+use std::{collections::HashMap, hash::Hash};
 
 use crate::{
-    borrow_pcg::region_projection::region_is_invariant_in_type, rustc_interface::{
+    borrow_pcg::region_projection::region_is_invariant_in_type,
+    rustc_interface::{
         index::IndexVec,
         middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
-    }, utils::{HasTyCtxt, display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode}},
+    },
+    utils::{
+        HasTyCtxt,
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 
 use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion, Region};
@@ -48,7 +53,6 @@ impl<'tcx> From<ty::Region<'tcx>> for GeneralizedLifetime<'tcx> {
     fn from(region: ty::Region<'tcx>) -> GeneralizedLifetime<'tcx> {
         GeneralizedLifetime::Region(region.into())
     }
-
 }
 
 impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifetime<'tcx>>
@@ -111,7 +115,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 /// T<'c, 'd> will return `['a, 'b]` and `['c, 'd]` respectively. This enables
 /// substitution of regions to handle moves in the PCG e.g for the statement
 /// `let x: T<'a, 'b> = move c: T<'c, 'd>`.
-pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'_>> {
+pub(crate) fn extract_regions(
+    ty: ty::Ty<'_>,
+) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'_>> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
@@ -174,13 +180,13 @@ pub enum GeneralizedLifetime<'tcx> {
     RegionsIn(OpaqueTy<'tcx>),
 }
 
-impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtxt<Ctxt> for GeneralizedLifetime<'tcx> {
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtxt<Ctxt>
+    for GeneralizedLifetime<'tcx>
+{
     fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
         match self {
             GeneralizedLifetime::Region(region) => region.display_output(ctxt, mode),
-            GeneralizedLifetime::RegionsIn(opaque_ty) => {
-                format!("RegionsIn({opaque_ty})").into()
-            }
+            GeneralizedLifetime::RegionsIn(opaque_ty) => format!("RegionsIn({opaque_ty})").into(),
         }
     }
 }

@@ -1,21 +1,29 @@
 //! Borrow edges
 use crate::{
-    HasSettings, borrow_pcg::{
-        GeneralizedLifetime, edge::kind::BorrowPcgEdgeType, edge_data::{
+    HasSettings,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        edge::kind::BorrowPcgEdgeType,
+        edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
             conditionally_label_places,
-        }, has_pcs_elem::{
+        },
+        has_pcs_elem::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
-        }, region_projection::LifetimeProjectionLabel,
-    }, pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
+        },
+        region_projection::LifetimeProjectionLabel,
+    },
+    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
         middle::{
             mir::{self, Location},
             ty::{self},
         },
-    }, utils::{
+    },
+    utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},

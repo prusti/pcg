@@ -1,11 +1,17 @@
 use crate::{
     borrow_pcg::{
-        GeneralizedLifetime, graph::{BorrowsGraph, materialize::MaterializedEdge}, region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst}, state::BorrowStateRef,
-    }, pcg::{
+        GeneralizedLifetime,
+        graph::{BorrowsGraph, materialize::MaterializedEdge},
+        region_projection::{LifetimeProjection, PlaceOrConst},
+        state::BorrowStateRef,
+    },
+    pcg::{
         CapabilityKind, MaybeHasLocation, PcgNode, PcgNodeLike, PcgRef,
         owned_state::{LocalInitState, OwnedPcg},
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    }, rustc_interface::{borrowck::BorrowIndex, middle::mir}, utils::{
+    },
+    rustc_interface::{borrowck::BorrowIndex, middle::mir},
+    utils::{
         CompilerCtxt, Place, SnapshotLocation,
         display::{DisplayWithCompilerCtxt, DisplayWithCtxt},
     },
@@ -93,7 +99,8 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             }
         };
         let loans = if let Some(output) = self.ctxt.borrow_checker.polonius_output()
-            && let GeneralizedLifetime::Region(region) = projection.region::<GeneralizedLifetime<'tcx>, _>(self.ctxt)
+            && let GeneralizedLifetime::Region(region) =
+                projection.region::<GeneralizedLifetime<'tcx>, _>(self.ctxt)
             && let Some(region_vid) = region.vid()
         {
             let region_vid = region_vid.into();

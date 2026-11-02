@@ -1,9 +1,14 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgAction}, borrow_pcg::{
-        GeneralizedLifetime, action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdge, edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind}, region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
-        },
-    }, owned_pcg::RepackExpand, pcg::{
+    action::{AppliedActions, BorrowPcgAction, PcgAction},
+    borrow_pcg::{
+        GeneralizedLifetime,
+        action::LabelPlaceReason,
+        borrow_pcg_edge::BorrowPcgEdge,
+        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        region_projection::{LifetimeProjection, PcgLifetimeProjectionLike, PlaceOrConst},
+    },
+    owned_pcg::RepackExpand,
+    pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
@@ -11,7 +16,9 @@ use crate::{
         place_capabilities::PlaceCapabilitiesInterface,
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
-    }, rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator}, utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    },
+    rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
+    utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use crate::utils::{
@@ -167,8 +174,14 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         Ok(self.actions)
     }
 
-    fn outlives_generalized(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>) -> bool {
-        self.ctxt.bc().outlives_generalized(sup, sub, self.location())
+    fn outlives_generalized(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+    ) -> bool {
+        self.ctxt
+            .bc()
+            .outlives_generalized(sup, sub, self.location())
     }
 
     fn connect_outliving_projections(

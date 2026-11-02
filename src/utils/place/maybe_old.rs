@@ -2,16 +2,21 @@ use std::borrow::Cow;
 
 use crate::{
     borrow_pcg::{
-        has_pcs_elem::{LabelPlace, PlaceLabeller}, region_projection::{
+        has_pcs_elem::{LabelPlace, PlaceLabeller},
+        region_projection::{
             HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
         },
-    }, error::PcgError, pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
+    },
+    error::PcgError,
+    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    rustc_interface::{
         PlaceTy,
         middle::{
             mir::{self, PlaceElem},
             ty,
         },
-    }, utils::{
+    },
+    utils::{
         CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
         PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},

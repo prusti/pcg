@@ -3,14 +3,22 @@
 use std::borrow::Cow;
 
 use crate::{
-    HasSettings, borrow_pcg::{
-        action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
+    HasSettings,
+    borrow_pcg::{
+        action::ApplyActionResult,
+        borrow_pcg_edge::{BlockingNode, LocalNode},
+        edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
+        graph::join::JoinBorrowsArgs,
+        region_projection::PcgLifetimeProjectionBase,
+        validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
-    }, pcg::{
+    },
+    pcg::{
         PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    }, utils::{
+    },
+    utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
         data_structures::HashSet,
         display::{DisplayWithCtxt, OutputMode},
