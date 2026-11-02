@@ -2,22 +2,16 @@ use std::borrow::Cow;
 
 use crate::{
     borrow_pcg::{
-        has_pcs_elem::{LabelPlace, PlaceLabeller},
-        region_projection::{
+        has_pcs_elem::{LabelPlace, PlaceLabeller}, region_projection::{
             HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
-        },
-        visitor::extract_regions,
-    },
-    error::PcgError,
-    pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::{
+        }, visitor::{extract_generalized_lifetimes, extract_regions},
+    }, error::PcgError, pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
         PlaceTy,
         middle::{
             mir::{self, PlaceElem},
             ty,
         },
-    },
-    utils::{
+    }, utils::{
         CompilerCtxt, DebugCtxt, HasCompilerCtxt, HasPlace, LabelledPlace, PcgNodeComponent,
         PcgPlace, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -301,7 +295,7 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty)
+        extract_generalized_lifetimes(place.ty(ctxt).ty, None)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()

@@ -14,12 +14,7 @@ use std::{
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    Sealed,
-    borrow_pcg::{borrow_pcg_expansion::PlaceExpansion, region_projection::HasTy},
-    error::{PcgError, PcgUnsupportedError},
-    owned_pcg::RepackGuide,
-    pcg::PcgNodeWithPlace,
-    rustc_interface::{
+    Sealed, borrow_pcg::{GeneralizedLifetime, borrow_pcg_expansion::PlaceExpansion, region_projection::{HasTy, Region}, visitor::extract_generalized_lifetimes}, error::{PcgError, PcgUnsupportedError}, owned_pcg::RepackGuide, pcg::PcgNodeWithPlace, rustc_interface::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
@@ -29,8 +24,7 @@ use crate::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
             ty::{Ty, TyKind},
         },
-    },
-    utils::{
+    }, utils::{
         HasCompilerCtxt,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
@@ -561,7 +555,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         self.ty_region(ctxt)
-            .map(|region| LifetimeProjection::new(self, region, None, ctxt.ctxt()).unwrap())
+            .map(|region| LifetimeProjection::new(self, GeneralizedLifetime::from(region), None, ctxt.ctxt()).unwrap())
     }
 
     #[must_use]
@@ -644,7 +638,7 @@ impl<'tcx> Place<'tcx> {
     pub fn regions<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'tcx>>
+    ) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'tcx>>
     where
         'tcx: 'a,
     {
@@ -659,7 +653,7 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty)
+        extract_generalized_lifetimes(place.ty(ctxt).ty, None)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
@@ -670,7 +664,7 @@ impl<'tcx> Place<'tcx> {
         &self,
         region: PcgRegion<'tcx>,
         ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> Option<LifetimeProjectionIdx> {
+    ) -> Option<LifetimeProjectionIdx<Region>> {
         extract_regions(self.rust_ty(ctxt))
             .into_iter_enumerated()
             .find(|(_, r)| *r == region)

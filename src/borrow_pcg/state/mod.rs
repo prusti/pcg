@@ -3,22 +3,14 @@
 use std::borrow::Cow;
 
 use crate::{
-    HasSettings,
-    borrow_pcg::{
-        action::ApplyActionResult,
-        borrow_pcg_edge::{BlockingNode, LocalNode},
-        edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
-        graph::join::JoinBorrowsArgs,
-        region_projection::PcgLifetimeProjectionBase,
-        validity_conditions::{
+    HasSettings, borrow_pcg::{
+        GeneralizedLifetime, action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
-    },
-    pcg::{
+    }, pcg::{
         PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    },
-    utils::{
+    }, utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
         data_structures::HashSet,
         display::{DisplayWithCtxt, OutputMode},
@@ -429,7 +421,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         let arg_place: Place<'tcx> = local.into();
         for region in arg_place.regions(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
-                LifetimeProjection::new(RemotePlace::new(local), region, None, ctxt)
+                LifetimeProjection::new(RemotePlace::new(local), GeneralizedLifetime::from(region), None, ctxt)
                     .unwrap_or_else(|| {
                         panic!(
                             "Failed to create region for remote place (for {local:?}).
@@ -440,7 +432,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
                 source_projection.rebase();
             let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx>>::new(
                 MaybeLabelledPlace::Current(arg_place),
-                region,
+                GeneralizedLifetime::from(region),
                 None,
                 ctxt,
             )

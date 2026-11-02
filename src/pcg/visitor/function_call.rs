@@ -1,28 +1,17 @@
 use super::PcgVisitor;
 use crate::{
-    action::BorrowPcgAction,
-    borrow_pcg::{
-        FunctionData,
-        abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape},
-        borrow_pcg_edge::BorrowPcgEdge,
-        domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput},
-        edge::abstraction::{
+    action::BorrowPcgAction, borrow_pcg::{
+        FunctionData, abstraction::{ArgIdx, ArgIdxOrResult, FunctionCall, FunctionShape}, borrow_pcg_edge::BorrowPcgEdge, domain::{FunctionCallAbstractionInput, FunctionCallAbstractionOutput}, edge::abstraction::{
             AbstractionBlockEdge, AbstractionEdge,
             function::{
                 DefinedFnCall, FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata,
             },
-        },
-        edge_data::LabelNodePredicate,
-        region_projection::{ExtractRegionsCtxt, LifetimeProjection},
-    },
-    coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind},
-    pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander},
-    rustc_interface::{
+        }, edge_data::LabelNodePredicate, region_projection::{ExtractRegionsCtxt, LifetimeProjection, HasTy},
+    }, coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind}, pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander}, rustc_interface::{
         fn_def_args,
         middle::mir::{Location, Operand},
         span::Span,
-    },
-    utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
+    }, utils::{PcgSettings, data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgError;
@@ -161,7 +150,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         let arg_region_projections = args
             .iter()
             .map(|arg| self.maybe_labelled_operand(arg))
-            .flat_map(|input_place| self.ctxt.extract_lifetime_projections(input_place))
+            .flat_map(|input_place| input_place.generalized_lifetime_projections(self.ctxt))
             .collect::<Vec<_>>();
 
         let pre_rps = arg_region_projections

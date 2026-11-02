@@ -1,28 +1,21 @@
 //! Borrow edges
 use crate::{
-    HasSettings,
-    borrow_pcg::{
-        edge::kind::BorrowPcgEdgeType,
-        edge_data::{
+    HasSettings, borrow_pcg::{
+        GeneralizedLifetime, edge::kind::BorrowPcgEdgeType, edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
             conditionally_label_places,
-        },
-        has_pcs_elem::{
+        }, has_pcs_elem::{
             LabelLifetimeProjectionResult, LabelNodeContext, LabelPlace, PlaceLabeller,
             SourceOrTarget,
-        },
-        region_projection::LifetimeProjectionLabel,
-    },
-    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
-    rustc_interface::{
+        }, region_projection::LifetimeProjectionLabel,
+    }, pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
         ast::Mutability,
         borrowck::BorrowIndex,
         middle::{
             mir::{self, Location},
             ty::{self},
         },
-    },
-    utils::{
+    }, utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
@@ -276,7 +269,7 @@ impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
         P: PcgPlace<'tcx, Ctxt>,
     {
         match self.assigned_ref.place().rust_ty(ctxt).kind() {
-            ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
+            ty::TyKind::Ref(region, _, _) => LifetimeProjection::new::<Ctxt, GeneralizedLifetime>(
                 self.assigned_ref,
                 (*region).into(),
                 self.assigned_lifetime_projection_label,

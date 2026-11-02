@@ -4,11 +4,7 @@ use polonius_engine::Output;
 #[cfg(feature = "visualization")]
 use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
-    BodyAndBorrows,
-    borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::{ExtractRegionsCtxt, PcgRegion},
-    pcg::PcgNode,
-    rustc_interface::{
+    BodyAndBorrows, borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface}, borrow_pcg::{GeneralizedLifetime, region_projection::{ExtractRegionsCtxt, PcgRegion}}, pcg::PcgNode, rustc_interface::{
         borrowck::{
             BorrowData, BorrowIndex, BorrowSet, Borrows, LocationTable, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, RichLocation,
@@ -19,8 +15,7 @@ use crate::{
             ty::{self, RegionVid},
         },
         mir_dataflow::ResultsCursor,
-    },
-    utils::{
+    }, utils::{
         CompilerCtxt,
         display::{DisplayCtxtFor, DisplayOutput, OutputMode},
         liveness::PlaceLiveness,
@@ -194,7 +189,7 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let ctxt = self.ctxt();
-        let regions: Vec<PcgRegion<'tcx>> = match node {
+        let regions: Vec<GeneralizedLifetime<'tcx>> = match node {
             PcgNode::Place(place) => ctxt.extract_regions(place).into_iter().collect(),
             PcgNode::LifetimeProjection(lifetime_projection) => {
                 vec![lifetime_projection.region(ctxt)]
@@ -215,7 +210,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
             .map(|r| (*r).into())
             .collect::<BTreeSet<_>>();
         regions.iter().any(|region| match region {
-            PcgRegion::RegionVid(region_vid) => live_loans.iter().any(|loan| {
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(region_vid)) => live_loans.iter().any(|loan| {
                 if live_origins.contains(region_vid) {
                     return true;
                 }
@@ -228,6 +223,8 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                 }
                 false
             }),
+            // Regions in `T` are chosen by the caller, so they outlive the body
+            GeneralizedLifetime::RegionsIn(_) => true,
             _ => todo!(),
         })
     }

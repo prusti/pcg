@@ -3,31 +3,16 @@ pub(crate) mod expand;
 use std::marker::PhantomData;
 
 use crate::{
-    HasSettings,
-    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction},
-    borrow_pcg::{
-        action::LabelPlaceReason,
-        borrow_pcg_edge::BorrowPcgEdge,
-        edge::{
+    HasSettings, action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgAction}, borrow_pcg::{
+        GeneralizedLifetime, action::LabelPlaceReason, borrow_pcg_edge::BorrowPcgEdge, edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
             kind::BorrowPcgEdgeType,
-        },
-        edge_data::LabelNodePredicate,
-        has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
-        region_projection::{LocalLifetimeProjection, PcgRegion},
-        state::BorrowStateMutRef,
-    },
-    error::PcgError,
-    r#loop::PlaceUsageType,
-    owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
-    pcg::{
+        }, edge_data::LabelNodePredicate, has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget}, region_projection::{LocalLifetimeProjection, PcgRegion}, state::BorrowStateMutRef,
+    }, error::PcgError, r#loop::PlaceUsageType, owned_pcg::{LocalExpansions, RepackCollapse, RepackOp}, pcg::{
         CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    },
-    pcg_validity_assert,
-    rustc_interface::middle::mir,
-    utils::{
+    }, pcg_validity_assert, rustc_interface::middle::mir, utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
         LocalMutationIsAllowed, Place, SnapshotLocation, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
@@ -300,8 +285,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                             ep.lifetime_projections(ctxt)
                                 .into_iter()
                                 .filter(|erp| {
-                                    erp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
-                                        == rp.region::<PcgRegion<'tcx>, _>(ctxt.ctxt())
+                                    erp.region::<GeneralizedLifetime<'tcx>, _>(ctxt.ctxt())
+                                        == rp.region::<GeneralizedLifetime<'tcx>, _>(ctxt.ctxt())
                                 })
                                 .map(Into::into)
                                 .collect::<Vec<_>>()

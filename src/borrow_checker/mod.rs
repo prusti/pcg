@@ -5,10 +5,7 @@
 use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
-    borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::PcgRegion,
-    pcg::PcgNode,
-    rustc_interface::{
+    borrow_checker::r#impl::get_reserve_location, borrow_pcg::{GeneralizedLifetime, region_projection::PcgRegion}, pcg::PcgNode, rustc_interface::{
         borrowck::{
             BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, places_conflict,
@@ -19,8 +16,7 @@ use crate::{
             mir::{self, Location},
             ty::RegionVid,
         },
-    },
-    utils::{
+    }, utils::{
         CompilerCtxt, Place,
         display::{
             DisplayCtxtFor, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
@@ -204,6 +200,19 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /// Returns true iff `sup` is required to outlive `sub` at `location`.
     fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, location: Location) -> bool;
 
+    /// Like [`Self::outlives`], but for generalized lifetimes.
+    ///
+    /// Must return `true` whenever borrows under `sup` may flow into `sub`.
+    /// Currently, we conservatively return `true` if passed `RegionsIn(T)`.
+    fn outlives_generalized(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, location: Location) -> bool {
+        match (sup, sub) {
+            (GeneralizedLifetime::Region(sup), GeneralizedLifetime::Region(sub)) => {
+                self.outlives(sup, sub, location)
+            }
+            (GeneralizedLifetime::RegionsIn(_), _) | (_, GeneralizedLifetime::RegionsIn(_)) => true,
+        }
+    }
+
     fn borrows_blocking(
         &self,
         blocked_place: Place<'tcx>,
@@ -226,6 +235,13 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
         location: Location,
     ) -> bool {
         self.outlives(reg1, reg2, location) && self.outlives(reg2, reg1, location)
+    }
+
+    /// Like [`Self::same_region`], but for generalized lifetimes.
+    fn same_region_generalized(&self, reg1: GeneralizedLifetime<'tcx>, reg2: GeneralizedLifetime<'tcx>, location: Location) -> bool {
+        // TODO: outlives_generalized currently returns true for any `Regions(T)` argument.
+        // This currently makes all RegionsIn(T) equal to each other
+        self.outlives_generalized(reg1, reg2, location) && self.outlives_generalized(reg2, reg1, location)
     }
 
     // Implementors of this trait should be dyn-safe

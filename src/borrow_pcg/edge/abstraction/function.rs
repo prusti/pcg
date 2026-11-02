@@ -402,7 +402,7 @@ impl<'a, 'tcx: 'a> FnCallDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for FnCallDataSource<'a, 'tcx>
 {
-    type Lifetime = PcgRegion<'tcx>;
+    type Lifetime = GeneralizedLifetime<'tcx>;
 
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
@@ -410,8 +410,8 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.output_ty
     }
-    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
-        ctxt.bc().outlives(sup, sub, self.location)
+    fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
+        ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
 
@@ -737,6 +737,102 @@ fn renumbered_captures<'tcx>(
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
+    /// Like [`FunctionShapeDataSource::outlives`], restricted to regions.
+    fn outlives_region(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, tcx: ty::TyCtxt<'tcx>) -> bool {
+        if sup.is_static() || sup == sub {
+            return true;
+        }
+
+        // Map call-site regions to normalized sig regions.
+        let sup_norm = self.region_map.get(&sup).copied();
+        let sub_norm = self.region_map.get(&sub).copied();
+
+        // If both map to the same normalized region, they represent the same
+        // lifetime in the callee's signature — outlives holds.
+        if let (Some(s), Some(t)) = (sup_norm, sub_norm)
+            && s == t
+        {
+            return true;
+        }
+
+        // Map to generalized lifetimes in the identity signature and check
+        // outlives using the generalized lifetime graph (which handles trait
+        // bounds, type parameters, and implied bounds).
+        let Some(sup_gl) = sup_norm.and_then(|r| self.normalized_to_identity(r, tcx)) else {
+            return false;
+        };
+        let Some(sub_gl) = sub_norm.and_then(|r| self.normalized_to_identity(r, tcx)) else {
+            return false;
+        };
+        if sup_gl == sub_gl {
+            return true;
+        }
+        let identity_input_tys = self.identity_input_tys(tcx);
+        if generalized_outlives(
+            sup_gl,
+            sub_gl,
+            &self.outlives,
+            &identity_input_tys,
+            tcx,
+        ) {
+            return true;
+        }
+
+        // When the identity result type is a type parameter T and `sub`
+        // maps to `RegionsIn(T)`, the concrete call-site region is "inside"
+        // T at the call site. Since T could contain borrows under any
+        // signature lifetime, check whether `sup_gl` outlives any of them.
+        //
+        // This only applies when T IS the identity result type — not when
+        // RegionsIn(T) arises from an input type parameter like Self.
+        let identity_result_ty = self
+            .call
+            .defined_fn_call
+            .function_data
+            .identity_fn_sig(tcx)
+            .output();
+        if let GeneralizedLifetime::RegionsIn(opaque_ty) = sub_gl
+            && opaque_ty.is_param()
+            && opaque_ty.ty(tcx) == identity_result_ty
+        {
+            let param_ty = opaque_ty.ty(tcx);
+            let tbr = TraitBoundRegions::new(self.outlives.param_env);
+            let tbr_map = tbr.as_map();
+            let bound_regions = extract_generalized_lifetimes(param_ty, Some(tbr_map));
+            for gl in bound_regions {
+                if matches!(gl, GeneralizedLifetime::Region(_))
+                    && generalized_outlives(
+                        sup_gl,
+                        gl,
+                        &self.outlives,
+                        &identity_input_tys,
+                        tcx,
+                    )
+                {
+                    return true;
+                }
+            }
+            // Also check against all signature lifetimes (since T could
+            // contain borrows under any of them).
+            for input_ty in &identity_input_tys {
+                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
+                    if matches!(gl, GeneralizedLifetime::Region(_))
+                        && generalized_outlives(
+                            sup_gl,
+                            gl,
+                            &self.outlives,
+                            &identity_input_tys,
+                            tcx,
+                        )
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Maps a normalized sig region to a generalized lifetime in the callee's
     /// identity signature.
     ///
@@ -782,7 +878,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for DefinedFnCallShapeDataSource<'a, 'tcx>
 {
-    type Lifetime = PcgRegion<'tcx>;
+    type Lifetime = GeneralizedLifetime<'tcx>;
 
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.call.call_arg_tys.clone()
@@ -791,99 +887,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         self.call.call_result_ty
     }
 
-    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
-        if sup.is_static() || sup == sub {
-            return true;
+    fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
+        match (sup, sub) {
+            (GeneralizedLifetime::Region(sup_r), GeneralizedLifetime::Region(sub_r)) => self.outlives_region(sup_r, sub_r, ctxt.tcx()),
+            // conservatively assume that RegionsIn(T) outlives RegionsIn(U)
+            _ => true
         }
-
-        // Map call-site regions to normalized sig regions.
-        let sup_norm = self.region_map.get(&sup).copied();
-        let sub_norm = self.region_map.get(&sub).copied();
-
-        // If both map to the same normalized region, they represent the same
-        // lifetime in the callee's signature — outlives holds.
-        if let (Some(s), Some(t)) = (sup_norm, sub_norm)
-            && s == t
-        {
-            return true;
-        }
-
-        // Map to generalized lifetimes in the identity signature and check
-        // outlives using the generalized lifetime graph (which handles trait
-        // bounds, type parameters, and implied bounds).
-        let Some(sup_gl) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
-            return false;
-        };
-        let Some(sub_gl) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
-            return false;
-        };
-        if sup_gl == sub_gl {
-            return true;
-        }
-        let identity_input_tys = self.identity_input_tys(ctxt.tcx());
-        if generalized_outlives(
-            sup_gl,
-            sub_gl,
-            &self.outlives,
-            &identity_input_tys,
-            ctxt.tcx(),
-        ) {
-            return true;
-        }
-
-        // When the identity result type is a type parameter T and `sub`
-        // maps to `RegionsIn(T)`, the concrete call-site region is "inside"
-        // T at the call site. Since T could contain borrows under any
-        // signature lifetime, check whether `sup_gl` outlives any of them.
-        //
-        // This only applies when T IS the identity result type — not when
-        // RegionsIn(T) arises from an input type parameter like Self.
-        let identity_result_ty = self
-            .call
-            .defined_fn_call
-            .function_data
-            .identity_fn_sig(ctxt.tcx())
-            .output();
-        if let GeneralizedLifetime::RegionsIn(opaque_ty) = sub_gl
-            && opaque_ty.is_param()
-            && opaque_ty.ty(ctxt.tcx()) == identity_result_ty
-        {
-            let param_ty = opaque_ty.ty(ctxt.tcx());
-            let tbr = TraitBoundRegions::new(self.outlives.param_env);
-            let tbr_map = tbr.as_map();
-            let bound_regions = extract_generalized_lifetimes(param_ty, Some(tbr_map));
-            for gl in bound_regions {
-                if matches!(gl, GeneralizedLifetime::Region(_))
-                    && generalized_outlives(
-                        sup_gl,
-                        gl,
-                        &self.outlives,
-                        &identity_input_tys,
-                        ctxt.tcx(),
-                    )
-                {
-                    return true;
-                }
-            }
-            // Also check against all signature lifetimes (since T could
-            // contain borrows under any of them).
-            for input_ty in &identity_input_tys {
-                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
-                    if matches!(gl, GeneralizedLifetime::Region(_))
-                        && generalized_outlives(
-                            sup_gl,
-                            gl,
-                            &self.outlives,
-                            &identity_input_tys,
-                            ctxt.tcx(),
-                        )
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 
