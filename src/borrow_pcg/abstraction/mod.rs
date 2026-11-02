@@ -125,7 +125,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         'tcx: 'a,
     {
         let defined = self.defined_fn_call_with_call_tys(ctxt)?;
-        let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt).ok()?;
+        let data_source = DefinedFnCallShapeDataSource::new(defined, self.location, ctxt).ok()?;
         Some(FunctionShape::new(&data_source, ctxt))
     }
 
@@ -434,10 +434,11 @@ impl<Kind: RegionIdxMarker> FunctionShape<Kind> {
 impl FunctionShape {
     pub fn for_fn_call<'a, 'tcx: 'a>(
         call: DefinedFnCallWithCallTys<'tcx>,
+        location: mir::Location,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + Copy,
     ) -> Result<Self, MakeFunctionShapeError> {
         Ok(FunctionShape::new(
-            &DefinedFnCallShapeDataSource::new(call, ctxt)?,
+            &DefinedFnCallShapeDataSource::new(call, location, ctxt)?,
             ctxt,
         ))
     }

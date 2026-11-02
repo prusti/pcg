@@ -417,6 +417,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
 
 pub(crate) struct DefinedFnCallShapeDataSource<'a, 'tcx> {
     call: DefinedFnCallWithCallTys<'tcx>,
+    /// The location of the call, used to ask the borrow checker about
+    /// outlives relations at the call site.
+    location: Location,
     /// Maps call-site regions to their corresponding normalized sig regions.
     /// Built by walking call-site types and normalized sig types in parallel.
     region_map: HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>>,
@@ -434,6 +437,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _call: DefinedFnCallWithCallTys<'tcx>,
+        _location: Location,
         _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
@@ -566,6 +570,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         call: DefinedFnCallWithCallTys<'tcx>,
+        location: Location,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         // Use the callee's typing env for outlives checks, since after mapping
@@ -592,6 +597,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         let norm_to_generalized_map = Self::build_norm_to_generalized_map(&normalized, &identity);
         Ok(Self {
             call,
+            location,
             outlives,
             region_map,
             norm_to_generalized_map,
@@ -891,7 +897,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     }
 
     fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
-        self.outlives_region(sup, sub, ctxt.tcx())
+        self.outlives_region(sup, sub, ctxt.tcx()) && ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
 
