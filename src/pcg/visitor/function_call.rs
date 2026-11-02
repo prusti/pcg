@@ -6,7 +6,7 @@ use crate::{
             function::{
                 DefinedFnCall, FunctionCallAbstraction, FunctionCallAbstractionEdgeMetadata,
             },
-        }, edge_data::LabelNodePredicate, region_projection::{ExtractRegionsCtxt, LifetimeProjection, HasTy},
+        }, edge_data::LabelNodePredicate, region_projection::{ExtractRegionsCtxt, HasTy, LifetimeProjection, PlaceOrConst},
     }, coupling::{CoupledEdgesData, FunctionCallCoupledEdgeKind, PcgCoupledEdgeKind}, pcg::obtain::{HasSnapshotLocation, expand::PlaceExpander}, rustc_interface::{
         fn_def_args,
         middle::mir::{Location, Operand},
@@ -42,20 +42,24 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         &self,
         call: &FunctionCall<'_, 'tcx>,
         output: LifetimeProjection<'tcx, ArgIdxOrResult>,
-    ) -> FunctionCallAbstractionOutput<'tcx> {
+    ) -> Option<FunctionCallAbstractionOutput<'tcx>> {
         match output.base {
             ArgIdxOrResult::Argument(arg_idx) => {
                 let operand = call.inputs[*arg_idx];
-                let place = self.maybe_labelled_operand(operand).expect_place();
-                LifetimeProjection::from_index(place, output.region_idx)
-                    .with_label(
-                        Some(SnapshotLocation::After(self.location().block).into()),
-                        self.ctxt,
-                    )
-                    .into()
+                // Constants are never targets of borrow flow (they have no place)
+                if let PlaceOrConst::Place(place) = self.maybe_labelled_operand(operand) {
+                    Some(LifetimeProjection::from_index(place, output.region_idx)
+                        .with_label(
+                            Some(SnapshotLocation::After(self.location().block).into()),
+                            self.ctxt,
+                        )
+                        .into())
+                } else {
+                    None
+                }
             }
             ArgIdxOrResult::Result => {
-                LifetimeProjection::from_index(call.output, output.region_idx).into()
+                Some(LifetimeProjection::from_index(call.output, output.region_idx).into())
             }
         }
     }
@@ -71,12 +75,12 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         };
         let abstraction_edges: HashSet<AbstractionBlockEdge<'_, _, _>> = shape
             .edges()
-            .map(|AbstractionBlockEdge { input, output, .. }| {
-                AbstractionBlockEdge::new_checked(
+            .filter_map(|AbstractionBlockEdge { input, output, .. }| {
+                Some(AbstractionBlockEdge::new_checked(
                     self.node_for_input(call, input),
-                    self.node_for_output(call, output),
+                    self.node_for_output(call, output)?,
                     self.ctxt,
-                )
+                ))
             })
             .collect();
         if self.settings().coupling {
