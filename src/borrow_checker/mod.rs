@@ -211,7 +211,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /// Like [`Self::outlives`], but for generalized lifetimes.
     ///
     /// Must return `true` whenever borrows under `sup` may flow into `sub`.
-    /// Currently, we conservatively return `true` if `sup` is `RegionsIn(T)`.
     fn outlives_generalized(
         &self,
         sup: GeneralizedLifetime<'tcx>,
@@ -225,8 +224,18 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
             (GeneralizedLifetime::Region(sup), GeneralizedLifetime::RegionsIn(opaque)) => {
                 self.region_may_flow_into_opaque(sup, opaque)
             }
-            // TODO: make this precise as well.
-            (GeneralizedLifetime::RegionsIn(_), _) => true,
+            // Different type parameters are different types. An alias may equal
+            // any type, which can add extra edges (e.g. between
+            // `<I as Iterator>::Item` and `<J as Iterator>::Item`).
+            (
+                GeneralizedLifetime::RegionsIn(sup_opaque),
+                GeneralizedLifetime::RegionsIn(sub_opaque),
+            ) => match (sup_opaque, sub_opaque) {
+                (OpaqueTy::Param(sup_param), OpaqueTy::Param(sub_param)) => sup_param == sub_param,
+                _ => true,
+            },
+            // TODO: precise for local regions, conservative for universal ones.
+            (GeneralizedLifetime::RegionsIn(_), GeneralizedLifetime::Region(_)) => true,
         }
     }
 
@@ -291,8 +300,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
         reg2: GeneralizedLifetime<'tcx>,
         location: Location,
     ) -> bool {
-        // TODO: outlives_generalized currently returns true for any `Regions(T)` argument.
-        // This currently makes all RegionsIn(T) equal to each other
         self.outlives_generalized(reg1, reg2, location)
             && self.outlives_generalized(reg2, reg1, location)
     }
