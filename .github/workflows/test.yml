@@ -140,7 +140,7 @@ jobs:
           # -- build the dylint libraries --
           (cd rust-lints && cargo build --release)
           # -- install cargo-dylint unless the required version is on PATH --
-          dylint_version=6.0.4
+          dylint_version=6.3.2
           if [ "$(cargo-dylint dylint --version 2>/dev/null)" != "cargo-dylint $dylint_version" ]; then
             cargo install cargo-dylint --locked --version "$dylint_version" --force
           fi
