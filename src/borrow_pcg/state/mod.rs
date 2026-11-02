@@ -4,9 +4,9 @@ use std::borrow::Cow;
 
 use crate::{
     HasSettings, borrow_pcg::{
-        GeneralizedLifetime, action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::{HasTy, PcgLifetimeProjectionBase}, validity_conditions::{
+        action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
-        }, visitor::extract_generalized_lifetimes,
+        },
     }, pcg::{
         PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
@@ -419,7 +419,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let arg_place: Place<'tcx> = local.into();
-        for lifetime in extract_generalized_lifetimes(arg_place.rust_ty(ctxt), None) {
+        for lifetime in arg_place.generalized_lifetimes(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
                 LifetimeProjection::new(RemotePlace::new(local), lifetime, None, ctxt)
                     .unwrap_or_else(|| {

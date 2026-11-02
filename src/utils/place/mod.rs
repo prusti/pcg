@@ -645,6 +645,18 @@ impl<'tcx> Place<'tcx> {
         extract_regions(self.rust_ty(ctxt))
     }
 
+    /// The generalized lifetimes of this place's type: its regions, and
+    /// `RegionsIn(T)` for opaque types such as type parameters.
+    pub fn generalized_lifetimes<'a>(
+        &self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> IndexVec<LifetimeProjectionIdx, GeneralizedLifetime<'tcx>>
+    where
+        'tcx: 'a,
+    {
+        extract_generalized_lifetimes(self.rust_ty(ctxt), None)
+    }
+
     pub(crate) fn lifetime_projections<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -653,7 +665,8 @@ impl<'tcx> Place<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_generalized_lifetimes(place.ty(ctxt).ty, None)
+        place
+            .generalized_lifetimes(ctxt)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()

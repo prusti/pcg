@@ -4,7 +4,7 @@ use crate::{
     borrow_pcg::{
         has_pcs_elem::{LabelPlace, PlaceLabeller}, region_projection::{
             HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
-        }, visitor::{extract_generalized_lifetimes, extract_regions},
+        },
     }, error::PcgError, pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace}, rustc_interface::{
         PlaceTy,
         middle::{
@@ -295,7 +295,9 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_generalized_lifetimes(place.ty(ctxt).ty, None)
+        place
+            .place()
+            .generalized_lifetimes(ctxt)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
