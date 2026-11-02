@@ -760,6 +760,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ) -> Result<(), PcgError> {
         let obtain_cap = obtain_type.capability(place, self.ctxt);
 
+        self.cut_delegations_through_loans_of(place, obtain_cap)?;
+
         // Under `PackStrategy::Lazy` the expansions below `place` were not
         // packed as soon as they became packable, so they are packed here,
         // where a capability that `place` cannot hold while it is expanded is
