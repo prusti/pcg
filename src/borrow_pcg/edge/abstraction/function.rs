@@ -890,8 +890,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     fn outlives(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, ctxt: Ctxt) -> bool {
         match (sup, sub) {
             (GeneralizedLifetime::Region(sup_r), GeneralizedLifetime::Region(sub_r)) => self.outlives_region(sup_r, sub_r, ctxt.tcx()),
-            // conservatively assume that RegionsIn(T) outlives RegionsIn(U)
-            _ => true
+            (GeneralizedLifetime::Region(sup_r), GeneralizedLifetime::RegionsIn(opaque)) => {
+                ctxt.bc().region_may_flow_into_opaque(sup_r, opaque)
+            }
+            // TODO: make this precise as well.
+            (GeneralizedLifetime::RegionsIn(_), _) => true,
         }
     }
 }

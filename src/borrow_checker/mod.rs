@@ -5,7 +5,7 @@
 use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
-    borrow_checker::r#impl::get_reserve_location, borrow_pcg::{GeneralizedLifetime, region_projection::PcgRegion}, pcg::PcgNode, rustc_interface::{
+    borrow_checker::r#impl::get_reserve_location, borrow_pcg::{GeneralizedLifetime, region_projection::PcgRegion, visitor::{OpaqueTy, extract_regions}}, pcg::PcgNode, rustc_interface::{
         borrowck::{
             BorrowData, BorrowIndex, BorrowSet, LocationTable, PlaceConflictBias, PoloniusInput,
             PoloniusOutput, RegionInferenceContext, places_conflict,
@@ -203,14 +203,48 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /// Like [`Self::outlives`], but for generalized lifetimes.
     ///
     /// Must return `true` whenever borrows under `sup` may flow into `sub`.
-    /// Currently, we conservatively return `true` if passed `RegionsIn(T)`.
+    /// Currently, we conservatively return `true` if `sup` is `RegionsIn(T)`.
     fn outlives_generalized(&self, sup: GeneralizedLifetime<'tcx>, sub: GeneralizedLifetime<'tcx>, location: Location) -> bool {
         match (sup, sub) {
             (GeneralizedLifetime::Region(sup), GeneralizedLifetime::Region(sub)) => {
                 self.outlives(sup, sub, location)
             }
-            (GeneralizedLifetime::RegionsIn(_), _) | (_, GeneralizedLifetime::RegionsIn(_)) => true,
+            (GeneralizedLifetime::Region(sup), GeneralizedLifetime::RegionsIn(opaque)) => {
+                self.region_may_flow_into_opaque(sup, opaque)
+            }
+            // TODO: make this precise as well.
+            (GeneralizedLifetime::RegionsIn(_), _) => true,
         }
+    }
+
+    /// Whether borrows under `region` may be stored in a value of type `opaque`.
+    ///
+    /// A borrow can only be stored in a value of type `X` if its region
+    /// outlives some region in `X`. Regions hidden inside an opaque type are
+    /// chosen by the caller and outlive the function body; other regions
+    /// appear in the type itself.
+    fn region_may_flow_into_opaque(&self, region: PcgRegion<'tcx>, opaque: OpaqueTy<'tcx>) -> bool {
+        let vid = match region {
+            // Universal by construction: they outlive the function body.
+            PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) | PcgRegion::ReLateParam(_) => {
+                return true;
+            }
+            PcgRegion::RegionVid(vid) => vid,
+            other => unreachable!(
+                "unexpected region {other:?} in a borrow-checked body (all regions are renumbered)"
+            ),
+        };
+        let bc = self
+            .rust_borrow_checker()
+            .unwrap_or_else(|| panic!("region_may_flow_into_opaque requires rustc borrow checker facts"));
+        let visible_regions = match opaque {
+            OpaqueTy::Param(_) => vec![],
+            OpaqueTy::Alias(ty) => extract_regions(ty).raw,
+        };
+        bc.outlives_some_universal_region(vid)
+            || visible_regions
+                .into_iter()
+                .any(|r| bc.outlives_everywhere(region, r))
     }
 
     fn borrows_blocking(
@@ -430,6 +464,16 @@ pub trait RustBorrowCheckerInterface<'tcx> {
             (PcgRegion::ReStatic, _) => true,
             _ => false,
         }
+    }
+
+    /// Returns true iff `region` outlives some universal region, i.e. it lives
+    /// for at least the whole function body (every universal region outlives
+    /// the function body).
+    fn outlives_some_universal_region(&self, region: RegionVid) -> bool {
+        self.input_facts()
+            .universal_region
+            .iter()
+            .any(|u| self.region_infer_ctxt().eval_outlives(region, (*u).into()))
     }
 }
 
