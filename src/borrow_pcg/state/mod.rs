@@ -4,9 +4,9 @@ use std::borrow::Cow;
 
 use crate::{
     HasSettings, borrow_pcg::{
-        GeneralizedLifetime, action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::PcgLifetimeProjectionBase, validity_conditions::{
+        GeneralizedLifetime, action::ApplyActionResult, borrow_pcg_edge::{BlockingNode, LocalNode}, edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements}, graph::join::JoinBorrowsArgs, region_projection::{HasTy, PcgLifetimeProjectionBase}, validity_conditions::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
-        },
+        }, visitor::extract_generalized_lifetimes,
     }, pcg::{
         PcgNodeWithPlace,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
@@ -419,20 +419,20 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let arg_place: Place<'tcx> = local.into();
-        for region in arg_place.regions(ctxt) {
+        for lifetime in extract_generalized_lifetimes(arg_place.rust_ty(ctxt), None) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
-                LifetimeProjection::new(RemotePlace::new(local), GeneralizedLifetime::from(region), None, ctxt)
+                LifetimeProjection::new(RemotePlace::new(local), lifetime, None, ctxt)
                     .unwrap_or_else(|| {
                         panic!(
                             "Failed to create region for remote place (for {local:?}).
-                                    It does not have region {region:?}",
+                                    It does not have lifetime {lifetime:?}",
                         );
                     });
             let source_projection: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx>> =
                 source_projection.rebase();
             let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx>>::new(
                 MaybeLabelledPlace::Current(arg_place),
-                GeneralizedLifetime::from(region),
+                lifetime,
                 None,
                 ctxt,
             )
