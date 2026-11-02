@@ -195,6 +195,9 @@ impl LabelPlaceReason {
                 LabelNodePredicate::PlaceIsPostfixOf(place),
                 // If the place is e.g *x or x.f, don't label it if it
                 // is the target of a borrow expansion or deref edge.
+                // The same holds for the target of a delegation edge: the raw
+                // pointer aliases the address of the place, which the write
+                // doesn't change, so it must keep following the current place.
                 LabelNodePredicate::not(LabelNodePredicate::And(vec![
                     LabelNodePredicate::PlaceEquals(place),
                     LabelNodePredicate::InTargetNodes,
@@ -202,6 +205,7 @@ impl LabelPlaceReason {
                     LabelNodePredicate::Or(vec![
                         LabelNodePredicate::EdgeType(BorrowPcgEdgeType::BorrowPcgExpansion),
                         LabelNodePredicate::EdgeType(BorrowPcgEdgeType::Deref),
+                        LabelNodePredicate::EdgeType(BorrowPcgEdgeType::Delegation),
                     ]),
                 ])),
                 // If we are writing to e.g. x.f and there's an
