@@ -66,18 +66,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                         .graph()
                         .contains(target, self.ctxt.bc_ctxt())
                 {
-                    // The permission to the target may have been Read originally.
-                    // Now, because it's been made old, the non-old place should be a leaf,
-                    // and its permission should be Exclusive.
+                    // The target may have been frozen originally. Now, because
+                    // its dereference has been made old, the freeze ends.
                     if self.pcg.capability_of(target, self.ctxt) == Some(CapabilityKind::Read) {
-                        self.record_and_apply_action(
-                            BorrowPcgAction::restore_capability(
-                                target,
-                                CapabilityKind::Exclusive,
-                                "Assign: restore capability to exclusive",
-                            )
-                            .into(),
-                        )?;
+                        self.place_obtainer()
+                            .upgrade_read_to_exclusive(target, &|_| false)?;
                     }
                 }
 
@@ -92,7 +85,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             BorrowPcgAction::weaken(
                                 target,
                                 target_cap,
-                                Some(CapabilityKind::Write),
+                                CapabilityKind::Write,
                                 "pre_main",
                             )
                             .into(),

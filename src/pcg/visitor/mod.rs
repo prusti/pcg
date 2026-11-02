@@ -1,9 +1,10 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction, CapabilityChanges},
     borrow_pcg::{
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge_data::LabelNodePredicate,
         region_projection::{
             LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
         },
@@ -14,10 +15,11 @@ use crate::{
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
-        place_capabilities::PlaceCapabilitiesInterface,
+        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
     utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
@@ -114,15 +116,33 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
+                && self
+                    .pcg
+                    .borrow
+                    .graph
+                    .edges_blocking(place.into(), self.ctxt.bc_ctxt())
+                    .next()
+                    .is_none()
                 && self.pcg.capability_of(place, self.ctxt).is_none()
             {
-                let action = PcgAction::restore_capability(
-                    place,
-                    CapabilityKind::Exclusive,
-                    "Leaf future node restore cap",
-                    self.ctxt,
+                // The edge that blocked the place would have returned its
+                // capability when it was removed.
+                let ctxt = self.ctxt;
+                pcg_validity_assert!(
+                    false,
+                    [ctxt],
+                    "{:?}: {} is unblocked without a capability",
+                    self.location(),
+                    place.display_string(ctxt)
                 );
-                self.record_and_apply_action(action)?;
+                self.record_and_apply_action(
+                    BorrowPcgAction::label_lifetime_projection(
+                        LabelNodePredicate::all_future_postfixes(place),
+                        None,
+                        "Leaf future node: remove future label",
+                    )
+                    .into(),
+                )?;
             }
         }
         Ok(())
@@ -371,10 +391,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .ctxt
                     .body_analysis()
                     .is_read_only_in_loop(self.location().block, place)
+                && !self
+                    .blocked_owned_places(self.ctxt.bc_ctxt())
+                    .contains(&place)
             {
-                self.pcg
-                    .place_capabilities
-                    .insert(place, CapabilityKind::Exclusive, self.ctxt);
+                self.record_and_apply_action(
+                    BorrowPcgAction::unfreeze(place, "unfreeze collapsed local").into(),
+                )?;
             }
         }
         Ok(true)
@@ -420,11 +443,79 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
+        let ctxt = self.ctxt;
+        if !self
+            .pcg
+            .place_capability_equals(blocked_place, CapabilityKind::Read, ctxt)
+        {
+            pcg_validity_assert!(
+                false,
+                [ctxt],
+                "Activating a two-phase borrow of {} with capability {:?}",
+                blocked_place.display_string(ctxt),
+                self.pcg.capability_of(blocked_place, ctxt)
+            );
+            return Ok(());
+        }
+        let borrow = borrow.clone();
+        // If the place is a read copy of a frozen ancestor (the ancestor was
+        // read during the reservation, or the reservation was made under a
+        // shared borrow of it), the freeze moves to the place first.
+        let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
+        if frozen != blocked_place {
+            self.place_obtainer()
+                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+        }
+        // Reads during the reservation may have unpacked the place at R.
+        if blocked_place.as_owned_place(self.ctxt).is_some() {
+            let ctxt = self.ctxt;
+            self.place_obtainer()
+                .collapse_owned_places_and_lifetime_projections_to(
+                    blocked_place,
+                    CapabilityKind::Read,
+                    "pack the reads of a two-phase borrowed place".to_owned(),
+                    ctxt,
+                )?;
+        }
         self.place_obtainer()
-            .remove_read_permission_upwards_and_label_rps(
-                blocked_place,
-                AdjustCapabilityReason::TwoPhaseBorrowActivation,
+            .detach_borrowed_shared_referents(blocked_place, &|_| false)?;
+        self.place_obtainer()
+            .pack_read_unpacking(blocked_place, &|_| false)?;
+        // The borrow checker allows the activation, so the loans that keep
+        // the rest of the read unpacking from being packed are dead (the PCG
+        // can keep them, e.g. for a raw pointer derived from their value):
+        // the remaining read copies are detached.
+        while let Some(read_copy) = self
+            .pcg
+            .place_capabilities
+            .capabilities_for_strict_postfixes_of(blocked_place)
+            .map(|(place, _)| place)
+            .min_by_key(|place| place.projection.len())
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    read_copy,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::Detach,
+                )
+                .into(),
             )?;
+        }
+        let ctxt = self.ctxt;
+        pcg_validity_assert!(
+            !self.pcg.place_capabilities.unpacks(blocked_place),
+            [ctxt],
+            "Activating a two-phase borrow of {} whose read unpacking is still borrowed",
+            blocked_place.display_string(ctxt)
+        );
+        self.record_and_apply_action(
+            BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
+        )?;
+        self.place_obtainer().label_rps_up_to(
+            blocked_place,
+            frozen,
+            AdjustCapabilityReason::TwoPhaseBorrowActivation,
+        )?;
         Ok(())
     }
 }
@@ -435,10 +526,11 @@ impl<'tcx> OwnedPcg<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].expansions_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt);
+        expansions.perform_expand_action(expand, capabilities, ctxt)
     }
 }

@@ -18,7 +18,7 @@ fn read_fields_then_overwrite(p: &mut Point) {
     // Overwriting `*p` requires a capability that `*p` cannot hold while it is
     // expanded, so the expansion is packed just in time.
     // PCG: bb0[8] pre_main: Remove Edge {*p} -> {(*p).x, (*p).y}
-    // PCG: bb0[8] pre_main: Restore *p to E
+    // PCG: bb0[8] pre_main: Unfreeze p
     *p = Point { x: 1, y: 2 };
 }
 

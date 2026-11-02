@@ -6,140 +6,28 @@
 
 use crate::{
     HasSettings,
-    borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
-        state::BorrowsStateLike,
-    },
-    error::PcgError,
-    owned_pcg::{
-        ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
-        join::{data::JoinOwnedData, obtain::JoinCtxt},
-    },
+    action::CapabilityChanges,
+    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    owned_pcg::{RepackCollapse, RepackExpand},
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place,
-        data_structures::{HashMap, HashSet},
+        DebugCtxt, HasCompilerCtxt, Place, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
-use itertools::Itertools;
 
-use crate::{
-    owned_pcg::LocalExpansions,
-    pcg::owned_state::{LocalInitState, OwnedPcg},
-    rustc_interface::middle::mir,
-};
-
-impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx>> {
-    #[tracing::instrument(skip(self, other, ctxt), fields(self.snapshot_location = ?self.snapshot_location, other.snapshot_location = ?other.snapshot_location), level = "warn")]
-    pub(crate) fn join(
-        &mut self,
-        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        match (&mut *self.owned, &mut other.owned) {
-            (LocalInitState::Unallocated, LocalInitState::Unallocated) => Ok(vec![]),
-            (
-                LocalInitState::Allocated {
-                    expansions: to_places,
-                    ..
-                },
-                LocalInitState::Allocated {
-                    expansions: from_places,
-                    ..
-                },
-            ) => {
-                let self_allocated = JoinOwnedData {
-                    owned: to_places,
-                    borrows: self.borrows,
-                    capabilities: self.capabilities,
-                    snapshot_location: self.snapshot_location,
-                };
-                let mut from_places = from_places.clone();
-                let other_allocated = JoinOwnedData {
-                    owned: &mut from_places,
-                    borrows: other.borrows,
-                    capabilities: other.capabilities,
-                    snapshot_location: other.snapshot_location,
-                };
-                self_allocated.join(other_allocated, ctxt)
-            }
-            (LocalInitState::Allocated { expansions, .. }, LocalInitState::Unallocated) => {
-                self.borrows.label_place_and_update_related_capabilities(
-                    expansions.local.into(),
-                    LabelPlaceReason::StorageDead,
-                    &SetLabel(self.snapshot_location),
-                    self.capabilities,
-                    ctxt,
-                );
-                let mut repacks = vec![];
-                for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
-                    if *k > CapabilityKind::Write {
-                        // Temporary: mark as for_storage_dead until
-                        // https://github.com/prusti/pcg/issues/137 is resolved.
-                        repacks.push(RepackOp::weaken_for_storage_dead(
-                            place,
-                            *k,
-                            CapabilityKind::Write,
-                        ));
-                        *k = CapabilityKind::Write;
-                    }
-                }
-                repacks.extend(expansions.collapse(
-                    expansions.local.into(),
-                    None,
-                    self.capabilities,
-                    ctxt,
-                ));
-                repacks.push(RepackOp::StorageDead(expansions.local));
-                *self.owned = LocalInitState::Unallocated;
-                Ok(repacks)
-            }
-            (LocalInitState::Unallocated, LocalInitState::Allocated { expansions, .. }) => {
-                other.borrows.label_place_and_update_related_capabilities(
-                    expansions.local.into(),
-                    LabelPlaceReason::StorageDead,
-                    &SetLabel(other.snapshot_location),
-                    other.capabilities,
-                    ctxt,
-                );
-                Ok(vec![])
-            }
-        }
-    }
-}
-
-impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
-    pub(crate) fn join(
-        &mut self,
-        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        let mut actions = vec![];
-        for local in 0..self.owned.num_locals() {
-            let local: mir::Local = local.into();
-            let mut owned_local_data = self.map_owned(|owned| &mut owned[local]);
-            let other_owned_local_data = other.map_owned(|owned| &owned[local]);
-            actions.extend(owned_local_data.join(other_owned_local_data, ctxt)?);
-        }
-        Ok(actions)
-    }
-}
+use crate::owned_pcg::LocalExpansions;
 
 impl<'tcx> LocalExpansions<'tcx> {
-    pub(crate) fn expansions_shortest_first(&self) -> impl Iterator<Item = &ExpandedPlace<'tcx>> {
-        self.expansions
-            .iter()
-            .sorted_by_key(|ep| ep.place.projection().len())
-    }
-
+    /// Performs `expand` and returns its capability changes.
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &mut self,
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let target_places = expand.target_places(ctxt);
@@ -161,14 +49,16 @@ impl<'tcx> LocalExpansions<'tcx> {
                 CapabilityKind::Exclusive
             })
         };
+        let mut changes = CapabilityChanges::default();
         for target_place in target_places {
-            capabilities.insert(target_place, source_cap, ctxt);
+            changes.set(target_place, Some(source_cap));
         }
-        if expand.capability.is_read() {
-            capabilities.insert(expand.from, CapabilityKind::Read, ctxt);
-        } else {
-            capabilities.remove(expand.from, ctxt);
-        }
+        changes.set(
+            expand.from,
+            expand.capability.is_read().then_some(CapabilityKind::Read),
+        );
+        changes.apply(capabilities, ctxt);
+        changes
     }
 
     pub(crate) fn all_descendants_of<'a>(
@@ -201,39 +91,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
-    pub(crate) fn collapse_actions_for<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
-        &self,
-        place: Place<'tcx>,
-        capabilities: &impl PlaceCapabilitiesInterface<'tcx>,
-        ctxt: Ctxt,
-    ) -> Vec<RepackCollapse<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        let children = self.all_children_of(place, ctxt);
-        let mut collapses_by_guide: HashMap<Option<RepackGuide>, CapabilityKind> =
-            HashMap::default();
-        for child in children {
-            let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
-            // The place does not carry the label of an index guide; the
-            // stored expansion does.
-            let guide = guide.map(|guide| {
-                self.expansions
-                    .iter()
-                    .filter(|expanded| expanded.place == place)
-                    .find_map(|expanded| expanded.guide().filter(|stored| *stored == guide))
-                    .unwrap_or(guide)
-            });
-            let child_cap = capabilities.get(child, ctxt).unwrap();
-            let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
-            *entry = entry.minimum(child_cap).unwrap();
-        }
-        collapses_by_guide
-            .into_iter()
-            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
-            .collect()
-    }
-
+    /// Performs `collapse` and returns its capability changes.
     pub(crate) fn perform_collapse_action<
         'a,
         Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
@@ -242,15 +100,18 @@ impl<'tcx> LocalExpansions<'tcx> {
         collapse: RepackCollapse<'tcx>,
         place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let expansion_places = self.all_children_of(collapse.to, ctxt);
+        let mut changes = CapabilityChanges::default();
         let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
                 .fold(CapabilityKind::Exclusive, |acc, place| {
-                    let removed_cap = place_capabilities.remove(*place, ctxt);
+                    let removed_cap = place_capabilities.get(*place, ctxt);
+                    changes.set(*place, None);
                     let removed_cap = pcg_validity_expect_some!(
                         removed_cap,
                         fallback: CapabilityKind::Exclusive,
@@ -269,6 +130,8 @@ impl<'tcx> LocalExpansions<'tcx> {
                     )
                 });
         self.remove_all_expansions_from(collapse.to, ctxt);
-        place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        changes.set(collapse.to, Some(retained_cap));
+        changes.apply(place_capabilities, ctxt);
+        changes
     }
 }

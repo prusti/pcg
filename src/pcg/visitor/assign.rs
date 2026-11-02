@@ -4,6 +4,7 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
+            borrow::BorrowEdge,
             borrow_flow::{
                 AssignmentData, BorrowFlowEdge, BorrowFlowEdgeKind, CastData, OperandType,
             },
@@ -18,8 +19,9 @@ use crate::{
         obtain::{ActionApplier, HasSnapshotLocation, expand::PlaceExpander},
         place_capabilities::PlaceCapabilitiesInterface,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir::{self, CastKind, Operand, Rvalue},
-    utils::Place,
+    utils::{Place, display::DisplayWithCompilerCtxt},
 };
 
 use crate::utils::{
@@ -195,15 +197,45 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 if matches!(kind, mir::BorrowKind::Fake(_)) {
                     return Ok(());
                 }
-                self.pcg.borrow.add_borrow(
-                    blocked_place,
-                    target,
+                let borrow_edge = BorrowEdge::new(
+                    blocked_place.into(),
+                    target.into(),
                     *kind,
                     self.location(),
                     *borrow_region,
-                    &mut self.pcg.place_capabilities,
                     self.ctxt,
                 );
+                // A mutable borrow takes the capability of the borrowed place;
+                // a shared or two-phase borrow froze it.
+                let capabilities = if let mir::BorrowKind::Mut {
+                    kind: mir::MutBorrowKind::Default | mir::MutBorrowKind::ClosureCapture,
+                } = kind
+                {
+                    vec![(blocked_place, None)]
+                } else {
+                    let ctxt = self.ctxt;
+                    pcg_validity_assert!(
+                        self.pcg
+                            .place_capability_equals(blocked_place, CapabilityKind::Read, ctxt),
+                        [ctxt],
+                        "{:?}: borrowing {} for read with capability {:?}",
+                        self.location(),
+                        blocked_place.display_string(ctxt),
+                        self.pcg.capability_of(blocked_place, ctxt)
+                    );
+                    vec![]
+                };
+                self.record_and_apply_action(
+                    BorrowPcgAction::add_edge_setting(
+                        BorrowPcgEdge::new(
+                            borrow_edge.into(),
+                            self.pcg.borrow.validity_conditions.clone(),
+                        ),
+                        capabilities,
+                        "borrow",
+                    )
+                    .into(),
+                )?;
                 self.label_lifetime_projections_for_borrow(blocked_place, target, *kind)?;
             }
             Rvalue::RawPtr(kind, p) if !kind.is_fake() => {
