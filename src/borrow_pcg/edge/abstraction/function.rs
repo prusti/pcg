@@ -747,8 +747,10 @@ fn renumbered_captures<'tcx>(
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
-    /// Like [`FunctionShapeDataSource::outlives`], restricted to regions.
-    fn outlives_region(
+    /// Whether the callee's signature allows borrows under `sup` to flow into
+    /// `sub`, for some instantiation of the callee. Both call-site lifetimes are
+    /// translated into the callee's identity signature and compared there.
+    fn signature_allows_flow(
         &self,
         sup: GeneralizedLifetime<'tcx>,
         sub: GeneralizedLifetime<'tcx>,
@@ -899,7 +901,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         sub: GeneralizedLifetime<'tcx>,
         ctxt: Ctxt,
     ) -> bool {
-        self.outlives_region(sup, sub, ctxt.tcx())
+        self.signature_allows_flow(sup, sub, ctxt.tcx())
             && ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
