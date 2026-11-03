@@ -1,6 +1,4 @@
 use derive_more::From;
-extern crate rustc_middle;
-use rustc_middle::ty;
 
 use crate::{
     borrow_checker::{
@@ -14,7 +12,10 @@ use crate::{
             BorrowIndex, BorrowSet, LocationTable, PoloniusInput, PoloniusOutput,
             RegionInferenceContext,
         },
-        middle::{mir::Location, ty::RegionVid},
+        middle::{
+            mir::Location,
+            ty::{self, RegionVid},
+        },
     },
     utils::display::{DisplayCtxtFor, DisplayOutput, OutputMode},
 };

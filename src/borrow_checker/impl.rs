@@ -260,13 +260,12 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
             .collect::<BTreeSet<_>>();
         regions.iter().any(|region| match region {
             GeneralizedLifetime::Region(PcgRegion::RegionVid(region_vid)) => {
-                live_origins.contains(region_vid) ||
-                live_loans.iter().any(|loan| {
-                    self
-                        .borrow_checker_data
-                        .region_cx
-                        .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
-                })
+                live_origins.contains(region_vid)
+                    || live_loans.iter().any(|loan| {
+                        self.borrow_checker_data
+                            .region_cx
+                            .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
+                    })
             }
             // Regions in `T` are chosen by the caller, so they outlive the body
             GeneralizedLifetime::RegionsIn(_) => true,

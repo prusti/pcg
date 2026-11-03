@@ -4,9 +4,6 @@
 
 use std::{collections::BTreeSet, iter::zip, ops::ControlFlow};
 
-extern crate rustc_middle;
-use rustc_middle::ty;
-
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
@@ -24,7 +21,7 @@ use crate::{
         index,
         middle::{
             mir::{self, Location},
-            ty::RegionVid,
+            ty::{self, RegionVid},
         },
     },
     utils::{
@@ -247,7 +244,7 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                 GeneralizedLifetime::RegionsIn(sub_opaque),
             ) => match (sup_opaque, sub_opaque) {
                 // We consider two alias types to outlive each other if they are the same after erasing regions,
-                // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive 
+                // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive
                 // <T as Tr<'?8>>::Assoc if '?7: '?8 and '?8: '?7.
                 (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
                     let tcx = self.tcx();
@@ -266,8 +263,8 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                         return false;
                     }
                     zip(sup_regions, sub_regions).all(|(sup_region, sub_region)| {
-                        self.outlives(sup_region.into(), sub_region.into(), location)
-                        && self.outlives(sub_region.into(), sup_region.into(), location)
+                        self.outlives(sup_region, sub_region, location)
+                            && self.outlives(sub_region, sup_region, location)
                     })
                 }
                 (_, _) => sup_opaque == sub_opaque,
