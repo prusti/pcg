@@ -820,7 +820,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         if !ctxt.bc().outlives_generalized(sup, sub, self.location) {
             return false;
         }
-        let tcx = ctxt.tcx();
         if sup == sub || matches!(sup, GeneralizedLifetime::Region(r) if r.is_static()) {
             return true;
         }
@@ -840,17 +839,23 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         // Map to generalized lifetimes in the identity signature and check
         // outlives using the generalized lifetime graph (which handles trait
         // bounds, type parameters, and implied bounds).
-        let Some(sup_gl) = sup_norm.and_then(|r| self.normalized_to_identity(r, tcx)) else {
+        let Some(sup_gl) = sup_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return false;
         };
-        let Some(sub_gl) = sub_norm.and_then(|r| self.normalized_to_identity(r, tcx)) else {
+        let Some(sub_gl) = sub_norm.and_then(|r| self.normalized_to_identity(r, ctxt.tcx())) else {
             return false;
         };
         if sup_gl == sub_gl {
             return true;
         }
-        let identity_input_tys = self.identity_input_tys(tcx);
-        if generalized_outlives(sup_gl, sub_gl, &self.outlives, &identity_input_tys, tcx) {
+        let identity_input_tys = self.identity_input_tys(ctxt.tcx());
+        if generalized_outlives(
+            sup_gl,
+            sub_gl,
+            &self.outlives,
+            &identity_input_tys,
+            ctxt.tcx(),
+        ) {
             return true;
         }
 
@@ -865,19 +870,25 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
             .call
             .defined_fn_call
             .function_data
-            .identity_fn_sig(tcx)
+            .identity_fn_sig(ctxt.tcx())
             .output();
         if let GeneralizedLifetime::RegionsIn(opaque_ty) = sub_gl
             && opaque_ty.is_param()
-            && opaque_ty.ty(tcx) == identity_result_ty
+            && opaque_ty.ty(ctxt.tcx()) == identity_result_ty
         {
-            let param_ty = opaque_ty.ty(tcx);
+            let param_ty = opaque_ty.ty(ctxt.tcx());
             let tbr = TraitBoundRegions::new(self.outlives.param_env);
             let tbr_map = tbr.as_map();
             let bound_regions = extract_generalized_lifetimes(param_ty, Some(tbr_map));
             for gl in bound_regions {
                 if matches!(gl, GeneralizedLifetime::Region(_))
-                    && generalized_outlives(sup_gl, gl, &self.outlives, &identity_input_tys, tcx)
+                    && generalized_outlives(
+                        sup_gl,
+                        gl,
+                        &self.outlives,
+                        &identity_input_tys,
+                        ctxt.tcx(),
+                    )
                 {
                     return true;
                 }
@@ -892,7 +903,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
                             gl,
                             &self.outlives,
                             &identity_input_tys,
-                            tcx,
+                            ctxt.tcx(),
                         )
                     {
                         return true;
