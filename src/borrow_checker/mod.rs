@@ -12,7 +12,7 @@ use crate::{
     borrow_pcg::{
         GeneralizedLifetime,
         region_projection::PcgRegion,
-        visitor::{OpaqueTy, extract_regions},
+        visitor::{OpaqueTy, erase_regions, extract_regions},
     },
     pcg::PcgNode,
     rustc_interface::{
@@ -241,19 +241,18 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                 // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive 
                 // <T as Tr<'?8>>::Assoc if '?7: '?8 and '?8: '?7.
                 (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
-                    let sup_erased = self.tcx().erase_and_anonymize_regions(sup_ty);
-                    let sub_erased = self.tcx().erase_and_anonymize_regions(sub_ty);
-                    if sup_erased != sub_erased {
+                    let tcx = self.tcx();
+                    if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
                         return false;
                     }
-                    // we need all regions in order, so we don't want any duplicates
-                    let extract_regions_ordered = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
+                    // Keeps duplicates, so that the regions can be paired by position.
+                    let free_regions_in_order = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
                         let mut regions = vec![];
-                        self.tcx().for_each_free_region(&ty, |r|regions.push(r.into()));
+                        tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
                         regions
                     };
-                    let sup_regions = extract_regions_ordered(sup_ty);
-                    let sub_regions = extract_regions_ordered(sub_ty);
+                    let sup_regions = free_regions_in_order(sup_ty);
+                    let sub_regions = free_regions_in_order(sub_ty);
                     if sup_regions.len() != sub_regions.len() {
                         return false;
                     }

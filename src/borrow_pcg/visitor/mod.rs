@@ -123,6 +123,18 @@ pub(crate) fn extract_regions(
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
 }
 
+/// `ty` with all regions erased and bound regions anonymized.
+#[rustversion::since(2025-12-01)]
+pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+    tcx.erase_and_anonymize_regions(ty)
+}
+
+/// `ty` with all regions erased and bound regions anonymized.
+#[rustversion::before(2025-12-01)]
+pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+    tcx.erase_regions(ty)
+}
+
 /// An opaque type whose internal structure is not visible for lifetime
 /// extraction: either a type parameter (`T`, `Self`) or a non-normalizable
 /// associated type (`<Self as Deref>::Target`).
