@@ -811,12 +811,7 @@ pub trait ExtractRegionsCtxt<'tcx, Data, Kind: LifetimeKind<'tcx>>: Copy {
 pub trait HasTy<'tcx, Ctxt> {
     fn rust_ty(&self, ctxt: Ctxt) -> ty::Ty<'tcx>;
 
-    /// The lifetime projections of `self`, one for each of its generalized
-    /// lifetimes (including `RegionsIn(T)` for opaque types).
-    ///
-    /// Equivalent to [`ExtractRegionsCtxt::extract_lifetime_projections`] with
-    /// `Kind = GeneralizedLifetime`, which inference cannot pick on its own
-    /// when `ctxt` also implements the [`PcgRegion`] variant.
+    /// Helper function to prevent long type annotations
     fn generalized_lifetime_projections(
         &self,
         ctxt: Ctxt,
