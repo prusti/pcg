@@ -38,4 +38,17 @@ fn id_pair<'a, 'b>(x: (&'a mut i32, &'b mut i32)) -> (&'a mut i32, &'b mut i32) 
     id(x)
 }
 
+fn first<'a, 'b>(x: &'a u32, _y: std::cell::Cell<&'b u32>) -> &'a u32 {
+    x
+}
+
+// `first`'s signature does not let `'b` flow into `'a`. The borrow checker
+// alone would allow it, since `Cell` forces both to `'c` at this call.
+fn first_with_cell<'c>(x: &'c u32, y: std::cell::Cell<&'c u32>) -> &'c u32 {
+    // PCG: bb0[5] post_main: Add Edge call first at bb0[5]: _4 before bb0[5]:PostOperands↓'?9 before bb0[5]:PostMain -> _3↓'?8
+    // ~PCG: bb0[5] post_main: Add Edge call first at bb0[5]: _5 before bb0[5]:PostOperands↓'?10 before bb0[5]:PostMain -> _3↓'?8
+    // ~PCG: bb0[5] post_main: Add Edge call first at bb0[5]: [_4 before bb0[5]:PostOperands↓'?9 before bb0[5]:PostMain, _5 before bb0[5]:PostOperands↓'?10 before bb0[5]:PostMain] -> [_3↓'?8]
+    first(x, y)
+}
+
 fn main() {}

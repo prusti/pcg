@@ -810,10 +810,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         sub: GeneralizedLifetime<'tcx>,
         ctxt: Ctxt,
     ) -> bool {
-        // The signature alone is not enough: for `fn id<T>(x: T) -> T` called
-        // with `T = (&'a u32, &'b u32)`, all four call-site regions map to
-        // `RegionsIn(T)`, so the signature would also allow `'a` to flow into
-        // `'b`.
+        // Both the call-site lifetimes and the signature must allow the flow.
+        // Call-site lifetimes can be related although the callee lets nothing
+        // flow between them: for `fn first<'a, 'b>(x: &'a u32, y: Cell<&'b u32>) -> &'a u32`,
+        // invariance can make the lifetime of `y` equal to that of the result.
+        // The signature itself is too coarse when several call-site lifetimes
+        // map to one callee lifetime: `fn id<T>(x: T) -> T` with
+        // `T = (&'a u32, &'b u32)`.
         if !ctxt.bc().outlives_generalized(sup, sub, self.location) {
             return false;
         }
