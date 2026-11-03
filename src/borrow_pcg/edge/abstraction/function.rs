@@ -747,15 +747,77 @@ fn renumbered_captures<'tcx>(
 }
 
 impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
-    /// Whether the callee's signature allows borrows under `sup` to flow into
-    /// `sub`, for some instantiation of the callee. Both call-site lifetimes are
-    /// translated into the callee's identity signature and compared there.
-    fn signature_allows_flow(
+    /// Maps a normalized sig region to a generalized lifetime in the callee's
+    /// identity signature.
+    ///
+    /// First checks the pre-built `norm_to_generalized_map` (which handles
+    /// both late-bound regions and regions hidden inside type parameters),
+    /// then falls back to searching `caller_substs` for early-bound region
+    /// variables.
+    fn normalized_to_identity(
+        &self,
+        lifetime: GeneralizedLifetime<'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Option<GeneralizedLifetime<'tcx>> {
+        let GeneralizedLifetime::Region(region) = lifetime else {
+            return self.norm_to_generalized_map.get(&lifetime).copied();
+        };
+        match region {
+            PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
+                Some(GeneralizedLifetime::Region(region))
+            }
+            PcgRegion::RegionVid(_) => {
+                // First try the structural map, which captures late-bound
+                // regions and regions inside type parameters.
+                if let Some(&gl) = self.norm_to_generalized_map.get(&lifetime) {
+                    return Some(gl);
+                }
+                // Fall back to searching caller_substs for early-bound regions.
+                let caller_substs = self.call.caller_substs();
+                let index = caller_substs.iter().position(|arg| {
+                    arg.as_region()
+                        .is_some_and(|r| PcgRegion::from(r) == region)
+                })?;
+                let fn_ty =
+                    skip_normalization(tcx.type_of(self.call.fn_def_id()).instantiate_identity());
+                let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
+                    panic!("Expected a function type");
+                };
+                Some(GeneralizedLifetime::Region(
+                    fn_def_args(identity_substs).region_at(index).into(),
+                ))
+            }
+            _ => None,
+        }
+    }
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
+    for DefinedFnCallShapeDataSource<'a, 'tcx>
+{
+    type Lifetime = GeneralizedLifetime<'tcx>;
+
+    fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
+        self.call.call_arg_tys.clone()
+    }
+    fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
+        self.call.call_result_ty
+    }
+
+    fn outlives(
         &self,
         sup: GeneralizedLifetime<'tcx>,
         sub: GeneralizedLifetime<'tcx>,
-        tcx: ty::TyCtxt<'tcx>,
+        ctxt: Ctxt,
     ) -> bool {
+        // The signature alone is not enough: for `fn id<T>(x: T) -> T` called
+        // with `T = (&'a u32, &'b u32)`, all four call-site regions map to
+        // `RegionsIn(T)`, so the signature would also allow `'a` to flow into
+        // `'b`.
+        if !ctxt.bc().outlives_generalized(sup, sub, self.location) {
+            return false;
+        }
+        let tcx = ctxt.tcx();
         if sup == sub || matches!(sup, GeneralizedLifetime::Region(r) if r.is_static()) {
             return true;
         }
@@ -836,73 +898,6 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             }
         }
         false
-    }
-
-    /// Maps a normalized sig region to a generalized lifetime in the callee's
-    /// identity signature.
-    ///
-    /// First checks the pre-built `norm_to_generalized_map` (which handles
-    /// both late-bound regions and regions hidden inside type parameters),
-    /// then falls back to searching `caller_substs` for early-bound region
-    /// variables.
-    fn normalized_to_identity(
-        &self,
-        lifetime: GeneralizedLifetime<'tcx>,
-        tcx: ty::TyCtxt<'tcx>,
-    ) -> Option<GeneralizedLifetime<'tcx>> {
-        let GeneralizedLifetime::Region(region) = lifetime else {
-            return self.norm_to_generalized_map.get(&lifetime).copied();
-        };
-        match region {
-            PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
-                Some(GeneralizedLifetime::Region(region))
-            }
-            PcgRegion::RegionVid(_) => {
-                // First try the structural map, which captures late-bound
-                // regions and regions inside type parameters.
-                if let Some(&gl) = self.norm_to_generalized_map.get(&lifetime) {
-                    return Some(gl);
-                }
-                // Fall back to searching caller_substs for early-bound regions.
-                let caller_substs = self.call.caller_substs();
-                let index = caller_substs.iter().position(|arg| {
-                    arg.as_region()
-                        .is_some_and(|r| PcgRegion::from(r) == region)
-                })?;
-                let fn_ty =
-                    skip_normalization(tcx.type_of(self.call.fn_def_id()).instantiate_identity());
-                let ty::TyKind::FnDef(_def_id, identity_substs) = fn_ty.kind() else {
-                    panic!("Expected a function type");
-                };
-                Some(GeneralizedLifetime::Region(
-                    fn_def_args(identity_substs).region_at(index).into(),
-                ))
-            }
-            _ => None,
-        }
-    }
-}
-
-impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
-    for DefinedFnCallShapeDataSource<'a, 'tcx>
-{
-    type Lifetime = GeneralizedLifetime<'tcx>;
-
-    fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
-        self.call.call_arg_tys.clone()
-    }
-    fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
-        self.call.call_result_ty
-    }
-
-    fn outlives(
-        &self,
-        sup: GeneralizedLifetime<'tcx>,
-        sub: GeneralizedLifetime<'tcx>,
-        ctxt: Ctxt,
-    ) -> bool {
-        self.signature_allows_flow(sup, sub, ctxt.tcx())
-            && ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
 
