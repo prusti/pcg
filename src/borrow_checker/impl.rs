@@ -195,6 +195,9 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 }
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.borrow_checker_data.tcx
+    }
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let ctxt = self.ctxt();
         let regions: Vec<GeneralizedLifetime<'tcx>> = match node {
@@ -306,6 +309,9 @@ impl DisplayCtxtFor<RegionVid> for NllBorrowCheckerImpl<'_, '_> {
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.borrow_checker_data.tcx
+    }
     fn input_facts(&self) -> &PoloniusInput {
         self.borrow_checker_data.input_facts
     }

@@ -2,7 +2,10 @@
 //!
 //! Also includes implementations for the Polonius and NLL borrow-checkers.
 
-use std::{collections::BTreeSet, ops::ControlFlow};
+use std::{collections::BTreeSet, iter::zip, ops::ControlFlow};
+
+extern crate rustc_middle;
+use rustc_middle::ty;
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
@@ -57,6 +60,10 @@ impl<'tcx> HasPcgRegion<'tcx> for BorrowData<'tcx> {
 impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     BorrowCheckerInterface<'tcx> for T
 {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.tcx()
+    }
+
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         !self.is_live(node, location)
     }
@@ -186,6 +193,8 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
+    fn tcx(&self) -> ty::TyCtxt<'tcx>;
+
     /// Answers the question: Does `node` contain borrow extents that are not
     /// in scope at `location`?
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool;
@@ -224,15 +233,36 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
             (GeneralizedLifetime::Region(sup), GeneralizedLifetime::RegionsIn(opaque)) => {
                 self.region_may_flow_into_opaque(sup, opaque)
             }
-            // Different type parameters are different types. An alias may equal
-            // any type, which can add extra edges (e.g. between
-            // `<I as Iterator>::Item` and `<J as Iterator>::Item`).
             (
                 GeneralizedLifetime::RegionsIn(sup_opaque),
                 GeneralizedLifetime::RegionsIn(sub_opaque),
             ) => match (sup_opaque, sub_opaque) {
-                (OpaqueTy::Param(sup_param), OpaqueTy::Param(sub_param)) => sup_param == sub_param,
-                _ => true,
+                // We consider two alias types to outlive each other if they are the same after erasing regions,
+                // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive 
+                // <T as Tr<'?8>>::Assoc if '?7: '?8 and '?8: '?7.
+                (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
+                    let sup_erased = self.tcx().erase_and_anonymize_regions(sup_ty);
+                    let sub_erased = self.tcx().erase_and_anonymize_regions(sub_ty);
+                    if sup_erased != sub_erased {
+                        return false;
+                    }
+                    // we need all regions in order, so we don't want any duplicates
+                    let extract_regions_ordered = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
+                        let mut regions = vec![];
+                        self.tcx().for_each_free_region(&ty, |r|regions.push(r.into()));
+                        regions
+                    };
+                    let sup_regions = extract_regions_ordered(sup_ty);
+                    let sub_regions = extract_regions_ordered(sub_ty);
+                    if sup_regions.len() != sub_regions.len() {
+                        return false;
+                    }
+                    zip(sup_regions, sub_regions).all(|(sup_region, sub_region)| {
+                        self.outlives(sup_region.into(), sub_region.into(), location)
+                        && self.outlives(sub_region.into(), sup_region.into(), location)
+                    })
+                }
+                (_, _) => sup_opaque == sub_opaque,
             },
             // TODO: precise for local regions, conservative for universal ones.
             (GeneralizedLifetime::RegionsIn(_), GeneralizedLifetime::Region(_)) => true,
@@ -375,6 +405,8 @@ pub type InScopeBorrows = index::bit_set::MixedBitSet<BorrowIndex>;
 /// this interface as part of its analysis, for example, to identify when borrows
 /// expire.
 pub trait RustBorrowCheckerInterface<'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx>;
+
     /// Returns true iff the node is live *before* `location`. A node is live
     /// iff:
     /// - it is a place node, and the place is live

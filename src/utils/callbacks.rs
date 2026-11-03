@@ -1,4 +1,6 @@
 use derive_more::From;
+extern crate rustc_middle;
+use rustc_middle::ty;
 
 use crate::{
     borrow_checker::{
@@ -55,6 +57,12 @@ impl DisplayCtxtFor<RegionVid> for RustBorrowCheckerImpl<'_, '_> {
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.tcx(),
+            RustBorrowCheckerImpl::Nll(bc) => bc.tcx(),
+        }
+    }
     fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {
         match self {
             RustBorrowCheckerImpl::Polonius(bc) => bc.borrows_in_scope_at(location, before),
