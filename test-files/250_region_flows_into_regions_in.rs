@@ -27,11 +27,13 @@ trait AssocWithLifetime<'a> {
 }
 
 // For an alias, the regions in its arguments must also outlive the region.
-// Here `'a` is universal, so it outlives the local region of `y`.
+// Here `'a` is universal, so it outlives the local region of `y`. The alias is
+// one `RegionsIn(..)`, so `'a` (`'?4`) gets no projection of its own.
 fn alias_tuple_move_local<'a, T: AssocWithLifetime<'a>>(
     x: (<T as AssocWithLifetime<'a>>::Out, &u32),
 ) {
     // PCG: bb0[1] post_main: Add Edge x before bb0[1]:PostOperands↓RegionsIn(<T as AssocWithLifetime<'_>>::Out) -> y↓'?7
+    // ~PCG: bb0[1] post_main: Add Edge x before bb0[1]:PostOperands↓'?4 -> y↓'?7
     let y = x;
     let _ = y;
 }
