@@ -104,8 +104,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
     }
 }
 
-/// Finds the universal regions for `'static`, which outlives all universal
-/// regions, and for the function body, which all universal regions outlive.
+/// Finds the universal regions for `'static` and for the function body
 fn find_static_and_fn_body(
     input_facts: &PoloniusInput,
     region_cx: &RegionInferenceContext<'_>,
@@ -115,8 +114,6 @@ fn find_static_and_fn_body(
         .iter()
         .map(|r| (*r).into())
         .collect();
-    // By transitivity, a region that is not outlived by the candidate (or does
-    // not outlive it) shows that the candidate is not `'static` (or the body).
     let mut fr_static = universals[0];
     let mut fr_fn_body = universals[0];
     for &r in &universals {
