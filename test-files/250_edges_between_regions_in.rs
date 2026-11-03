@@ -15,6 +15,10 @@ trait AssocWithoutLifetime {
 }
 
 fn params<T, U>(x: (T, U)) -> (T, U) {
+    // PCG: bb0[0] pre_operands: Remote(_1)↓RegionsIn(T) -> x↓RegionsIn(T)
+    // PCG: bb0[0] pre_operands: Remote(_1)↓RegionsIn(U) -> x↓RegionsIn(U)
+    // ~PCG: bb0[0] pre_operands: Remote(_1)↓RegionsIn(T) -> x↓RegionsIn(U)
+    // ~PCG: bb0[0] pre_operands: Remote(_1)↓RegionsIn(U) -> x↓RegionsIn(T)
     // PCG: bb0[1] post_main: Add Edge x before bb0[1]:PostOperands↓RegionsIn(T) -> y↓RegionsIn(T)
     // PCG: bb0[1] post_main: Add Edge x before bb0[1]:PostOperands↓RegionsIn(U) -> y↓RegionsIn(U)
     // ~PCG: bb0[1] post_main: Add Edge x before bb0[1]:PostOperands↓RegionsIn(T) -> y↓RegionsIn(U)
