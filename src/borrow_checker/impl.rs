@@ -127,10 +127,26 @@ fn find_static_and_fn_body(
     (fr_static, fr_fn_body)
 }
 
+/// Whether the local that `node` belongs to is live at `location`.
+fn local_of_node_is_live<'tcx>(
+    place_liveness: &PlaceLiveness<'_, 'tcx>,
+    node: PcgNode<'tcx>,
+    location: Location,
+) -> bool {
+    let Some(local) = node.related_maybe_labelled_place().map(|p| p.local()) else {
+        return true;
+    };
+    if local == RETURN_PLACE {
+        return true;
+    }
+    place_liveness.is_live(local.into(), location)
+}
+
 /// An interface to the results of the Polonius borrow-checker analysis.
 #[derive(Clone)]
 pub struct PoloniusBorrowChecker<'mir, 'tcx: 'mir> {
     pub output_facts: PoloniusOutput,
+    place_liveness: PlaceLiveness<'mir, 'tcx>,
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
 }
 
@@ -154,8 +170,10 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
             polonius_engine::Algorithm::DatafrogOpt,
             true,
         );
+        let place_liveness = PlaceLiveness::new(CompilerCtxt::new(body.body(), tcx, ()));
         Self {
             output_facts,
+            place_liveness,
             borrow_checker_data,
         }
     }
@@ -264,8 +282,10 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                             .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
                     })
             }
-            // Regions in `T` are chosen by the caller, so they outlive the body
-            GeneralizedLifetime::RegionsIn(_) => true,
+            // `RegionsIn` has no region of its own, so it is live while its place is.
+            GeneralizedLifetime::RegionsIn(_) => {
+                local_of_node_is_live(&self.place_liveness, node, location)
+            }
             _ => todo!(),
         })
     }
@@ -369,13 +389,7 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
     }
 
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
-        let Some(local) = node.related_maybe_labelled_place().map(|p| p.local()) else {
-            return true;
-        };
-        if local == RETURN_PLACE {
-            return true;
-        }
-        self.place_liveness.is_live(local.into(), location)
+        local_of_node_is_live(&self.place_liveness, node, location)
     }
 
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx> {
