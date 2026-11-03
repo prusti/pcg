@@ -63,6 +63,18 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> 
             RustBorrowCheckerImpl::Nll(bc) => bc.tcx(),
         }
     }
+    fn fr_static(&self) -> RegionVid {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.fr_static(),
+            RustBorrowCheckerImpl::Nll(bc) => bc.fr_static(),
+        }
+    }
+    fn fr_fn_body(&self) -> RegionVid {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.fr_fn_body(),
+            RustBorrowCheckerImpl::Nll(bc) => bc.fr_fn_body(),
+        }
+    }
     fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {
         match self {
             RustBorrowCheckerImpl::Polonius(bc) => bc.borrows_in_scope_at(location, before),

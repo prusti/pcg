@@ -44,6 +44,8 @@ pub(crate) struct RustBorrowCheckerData<'mir, 'tcx: 'mir> {
     tcx: ty::TyCtxt<'tcx>,
     pub(crate) borrows: &'mir BorrowSet<'tcx>,
     pub(crate) region_cx: &'mir RegionInferenceContext<'tcx>,
+    fr_static: RegionVid,
+    fr_fn_body: RegionVid,
     #[cfg(feature = "visualization")]
     pub(crate) pretty_printer: RegionPrettyPrinter<'mir, 'tcx>,
 }
@@ -77,6 +79,8 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
         let location_table = body.location_table();
         let region_cx = body.region_inference_context();
         let borrows = body.borrow_set();
+        let input_facts = body.input_facts();
+        let (fr_static, fr_fn_body) = find_static_and_fn_body(input_facts, region_cx);
         Self {
             in_scope_borrows: Rc::new(RefCell::new(
                 compute_fixpoint(
@@ -86,16 +90,44 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
                 )
                 .into_results_cursor(body.body()),
             )),
-            input_facts: body.input_facts(),
+            input_facts,
             location_table,
             body: body.body(),
             tcx,
             region_cx,
+            fr_static,
+            fr_fn_body,
             borrows,
             #[cfg(feature = "visualization")]
             pretty_printer: RegionPrettyPrinter::new(region_cx),
         }
     }
+}
+
+/// Finds the universal regions for `'static`, which outlives all universal
+/// regions, and for the function body, which all universal regions outlive.
+fn find_static_and_fn_body(
+    input_facts: &PoloniusInput,
+    region_cx: &RegionInferenceContext<'_>,
+) -> (RegionVid, RegionVid) {
+    let universals: Vec<RegionVid> = input_facts
+        .universal_region
+        .iter()
+        .map(|r| (*r).into())
+        .collect();
+    // By transitivity, a region that is not outlived by the candidate (or does
+    // not outlive it) shows that the candidate is not `'static` (or the body).
+    let mut fr_static = universals[0];
+    let mut fr_fn_body = universals[0];
+    for &r in &universals {
+        if !region_cx.eval_outlives(fr_static, r) {
+            fr_static = r;
+        }
+        if !region_cx.eval_outlives(r, fr_fn_body) {
+            fr_fn_body = r;
+        }
+    }
+    (fr_static, fr_fn_body)
 }
 
 /// An interface to the results of the Polonius borrow-checker analysis.
@@ -197,6 +229,12 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
     fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.borrow_checker_data.tcx
+    }
+    fn fr_static(&self) -> RegionVid {
+        self.borrow_checker_data.fr_static
+    }
+    fn fr_fn_body(&self) -> RegionVid {
+        self.borrow_checker_data.fr_fn_body
     }
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let ctxt = self.ctxt();
@@ -311,6 +349,12 @@ impl DisplayCtxtFor<RegionVid> for NllBorrowCheckerImpl<'_, '_> {
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
     fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.borrow_checker_data.tcx
+    }
+    fn fr_static(&self) -> RegionVid {
+        self.borrow_checker_data.fr_static
+    }
+    fn fr_fn_body(&self) -> RegionVid {
+        self.borrow_checker_data.fr_fn_body
     }
     fn input_facts(&self) -> &PoloniusInput {
         self.borrow_checker_data.input_facts
