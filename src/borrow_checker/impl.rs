@@ -98,21 +98,6 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
     }
 }
 
-/// Whether the local that `node` belongs to is live at `location`.
-fn local_of_node_is_live<'tcx>(
-    place_liveness: &PlaceLiveness<'_, 'tcx>,
-    node: PcgNode<'tcx>,
-    location: Location,
-) -> bool {
-    let Some(local) = node.related_maybe_labelled_place().map(|p| p.local()) else {
-        return true;
-    };
-    if local == RETURN_PLACE {
-        return true;
-    }
-    place_liveness.is_live(local.into(), location)
-}
-
 /// An interface to the results of the Polonius borrow-checker analysis.
 #[derive(Clone)]
 pub struct PoloniusBorrowChecker<'mir, 'tcx: 'mir> {
@@ -248,9 +233,9 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                     })
             }
             // `RegionsIn` has no region of its own, so it is live while its place is.
-            GeneralizedLifetime::RegionsIn(_) => {
-                local_of_node_is_live(&self.place_liveness, node, location)
-            }
+            GeneralizedLifetime::RegionsIn(_) => node
+                .related_maybe_labelled_place()
+                .is_none_or(|p| self.place_liveness.is_live(p.place(), location)),
             _ => todo!(),
         })
     }
@@ -348,7 +333,13 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
     }
 
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
-        local_of_node_is_live(&self.place_liveness, node, location)
+        let Some(local) = node.related_maybe_labelled_place().map(|p| p.local()) else {
+            return true;
+        };
+        if local == RETURN_PLACE {
+            return true;
+        }
+        self.place_liveness.is_live(local.into(), location)
     }
 
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx> {
