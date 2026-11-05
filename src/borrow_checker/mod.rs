@@ -61,10 +61,6 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
         self.tcx()
     }
 
-    fn fr_fn_body(&self) -> RegionVid {
-        RustBorrowCheckerInterface::fr_fn_body(self)
-    }
-
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         !self.is_live(node, location)
     }
@@ -196,10 +192,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
 
     fn tcx(&self) -> ty::TyCtxt<'tcx>;
 
-    /// The universal region for the function body, which all universal
-    /// regions outlive.
-    fn fr_fn_body(&self) -> RegionVid;
-
     /// Answers the question: Does `node` contain borrow extents that are not
     /// in scope at `location`?
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool;
@@ -269,17 +261,23 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                 }
                 (_, _) => sup_opaque == sub_opaque,
             },
-            // The regions in `T` are chosen by the caller and outlive the function
-            // body. An alias may also contain the regions in its arguments.
             (GeneralizedLifetime::RegionsIn(opaque), GeneralizedLifetime::Region(sub)) => {
-                let alias_regions_outlive_sub = match opaque {
-                    OpaqueTy::Param(_) => true,
-                    OpaqueTy::Alias(ty) => self
+                // Alias types may contain regions in its arguments. If not all of them outlive `sub`, then `opaque` might not outlive `sub`.
+                if let OpaqueTy::Alias(ty) = opaque
+                    && !self
                         .tcx()
-                        .all_free_regions_meet(&ty, |r| self.outlives(r.into(), sub, location)),
-                };
-                alias_regions_outlive_sub
-                    && self.outlives(PcgRegion::RegionVid(self.fr_fn_body()), sub, location)
+                        .all_free_regions_meet(&ty, |r| self.outlives(r.into(), sub, location))
+                {
+                    return false;
+                }
+                // Otherwise, all regions in `T` must be have been chosen by the caller.
+                // If all universal regions outlive `sub`, then `opaque` outlives `sub`.
+                self.input_facts()
+                    .universal_region
+                    .iter()
+                    .all(|&universal| {
+                        self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
+                    })
             }
         }
     }
@@ -391,13 +389,6 @@ pub type InScopeBorrows = index::bit_set::MixedBitSet<BorrowIndex>;
 /// expire.
 pub trait RustBorrowCheckerInterface<'tcx> {
     fn tcx(&self) -> ty::TyCtxt<'tcx>;
-
-    /// The universal region for `'static`.
-    fn fr_static(&self) -> RegionVid;
-
-    /// The universal region for the function body, which all universal
-    /// regions outlive.
-    fn fr_fn_body(&self) -> RegionVid;
 
     /// Returns true iff the node is live *before* `location`. A node is live
     /// iff:
@@ -511,9 +502,16 @@ pub trait RustBorrowCheckerInterface<'tcx> {
             (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
                 self.region_infer_ctxt().eval_outlives(sup, sub)
             }
+            // `'static` is the universal region that outlives all others.
+            // `sup` outlives it iff `sup` outlives every universal region
             (PcgRegion::RegionVid(sup), PcgRegion::ReStatic) => self
-                .region_infer_ctxt()
-                .eval_outlives(sup, self.fr_static()),
+                .input_facts()
+                .universal_region
+                .iter()
+                .all(|&universal| {
+                    self.region_infer_ctxt()
+                        .eval_outlives(sup, universal.into())
+                }),
             (PcgRegion::ReStatic, _) => true,
             _ => false,
         }
