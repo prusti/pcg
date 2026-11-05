@@ -301,7 +301,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     fn dest_places_for_region<'a>(
         &self,
-        region: PcgRegion<'tcx>,
+        region: GeneralizedLifetime<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Vec<Place<'tcx>>
     where
@@ -320,7 +320,7 @@ impl<'tcx> ShallowExpansion<'tcx> {
 
     pub(crate) fn place_expansion_for_region<'a>(
         &self,
-        region: PcgRegion<'tcx>,
+        region: GeneralizedLifetime<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Option<PlaceExpansion<'tcx>>
     where
@@ -406,12 +406,14 @@ impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, PcgRegi
     }
 }
 
-impl<'tcx, Ctxt: Copy> ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, GeneralizedLifetime<'tcx>> for Ctxt {
+impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, GeneralizedLifetime<'tcx>>
+    for Ctxt
+{
     fn extract_regions(
         self,
-        data: ty::Ty<'tcx>,
+        data: T,
     ) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
-        extract_generalized_lifetimes(data, None)
+        extract_generalized_lifetimes(data.rust_ty(self), None)
     }
 }
 

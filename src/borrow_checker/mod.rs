@@ -2,11 +2,15 @@
 //!
 //! Also includes implementations for the Polonius and NLL borrow-checkers.
 
-use std::{collections::BTreeSet, ops::ControlFlow};
+use std::{collections::BTreeSet, iter::zip, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
-    borrow_pcg::region_projection::PcgRegion,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::PcgRegion,
+        visitor::{OpaqueTy, erase_regions},
+    },
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -17,7 +21,7 @@ use crate::{
         index,
         middle::{
             mir::{self, Location},
-            ty::RegionVid,
+            ty::{self, RegionVid},
         },
     },
     utils::{
@@ -53,6 +57,10 @@ impl<'tcx> HasPcgRegion<'tcx> for BorrowData<'tcx> {
 impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     BorrowCheckerInterface<'tcx> for T
 {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.tcx()
+    }
+
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         !self.is_live(node, location)
     }
@@ -182,6 +190,8 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
+    fn tcx(&self) -> ty::TyCtxt<'tcx>;
+
     /// Answers the question: Does `node` contain borrow extents that are not
     /// in scope at `location`?
     fn is_dead(&self, node: PcgNode<'tcx>, location: Location) -> bool;
@@ -203,6 +213,74 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
 
     /// Returns true iff `sup` is required to outlive `sub` at `location`.
     fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, location: Location) -> bool;
+
+    /// Like [`Self::outlives`], but for generalized lifetimes.
+    ///
+    /// Must return `true` whenever borrows under `sup` may flow into `sub`.
+    fn outlives_generalized(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        location: Location,
+    ) -> bool {
+        match (sup, sub) {
+            (GeneralizedLifetime::Region(sup), GeneralizedLifetime::Region(sub)) => {
+                self.outlives(sup, sub, location)
+            }
+            // `'static` is the only region that outlives every region an opaque type may contain.
+            (GeneralizedLifetime::Region(sup), GeneralizedLifetime::RegionsIn(_)) => {
+                self.outlives(sup, PcgRegion::ReStatic, location)
+            }
+            (
+                GeneralizedLifetime::RegionsIn(sup_opaque),
+                GeneralizedLifetime::RegionsIn(sub_opaque),
+            ) => match (sup_opaque, sub_opaque) {
+                // We consider two alias types to outlive each other if they are the same after erasing regions,
+                // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive
+                // <T as Tr<'?8>>::Assoc if '?7: '?8 and '?8: '?7.
+                (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
+                    let tcx = self.tcx();
+                    if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
+                        return false;
+                    }
+                    // Keeps duplicates, so that the regions can be paired by position.
+                    let free_regions_in_order = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
+                        let mut regions = vec![];
+                        tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
+                        regions
+                    };
+                    let sup_regions = free_regions_in_order(sup_ty);
+                    let sub_regions = free_regions_in_order(sub_ty);
+                    if sup_regions.len() != sub_regions.len() {
+                        return false;
+                    }
+                    zip(sup_regions, sub_regions).all(|(sup_region, sub_region)| {
+                        self.outlives(sup_region, sub_region, location)
+                            && self.outlives(sub_region, sup_region, location)
+                    })
+                }
+                (_, _) => sup_opaque == sub_opaque,
+            },
+            (GeneralizedLifetime::RegionsIn(opaque), GeneralizedLifetime::Region(sub)) => {
+                // Alias types may contain regions in its arguments. If not all of them outlive `sub`, then `opaque` might not outlive `sub`.
+                if let OpaqueTy::Alias(ty) = opaque
+                    && !self
+                        .tcx()
+                        .all_free_regions_meet(&ty, |r| self.outlives(r.into(), sub, location))
+                {
+                    return false;
+                }
+                // Otherwise, all regions in `T` must be have been chosen by the caller.
+                // If all universal regions outlive `sub`, then `opaque` outlives `sub`.
+                self.input_facts()
+                    .universal_region
+                    .iter()
+                    .all(|&universal| {
+                        self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
+                    })
+            }
+        }
+    }
 
     fn borrows_blocking(
         &self,
@@ -226,6 +304,17 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
         location: Location,
     ) -> bool {
         self.outlives(reg1, reg2, location) && self.outlives(reg2, reg1, location)
+    }
+
+    /// Like [`Self::same_region`], but for generalized lifetimes.
+    fn same_region_generalized(
+        &self,
+        reg1: GeneralizedLifetime<'tcx>,
+        reg2: GeneralizedLifetime<'tcx>,
+        location: Location,
+    ) -> bool {
+        self.outlives_generalized(reg1, reg2, location)
+            && self.outlives_generalized(reg2, reg1, location)
     }
 
     // Implementors of this trait should be dyn-safe
@@ -299,6 +388,8 @@ pub type InScopeBorrows = index::bit_set::MixedBitSet<BorrowIndex>;
 /// this interface as part of its analysis, for example, to identify when borrows
 /// expire.
 pub trait RustBorrowCheckerInterface<'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx>;
+
     /// Returns true iff the node is live *before* `location`. A node is live
     /// iff:
     /// - it is a place node, and the place is live
@@ -411,6 +502,16 @@ pub trait RustBorrowCheckerInterface<'tcx> {
             (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
                 self.region_infer_ctxt().eval_outlives(sup, sub)
             }
+            // `'static` is the universal region that outlives all others.
+            // `sup` outlives it iff `sup` outlives every universal region
+            (PcgRegion::RegionVid(sup), PcgRegion::ReStatic) => self
+                .input_facts()
+                .universal_region
+                .iter()
+                .all(|&universal| {
+                    self.region_infer_ctxt()
+                        .eval_outlives(sup, universal.into())
+                }),
             (PcgRegion::ReStatic, _) => true,
             _ => false,
         }

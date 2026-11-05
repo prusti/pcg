@@ -1,12 +1,11 @@
 use crate::{
     action::{AppliedActions, BorrowPcgAction, PcgAction},
     borrow_pcg::{
+        GeneralizedLifetime,
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
-        region_projection::{
-            LifetimeProjection, PcgLifetimeProjectionLike, PcgRegion, PlaceOrConst,
-        },
+        region_projection::{LifetimeProjection, PcgLifetimeProjectionLike, PlaceOrConst},
     },
     owned_pcg::RepackExpand,
     pcg::{
@@ -175,19 +174,25 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         Ok(self.actions)
     }
 
-    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
-        self.ctxt.bc().outlives(sup, sub, self.location())
+    fn outlives_generalized(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+    ) -> bool {
+        self.ctxt
+            .bc()
+            .outlives_generalized(sup, sub, self.location())
     }
 
     fn connect_outliving_projections(
         &mut self,
         source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
         target: Place<'tcx>,
-        kind: impl Fn(PcgRegion) -> BorrowFlowEdgeKind<'tcx>,
+        kind: impl Fn(GeneralizedLifetime<'tcx>) -> BorrowFlowEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt) {
-            if self.outlives(
+            if self.outlives_generalized(
                 source_proj.region(ctxt.ctxt()),
                 target_proj.region(ctxt.ctxt()),
             ) {

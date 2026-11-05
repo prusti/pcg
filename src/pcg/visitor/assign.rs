@@ -2,6 +2,7 @@ use super::PcgVisitor;
 use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
+        GeneralizedLifetime,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
             borrow_flow::{
@@ -11,7 +12,7 @@ use crate::{
             kind::BorrowPcgEdgeKind,
         },
         edge_data::LabelNodePredicate,
-        region_projection::{ExtractRegionsCtxt, PlaceOrConst},
+        region_projection::{HasTy, PlaceOrConst},
     },
     pcg::{
         CapabilityKind, EvalStmtPhase, PcgNode, PcgRefLike,
@@ -247,15 +248,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 let place: Place<'tcx> = (*place).into();
                 let place = place.with_inherent_region(self.ctxt);
                 (
-                    self.ctxt.extract_lifetime_projections(PlaceOrConst::Place(
-                        MaybeLabelledPlace::new(place, place_label),
-                    )),
+                    PlaceOrConst::Place(MaybeLabelledPlace::new(place, place_label))
+                        .generalized_lifetime_projections(self.ctxt),
                     operand_type,
                 )
             }
             Operand::Constant(const_) => (
-                self.ctxt
-                    .extract_lifetime_projections(PlaceOrConst::Const(const_.const_)),
+                PlaceOrConst::Const(const_.const_).generalized_lifetime_projections(self.ctxt),
                 OperandType::Const,
             ),
             #[allow(unreachable_patterns)]
@@ -297,19 +296,20 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     self.ctxt,
                 )
             };
-            let source_region = source_proj.region(self.ctxt.ctxt());
+            let source_region: GeneralizedLifetime<'tcx> = source_proj.region(self.ctxt.ctxt());
             let mut nested_ref_mut_targets = vec![];
             for target_proj in target.lifetime_projections(self.ctxt) {
-                let target_region = target_proj.region(self.ctxt.ctxt());
-                if self
-                    .ctxt
-                    .bc()
-                    .outlives(source_region, target_region, self.location())
-                {
-                    let regions_equal =
-                        self.ctxt
-                            .bc()
-                            .same_region(source_region, target_region, self.location());
+                let target_region: GeneralizedLifetime<'tcx> = target_proj.region(self.ctxt.ctxt());
+                if self.ctxt.bc().outlives_generalized(
+                    source_region,
+                    target_region,
+                    self.location(),
+                ) {
+                    let regions_equal = self.ctxt.bc().same_region_generalized(
+                        source_region,
+                        target_region,
+                        self.location(),
+                    );
                     self.record_and_apply_action(
                         BorrowPcgAction::add_edge(
                             BorrowPcgEdge::new(

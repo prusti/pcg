@@ -2,6 +2,7 @@
 use crate::{
     HasSettings,
     borrow_pcg::{
+        GeneralizedLifetime,
         edge::kind::BorrowPcgEdgeType,
         edge_data::{
             LabelEdgeLifetimeProjections, LabelEdgePlaces, LabelNodePredicate, NodeReplacement,
@@ -276,7 +277,7 @@ impl<'tcx, P: Copy + std::fmt::Debug> BorrowEdge<'tcx, P> {
         P: PcgPlace<'tcx, Ctxt>,
     {
         match self.assigned_ref.place().rust_ty(ctxt).kind() {
-            ty::TyKind::Ref(region, _, _) => LifetimeProjection::new(
+            ty::TyKind::Ref(region, _, _) => LifetimeProjection::new::<Ctxt, GeneralizedLifetime>(
                 self.assigned_ref,
                 (*region).into(),
                 self.assigned_lifetime_projection_label,

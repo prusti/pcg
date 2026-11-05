@@ -14,7 +14,7 @@ use crate::{
         edge_data::{EdgeData, LabelNodePredicate},
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         region_projection::{
-            ExtractRegionsCtxt, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
+            HasTy, LifetimeProjection, LifetimeProjectionIdx, LifetimeProjectionLabel,
         },
         state::BorrowStateMutRef,
         validity_conditions::ValidityConditions,
@@ -114,9 +114,8 @@ impl<'tcx> MaybeRemoteCurrentPlace<'tcx> {
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
-            MaybeRemoteCurrentPlace::Remote(place) => ctxt
-                .ctxt()
-                .extract_lifetime_projections(place)
+            MaybeRemoteCurrentPlace::Remote(place) => place
+                .generalized_lifetime_projections(ctxt)
                 .into_iter()
                 .map(|rp| rp.to_pcg_node(ctxt).expect_lifetime_projection())
                 .collect(),
@@ -776,7 +775,7 @@ fn add_rp_block_edges<'mir, 'tcx, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSe
         let flow_rps = blocker_rps
             .iter()
             .filter(|blocker_rp| {
-                ctxt.bc().outlives(
+                ctxt.bc().outlives_generalized(
                     blocked_rp.region(ctxt),
                     blocker_rp.region(ctxt),
                     expander.loop_head_location(),
@@ -790,7 +789,7 @@ fn add_rp_block_edges<'mir, 'tcx, Ctxt: HasBorrowCheckerCtxt<'mir, 'tcx> + HasSe
                 .iter()
                 .filter_map(|rp| {
                     if rp.is_invariant_in_type(ctxt)
-                        && ctxt.bc().outlives(
+                        && ctxt.bc().outlives_generalized(
                             rp.region(ctxt),
                             blocked_rp.region(ctxt),
                             expander.loop_head_location(),

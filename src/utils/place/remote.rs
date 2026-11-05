@@ -1,7 +1,10 @@
 use crate::{
-    borrow_pcg::region_projection::{
-        HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
-        PlaceOrConst,
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::{
+            HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgLifetimeProjectionBaseLike,
+            PlaceOrConst,
+        },
     },
     pcg::PcgNode,
     rustc_interface::middle::{mir, ty},
@@ -29,7 +32,7 @@ impl RemotePlace {
         let ty = ctxt.local_ty(self.local);
         match ty.kind() {
             ty::TyKind::Ref(region, _, _) => {
-                LifetimeProjection::new(self, (*region).into(), None, ctxt)
+                LifetimeProjection::new(self, GeneralizedLifetime::from(*region), None, ctxt)
             }
             _ => None,
         }

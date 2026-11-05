@@ -1,3 +1,4 @@
+use derive_more::From;
 use std::{collections::HashMap, hash::Hash};
 
 use crate::{
@@ -6,7 +7,10 @@ use crate::{
         index::IndexVec,
         middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
     },
-    utils::HasTyCtxt,
+    utils::{
+        HasTyCtxt,
+        display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
+    },
 };
 
 use super::region_projection::{Generalized, LifetimeProjectionIdx, PcgRegion, Region};
@@ -43,6 +47,12 @@ impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, PcgRegion<'tcx>>
 
 impl<'tcx> LifetimeKind<'tcx> for GeneralizedLifetime<'tcx> {
     type IdxMarker = Generalized;
+}
+
+impl<'tcx> From<ty::Region<'tcx>> for GeneralizedLifetime<'tcx> {
+    fn from(region: ty::Region<'tcx>) -> GeneralizedLifetime<'tcx> {
+        GeneralizedLifetime::Region(region.into())
+    }
 }
 
 impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifetime<'tcx>>
@@ -105,10 +115,24 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
 /// T<'c, 'd> will return `['a, 'b]` and `['c, 'd]` respectively. This enables
 /// substitution of regions to handle moves in the PCG e.g for the statement
 /// `let x: T<'a, 'b> = move c: T<'c, 'd>`.
-pub(crate) fn extract_regions(ty: ty::Ty<'_>) -> IndexVec<LifetimeProjectionIdx, PcgRegion<'_>> {
+pub(crate) fn extract_regions(
+    ty: ty::Ty<'_>,
+) -> IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'_>> {
     let mut visitor = LifetimeExtractor { lifetimes: vec![] };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.iter().map(|r| (*r).into()).collect()
+}
+
+/// `ty` with all regions erased and bound regions anonymized.
+#[rustversion::since(2025-12-01)]
+pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+    tcx.erase_and_anonymize_regions(ty)
+}
+
+/// `ty` with all regions erased and bound regions anonymized.
+#[rustversion::before(2025-12-01)]
+pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
+    tcx.erase_regions(ty)
 }
 
 /// An opaque type whose internal structure is not visible for lifetime
@@ -162,10 +186,21 @@ impl std::fmt::Display for OpaqueTy<'_> {
 /// type (type parameter or non-normalizable alias).
 ///
 /// See the [_generalized lifetime_ definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
-#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From)]
 pub enum GeneralizedLifetime<'tcx> {
     Region(PcgRegion<'tcx>),
     RegionsIn(OpaqueTy<'tcx>),
+}
+
+impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtxt<Ctxt>
+    for GeneralizedLifetime<'tcx>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        match self {
+            GeneralizedLifetime::Region(region) => region.display_output(ctxt, mode),
+            GeneralizedLifetime::RegionsIn(opaque_ty) => format!("RegionsIn({opaque_ty})").into(),
+        }
+    }
 }
 
 struct GeneralizedLifetimeExtractor<'a, 'tcx> {

@@ -5,6 +5,7 @@ use pcg::{
         ArgIdx, ArgIdxOrResult, FunctionShape,
         edge::abstraction::function::DefinedFnCallWithCallTys, region_projection::Generalized,
     },
+    rustc_interface::middle::mir::Location,
     utils::{CompilerCtxt, HasCompilerCtxt},
     visualization::mir_graph::ShapeLabelFormatter,
 };
@@ -12,17 +13,17 @@ use pcg::{
 type SigShape = FunctionShape<Generalized>;
 use pcg_tests::{BodySelector, run_pcg_on_str};
 
-/// Returns the [`DefinedFnCallWithCallTys`] for the first call to a function
-/// whose name contains `target_name` in the given MIR body.
+/// Returns the [`DefinedFnCallWithCallTys`] and the location of the first call
+/// to a function whose name contains `target_name` in the given MIR body.
 fn find_call<'a, 'tcx: 'a>(
     target_name: &str,
     ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-) -> DefinedFnCallWithCallTys<'tcx> {
+) -> (DefinedFnCallWithCallTys<'tcx>, Location) {
     ctxt.body()
         .basic_blocks
-        .iter()
-        .find_map(|bb| {
-            let term = bb.terminator();
+        .iter_enumerated()
+        .find_map(|(bb, data)| {
+            let term = data.terminator();
             if let Some(defined_fn_call) =
                 DefinedFnCallWithCallTys::from_terminator(term, ctxt.ctxt().def_id(), ctxt)
                 && ctxt
@@ -30,7 +31,7 @@ fn find_call<'a, 'tcx: 'a>(
                     .def_path_str(defined_fn_call.fn_def_id())
                     .contains(target_name)
             {
-                return Some(defined_fn_call);
+                return Some((defined_fn_call, ctxt.body().terminator_loc(bb)));
             }
             None
         })
@@ -45,10 +46,11 @@ fn sig_and_call_shapes<'a, 'tcx: 'a>(
     ctxt: CompilerCtxt<'a, 'tcx>,
     callee_name: &str,
 ) -> FunctionShape {
-    let defined_fn_call = find_call(callee_name, ctxt);
+    let (defined_fn_call, location) = find_call(callee_name, ctxt);
 
     let sig_shape: SigShape = SigShape::for_fn_sig(defined_fn_call.fn_def_id(), ctxt).unwrap();
-    let call_shape: FunctionShape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
+    let call_shape: FunctionShape =
+        FunctionShape::for_fn_call(defined_fn_call, location, ctxt).unwrap();
 
     let sig_str = sig_shape.to_string();
     let call_str = call_shape.to_string();
@@ -354,8 +356,8 @@ fn test_deref_mut_alias_output() {
     "#;
     run_pcg_on_str(input, BodySelector::FirstFunction, false, |analysis| {
         let ctxt = analysis.ctxt();
-        let defined_fn_call = find_call("deref_mut", ctxt);
-        let shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
+        let (defined_fn_call, location) = find_call("deref_mut", ctxt);
+        let shape = FunctionShape::for_fn_call(defined_fn_call, location, ctxt).unwrap();
 
         let expected = make_shape(
             &[arg_in(0, 0), arg_in(0, 1)],
@@ -382,8 +384,8 @@ fn test_vec_into_iter_shape() {
     "#;
     run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let ctxt = analysis.ctxt();
-        let defined_fn_call = find_call("into_iter", ctxt);
-        let call_shape = FunctionShape::for_fn_call(defined_fn_call, ctxt).unwrap();
+        let (defined_fn_call, location) = find_call("into_iter", ctxt);
+        let call_shape = FunctionShape::for_fn_call(defined_fn_call, location, ctxt).unwrap();
 
         let expected = make_shape(&[arg_in(0, 0)], &[result(0)], &[(arg_in(0, 0), result(0))]);
         assert_shape_eq(&call_shape, &expected);
@@ -426,7 +428,7 @@ impl<'a> FromMutref<'a> for &'a mut i32 {
     "#;
     run_pcg_on_str(input, BodySelector::FirstFunction, true, |analysis| {
         let ctxt = analysis.ctxt();
-        let call = find_call("get", ctxt); // Call to `get()` in `caller()`
+        let (call, _) = find_call("get", ctxt); // Call to `get()` in `caller()`
         let sig_shape = SigShape::for_fn_sig(call.fn_def_id(), ctxt).unwrap();
         // arg_in(0,0) = 'b, arg_in(0,1) = RegionsIn(Self), arg_in(0,2) = 'a (from Self: Foo<'a>)
         // result(0) = RegionsIn(T), result(1) = 'b (from T: FromMutref<'b>),

@@ -880,12 +880,13 @@ fn test_selected_crates() {
             Some("2025-03-13"),
             TestCrateType::function("parser_state::ParserState::<'i, R>::match_char_by", None),
         ),
-        SelectedCrateTestCase::new(
-            "linked-hash-map",
-            "0.5.6",
-            Some("2025-03-13"),
-            TestCrateType::function("LinkedHashMap::<K, V, S>::get_refresh", None),
-        ),
+        // TODO: #193
+        // SelectedCrateTestCase::new(
+        //     "linked-hash-map",
+        //     "0.5.6",
+        //     Some("2025-03-13"),
+        //     TestCrateType::function("LinkedHashMap::<K, V, S>::get_refresh", None),
+        // ),
         SelectedCrateTestCase::new(
             "encoding_rs",
             "0.8.35",

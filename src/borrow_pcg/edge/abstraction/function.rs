@@ -402,7 +402,7 @@ impl<'a, 'tcx: 'a> FnCallDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for FnCallDataSource<'a, 'tcx>
 {
-    type Lifetime = PcgRegion<'tcx>;
+    type Lifetime = GeneralizedLifetime<'tcx>;
 
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.input_tys.clone()
@@ -410,22 +410,30 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
     fn output_ty(&self, _ctxt: Ctxt) -> ty::Ty<'tcx> {
         self.output_ty
     }
-    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
-        ctxt.bc().outlives(sup, sub, self.location)
+    fn outlives(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        ctxt: Ctxt,
+    ) -> bool {
+        ctxt.bc().outlives_generalized(sup, sub, self.location)
     }
 }
 
 pub(crate) struct DefinedFnCallShapeDataSource<'a, 'tcx> {
     call: DefinedFnCallWithCallTys<'tcx>,
+    /// The location of the call, used to ask the borrow checker about
+    /// outlives relations at the call site.
+    location: Location,
     /// Maps call-site regions to their corresponding normalized sig regions.
     /// Built by walking call-site types and normalized sig types in parallel.
-    region_map: HashMap<PcgRegion<'tcx>, PcgRegion<'tcx>>,
+    region_map: HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>>,
     /// Maps normalized sig regions to generalized lifetimes in the callee's
     /// identity signature. Built by structurally walking normalized and identity
     /// types in parallel. When the identity type has a type parameter `T`, all
     /// regions from the corresponding concrete type in the normalized sig map
     /// to `RegionsIn(T)`.
-    norm_to_generalized_map: HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>>,
+    norm_to_generalized_map: HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>>,
     outlives: OutlivesEnvironment<'tcx>,
     _marker: PhantomData<&'a ()>,
 }
@@ -434,6 +442,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     #[rustversion::before(2025-05-24)]
     pub(crate) fn new(
         _call: DefinedFnCallWithCallTys<'tcx>,
+        _location: Location,
         _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         Err(MakeFunctionShapeError::UnsupportedRustVersion)
@@ -449,18 +458,18 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         call_tys: &[ty::Ty<'tcx>],
         call_result_ty: ty::Ty<'tcx>,
         normalized_sig: &ty::FnSig<'tcx>,
-    ) -> HashMap<PcgRegion<'tcx>, PcgRegion<'tcx>> {
-        use crate::borrow_pcg::visitor::extract_regions;
+    ) -> HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>> {
+        use crate::borrow_pcg::visitor::extract_generalized_lifetimes;
         let mut map = HashMap::default();
         for (call_ty, sig_ty) in call_tys.iter().zip(normalized_sig.inputs().iter()) {
-            let call_regions = extract_regions(*call_ty);
-            let sig_regions = extract_regions(*sig_ty);
+            let call_regions = extract_generalized_lifetimes(*call_ty, None);
+            let sig_regions = extract_generalized_lifetimes(*sig_ty, None);
             for (call_r, sig_r) in call_regions.iter().zip(sig_regions.iter()) {
                 map.insert(*call_r, *sig_r);
             }
         }
-        let call_result_regions = extract_regions(call_result_ty);
-        let sig_result_regions = extract_regions(normalized_sig.output());
+        let call_result_regions = extract_generalized_lifetimes(call_result_ty, None);
+        let sig_result_regions = extract_generalized_lifetimes(normalized_sig.output(), None);
         for (call_r, sig_r) in call_result_regions.iter().zip(sig_result_regions.iter()) {
             map.insert(*call_r, *sig_r);
         }
@@ -478,7 +487,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     fn build_norm_to_generalized_map(
         normalized_sig: &ty::FnSig<'tcx>,
         identity_sig: &ty::FnSig<'tcx>,
-    ) -> HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>> {
+    ) -> HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>> {
         let mut map = HashMap::default();
         for (norm_ty, id_ty) in normalized_sig
             .inputs()
@@ -501,21 +510,20 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     fn align_regions_to_generalized(
         norm_ty: ty::Ty<'tcx>,
         id_ty: ty::Ty<'tcx>,
-        map: &mut HashMap<PcgRegion<'tcx>, GeneralizedLifetime<'tcx>>,
+        map: &mut HashMap<GeneralizedLifetime<'tcx>, GeneralizedLifetime<'tcx>>,
     ) {
-        use crate::borrow_pcg::visitor::extract_regions;
         match (norm_ty.kind(), id_ty.kind()) {
             // Identity type is a type parameter or non-normalizable alias: all
             // regions from the concrete normalized type map to RegionsIn(T).
             (_, ty::TyKind::Param(param_ty)) => {
                 let opaque = OpaqueTy::Param(*param_ty);
-                for r in extract_regions(norm_ty) {
+                for r in extract_generalized_lifetimes(norm_ty, None) {
                     map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
                 }
             }
             (_, ty::TyKind::Alias(..)) => {
                 let opaque = OpaqueTy::Alias(id_ty);
-                for r in extract_regions(norm_ty) {
+                for r in extract_generalized_lifetimes(norm_ty, None) {
                     map.insert(r, GeneralizedLifetime::RegionsIn(opaque));
                 }
             }
@@ -566,6 +574,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn new(
         call: DefinedFnCallWithCallTys<'tcx>,
+        location: Location,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> Result<Self, MakeFunctionShapeError> {
         // Use the callee's typing env for outlives checks, since after mapping
@@ -592,6 +601,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
         let norm_to_generalized_map = Self::build_norm_to_generalized_map(&normalized, &identity);
         Ok(Self {
             call,
+            location,
             outlives,
             region_map,
             norm_to_generalized_map,
@@ -746,9 +756,12 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
     /// variables.
     fn normalized_to_identity(
         &self,
-        region: PcgRegion<'tcx>,
+        lifetime: GeneralizedLifetime<'tcx>,
         tcx: ty::TyCtxt<'tcx>,
     ) -> Option<GeneralizedLifetime<'tcx>> {
+        let GeneralizedLifetime::Region(region) = lifetime else {
+            return self.norm_to_generalized_map.get(&lifetime).copied();
+        };
         match region {
             PcgRegion::ReLateParam(_) | PcgRegion::ReStatic | PcgRegion::ReEarlyParam(_) => {
                 Some(GeneralizedLifetime::Region(region))
@@ -756,7 +769,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
             PcgRegion::RegionVid(_) => {
                 // First try the structural map, which captures late-bound
                 // regions and regions inside type parameters.
-                if let Some(&gl) = self.norm_to_generalized_map.get(&region) {
+                if let Some(&gl) = self.norm_to_generalized_map.get(&lifetime) {
                     return Some(gl);
                 }
                 // Fall back to searching caller_substs for early-bound regions.
@@ -782,7 +795,7 @@ impl<'a, 'tcx: 'a> DefinedFnCallShapeDataSource<'a, 'tcx> {
 impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource<'tcx, Ctxt>
     for DefinedFnCallShapeDataSource<'a, 'tcx>
 {
-    type Lifetime = PcgRegion<'tcx>;
+    type Lifetime = GeneralizedLifetime<'tcx>;
 
     fn input_tys(&self, _ctxt: Ctxt) -> Vec<ty::Ty<'tcx>> {
         self.call.call_arg_tys.clone()
@@ -791,8 +804,23 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> FunctionShapeDataSource
         self.call.call_result_ty
     }
 
-    fn outlives(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>, ctxt: Ctxt) -> bool {
-        if sup.is_static() || sup == sub {
+    fn outlives(
+        &self,
+        sup: GeneralizedLifetime<'tcx>,
+        sub: GeneralizedLifetime<'tcx>,
+        ctxt: Ctxt,
+    ) -> bool {
+        // Both the call-site lifetimes and the signature must allow the flow.
+        // Call-site lifetimes can be related although the callee lets nothing
+        // flow between them: for `fn first<'a, 'b>(x: &'a u32, y: Cell<&'b u32>) -> &'a u32`,
+        // invariance can make the lifetime of `y` equal to that of the result.
+        // The signature itself is too coarse when several call-site lifetimes
+        // map to one callee lifetime: `fn id<T>(x: T) -> T` with
+        // `T = (&'a u32, &'b u32)`.
+        if !ctxt.bc().outlives_generalized(sup, sub, self.location) {
+            return false;
+        }
+        if sup == sub || matches!(sup, GeneralizedLifetime::Region(r) if r.is_static()) {
             return true;
         }
 

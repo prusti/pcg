@@ -427,20 +427,20 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         let arg_place: Place<'tcx> = local.into();
-        for region in arg_place.regions(ctxt) {
+        for lifetime in arg_place.generalized_lifetimes(ctxt) {
             let source_projection: LifetimeProjection<'tcx, RemotePlace> =
-                LifetimeProjection::new(RemotePlace::new(local), region, None, ctxt)
+                LifetimeProjection::new(RemotePlace::new(local), lifetime, None, ctxt)
                     .unwrap_or_else(|| {
                         panic!(
                             "Failed to create region for remote place (for {local:?}).
-                                    It does not have region {region:?}",
+                                    It does not have lifetime {lifetime:?}",
                         );
                     });
             let source_projection: LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx>> =
                 source_projection.rebase();
             let target_projection = LifetimeProjection::<'tcx, MaybeLabelledPlace<'tcx>>::new(
                 MaybeLabelledPlace::Current(arg_place),
-                region,
+                lifetime,
                 None,
                 ctxt,
             )

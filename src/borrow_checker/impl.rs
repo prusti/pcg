@@ -6,7 +6,10 @@ use crate::visualization::bc_facts_graph::RegionPrettyPrinter;
 use crate::{
     BodyAndBorrows,
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
-    borrow_pcg::region_projection::{ExtractRegionsCtxt, PcgRegion},
+    borrow_pcg::{
+        GeneralizedLifetime,
+        region_projection::{ExtractRegionsCtxt, PcgRegion},
+    },
     pcg::PcgNode,
     rustc_interface::{
         borrowck::{
@@ -99,6 +102,7 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
 #[derive(Clone)]
 pub struct PoloniusBorrowChecker<'mir, 'tcx: 'mir> {
     pub output_facts: PoloniusOutput,
+    place_liveness: PlaceLiveness<'mir, 'tcx>,
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
 }
 
@@ -122,8 +126,10 @@ impl<'mir, 'tcx: 'mir> PoloniusBorrowChecker<'mir, 'tcx> {
             polonius_engine::Algorithm::DatafrogOpt,
             true,
         );
+        let place_liveness = PlaceLiveness::new(CompilerCtxt::new(body.body(), tcx, ()));
         Self {
             output_facts,
+            place_liveness,
             borrow_checker_data,
         }
     }
@@ -192,9 +198,12 @@ impl DisplayCtxtFor<RegionVid> for PoloniusBorrowChecker<'_, '_> {
 }
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecker<'mir, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.borrow_checker_data.tcx
+    }
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
         let ctxt = self.ctxt();
-        let regions: Vec<PcgRegion<'tcx>> = match node {
+        let regions: Vec<GeneralizedLifetime<'tcx>> = match node {
             PcgNode::Place(place) => ctxt.extract_regions(place).into_iter().collect(),
             PcgNode::LifetimeProjection(lifetime_projection) => {
                 vec![lifetime_projection.region(ctxt)]
@@ -215,19 +224,18 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
             .map(|r| (*r).into())
             .collect::<BTreeSet<_>>();
         regions.iter().any(|region| match region {
-            PcgRegion::RegionVid(region_vid) => live_loans.iter().any(|loan| {
-                if live_origins.contains(region_vid) {
-                    return true;
-                }
-                if self
-                    .borrow_checker_data
-                    .region_cx
-                    .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
-                {
-                    return true;
-                }
-                false
-            }),
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(region_vid)) => {
+                live_origins.contains(region_vid)
+                    || live_loans.iter().any(|loan| {
+                        self.borrow_checker_data
+                            .region_cx
+                            .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
+                    })
+            }
+            // `RegionsIn` has no region of its own, so it is live while its place is.
+            GeneralizedLifetime::RegionsIn(_) => node
+                .related_maybe_labelled_place()
+                .is_none_or(|p| self.place_liveness.is_live(p.place(), location)),
             _ => todo!(),
         })
     }
@@ -299,6 +307,9 @@ impl DisplayCtxtFor<RegionVid> for NllBorrowCheckerImpl<'_, '_> {
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        self.borrow_checker_data.tcx
+    }
     fn input_facts(&self) -> &PoloniusInput {
         self.borrow_checker_data.input_facts
     }

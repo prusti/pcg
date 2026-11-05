@@ -1,7 +1,8 @@
 use crate::{
     borrow_pcg::{
+        GeneralizedLifetime,
         graph::{BorrowsGraph, materialize::MaterializedEdge},
-        region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
+        region_projection::{LifetimeProjection, PlaceOrConst},
         state::BorrowStateRef,
     },
     pcg::{
@@ -98,7 +99,9 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
             }
         };
         let loans = if let Some(output) = self.ctxt.borrow_checker.polonius_output()
-            && let Some(region_vid) = projection.region::<PcgRegion<'tcx>, _>(self.ctxt).vid()
+            && let GeneralizedLifetime::Region(region) =
+                projection.region::<GeneralizedLifetime<'tcx>, _>(self.ctxt)
+            && let Some(region_vid) = region.vid()
         {
             let region_vid = region_vid.into();
             let render_loans = |loans: Option<&BTreeSet<BorrowIndex>>| {
@@ -129,7 +132,7 @@ impl<'a, 'tcx: 'a> GraphConstructor<'a, 'tcx> {
                 format!(
                     "Loans in {} - before: {}, mid: {}",
                     DisplayWithCtxt::<_>::display_string(
-                        &projection.region::<PcgRegion<'tcx>, _>(self.ctxt),
+                        &projection.region::<GeneralizedLifetime<'tcx>, _>(self.ctxt),
                         self.ctxt
                     ),
                     loans_before,

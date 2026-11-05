@@ -125,7 +125,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
         'tcx: 'a,
     {
         let defined = self.defined_fn_call_with_call_tys(ctxt)?;
-        let data_source = DefinedFnCallShapeDataSource::new(defined, ctxt).ok()?;
+        let data_source = DefinedFnCallShapeDataSource::new(defined, self.location, ctxt).ok()?;
         Some(FunctionShape::new(&data_source, ctxt))
     }
 
@@ -322,7 +322,7 @@ impl<'tcx> From<ProjectionData<'tcx, ArgIdx, GeneralizedLifetime<'tcx>>>
     }
 }
 
-pub type FunctionShapeInput<Kind = Region> = LifetimeProjection<'static, ArgIdx, Kind>;
+pub type FunctionShapeInput<Kind = Generalized> = LifetimeProjection<'static, ArgIdx, Kind>;
 
 impl<Kind: RegionIdxMarker> FunctionShapeInput<Kind> {
     #[must_use]
@@ -336,10 +336,11 @@ impl<Kind: RegionIdxMarker> FunctionShapeInput<Kind> {
     }
 }
 
-pub type FunctionShapeOutput<Kind = Region> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;
+pub type FunctionShapeOutput<Kind = Generalized> =
+    LifetimeProjection<'static, ArgIdxOrResult, Kind>;
 
 /// Either an input or output in the shape of the function.
-pub type FunctionShapeNode<Kind = Region> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;
+pub type FunctionShapeNode<Kind = Generalized> = LifetimeProjection<'static, ArgIdxOrResult, Kind>;
 
 impl<Kind: RegionIdxMarker> From<FunctionShapeInput<Kind>> for FunctionShapeNode<Kind> {
     fn from(value: FunctionShapeInput<Kind>) -> Self {
@@ -372,7 +373,7 @@ impl<Kind: RegionIdxMarker> FunctionShapeNode<Kind> {
 /// projections ([`Region`], the default, used for call shapes) and generalized
 /// lifetime projections ([`Generalized`], used for signature shapes).
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub struct FunctionShape<Kind: RegionIdxMarker = Region> {
+pub struct FunctionShape<Kind: RegionIdxMarker = Generalized> {
     inputs: Vec<FunctionShapeInput<Kind>>,
     outputs: Vec<FunctionShapeOutput<Kind>>,
     edges: BTreeSet<
@@ -434,10 +435,11 @@ impl<Kind: RegionIdxMarker> FunctionShape<Kind> {
 impl FunctionShape {
     pub fn for_fn_call<'a, 'tcx: 'a>(
         call: DefinedFnCallWithCallTys<'tcx>,
+        location: mir::Location,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + Copy,
     ) -> Result<Self, MakeFunctionShapeError> {
         Ok(FunctionShape::new(
-            &DefinedFnCallShapeDataSource::new(call, ctxt)?,
+            &DefinedFnCallShapeDataSource::new(call, location, ctxt)?,
             ctxt,
         ))
     }
@@ -682,7 +684,7 @@ impl<Kind: RegionIdxMarker> FunctionShape<Kind> {
     }
 }
 
-pub type FunctionShapeCoupledEdges<Kind = Region> =
+pub type FunctionShapeCoupledEdges<Kind = Generalized> =
     CoupledEdgesData<FunctionShapeInput<Kind>, FunctionShapeOutput<Kind>>;
 
 #[cfg(test)]

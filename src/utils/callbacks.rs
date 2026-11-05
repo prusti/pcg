@@ -12,7 +12,10 @@ use crate::{
             BorrowIndex, BorrowSet, LocationTable, PoloniusInput, PoloniusOutput,
             RegionInferenceContext,
         },
-        middle::{mir::Location, ty::RegionVid},
+        middle::{
+            mir::Location,
+            ty::{self, RegionVid},
+        },
     },
     utils::display::{DisplayCtxtFor, DisplayOutput, OutputMode},
 };
@@ -55,6 +58,12 @@ impl DisplayCtxtFor<RegionVid> for RustBorrowCheckerImpl<'_, '_> {
 }
 
 impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> {
+    fn tcx(&self) -> ty::TyCtxt<'tcx> {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.tcx(),
+            RustBorrowCheckerImpl::Nll(bc) => bc.tcx(),
+        }
+    }
     fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {
         match self {
             RustBorrowCheckerImpl::Polonius(bc) => bc.borrows_in_scope_at(location, before),

@@ -6,7 +6,6 @@ use crate::{
         region_projection::{
             HasTy, LifetimeProjection, PcgLifetimeProjectionBase, PcgRegion, PlaceOrConst,
         },
-        visitor::extract_regions,
     },
     error::PcgError,
     pcg::{MaybeHasLocation, PcgNode, PcgNodeLike, PcgNodeWithPlace},
@@ -301,7 +300,9 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
         'tcx: 'a,
     {
         let place = self.with_inherent_region(ctxt);
-        extract_regions(place.ty(ctxt).ty)
+        place
+            .place()
+            .generalized_lifetimes(ctxt)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
