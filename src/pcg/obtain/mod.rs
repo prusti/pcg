@@ -91,10 +91,7 @@ pub(crate) enum ObtainType {
     ForStorageDead,
     Capability(CapabilityKind),
     TwoPhaseExpand,
-    LoopInvariant {
-        is_blocked: bool,
-        usage_type: PlaceUsageType,
-    },
+    LoopInvariant { usage_type: PlaceUsageType },
 }
 
 impl ObtainType {
@@ -136,10 +133,7 @@ impl ObtainType {
             ObtainType::ForStorageDead => CapabilityKind::Write,
             ObtainType::Capability(cap) => cap,
             ObtainType::TwoPhaseExpand => CapabilityKind::Read,
-            ObtainType::LoopInvariant {
-                is_blocked: _,
-                usage_type,
-            } => {
+            ObtainType::LoopInvariant { usage_type } => {
                 if usage_type == PlaceUsageType::Read
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)

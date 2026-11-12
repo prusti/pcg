@@ -137,33 +137,17 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
         location: Location,
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool {
-        let mut conflict = false;
-        each_borrow_involving_path(
-            &mut (),
-            ctxt,
-            blocked_place,
-            self.borrow_set(),
-            |borrow_index| self.borrow_in_scope_at(borrow_index, location),
-            |_this, borrow_index, _borrow| {
-                tracing::debug!(
-                    "Checking if {} contains {:?} at {:?}",
-                    blocking_place.display_string(ctxt),
-                    borrow_index,
-                    location
-                );
-                if blocking_place
-                    .regions(ctxt)
-                    .iter()
-                    .any(|region| self.origin_contains_loan_at(*region, borrow_index, location))
-                {
-                    conflict = true;
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            },
-        );
-        conflict
+        holds_loan_of(self, blocking_place, blocked_place, false, location, ctxt)
+    }
+
+    fn blocks_entirely(
+        &self,
+        blocking_place: Place<'tcx>,
+        blocked_place: Place<'tcx>,
+        location: Location,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool {
+        holds_loan_of(self, blocking_place, blocked_place, true, location, ctxt)
     }
 
     fn as_dyn(&self) -> &dyn BorrowCheckerInterface<'tcx> {
@@ -187,6 +171,47 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     }
 }
 
+/// Whether a region of `blocking_place` contains, at `location`, a loan in
+/// scope that conflicts with `blocked_place`; if `entirely`, a loan of
+/// `blocked_place` itself or of a place it is part of.
+fn holds_loan_of<'tcx>(
+    bc: &impl RustBorrowCheckerInterface<'tcx>,
+    blocking_place: Place<'tcx>,
+    blocked_place: Place<'tcx>,
+    entirely: bool,
+    location: Location,
+    ctxt: CompilerCtxt<'_, 'tcx>,
+) -> bool {
+    let mut conflict = false;
+    each_borrow_involving_path(
+        &mut (),
+        ctxt,
+        blocked_place,
+        bc.borrow_set(),
+        |borrow_index| bc.borrow_in_scope_at(borrow_index, location),
+        |_this, borrow_index, borrow| {
+            tracing::debug!(
+                "Checking if {} contains {:?} at {:?}",
+                blocking_place.display_string(ctxt),
+                borrow_index,
+                location
+            );
+            if (!entirely || borrow.get_borrowed_place().is_prefix_of(blocked_place))
+                && blocking_place
+                    .regions(ctxt)
+                    .iter()
+                    .any(|region| bc.origin_contains_loan_at(*region, borrow_index, location))
+            {
+                conflict = true;
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        },
+    );
+    conflict
+}
+
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
@@ -204,6 +229,17 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     ) -> bool;
 
     fn blocks(
+        &self,
+        blocking_place: Place<'tcx>,
+        blocked_place: Place<'tcx>,
+        location: Location,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> bool;
+
+    /// Like [`Self::blocks`], but only for a loan of `blocked_place` itself or
+    /// of a place it is part of: all of `blocked_place` is lent, not just one
+    /// of its parts.
+    fn blocks_entirely(
         &self,
         blocking_place: Place<'tcx>,
         blocked_place: Place<'tcx>,

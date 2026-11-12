@@ -575,7 +575,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
             {
                 let obtain_type = match self.prev_snapshot_location() {
                     SnapshotLocation::Loop(_) => ObtainType::LoopInvariant {
-                        is_blocked: false,
                         usage_type: if capability.is_read() {
                             PlaceUsageType::Read
                         } else {

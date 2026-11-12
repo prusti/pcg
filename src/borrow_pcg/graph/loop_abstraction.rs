@@ -35,9 +35,8 @@ use crate::{
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, SnapshotLocation,
-        data_structures::{HashMap, HashSet},
+        data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode},
-        logging::{self, LogPredicate},
         maybe_old::MaybeLabelledPlace,
         remote::RemotePlace,
     },
@@ -46,7 +45,6 @@ use crate::{
 pub(crate) struct ConstructAbstractionGraphResult<'tcx> {
     pub(crate) graph: BorrowsGraph<'tcx>,
     pub(crate) to_label: HashSet<LabelNodePredicate<'tcx>>,
-    pub(crate) capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
     /// Local root places that are actually blocked by the loop abstraction.
     /// Their mutable-reference ancestors must be downgraded from E to W.
     pub(crate) blocked_root_places: HashSet<Place<'tcx>>,
@@ -56,13 +54,11 @@ impl<'tcx> ConstructAbstractionGraphResult<'tcx> {
     pub(crate) fn new(
         graph: BorrowsGraph<'tcx>,
         to_label: HashSet<LabelNodePredicate<'tcx>>,
-        capability_updates: HashMap<Place<'tcx>, Option<CapabilityKind>>,
         blocked_root_places: HashSet<Place<'tcx>>,
     ) -> Self {
         Self {
             graph,
             to_label,
-            capability_updates,
             blocked_root_places,
         }
     }
@@ -135,7 +131,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         ctxt: AnalysisCtxt<'mir, 'tcx>,
     ) -> ConstructAbstractionGraphResult<'tcx> {
         let mut graph = BorrowsGraph::default();
-        let mut capability_updates = HashMap::default();
         let mut to_label = HashSet::default();
         let mut blocked_root_places: HashSet<Place<'tcx>> = HashSet::default();
 
@@ -159,22 +154,35 @@ impl<'tcx> BorrowsGraph<'tcx> {
         for blocker in candidate_blockers.iter_places() {
             for root in root_places {
                 let relevant_root = root.relevant_place_for_blocking();
-                if blocker == relevant_root
-                    || ctxt.ctxt.borrow_checker.blocks(
+                let lends_root = blocker == relevant_root
+                    || ctxt.bc().blocks_entirely(
                         blocker,
                         relevant_root,
                         loop_head_location,
                         ctxt.bc_ctxt(),
-                    )
+                    );
+                if lends_root
+                    || ctxt
+                        .bc()
+                        .blocks(blocker, relevant_root, loop_head_location, ctxt.bc_ctxt())
                 {
                     tracing::debug!(
                         "{} blocks root {}",
                         blocker.display_string(ctxt),
                         relevant_root.display_string(ctxt)
                     );
-                    add_block_edges(&mut expander, *root, blocker, ctxt);
+                    if lends_root {
+                        add_block_edges(&mut expander, *root, blocker, ctxt);
+                    } else {
+                        // The blocker borrows only a part of the root, which
+                        // the loop lends apart; the root's lifetimes flow into
+                        // the blocker.
+                        add_rp_block_edges(&mut expander, *root, blocker, ctxt);
+                    }
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
-                        blocked_root_places.insert(*root);
+                        if lends_root {
+                            blocked_root_places.insert(*root);
+                        }
                         for rp in root.lifetime_projections(ctxt) {
                             to_label.insert(LabelNodePredicate::all_non_future(
                                 (*root).into(),
@@ -206,11 +214,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 for blocker in &blockers {
                     add_block_edges(&mut expander, blocked_place.into(), *blocker, ctxt);
                 }
-                if blocked_place_usage.usage.is_read() {
-                    capability_updates.insert(blocked_place, Some(CapabilityKind::Read));
-                } else {
-                    capability_updates.insert(blocked_place, None);
-                }
                 for rp in blocked_place.lifetime_projections(ctxt) {
                     to_label.insert(LabelNodePredicate::all_non_future(
                         blocked_place.into(),
@@ -224,10 +227,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Abstraction graph after connections expansion",
         );
 
-        expander.expand_to_places(
-            loop_blocked_places,
-            &loop_blocked_places.joined_with(candidate_blockers),
-        );
+        expander.expand_to_places(&loop_blocked_places.joined_with(candidate_blockers));
 
         expander.render_debug_graph(
             Some(DebugImgcat::JoinLoop),
@@ -321,21 +321,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
             graph.remove(kind);
         }
         tracing::debug!("Completed loop abstraction");
-        for (place, capability) in &capability_updates {
-            logging::log!(
-                &LogPredicate::DebugBlock,
-                ctxt,
-                "capability update for {}: {:?}",
-                place.display_string(ctxt),
-                capability
-            );
-        }
-        ConstructAbstractionGraphResult::new(
-            graph,
-            to_label,
-            capability_updates,
-            blocked_root_places,
-        )
+        ConstructAbstractionGraphResult::new(graph, to_label, blocked_root_places)
     }
 
     pub(crate) fn get_borrow_roots(
@@ -406,14 +392,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
     /// to a place that has already been downgraded for a read.
     pub(crate) fn unpack_for_loop_invariant_capabilities<'a>(
         &mut self,
-        loop_blocked_places: &PlaceUsages<'tcx>,
         invariant_capabilities: &PlaceUsages<'tcx>,
         validity_conditions: &ValidityConditions,
         args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) {
         self.obtain_places_at_loop_head(
-            loop_blocked_places,
             &invariant_capabilities.loop_head_unpack_order(),
             validity_conditions,
             args,
@@ -439,7 +423,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
 
     pub(crate) fn expand_places_for_abstraction<'a>(
         &mut self,
-        loop_blocked_places: &PlaceUsages<'tcx>,
         to_expand: &PlaceUsages<'tcx>,
         validity_conditions: &ValidityConditions,
         args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
@@ -456,18 +439,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
             to_obtain.retain(|p| !place_usage.place.is_prefix_of(p.place));
             to_obtain.push(place_usage);
         }
-        self.obtain_places_at_loop_head(
-            loop_blocked_places,
-            &to_obtain,
-            validity_conditions,
-            args,
-            ctxt,
-        );
+        self.obtain_places_at_loop_head(&to_obtain, validity_conditions, args, ctxt);
     }
 
     fn obtain_places_at_loop_head<'a>(
         &mut self,
-        loop_blocked_places: &PlaceUsages<'tcx>,
         to_obtain: &[PlaceUsage<'tcx>],
         validity_conditions: &ValidityConditions,
         args: &mut JoinBorrowsArgs<'_, 'a, 'tcx>,
@@ -489,7 +465,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         obtainer.render_debug_graph(Some(DebugImgcat::JoinLoop), "Before obtaining (self)");
         for place_usage in to_obtain {
             let obtain_type = ObtainType::LoopInvariant {
-                is_blocked: loop_blocked_places.contains(place_usage.place),
                 usage_type: place_usage.usage,
             };
             obtainer.obtain(place_usage.place, obtain_type).unwrap();
@@ -663,14 +638,13 @@ impl<'tcx> AbsExpander<'_, '_, 'tcx> {
         }
     }
 
-    fn expand_to_places(&mut self, blocked_places: &PlaceUsages<'tcx>, places: &PlaceUsages<'tcx>) {
+    fn expand_to_places(&mut self, places: &PlaceUsages<'tcx>) {
         for place in places.iter() {
             tracing::debug!("loop expanding to {}", place.display_string(self.ctxt));
             self.expand_to(
                 place.place,
                 None,
                 ObtainType::LoopInvariant {
-                    is_blocked: blocked_places.contains(place.place),
                     usage_type: place.usage,
                 },
                 self.ctxt,
