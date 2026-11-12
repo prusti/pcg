@@ -229,9 +229,36 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
 
     /// The delegation edges that (transitively) block a loan of `place`, or of
     /// a place overlapping with it.
+    ///
+    /// If `place` is reached through a raw pointer, i.e. it lies below the
+    /// raw-pointer side of a delegation, the access also goes to the memory of
+    /// the delegation's aliased place. The raw pointer carries the provenance
+    /// of that place, so loans of it are treated like loans of `place`: for
+    /// `let r = &mut x; let p = r as *mut i32; let r2 = &mut *r;
+    /// let p2 = r2 as *mut i32; *p = 1; *p2 = 2;` the write through `p` is a
+    /// write to `*r`, which invalidates `p2`.
+    ///
+    /// The whole aliased place is used rather than the corresponding subplace,
+    /// since a pointer cast may have changed the pointee type. This can only
+    /// cut more delegations, never fewer.
     fn delegations_through_loans_of(&self, place: Place<'tcx>) -> Vec<BorrowPcgEdge<'tcx>> {
         let ctxt = self.ctxt.bc_ctxt();
         let graph = self.pcg.borrows_graph();
+        // Delegations always point to the original, non-raw place (copies and
+        // casts of raw pointers propagate it), so no transitive search is needed.
+        let accessed = std::iter::once(place)
+            .chain(graph.edges().filter_map(|edge| {
+                let BorrowPcgEdgeKind::Delegation(delegation) = edge.kind else {
+                    return None;
+                };
+                let rawptr = delegation.rawptr_place.as_current_place()?;
+                if rawptr.is_prefix_of(place) {
+                    delegation.aliased_place.as_current_place()
+                } else {
+                    None
+                }
+            }))
+            .collect::<Vec<_>>();
         let mut worklist = graph
             .edges()
             .filter(|edge| {
@@ -242,7 +269,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     .blocked_place
                     .as_current_place()
                     .is_some_and(|blocked| {
-                        blocked.is_prefix_of(place) || place.is_prefix_of(blocked)
+                        accessed.iter().any(|&accessed| {
+                            blocked.is_prefix_of(accessed) || accessed.is_prefix_of(blocked)
+                        })
                     })
             })
             .map(BorrowPcgEdgeLike::to_owned_edge)
