@@ -112,6 +112,13 @@ impl<'tcx> LocalExpansions<'tcx> {
             .filter(|ep| ep.place == collapse.to && ep.guide() == collapse.guide)
             .cloned()
             .collect::<Vec<_>>();
+        pcg_validity_assert!(
+            !collapsed.is_empty(),
+            [ctxt],
+            "Collapsing {}, which has no expansion with guide {:?}",
+            collapse.to.display_string(ctxt.ctxt()),
+            collapse.guide
+        );
         let expansion_places = collapsed
             .iter()
             .flat_map(|ep| ep.expansion_places(ctxt).unwrap())

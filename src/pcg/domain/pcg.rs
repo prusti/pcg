@@ -25,9 +25,9 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -269,6 +269,29 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        // A lent place, every place in it, and every place it is part of
+        // (short of a reference to it) holds at most R: a shared loan keeps
+        // its value frozen until it ends.
+        let lent = self.borrow.graph.lent_places(ctxt.bc_ctxt());
+        for (place, cap) in self.place_capabilities.iter() {
+            if !cap.is_read()
+                && !place.contains_unsafe_deref(ctxt)
+                && let Some(lent) = lent.iter().find(|lent| {
+                    lent.is_prefix_of(place)
+                        || place.is_prefix_of(**lent)
+                            && !lent.projects_indirection_from(place, ctxt)
+                            && !lent.contains_unsafe_deref(ctxt)
+                })
+            {
+                return Err(format!(
+                    "Place {} holds {:?} while {} is lent",
+                    place.display_string(ctxt.bc_ctxt()),
+                    cap,
+                    lent.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
         // A frozen place, which holds R below no place holding R, records what
         // its freeze suspends.
         for (place, cap) in self.place_capabilities.iter() {
@@ -437,7 +460,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut reached = self.clone();
         let mut actions =
             reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
-        actions.extend(reached.weaken_suspended_to(&other.place_capabilities, snapshot, ctxt)?);
+        actions.extend(reached.reach_suspended(&other.place_capabilities, snapshot, ctxt)?);
         pcg_validity_assert!(
             reached.place_capabilities.suspended == other.place_capabilities.suspended,
             [ctxt],
@@ -488,7 +511,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         pcg_validity_assert!(
             self.place_capabilities == other.place_capabilities,
             [ctxt],
-            "predecessors reach different capabilities at the join"
+            "predecessors reach different capabilities at the join: {:?} and {:?}",
+            self.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
         );
         self.owned.join_capabilities(&other.owned);
         self.borrow.merge(&other_borrows, ctxt);

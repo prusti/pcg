@@ -41,6 +41,17 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         frozen
     }
 
+    /// Whether `place` or a place it is part of is lent: its freeze cannot end
+    /// while the loan lives.
+    pub(crate) fn is_within_lent_place(&self, place: Place<'tcx>) -> bool {
+        self.pcg
+            .borrow
+            .graph
+            .lent_places(self.ctxt.bc_ctxt())
+            .iter()
+            .any(|lent| lent.is_prefix_of(place))
+    }
+
     /// Whether `place` is borrowed by an edge other than its own unpacking.
     /// Borrows behind a shared reference do not hold a freeze.
     pub(crate) fn holds_freeze(&self, place: Place<'tcx>) -> bool {

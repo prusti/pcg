@@ -86,6 +86,23 @@ impl<'tcx> LocalExpansions<'tcx> {
         self.expansions.insert(ExpandedPlace { place, expansion });
     }
 
+    /// Removes the expansion to `place` and the expansions of `place` and of
+    /// the places below it.
+    pub(crate) fn forget_expansions_to<'a>(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) where
+        'tcx: 'a,
+    {
+        self.expansions.retain(|expanded| {
+            !place.is_prefix_of(expanded.place)
+                && !expanded
+                    .expansion_places(ctxt)
+                    .is_ok_and(|places| places.contains(&place))
+        });
+    }
+
     pub(crate) fn expansions(&self) -> &HashSet<ExpandedPlace<'tcx>> {
         &self.expansions
     }

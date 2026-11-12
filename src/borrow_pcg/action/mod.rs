@@ -119,6 +119,24 @@ impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
             Some(context.into()),
         )
     }
+
+    pub(crate) fn unpack_suspended(
+        place: P,
+        parts: Vec<P>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::UnpackSuspended { place, parts },
+            Some(context.into()),
+        )
+    }
+
+    pub(crate) fn pack_suspended(place: P, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::PackSuspended { place },
+            Some(context.into()),
+        )
+    }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
@@ -471,23 +489,44 @@ pub enum BorrowPcgActionKind<
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
     /// At a join, `place` is blocked by `edge`, which exists only on another
-    /// incoming path. The capability of `place` is held by the edge (nothing
-    /// is given up): it is recorded for the place the edge blocks (`place`,
-    /// a part of it, or the place it is part of, at the meet with what is
-    /// already recorded there) and returns through the
-    /// [`BorrowPcgActionKind::RemoveEdge`] of the edge.
+    /// incoming path (it blocks `place`, a part of it, or the place it is
+    /// part of), or is a loan of this path that blocks `place` and keeps it
+    /// after the join. The capability of `place` is held by the edge (nothing is
+    /// given up): it is recorded for `place`, a frozen place keeping what its
+    /// freeze records and lending its read copies with it, and returns
+    /// through the [`BorrowPcgActionKind::RemoveEdge`] of the edge.
     Lend {
         place: P,
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
-    /// At a join, the capability that the lent or frozen `place` gets back
-    /// when its loan or freeze ends goes down from `from` to the meet of the
-    /// incoming paths, or to none if another path does not suspend it. The
+    /// The capability that the lent or frozen `place` gets back when its loan
+    /// or freeze ends goes down from `from` to `to`: at a join, to the meet of
+    /// the incoming paths, or to none if another path does not suspend it; at
+    /// a loop head, to W if `place` may be uninitialized there. The
     /// capability `place` holds does not change.
     WeakenSuspended {
         place: P,
         from: CapabilityKind,
         to: Option<CapabilityKind>,
+    },
+    /// The capability suspended for the lent `place` is split into `parts`,
+    /// one level of its unpacking, as a capability `place` held would be: each
+    /// part of its value gets the same, the referent of a mutable reference
+    /// gets E and the reference keeps e. A part that records less keeps that.
+    /// At a join, the paths then record the same places; when a loan ends,
+    /// the record goes back along the layout of `place`.
+    UnpackSuspended {
+        place: P,
+        parts: Vec<P>,
+    },
+    /// The capabilities suspended for the parts of `place`'s value are joined
+    /// into one for `place`, their meet with what `place` records; a mutable
+    /// reference recording e whose referent records E records E (the inverse
+    /// of [`BorrowPcgActionKind::UnpackSuspended`]). At a join, the paths
+    /// unpacked `place` differently (different variants of an enum); when
+    /// parts frozen apart are packed, their freezes join in `place`.
+    PackSuspended {
+        place: P,
     },
 }
 
@@ -595,6 +634,22 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                         None => "None".into(),
                     },
                 ],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::UnpackSuspended { place, parts } => DisplayOutput::join(
+                vec![
+                    "Unpack suspended".into(),
+                    place.display_output(ctxt, mode),
+                    "to".into(),
+                    DisplayOutput::join(
+                        parts.iter().map(|p| p.display_output(ctxt, mode)),
+                        &", ".into(),
+                    ),
+                ],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::PackSuspended { place } => DisplayOutput::join(
+                vec!["Pack suspended".into(), place.display_output(ctxt, mode)],
                 &DisplayOutput::SPACE,
             ),
         }

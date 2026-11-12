@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     HasSettings,
     borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion,
-    pcg::{CapabilityKind, meet},
+    pcg::CapabilityKind,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place,
@@ -194,17 +194,6 @@ where
 }
 
 impl<'a, 'tcx: 'a> PlaceCapabilities<'tcx> {
-    /// Keeps the suspended capabilities that `other` suspends too, at their
-    /// meet.
-    pub(crate) fn meet_suspended(&mut self, other: &Self) {
-        self.suspended.retain(|place, capability| {
-            other.suspended(*place).is_some_and(|theirs| {
-                *capability = meet(*capability, theirs);
-                true
-            })
-        });
-    }
-
     /// The capabilities set by dereferencing `ref_place` for `capability`.
     pub(crate) fn deref_capabilities<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>>(
         ref_place: Place<'tcx>,

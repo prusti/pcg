@@ -174,6 +174,22 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC> {
+    /// The current places that loans block.
+    pub(crate) fn lent_places<Ctxt: Copy + DebugCtxt>(&self, ctxt: Ctxt) -> HashSet<P>
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.edges
+            .keys()
+            .filter(|kind| kind.is_loan())
+            .flat_map(|kind| {
+                kind.blocked_nodes(ctxt)
+                    .filter_map(|node| node.as_current_place())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
     ) -> impl Iterator<Item = &'slf AbstractionEdge<'tcx, P>> + 'slf {

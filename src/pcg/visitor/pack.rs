@@ -129,15 +129,19 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut iteration = 0;
         let ctxt = self.ctxt;
         let block = self.location().block;
-        self.restore_capability_to_leaf_places(
-            for_place,
-            |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
-            ctxt,
-        )?;
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
+                let lent = self.pcg.borrow.graph.lent_places(ctxt.bc_ctxt());
+                self.restore_capability_to_leaf_places(
+                    for_place,
+                    |place| {
+                        !ctxt.body_analysis().is_read_only_in_loop(block, place)
+                            && !lent.iter().any(|lent| lent.is_prefix_of(place))
+                    },
+                    ctxt,
+                )?;
                 break Ok(());
             }
             for action in edges_to_remove.removal_actions() {

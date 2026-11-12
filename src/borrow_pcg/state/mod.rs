@@ -515,12 +515,10 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                     ApplyActionResult::from_changed(self.graph_mut().insert(edge.clone(), ctxt));
             }
             BorrowPcgActionKind::Lend { place, edge } => {
-                // The edge gives back what is lent to the place it blocks,
-                // which is `place`, a part of it or the place `place` is part
-                // of (not through a dereference: a referent is not part of
-                // the reference's value). A frozen place lends the capability
-                // its freeze suspends; the referent of a mutable reference
-                // held with E is lent through it, and the reference keeps e.
+                // What `place` lends is recorded for it: a frozen place lends
+                // what its freeze suspends, with its read copies; the referent
+                // of a mutable reference held with E is lent through it, and
+                // the reference keeps e.
                 let reference = capabilities
                     .iter()
                     .find(|(reference, cap)| {
@@ -532,32 +530,103 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 if let Some(reference) = reference {
                     changes.set(reference, Some(CapabilityKind::ShallowExclusive));
                 }
-                if let Some(lent) = capabilities
-                    .resume(*place)
-                    .or_else(|| capabilities.get(*place, ctxt))
+                let held = capabilities.get(*place, ctxt);
+                let suspended = capabilities.suspended(*place);
+                if held == Some(CapabilityKind::Read) && suspended.is_some() {
+                    for (p, _) in capabilities.capabilities_for_strict_postfixes_of(*place) {
+                        changes.set(p, None);
+                    }
+                }
+                if let Some(lent) = suspended
+                    .or(held)
                     .or(reference.map(|_| CapabilityKind::Exclusive))
                 {
-                    for node in edge.value.blocked_nodes(ctxt) {
-                        if let PcgNode::Place(MaybeLabelledPlace::Current(blocked)) = node
-                            && (blocked.is_prefix_of(*place)
-                                && !place.projects_indirection_from(blocked, ctxt)
-                                || place.is_prefix_of(blocked)
-                                    && !blocked.projects_indirection_from(*place, ctxt))
-                        {
-                            let suspended = capabilities
-                                .suspended(blocked)
-                                .map_or(lent, |suspended| meet(suspended, lent));
-                            capabilities.suspend(blocked, suspended);
-                        }
-                    }
+                    capabilities.suspend(*place, lent);
                 }
                 self.graph_mut().insert(edge.clone(), ctxt);
                 changes.set(*place, None);
             }
+            BorrowPcgActionKind::UnpackSuspended { place, parts } => {
+                let suspended = capabilities.resume(*place);
+                pcg_validity_assert!(
+                    suspended.is_some(),
+                    [ctxt],
+                    "Unpacking the suspended capability of {}, which has none",
+                    place.display_string(ctxt)
+                );
+                if let Some(suspended) = suspended {
+                    for &part in parts {
+                        let share = if part.projects_indirection_from(*place, ctxt) {
+                            match (place.rust_ty(ctxt).kind(), suspended) {
+                                (ty::Ref(_, _, ty::Mutability::Mut), CapabilityKind::Exclusive) => {
+                                    capabilities.suspend(*place, CapabilityKind::ShallowExclusive);
+                                    CapabilityKind::Exclusive
+                                }
+                                (ty::Ref(_, _, ty::Mutability::Not), _) => {
+                                    capabilities.suspend(*place, suspended);
+                                    CapabilityKind::Read
+                                }
+                                _ => {
+                                    capabilities.suspend(*place, suspended);
+                                    continue;
+                                }
+                            }
+                        } else {
+                            suspended
+                        };
+                        // A part that records less gets back at most that.
+                        let share = capabilities
+                            .suspended(part)
+                            .map_or(share, |own| meet(own, share));
+                        capabilities.suspend(part, share);
+                    }
+                }
+            }
+            BorrowPcgActionKind::PackSuspended { place } => {
+                // The inverse of `UnpackSuspended` at a mutable reference: e
+                // and an E referent give E.
+                if let ty::Ref(_, _, ty::Mutability::Mut) = place.rust_ty(ctxt).kind()
+                    && capabilities.suspended(*place) == Some(CapabilityKind::ShallowExclusive)
+                {
+                    let referents = capabilities
+                        .iter_suspended()
+                        .filter(|(p, _)| {
+                            place.is_strict_prefix_of(*p)
+                                && p.projects_indirection_from(*place, ctxt)
+                        })
+                        .collect::<Vec<_>>();
+                    if !referents.is_empty()
+                        && referents
+                            .iter()
+                            .all(|(_, cap)| *cap == CapabilityKind::Exclusive)
+                    {
+                        for (referent, _) in referents {
+                            capabilities.resume(referent);
+                        }
+                        capabilities.suspend(*place, CapabilityKind::Exclusive);
+                    }
+                }
+                let parts = capabilities
+                    .iter_suspended()
+                    .filter(|(p, _)| {
+                        place.is_strict_prefix_of(*p) && !p.projects_indirection_from(*place, ctxt)
+                    })
+                    .collect::<Vec<_>>();
+                for (part, _) in &parts {
+                    capabilities.resume(*part);
+                }
+                if let Some(packed) = parts.into_iter().map(|(_, cap)| cap).reduce(meet) {
+                    let packed = capabilities
+                        .resume(*place)
+                        .map_or(packed, |own| meet(own, packed));
+                    capabilities.suspend(*place, packed);
+                }
+            }
             BorrowPcgActionKind::WeakenSuspended { place, from, to } => {
                 let current = capabilities.resume(*place);
                 pcg_validity_assert!(
-                    current == Some(*from) && to.is_none_or(|to| *from > to),
+                    current == Some(*from)
+                        && to.is_none_or(|to| to != *from && meet(*from, to) == to),
                     [ctxt],
                     "Weakening the suspended {:?} of {} from {:?} to {:?}",
                     current,

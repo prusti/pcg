@@ -274,6 +274,17 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .cloned()
                 .collect::<Vec<_>>();
             for pe in expansions {
+                // Parts frozen apart are frozen together in `place`.
+                if capability.is_read()
+                    && place
+                        .expansion_places(&pe.expansion, ctxt)?
+                        .into_iter()
+                        .any(|part| self.capabilities().suspended(part).is_some())
+                {
+                    self.apply_action(
+                        BorrowPcgAction::pack_suspended(place, context.clone()).into(),
+                    )?;
+                }
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
                     Some(context.clone().into()),
