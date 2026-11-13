@@ -9,179 +9,286 @@ use crate::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::LabelNodePredicate,
-        region_projection::LifetimeProjection,
+        edge_data::{EdgeData, LabelNodePredicate},
+        region_projection::{LifetimeProjection, LifetimeProjectionIdx, PcgRegion, Region},
         state::BorrowsStateLike,
     },
     error::PcgError,
     pcg::{
         CapabilityKind, PcgNode, PcgRefLike,
-        obtain::{HasSnapshotLocation, PlaceObtainer},
-        place_capabilities::BlockType,
+        obtain::{HasSnapshotLocation, ObtainType, PlaceObtainer, expand::PlaceExpander},
+        place_capabilities::PlaceCapabilitiesReader,
     },
+    rustc_interface::index::IndexVec,
     utils::{
-        DataflowCtxt, DebugCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
 impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     PlaceObtainer<'state, 'a, 'tcx, Ctxt>
 {
-    fn weaken_capability_from_read(
+    /// The frozen place of whose read unpacking `place` is part: the topmost
+    /// of `place` and its ancestors that hold R without interruption.
+    pub(crate) fn frozen_ancestor(&self, place: Place<'tcx>) -> Place<'tcx> {
+        let mut frozen = place;
+        while let Some(parent) = frozen.parent_place()
+            && self
+                .pcg
+                .place_capability_equals(parent, CapabilityKind::Read, self.ctxt)
+        {
+            frozen = parent;
+        }
+        frozen
+    }
+
+    /// The places below `frozen` borrowed by edges other than unpackings.
+    /// Borrows behind a shared reference do not hold a freeze.
+    fn borrowed_in(&self, frozen: Place<'tcx>) -> Vec<Place<'tcx>> {
+        let ctxt = self.ctxt;
+        self.pcg
+            .borrow
+            .graph
+            .edges
+            .keys()
+            .filter(|kind| {
+                !matches!(
+                    kind,
+                    BorrowPcgEdgeKind::BorrowPcgExpansion(_) | BorrowPcgEdgeKind::Deref(_)
+                )
+            })
+            .flat_map(|kind| {
+                kind.blocked_nodes(ctxt.bc_ctxt())
+                    .filter_map(|node| node.as_current_place())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|place| frozen.is_strict_prefix_of(*place) && !place.projects_shared_ref(ctxt))
+            .collect()
+    }
+
+    /// Ends the freeze of `frozen`: if parts of its value are still borrowed,
+    /// the freeze moves to them and the rest, with `toward` (the place being
+    /// obtained), gets E back. The freeze moves to the topmost read copies
+    /// that are borrowed or have a borrowed place in their value that their
+    /// own read unpacking does not reach.
+    pub(crate) fn end_freeze(
         &mut self,
-        place: Place<'tcx>,
+        frozen: Place<'tcx>,
+        toward: Option<Place<'tcx>>,
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError> {
-        if place.is_mut_ref(self.ctxt) {
-            // We've reached an indirection (e.g from **s to *s), we
-            // downgrade the ref from R to e (lent through)
-            // We need to continue: `s` would previously have capability R, which
-            // is not compatible with it being mutably borrowed
-            self.record_and_apply_action(
-                    BorrowPcgAction::weaken(
-                        place,
-                        CapabilityKind::Read,
-                        BlockType::DerefMutRefForExclusive.blocked_place_maximum_retained_capability(),
-                        format!(
-                            "{:?}: remove read permission upwards from base place {} (downgrade R to W for mut ref)",
-                            reason,
-                            place.display_string(self.ctxt),
-                        )
-                    )
-                    .into(),
-                )?;
+        let in_value = self.borrowed_in(frozen);
+        if !in_value.is_empty() {
+            self.unpack_read_toward(frozen, toward, &in_value)?;
+        }
+        let copies = self
+            .pcg
+            .place_capabilities
+            .capabilities_for_strict_postfixes_of(frozen)
+            .map(|(p, _)| p)
+            .collect::<Vec<_>>();
+        let borrowed = copies
+            .iter()
+            .copied()
+            .filter(|copy| {
+                in_value.iter().any(|place| {
+                    copy.is_prefix_of(*place)
+                        && !copies
+                            .iter()
+                            .any(|c| copy.is_strict_prefix_of(*c) && c.is_prefix_of(*place))
+                })
+            })
+            .collect::<Vec<_>>();
+        let to = borrowed
+            .iter()
+            .copied()
+            .filter(|p| !borrowed.iter().any(|q| q.is_strict_prefix_of(*p)))
+            .sorted()
+            .collect::<Vec<_>>();
+        let action = if to.is_empty() {
+            BorrowPcgAction::unfreeze(frozen, format!("{reason:?}"))
         } else {
-            self.record_and_apply_action(
-                BorrowPcgAction::weaken(
-                    place,
-                    CapabilityKind::Read,
-                    None,
-                    format!(
-                        "{:?}: remove read permission upwards from base place {}",
-                        reason,
-                        place.display_string(self.ctxt),
-                    ),
-                )
-                .into(),
+            BorrowPcgAction::refreeze(frozen, to, format!("{reason:?}"))
+        };
+        self.record_and_apply_action(action.into())
+    }
+
+    /// Unpacks the read unpacking of `frozen` toward `toward`, a part of its
+    /// value being obtained, and at each place on the way, one level into
+    /// every other unpacking of the layout that holds a place of `borrowed`.
+    /// A join that holds an enum packed keeps the layout of a borrowed
+    /// variant field but drops its read copies: the freeze moves to the
+    /// variant without entering it, and the variant being obtained gets E.
+    /// Obtaining `frozen` itself leaves no part to give E back to.
+    fn unpack_read_toward(
+        &mut self,
+        frozen: Place<'tcx>,
+        toward: Option<Place<'tcx>>,
+        borrowed: &[Place<'tcx>],
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let Some(toward) = toward.filter(|place| {
+            frozen.is_strict_prefix_of(*place) && !place.projects_indirection_from(frozen, ctxt)
+        }) else {
+            return Ok(());
+        };
+        self.expand_to(
+            toward,
+            None,
+            ObtainType::Capability(CapabilityKind::Read),
+            ctxt,
+        )?;
+        let path = std::iter::successors(toward.parent_place(), |p| p.parent_place())
+            .take_while(|p| frozen.is_prefix_of(*p))
+            .collect::<Vec<_>>();
+        let mut beside = self.pcg.owned[frozen.local]
+            .expansions()
+            .expansions()
+            .iter()
+            .filter(|expanded| path.contains(&expanded.place))
+            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap())
+            .filter(|part| {
+                !part.is_prefix_of(toward) && borrowed.iter().any(|b| part.is_prefix_of(*b))
+            })
+            .collect::<Vec<_>>();
+        beside.sort_by_key(|part| (part.projection.len(), *part));
+        for part in beside {
+            self.expand_to(
+                part,
+                None,
+                ObtainType::Capability(CapabilityKind::Read),
+                ctxt,
             )?;
         }
         Ok(())
     }
 
-    // Remove read permission upwards for strict ancestors of `place` Used when
-    // we want to access `place` exclusively when activating a two-phase borrow
-    // or when it is a postfix of a place that was downgraded to read
-    // permission.
-    pub(crate) fn remove_read_permission_upwards_and_label_rps(
+    /// Labels the lifetime projections of `place` and its ancestors up to
+    /// `frozen` for the exclusive access of `place`.
+    pub(crate) fn label_rps_up_to(
         &mut self,
         place: Place<'tcx>,
+        frozen: Place<'tcx>,
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError> {
         let place_regions = place.regions(self.ctxt);
-        let mut prev = None;
         let mut current = place;
-        while self
-            .pcg
-            .place_capability_equals(current, CapabilityKind::Read, self.ctxt)
-        {
-            self.weaken_capability_from_read(current, reason)?;
-            let leaf_nodes = self.pcg.borrow.leaf_nodes(self.ctxt.bc_ctxt());
-            for place in self.pcg.borrow.graph.places(self.ctxt.bc_ctxt()) {
-                if prev != Some(place)
-                    && current.is_prefix_exact(place)
-                    && leaf_nodes.contains(&place.into())
-                    && self
-                        .pcg
-                        .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
-                    && !place.projects_shared_ref(self.ctxt)
-                {
-                    self.record_and_apply_action(
-                        BorrowPcgAction::restore_capability(
-                            place,
-                            CapabilityKind::Exclusive,
-                            format!(
-                                "{:?}: remove_read_permission_upwards_and_label_rps: restore exclusive cap for leaf place {}",
-                                reason,
-                                place.display_string(self.ctxt)
-                            ),
-                        )
-                        .into(),
-                    )?;
-                }
+        loop {
+            self.label_rps_for_exclusive_access(current, &place_regions, reason)?;
+            if current == frozen {
+                return Ok(());
             }
-            for r in &place_regions {
-                let Some(current_rp) = LifetimeProjection::new(
-                    current,
-                    GeneralizedLifetime::from(*r),
-                    None,
-                    self.ctxt.ctxt(),
-                ) else {
-                    // e.g. for ReStatic
-                    continue;
-                };
-                if current.is_ref(self.ctxt)
-                    && !current
-                        .project_deref(self.ctxt)
-                        .regions(self.ctxt)
-                        .iter()
-                        .contains(r)
-                {
-                    // If this region projection couldn't be modified (because its deref doesn't hold r), we skip
-                    // There is probably a better way to do this
-                    continue;
-                }
-                let edges_blocking_current_rp = self
-                    .pcg
-                    .borrow
-                    .edges_blocking(current_rp.into(), self.ctxt.bc_ctxt())
-                    .collect::<Vec<_>>();
-                if !edges_blocking_current_rp.is_empty() {
-                    let labelled_rp = current_rp
-                        .with_label(Some(self.prev_snapshot_location().into()), self.ctxt);
-                    let expansion_nodes = edges_blocking_current_rp
-                        .iter()
-                        .filter_map(|e| {
-                            if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = e.kind()
-                                && let PcgNode::LifetimeProjection(rp) = e.base()
-                                && rp == current_rp.into()
-                            {
-                                Some(
-                                    e.expansion()
-                                        .iter()
-                                        .flat_map(|e| e.try_into_lifetime_projection())
-                                        .filter(|e| e.base.is_current())
-                                        .collect::<Vec<_>>(),
-                                )
-                            } else {
-                                None
-                            }
-                        })
-                        .flatten()
-                        .collect::<HashSet<_>>();
+            current = current.parent_place().unwrap();
+        }
+    }
+
+    /// Labels the lifetime projections of `current` (for the regions
+    /// `place_regions` of the place being accessed exclusively) that are
+    /// blocked by other edges, and adds the future edges for them.
+    pub(crate) fn label_rps_for_exclusive_access(
+        &mut self,
+        current: Place<'tcx>,
+        place_regions: &IndexVec<LifetimeProjectionIdx<Region>, PcgRegion<'tcx>>,
+        reason: AdjustCapabilityReason,
+    ) -> Result<(), PcgError> {
+        for r in place_regions {
+            let Some(current_rp) = LifetimeProjection::new(
+                current,
+                GeneralizedLifetime::from(*r),
+                None,
+                self.ctxt.ctxt(),
+            ) else {
+                // e.g. for ReStatic
+                continue;
+            };
+            if current.is_ref(self.ctxt)
+                && !current
+                    .project_deref(self.ctxt)
+                    .regions(self.ctxt)
+                    .iter()
+                    .contains(r)
+            {
+                // If this region projection couldn't be modified (because its deref doesn't hold r), we skip
+                // There is probably a better way to do this
+                continue;
+            }
+            let edges_blocking_current_rp = self
+                .pcg
+                .borrow
+                .edges_blocking(current_rp.into(), self.ctxt.bc_ctxt())
+                .collect::<Vec<_>>();
+            if !edges_blocking_current_rp.is_empty() {
+                let labelled_rp =
+                    current_rp.with_label(Some(self.prev_snapshot_location().into()), self.ctxt);
+                let expansion_nodes = edges_blocking_current_rp
+                    .iter()
+                    .filter_map(|e| {
+                        if let BorrowPcgEdgeKind::BorrowPcgExpansion(e) = e.kind()
+                            && let PcgNode::LifetimeProjection(rp) = e.base()
+                            && rp == current_rp.into()
+                        {
+                            Some(
+                                e.expansion()
+                                    .iter()
+                                    .flat_map(|e| e.try_into_lifetime_projection())
+                                    .filter(|e| e.base.is_current())
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten()
+                    .collect::<HashSet<_>>();
+                self.record_and_apply_action(
+                    BorrowPcgAction::label_lifetime_projection(
+                        LabelNodePredicate::equals_lifetime_projection(current_rp.into()),
+                        Some(self.prev_snapshot_location().into()),
+                        format!(
+                            "{:?}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
+                            reason,
+                            current_rp.display_string(self.ctxt),
+                            self.prev_snapshot_location()
+                        ),
+                    )
+                    .into(),
+                )?;
+                // If the place is owned, we will never regain access to it,
+                // therefore future nodes aren't necessary
+                if current.as_borrowed_place(self.ctxt).is_some() {
+                    let future_rp = current_rp.with_placeholder_label(self.ctxt);
                     self.record_and_apply_action(
-                        BorrowPcgAction::label_lifetime_projection(
-                            LabelNodePredicate::equals_lifetime_projection(current_rp.into()),
-                            Some(self.prev_snapshot_location().into()),
-                            format!(
-                                "{:?}: remove_read_permission_upwards_and_label_rps: label current lifetime projection {} with previous snapshot location {:?}",
-                                reason,
-                                current_rp.display_string(self.ctxt),
-                                self.prev_snapshot_location()
+                        BorrowPcgAction::add_edge(
+                            BorrowPcgEdge::new(
+                                BorrowFlowEdge::new(
+                                    labelled_rp.into(),
+                                    future_rp.into(),
+                                    BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
+                                )
+                                .into(),
+                                self.pcg.borrow.validity_conditions.clone(),
                             ),
+                            "remove_read_permission_upwards_and_label_rps",
                         )
                         .into(),
                     )?;
-                    // If the place is owned, we will never regain access to it,
-                    // therefore future nodes aren't necessary
-                    if current.as_borrowed_place(self.ctxt).is_some() {
-                        let future_rp = current_rp.with_placeholder_label(self.ctxt);
+                    for expansion_node in expansion_nodes {
+                        // If the expansion isn't labelled, it is likely a sibling RO of the place gaining exclusive capability
+                        // so we connect to its current version
+                        // Otherwise if its labelled we connect to its placeholder version
+                        let to_connect = if expansion_node.label().is_none() {
+                            expansion_node.into()
+                        } else {
+                            expansion_node.with_placeholder_label(self.ctxt).into()
+                        };
                         self.record_and_apply_action(
                             BorrowPcgAction::add_edge(
                                 BorrowPcgEdge::new(
                                     BorrowFlowEdge::new(
-                                        labelled_rp.into(),
+                                        to_connect,
                                         future_rp.into(),
-                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf),
+                                        BorrowFlowEdgeKind::Future(FutureEdgeKind::FromExpansion),
                                     )
                                     .into(),
                                     self.pcg.borrow.validity_conditions.clone(),
@@ -190,41 +297,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                             )
                             .into(),
                         )?;
-                        for expansion_node in expansion_nodes {
-                            // If the expansion isn't labelled, it is likely a sibling RO of the place gaining exclusive capability
-                            // so we connect to its current version
-                            // Otherwise if its labelled we connect to its placeholder version
-                            let to_connect = if expansion_node.label().is_none() {
-                                expansion_node.into()
-                            } else {
-                                expansion_node.with_placeholder_label(self.ctxt).into()
-                            };
-                            self.record_and_apply_action(
-                                BorrowPcgAction::add_edge(
-                                    BorrowPcgEdge::new(
-                                        BorrowFlowEdge::new(
-                                            to_connect,
-                                            future_rp.into(),
-                                            BorrowFlowEdgeKind::Future(
-                                                FutureEdgeKind::FromExpansion,
-                                            ),
-                                        )
-                                        .into(),
-                                        self.pcg.borrow.validity_conditions.clone(),
-                                    ),
-                                    "remove_read_permission_upwards_and_label_rps",
-                                )
-                                .into(),
-                            )?;
-                        }
                     }
                 }
             }
-            let Some(parent) = current.parent_place() else {
-                break;
-            };
-            prev = Some(current);
-            current = parent;
         }
         Ok(())
     }

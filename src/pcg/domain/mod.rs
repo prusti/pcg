@@ -41,10 +41,12 @@ use crate::{
 
 mod dataflow_stmt_phase;
 mod eval_stmt_phase;
+mod join;
 mod pcg;
 
 pub use dataflow_stmt_phase::*;
 pub use eval_stmt_phase::*;
+pub(crate) use join::meet;
 pub use pcg::*;
 
 use super::PcgEngine;
@@ -373,20 +375,49 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
             // or applying the loop abstraction.
             let mut target = (*first.data.pcg.states.0.post_main).clone();
             for other in &rest {
-                target.join_owned(
+                target.join_with(
                     &other.data.pcg.states.0.post_main,
+                    first.ctxt.block,
                     SnapshotLocation::BeforeJoin(ctxt.block),
-                    SnapshotLocation::After(other.ctxt.block),
                     ctxt,
                 )?;
             }
 
             // Preserve each predecessor's values before its edge repacks.
             for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
-                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).join_owned(
+                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).reach(
+                    &target.place_capabilities,
                     &target,
+                    incoming.ctxt.block,
                     SnapshotLocation::After(incoming.ctxt.block),
-                    SnapshotLocation::BeforeJoin(ctxt.block),
+                    ctxt,
+                )?;
+            }
+
+            let layouts = std::iter::once(&first)
+                .chain(rest.iter())
+                .map(|incoming| incoming.data.pcg.states.0.post_main.clone())
+                .collect::<Vec<_>>();
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                let pcg = Rc::make_mut(&mut incoming.data.pcg.states.0.post_main);
+                for layout in &layouts {
+                    pcg.join_lent_layout(layout, ctxt);
+                }
+            }
+
+            // The joined state gets back what every predecessor suspends, at
+            // the meet.
+            let joined = Pcg::joined_suspended(
+                &std::iter::once(&first)
+                    .chain(rest.iter())
+                    .map(|incoming| &*incoming.data.pcg.states.0.post_main)
+                    .collect::<Vec<_>>(),
+                ctxt,
+            );
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).reach_suspended(
+                    &joined,
+                    SnapshotLocation::After(incoming.ctxt.block),
                     ctxt,
                 )?;
             }
@@ -399,7 +430,7 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
             curr.merge_borrows(&other.data.pcg.states.0.post_main, other.ctxt.block, ctxt);
         }
         if !rest.is_empty() || ctxt.body_analysis.is_loop_head(ctxt.block) {
-            curr.finish_join(ctxt);
+            curr.finish_join(ctxt)?;
         }
         Ok(result)
     }

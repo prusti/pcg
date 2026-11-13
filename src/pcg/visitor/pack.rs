@@ -130,16 +130,20 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut iteration = 0;
         let ctxt = self.ctxt;
         let block = self.location().block;
-        self.restore_capability_to_leaf_places(
-            for_place,
-            |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
-            ctxt,
-        )?;
         let mut removed_edges = Vec::new();
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
+                let lent = self.pcg.borrow.graph.lent_places(ctxt.bc_ctxt());
+                self.restore_capability_to_leaf_places(
+                    for_place,
+                    |place| {
+                        !ctxt.body_analysis().is_read_only_in_loop(block, place)
+                            && !lent.iter().any(|lent| lent.is_prefix_of(place))
+                    },
+                    ctxt,
+                )?;
                 break self.finish_weakening_places_with_dead_lifetime_projections(&removed_edges);
             }
             for action in edges_to_remove.removal_actions() {
@@ -217,7 +221,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     BorrowPcgAction::weaken(
                         rawptr,
                         CapabilityKind::Exclusive,
-                        Some(CapabilityKind::Write),
+                        CapabilityKind::Write,
                         context.clone(),
                     )
                     .into(),
@@ -491,6 +495,20 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             } else if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
                 edges_to_remove.push(&edge, reason);
+            }
+        }
+        // A raw pointer dereference borrows nothing from the pointer: once the
+        // pointer is gone, the dereferenced place no longer depends on it.
+        if ancestor_place.is_none() {
+            for edge in self.pcg.borrows_graph().edges() {
+                if let BorrowPcgEdgeKind::RawPtrDeref(deref) = edge.kind()
+                    && deref.blocked_place.is_old()
+                {
+                    edges_to_remove.push(
+                        &edge.to_owned_edge(),
+                        "Dereferenced raw pointer is dead".into(),
+                    );
+                }
             }
         }
         edges_to_remove

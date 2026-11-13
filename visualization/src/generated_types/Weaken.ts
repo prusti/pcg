@@ -2,11 +2,10 @@
 import type { CapabilityKind } from "./CapabilityKind";
 
 /**
- * Instructs that the current capability to the place (first [`CapabilityKind`]) should
- * be weakened to the second given capability. We guarantee that `_.1 > _.2`.
- * If `_.2` is `None`, the capability is removed.
+ * The capability of the place goes from `from` down to the strictly lower
+ * `to`: the place's value is given up (`to` is W), or part of it.
  */
-export type Weaken<ToCap = CapabilityKind | null> = { place: string, from: CapabilityKind, to: ToCap, 
+export type Weaken = { place: string, from: CapabilityKind, to: CapabilityKind, 
 /**
  * Temporary flag indicating this Weaken was emitted due to a `StorageDead`.
  * Required until <https://github.com/prusti/pcg/issues/137> is resolved.

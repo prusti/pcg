@@ -75,7 +75,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     [ctxt]
                 );
             }
-            PlaceCondition::RemoveCapability(_) => unreachable!(),
+            PlaceCondition::Freeze(_) => unreachable!(),
         }
     }
 
@@ -103,6 +103,21 @@ impl<'tcx> OwnedPcg<'tcx> {
                 place_capabilities.insert(local.into(), CapabilityKind::Write, ctxt);
             }
             PlaceCondition::Capability(place, cap) => {
+                // A lent place that gets a new value (its loan is dead) does
+                // not get the old one back. A frozen place keeps its freeze,
+                // which the validity check rejects for a capability above R.
+                if !cap.is_read() {
+                    let dropped = place_capabilities
+                        .iter_suspended()
+                        .map(|(p, _)| p)
+                        .filter(|p| {
+                            place.is_prefix_of(*p) && place_capabilities.get(*p, ctxt).is_none()
+                        })
+                        .collect::<Vec<_>>();
+                    for p in dropped {
+                        place_capabilities.resume(p);
+                    }
+                }
                 place_capabilities.insert(place, cap, ctxt);
                 // It's possible that the place could have been already expanded
                 // exclusively (when it could have originally been expanded for
@@ -123,9 +138,8 @@ impl<'tcx> OwnedPcg<'tcx> {
             PlaceCondition::ExpandTwoPhase(place) => {
                 place_capabilities.insert(place, CapabilityKind::Read, ctxt);
             }
-            PlaceCondition::RemoveCapability(place) => {
-                place_capabilities.remove(place, ctxt);
-            }
+            // The place is frozen by `PcgVisitor::ensure_triple`.
+            PlaceCondition::Freeze(_) => {}
         }
     }
 }
