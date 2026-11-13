@@ -244,9 +244,23 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
+        // A place that holds nothing below one that holds a capability is
+        // lent, or only the layout of the loans of a place in it (a join
+        // holds the enum packed while a variant field is borrowed): it is
+        // left as it is.
         let to_collapse = self
             .get_local_expansions(place.local)
             .places_to_collapse_for_obtain_of(place, ctxt);
+        let capabilities = self.capabilities();
+        let to_collapse = to_collapse
+            .into_iter()
+            .filter(|p| {
+                capabilities.get(*p, ctxt).is_some()
+                    || !std::iter::successors(p.parent_place(), |q| q.parent_place())
+                        .take_while(|q| place.is_prefix_of(*q))
+                        .any(|q| capabilities.get(q, ctxt).is_some())
+            })
+            .collect::<Vec<_>>();
         // Collapsing a place removes its strict descendants from the owned
         // PCG, which would leave any borrow-PCG edge blocking such a
         // descendant referring to a place that is no longer there. Read

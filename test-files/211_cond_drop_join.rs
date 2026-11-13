@@ -594,3 +594,53 @@ fn borrowed_whole_or_part_lent_then_read(c: bool, x: &mut P, mut z: P, mut w: u3
     let r: &P = &*x;
     r.f + w
 }
+
+// A variant field is borrowed on one path only: the join holds `x` frozen and
+// packed, with the layout of the borrowed field below it. Borrowing the other
+// variant mutably (allowed: variants are disjoint) moves the freeze to `x@A`
+// without entering it, and `x@C` gets E.
+fn variant_field_read_other_variant_borrowed(mut x: AC) -> u32 {
+    // PCG: bb3 -> bb4: Freeze x
+    // PCG: bb6[1] pre_operands: unpack x@C with capability R
+    // PCG: bb6[1] pre_operands: Refreeze x to x@A
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = x {
+        a = p;
+    }
+    if let AC::C(ref mut q) = x {
+        *q = 1;
+    }
+    *a
+}
+
+// As above, re-matching the same variant: the freeze moves to `x@A.0` and
+// `x@A.1` gets E.
+fn variant_field_read_same_variant_borrowed(mut x: AC) -> u32 {
+    // PCG: bb6[1] pre_operands: unpack x@A with capability R
+    // PCG: bb6[1] pre_operands: Refreeze x to x@A.0
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = x {
+        a = p;
+    }
+    if let AC::A(_, ref mut q) = x {
+        *q = 1;
+    }
+    *a
+}
+
+// As above, borrowing `x` whole for read: when that borrow ends `x` stays
+// frozen, since the loan of `x@A.0` still lives.
+fn variant_field_read_whole_read(x: AC) -> u32 {
+    // PCG: bb4[5] pre_operands: Remove Edge borrow: r = & x
+    // ~PCG: bb4[5] pre_operands: Unfreeze x
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = x {
+        a = p;
+    }
+    let r = &x;
+    let _ = r;
+    *a
+}

@@ -94,7 +94,8 @@ pub(crate) fn unpacked<'a, 'tcx: 'a>(
 
 /// The capability `place` gets when what lies below it is packed into it:
 /// the meet of the capabilities below it, none if a leaf of its layout (an
-/// owned expansion or a borrow-PCG expansion) has none (it is borrowed).
+/// owned expansion or a borrow-PCG expansion) has none, by itself or from a
+/// place it is part of (it is borrowed).
 fn packed_capability<'a, 'tcx: 'a>(
     capabilities: &PlaceCapabilities<'tcx>,
     owned: &OwnedPcg<'tcx>,
@@ -133,10 +134,9 @@ fn packed_capability<'a, 'tcx: 'a>(
                 .iter()
                 .any(|expansion| expansion.base().as_current_place() == Some(*part))
         });
-    if owned_leaves
-        .chain(borrowed_leaves)
-        .any(|leaf| place.is_prefix_of(leaf) && capabilities.get(leaf, ctxt).is_none())
-    {
+    if owned_leaves.chain(borrowed_leaves).any(|leaf| {
+        place.is_prefix_of(leaf) && unpacked_capability(capabilities, leaf, true, ctxt).is_none()
+    }) {
         return None;
     }
     capabilities
@@ -299,8 +299,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     /// Gives this state the owned layout that `other` has below the places
-    /// neither holds: the parts that are lent or blocked on the other path.
-    /// It changes no capability.
+    /// neither holds or both hold frozen: the parts that are lent or blocked
+    /// on the other path (a variant field borrowed while the join holds the
+    /// enum packed). It changes no capability.
     pub(crate) fn join_lent_layout(&mut self, other: &Self, ctxt: impl DataflowCtxt<'a, 'tcx>) {
         for local in (0..self.owned.num_locals()).map(mir::Local::from) {
             if !self.owned.is_allocated(local) || !other.owned.is_allocated(local) {
@@ -321,9 +322,11 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                     continue;
                 }
                 pcg_validity_assert!(
-                    self.place_capabilities.get(expanded.place, ctxt).is_none(),
+                    self.place_capabilities
+                        .get(expanded.place, ctxt)
+                        .is_none_or(CapabilityKind::is_read),
                     [ctxt],
-                    "the join unpacks {}, which holds a capability",
+                    "the join unpacks {}, which holds more than R",
                     expanded.place.display_string(ctxt.bc_ctxt())
                 );
                 self.owned[local]
@@ -689,7 +692,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 self.weaken_to(place, to)
             }
             (CapabilityKind::Read, _) => {
-                self.upgrade_read_to_exclusive(place, &|base| target.unpacks(base))?;
+                self.upgrade_read_to_exclusive(place, place, &|base| target.unpacks(base))?;
                 self.weaken_to(place, to)
             }
             // The referent of a mutable reference is lent, through the

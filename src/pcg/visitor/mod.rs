@@ -468,8 +468,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // shared borrow of it), the freeze moves to the place first.
         let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
         if frozen != blocked_place {
-            self.place_obtainer()
-                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+            self.place_obtainer().end_freeze(
+                frozen,
+                Some(blocked_place),
+                AdjustCapabilityReason::TwoPhaseBorrowActivation,
+            )?;
         }
         // Reads during the reservation may have unpacked the place at R.
         if blocked_place.as_owned_place(self.ctxt).is_some() {

@@ -324,8 +324,9 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
     /// Updates `place` after the edge blocking it was removed: a frozen leaf
     /// is unfrozen unless the loop it is in only reads it (the loop holds the
-    /// freeze) or a place it is part of is still lent, and the placeholder
-    /// labels of its lifetime projections are removed.
+    /// freeze) or a loan still blocks it, a place it is part of or a place in
+    /// its value (a variant field, where a join holds the enum packed), and
+    /// the placeholder labels of its lifetime projections are removed.
     fn place_unblocked(&mut self, place: Place<'tcx>, context: &str) -> Result<(), PcgError> {
         if !self.pcg.owned.is_allocated(place.local) {
             return Ok(());
@@ -333,14 +334,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         if self
             .pcg
             .place_capability_equals(place, CapabilityKind::Read, self.ctxt)
-            && self.pcg.place_capabilities.suspended(place).is_some()
+            && let Some(record) = self.pcg.place_capabilities.suspended(place)
             && !self
                 .ctxt
                 .body_analysis()
                 .is_read_only_in_loop(self.location().block, place)
             && self.frozen_ancestor(place) == place
             && !self.pcg.place_capabilities.unpacks(place)
-            && !self.is_within_lent_place(place)
+            && self.loans_blocking_value_of(place, record).next().is_none()
         {
             self.record_and_apply_action(
                 BorrowPcgAction::unfreeze(place, context.to_owned()).into(),
@@ -795,10 +796,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
     /// Unfreezes the frozen place `place` or that `place` is a read copy of,
     /// packing its read unpacking except the unpackings of the places `keep`
-    /// keeps, which become exclusive.
+    /// keeps, which become exclusive. `toward` (`place` or a place in it) is
+    /// the place being obtained.
     pub(crate) fn upgrade_read_to_exclusive(
         &mut self,
         place: Place<'tcx>,
+        toward: Place<'tcx>,
         keep: &impl Fn(Place<'tcx>) -> bool,
     ) -> Result<(), PcgError> {
         tracing::debug!(
@@ -813,7 +816,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .pcg
             .place_capability_equals(frozen, CapabilityKind::Read, self.ctxt)
         {
-            self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+            self.end_freeze(
+                frozen,
+                Some(toward),
+                AdjustCapabilityReason::UpgradeReadToExclusive,
+            )?;
         }
         if frozen != place {
             self.label_rps_up_to(
@@ -843,7 +850,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         loop {
             if let Some(cap) = self.pcg.capability_of(expand_root, self.ctxt) {
                 if cap.is_read() {
-                    self.upgrade_read_to_exclusive(expand_root, &|_| false)?;
+                    self.upgrade_read_to_exclusive(expand_root, place, &|_| false)?;
                 }
                 return Ok(());
             }
@@ -1359,10 +1366,25 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, 'tcx>
     for PlaceObtainer<'pcg, 'a, 'tcx, Ctxt>
 {
+    /// An expansion below a place that holds a capability, whose places hold
+    /// and record nothing, is only the layout of the loans of a place in it
+    /// (a join holds the enum packed while a variant field is borrowed). It
+    /// does not count: unpacking the place gives its parts their share.
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool {
+        let capabilities = &self.pcg.place_capabilities;
         self.pcg.owned[target.local]
             .expansions()
-            .contains_expansion_to(target, self.ctxt)
+            .expansions()
+            .iter()
+            .any(|expanded| {
+                let places = expanded.expansion_places(self.ctxt).unwrap();
+                places.contains(&target)
+                    && (capabilities.get(expanded.place, self.ctxt).is_none()
+                        || places.iter().any(|p| {
+                            capabilities.get(*p, self.ctxt).is_some()
+                                || capabilities.suspended(*p).is_some()
+                        }))
+            })
     }
 
     fn borrows_graph(&self) -> &borrow_pcg::graph::BorrowsGraph<'tcx> {
