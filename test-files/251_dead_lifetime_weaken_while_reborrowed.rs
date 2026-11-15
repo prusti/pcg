@@ -1,7 +1,5 @@
-// A reference whose lifetime projections are dead is not weakened while its
-// target is reborrowed: `_5 = &mut i` is dead after `_4 = &mut (*_5)`, but
-// `{_5} -> {(*_5)}` stays in the graph until the reborrow held by `o` ends,
-// and ending it packs `(*_5)` back into `_5`.
+// `_5 = &mut i` is dead after `_4 = &mut (*_5)`, but is weakened only once the
+// reborrow held by `o` ends and `(*_5)` is packed back into it.
 struct O<'a, 'b> {
     x: &'b mut &'a mut u32,
 }
