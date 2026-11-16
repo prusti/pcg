@@ -204,7 +204,7 @@ fn test_selected_crates() {
     std::fs::create_dir_all("tmp").unwrap();
 
     // Read parallelism setting from environment variable
-    let parallelism = std::env::var("PCG_TEST_CRATE_PARALLELISM")
+    let parallelism = std::env::var("TEST_CRATES_PARALLELISM")
         .unwrap_or_else(|_| "1".to_string())
         .parse::<usize>()
         .unwrap_or(1);

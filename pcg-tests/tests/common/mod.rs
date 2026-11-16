@@ -57,7 +57,7 @@ pub fn cargo_clean_in_dir(dir: &Path) {
     );
 }
 
-fn find_workspace_base_dir() -> PathBuf {
+pub fn find_workspace_base_dir() -> PathBuf {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap());
@@ -67,6 +67,16 @@ fn find_workspace_base_dir() -> PathBuf {
 #[allow(dead_code)]
 #[must_use]
 pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
+    let exit = pcg_check_command(dir, &options)
+        .status()
+        .unwrap_or_else(|_| panic!("Failed to execute cargo check on {}", dir.display()));
+
+    exit.success()
+}
+
+/// The `cargo check` command that runs the PCG on the crate in `dir`.
+#[allow(dead_code)]
+pub fn pcg_check_command(dir: &Path, options: &RunOnCrateOptions) -> Command {
     let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
     let pcg_exe = build_pcg_bin_in_dir(&pcg_bin_dir, options.target());
@@ -93,11 +103,7 @@ pub fn run_pcg_on_crate_in_dir(dir: &Path, options: RunOnCrateOptions) -> bool {
     if let Some(function) = options.function() {
         command.env("PCG_CHECK_FUNCTION", function);
     }
-    let exit = command
-        .status()
-        .unwrap_or_else(|_| panic!("Failed to execute cargo check on {}", dir.display()));
-
-    exit.success()
+    command
 }
 
 fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
@@ -302,8 +308,27 @@ pub fn run_on_crate(
         eprintln!("{e}");
         return RunOnCrateResult::Skipped;
     }
+    let result = with_downloaded_crate(name, version, date, |dirname| {
+        run_pcg_on_crate_in_dir(dirname, options)
+    });
+    if result {
+        RunOnCrateResult::Success
+    } else {
+        RunOnCrateResult::Failed
+    }
+}
+
+/// Runs `f` on a fresh extraction of the crate and removes the extraction
+/// afterwards. With a `date`, the lock file cached for that date is used, and
+/// the lock file `f` resolved is cached if there was none.
+pub fn with_downloaded_crate<R>(
+    name: &str,
+    version: &str,
+    date: Option<&str>,
+    f: impl FnOnce(&Path) -> R,
+) -> R {
     let dirname = download_crate(name, version, date);
-    let result = run_pcg_on_crate_in_dir(&dirname, options);
+    let result = f(&dirname);
     if let Some(date) = date {
         let cargo_lock_file = cached_cargo_lock_file(name, version, date);
         if !cargo_lock_file.exists() {
@@ -313,11 +338,7 @@ pub fn run_on_crate(
     std::fs::remove_dir_all(&dirname).unwrap_or_else(|e| {
         panic!("Failed to remove directory {}: {e}", dirname.display());
     });
-    if result {
-        RunOnCrateResult::Success
-    } else {
-        RunOnCrateResult::Failed
-    }
+    result
 }
 
 #[allow(dead_code)]
