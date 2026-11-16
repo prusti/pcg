@@ -204,6 +204,91 @@ jobs:
         name: coverage-report
         path: coverage/html/
 
+  # Runs the PCG with validity checks on the top crates of crates.io. The
+  # crates are split by index into groups that run on separate runners. The
+  # group bounds balance the measured check times of the crates, taking for
+  # each crate the longer of its checks with failing and with warning
+  # validity checks, so that each group takes about an hour also once the
+  # PCG fails on fewer crates. Crates are checked one at a time because the
+  # PCG needs over 10 GB on some of them.
+  top_crates:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - { start: 0, end: 67 }
+          - { start: 67, end: 84 }
+          - { start: 84, end: 129 }
+          - { start: 129, end: 157 }
+          - { start: 157, end: 230 }
+          - { start: 230, end: 302 }
+          - { start: 302, end: 417 }
+          - { start: 417, end: 426 }
+          - { start: 426, end: 436 }
+          - { start: 436, end: 500 }
+    steps:
+    - uses: actions/checkout@v4
+    # The cache is saved right after the build, before the sweep fills the
+    # registry with the sources of the checked crates.
+    - name: Restore Cargo registry and build artifacts
+      id: restore-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          pcg-bin/target
+          pcg-tests/target
+        key: ${{ runner.os }}-cargo-top-crates-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-top-crates-
+    - name: Build pcg-bin and the sweep
+      run: |
+        (cd pcg-bin && cargo build --release)
+        (cd pcg-tests && cargo test --test top_crates --no-run)
+    - name: Save Cargo registry and build artifacts
+      if: steps.restore-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          pcg-bin/target
+          pcg-tests/target
+        key: ${{ steps.restore-cache.outputs.cache-primary-key }}
+    - name: Run the PCG on crates ${{ matrix.group.start }} to ${{ matrix.group.end }}
+      working-directory: pcg-tests
+      env:
+        TOP_CRATES_START: ${{ matrix.group.start }}
+        TOP_CRATES_END: ${{ matrix.group.end }}
+        TEST_CRATES_PARALLELISM: 1
+        TOP_CRATES_TIMEOUT_SECS: 2700
+      run: cargo test --test top_crates -- --ignored --nocapture
+    - name: Summarize results
+      if: always()
+      working-directory: pcg-tests
+      run: |
+        if [ -f tmp/top-crates-results.tsv ]; then
+          {
+            echo "### Crates ${{ matrix.group.start }} to ${{ matrix.group.end }}"
+            echo '```'
+            awk -F '\t' '$4 != "pass"' tmp/top-crates-results.tsv
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: top-crates-${{ matrix.group.start }}-${{ matrix.group.end }}
+        path: |
+          pcg-tests/tmp/top-crates-results.tsv
+          pcg-tests/tmp/top-crates-logs/
+        if-no-files-found: warn
+
   pcg_server_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
