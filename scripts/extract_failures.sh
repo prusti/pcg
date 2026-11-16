@@ -6,9 +6,10 @@
 #
 # Example usage:
 #
-# The following command will run PCG on the functions in the top 500 crates and report
+# The following commands will run PCG on the functions in the top 500 crates and report
 # validity errors instead of crashing on them. The log output will be sent to the file `out`.
-# env PCG_VALIDITY_CHECKS=true PCG_VALIDITY_CHECKS_WARN_ONLY=true PCG_TEST_CRATE_PARALLELISM=12 cargo test --test top_crates -- --nocapture --ignored >out 2>&1
+# env PCG_VALIDITY_CHECKS_WARN_ONLY=true TEST_CRATES_PARALLELISM=12 cargo test --test top_crates -- --nocapture --ignored
+# cat tmp/top-crates-logs/*.log >out
 #
 # Then, the following command will extract the stringified test cases from
 # failures written to the log output:

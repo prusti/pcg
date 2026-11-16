@@ -1,71 +1,393 @@
 #![feature(rustc_private)]
+#![cfg(unix)]
 use chrono::Local;
 use derive_more::Deref;
-use pcg::utils::GLOBAL_SETTINGS;
+use itertools::Itertools;
 use rayon::prelude::*;
+use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeSet,
+    io::{ErrorKind, Write},
+    os::unix::process::CommandExt,
+    panic::{AssertUnwindSafe, catch_unwind},
+    path::{Path, PathBuf},
+    process::{Command, ExitStatus},
+    str::FromStr,
+    sync::{LazyLock, Mutex},
+    time::{Duration, Instant},
+};
 
 mod common;
-use common::{RunOnCrateOptions, Target, get, run_on_crate};
+use common::{
+    RunOnCrateOptions, Target, find_workspace_base_dir, get, is_supported_crate, pcg_check_command,
+    with_downloaded_crate,
+};
 
-use crate::common::RunOnCrateResult;
+const DATE: &str = "2026-07-15";
 
+const NUM_CRATES: usize = 500;
+
+const LOG_DIR: &str = "tmp/top-crates-logs";
+
+const RESULTS_FILE: &str = "tmp/top-crates-results.tsv";
+
+const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tfunction\tmessage";
+
+/// Runs the PCG with validity checks on every function of the most downloaded
+/// crates of `DATE`, and fails if a crate fails that is not a known failure.
+///
+/// The harness settings are environment variables outside the `PCG_`
+/// namespace, because `pcg_bin` inherits the environment and rejects `PCG_`
+/// variables it does not know:
+/// - `TOP_CRATES_START`, `TOP_CRATES_END`: the index range of the crates to
+///   check (default: all crates of the list).
+/// - `TEST_CRATES_PARALLELISM`: how many crates are checked at once (default 1).
+/// - `TOP_CRATES_TIMEOUT_SECS`: how long a crate may take before its check is
+///   killed and the crate counts as failed (default 3600).
+///
+/// Each crate's result is appended to `RESULTS_FILE` as soon as the crate is
+/// done, and the output of its check is written to `LOG_DIR`.
 #[test]
 #[ignore]
 pub fn top_crates() {
-    let num_crates = std::env::var("PCG_NUM_TEST_CRATES").unwrap_or_else(|_| "500".to_string());
-    let parallelism =
-        std::env::var("PCG_TEST_CRATE_PARALLELISM").unwrap_or_else(|_| "1".to_string());
-    top_crates_parallel(
-        num_crates.parse().unwrap(),
-        Some("2026-07-15"),
-        parallelism.parse().unwrap(),
-    )
-}
+    let all_crates = Crates::top(NUM_CRATES, Some(DATE));
+    let start = env_var("TOP_CRATES_START", 0);
+    let end = env_var("TOP_CRATES_END", NUM_CRATES);
+    assert!(
+        start <= end && end <= NUM_CRATES,
+        "Invalid crate range {start}..{end}"
+    );
+    let parallelism = env_var("TEST_CRATES_PARALLELISM", 1);
+    let timeout = Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 3600));
+    let known_failures = known_failures(DATE, &all_crates);
 
-pub fn top_crates_parallel(n: usize, date: Option<&str>, parallelism: usize) {
-    std::fs::create_dir_all("tmp").unwrap();
+    std::fs::create_dir_all(LOG_DIR).unwrap();
+    let mut results_file = std::fs::File::create(RESULTS_FILE).unwrap();
+    writeln!(results_file, "{RESULTS_HEADER}").unwrap();
+    let results_file = Mutex::new(results_file);
     rayon::ThreadPoolBuilder::new()
         .num_threads(parallelism)
         .build_global()
         .unwrap();
-    let top_crates: Vec<_> = Crates::top(n, date).to_vec();
-
-    let extra_env_vars: Vec<(String, String)> = std::env::vars()
-        .filter(|(k, _)| k.starts_with("PCG_"))
+    let results: Vec<CrateResult> = all_crates[start..end]
+        .par_iter()
+        .enumerate()
+        .map(|(offset, krate)| {
+            let index = start + offset;
+            let version = krate.version();
+            println!("Starting: {index} ({} {version})", krate.name);
+            let began = Instant::now();
+            let outcome = check_crate(krate, timeout);
+            let result = CrateResult {
+                index,
+                krate: krate.clone(),
+                outcome,
+                time: began.elapsed(),
+                known_failure: known_failures.contains(&krate.name),
+            };
+            println!(
+                "Finished: {index} ({} {version}): {} in {}s",
+                krate.name,
+                result.status(),
+                result.time.as_secs()
+            );
+            writeln!(results_file.lock().unwrap(), "{}", result.row()).unwrap();
+            result
+        })
         .collect();
 
-    top_crates
-        .into_par_iter()
-        .panic_fuse()
-        .enumerate()
-        .for_each(|(i, krate)| {
-            if let Some(start_from) = GLOBAL_SETTINGS.test_crates_start_from
-                && i < start_from
-            {
-                println!("Skipping: {i} ({})", krate.name);
-                return;
-            }
+    println!("{RESULTS_HEADER}");
+    for result in &results {
+        println!("{}", result.row());
+    }
 
-            let version = krate.version();
-            println!("Starting: {i} ({})", krate.name);
-            let result = run_on_crate(
-                &krate.name,
-                version,
-                date,
-                RunOnCrateOptions::RunPCG {
-                    target: Target::Release,
-                    validity_checks: false,
-                    function: None,
-                    extra_env_vars: extra_env_vars.clone(),
-                },
+    for result in &results {
+        if result.known_failure && matches!(result.outcome, Outcome::Passed) {
+            println!(
+                "Known failure {} now passes; remove it from {}",
+                result.krate.name,
+                known_failures_file(DATE).display()
             );
-            if matches!(result, RunOnCrateResult::Failed) {
-                panic!("Failed: {i} ({}: {version})", krate.name);
+        }
+    }
+    let failures: Vec<String> = results
+        .iter()
+        .filter(|result| !result.known_failure)
+        .filter_map(|result| match &result.outcome {
+            Outcome::Failed(failure) => Some(format!(
+                "{} {} in {}: {} (log: {})",
+                result.krate.name,
+                result.krate.version(),
+                failure.function.as_deref().unwrap_or("unknown function"),
+                failure.message,
+                crate_log_file(&result.krate).display()
+            )),
+            Outcome::Passed | Outcome::Unsupported(_) => None,
+        })
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "{} crates failed, see {RESULTS_FILE}:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
+fn env_var<T: FromStr>(name: &str, default: T) -> T {
+    std::env::var(name).map_or(default, |value| {
+        value
+            .parse()
+            .unwrap_or_else(|_| panic!("{name} must be a number, got `{value}`"))
+    })
+}
+
+fn known_failures_file(date: &str) -> PathBuf {
+    PathBuf::from("tests/top-crates").join(format!("{date}-known-failures.txt"))
+}
+
+/// The crates of the list for `date` that are known to fail. Each line of the
+/// file that is neither empty nor a `#` comment is a crate name followed by
+/// the reason it fails.
+fn known_failures(date: &str, crates: &[Crate]) -> BTreeSet<String> {
+    let path = known_failures_file(date);
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return BTreeSet::new(),
+        Err(e) => panic!("Failed to read {}: {e}", path.display()),
+    };
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            let name = line
+                .split_once(char::is_whitespace)
+                .unwrap_or_else(|| panic!("{}: `{line}` gives no reason", path.display()))
+                .0;
+            assert!(
+                crates.iter().any(|krate| krate.name == name),
+                "{}: {name} is not in the crate list",
+                path.display()
+            );
+            name.to_string()
+        })
+        .collect()
+}
+
+struct CrateResult {
+    index: usize,
+    krate: Crate,
+    outcome: Outcome,
+    time: Duration,
+    known_failure: bool,
+}
+
+impl CrateResult {
+    fn status(&self) -> &'static str {
+        match (&self.outcome, self.known_failure) {
+            (Outcome::Failed(_), true) => "known-fail",
+            (Outcome::Passed, true) => "fixed",
+            (outcome, _) => outcome.kind(),
+        }
+    }
+
+    /// The line of this result in `RESULTS_FILE`.
+    fn row(&self) -> String {
+        let (function, message) = match &self.outcome {
+            Outcome::Failed(failure) => (
+                failure.function.as_deref().unwrap_or(""),
+                failure.message.as_str(),
+            ),
+            Outcome::Unsupported(reason) => ("", reason.as_str()),
+            Outcome::Passed => ("", ""),
+        };
+        format!(
+            "{}\t{}\t{}\t{}\t{}\t{function}\t{}",
+            self.index,
+            self.krate.name,
+            self.krate.version(),
+            self.status(),
+            self.time.as_secs(),
+            message.replace(['\t', '\n'], " "),
+        )
+    }
+}
+
+enum Outcome {
+    Passed,
+    Failed(Failure),
+    /// `is_supported_crate` excludes the crate, for the given reason.
+    Unsupported(String),
+}
+
+impl Outcome {
+    fn kind(&self) -> &'static str {
+        match self {
+            Outcome::Passed => "pass",
+            Outcome::Failed(_) => "fail",
+            Outcome::Unsupported(_) => "unsupported",
+        }
+    }
+}
+
+struct Failure {
+    message: String,
+    /// The function the PCG was analysing when the check failed.
+    function: Option<String>,
+}
+
+fn crate_log_file(krate: &Crate) -> PathBuf {
+    PathBuf::from(LOG_DIR).join(format!("{}-{}.log", krate.name, krate.version()))
+}
+
+fn check_crate(krate: &Crate, timeout: Duration) -> Outcome {
+    let (name, version) = (krate.name.as_str(), krate.version());
+    if let Err(reason) = is_supported_crate(name, version) {
+        return Outcome::Unsupported(reason);
+    }
+    let log = crate_log_file(krate);
+    let run = catch_unwind(AssertUnwindSafe(|| {
+        with_downloaded_crate(name, version, Some(DATE), |dir| {
+            let options = RunOnCrateOptions::RunPCG {
+                target: Target::Release,
+                validity_checks: true,
+                function: None,
+                extra_env_vars: vec![],
+            };
+            let mut command = pcg_check_command(dir, &options);
+            // Lints that newer compilers deny in older crates are not PCG
+            // failures, so they only warn.
+            command
+                .env("CARGO_TERM_COLOR", "never")
+                .env("NO_COLOR", "1")
+                .env("RUSTFLAGS", "--cap-lints=warn");
+            // The PCG logs each function it analyses at this level, which
+            // lets `failure_from_log` name the function that failed.
+            if std::env::var_os("RUST_LOG").is_none() {
+                command.env("RUST_LOG", "warn,pcg[debug_ctxt]=info,pcg_bin=info");
             }
-            println!("Finished: {i} ({})", krate.name);
-        });
+            run_with_timeout(command, &log, timeout)
+        })
+    }));
+    match run {
+        Ok(Some(status)) if status.success() => Outcome::Passed,
+        Ok(Some(status)) => Outcome::Failed(failure_from_log(&log, status)),
+        Ok(None) => Outcome::Failed(Failure {
+            message: format!("timed out after {}s", timeout.as_secs()),
+            function: last_analysed_function(&read_log(&log).lines().collect::<Vec<_>>()),
+        }),
+        Err(payload) => Outcome::Failed(Failure {
+            message: format!(
+                "harness panicked: {}",
+                payload
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| payload.downcast_ref::<&str>().copied())
+                    .unwrap_or("unknown panic")
+            ),
+            function: None,
+        }),
+    }
+}
+
+/// Runs `command` with its output written to `log`. Returns `None` if it did
+/// not finish within `timeout`.
+fn run_with_timeout(mut command: Command, log: &Path, timeout: Duration) -> Option<ExitStatus> {
+    let output = std::fs::File::create(log).unwrap();
+    // `cargo` does not pass a kill on to the compilers it runs, so it gets its
+    // own process group, which is killed as a whole on timeout.
+    command
+        .stdout(output.try_clone().unwrap())
+        .stderr(output)
+        .process_group(0);
+    let mut child = command.spawn().expect("Failed to run cargo check");
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return Some(status);
+        }
+        if Instant::now() >= deadline {
+            let group = libc::pid_t::try_from(child.id()).unwrap();
+            // SAFETY: `killpg` only sends a signal and has no memory-safety
+            // preconditions.
+            let killed = unsafe { libc::killpg(group, libc::SIGKILL) };
+            assert!(
+                killed == 0,
+                "Failed to kill cargo check: {}",
+                std::io::Error::last_os_error()
+            );
+            child.wait().unwrap();
+            return None;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+}
+
+fn read_log(log: &Path) -> String {
+    String::from_utf8_lossy(&std::fs::read(log).unwrap()).into_owned()
+}
+
+static ANALYSED_FUNCTION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Running PCG on function: (.*) with \d+ basic blocks").unwrap());
+
+/// The function the PCG analysed last in the given log lines.
+fn last_analysed_function(lines: &[&str]) -> Option<String> {
+    lines
+        .iter()
+        .rev()
+        .find_map(|line| ANALYSED_FUNCTION.captures(line))
+        .map(|captures| captures[1].to_string())
+}
+
+/// The first compiler panic in the log of a check that failed with `status`,
+/// else a compiler killed by a signal, else the first error. For a panic or a
+/// signal, also the function the PCG was analysing then.
+fn failure_from_log(log: &Path, status: ExitStatus) -> Failure {
+    const MAX_MESSAGE_LEN: usize = 500;
+    let text = read_log(log);
+    let lines: Vec<&str> = text.lines().collect();
+    let analysed_before = |end: usize| last_analysed_function(&lines[..end]);
+    let panic = lines.iter().position(|line| line.contains(" panicked at "));
+    let signal = lines.iter().position(|line| {
+        line.contains("process didn't exit successfully") && line.contains("(signal: ")
+    });
+    let (mut message, function) = if let Some(index) = panic {
+        let workspace = format!("{}/", find_workspace_base_dir().display());
+        let location = lines[index]
+            .split_once(" panicked at ")
+            .unwrap()
+            .1
+            .trim_end_matches(':');
+        let location = location.strip_prefix(&workspace).unwrap_or(location);
+        // The panic message ends before the note on how to get a backtrace,
+        // or before the backtrace itself.
+        let message = lines[index + 1..]
+            .iter()
+            .take_while(|line| {
+                !line.is_empty() && !line.starts_with("note: ") && **line != "stack backtrace:"
+            })
+            .map(|line| line.trim())
+            .join(" ");
+        (format!("{location}: {message}"), analysed_before(index))
+    } else if let Some(index) = signal {
+        let signal = lines[index].rsplit_once("(signal: ").unwrap().1;
+        (
+            format!("compiler killed (signal: {signal}"),
+            analysed_before(index),
+        )
+    } else if let Some(line) = lines.iter().find(|line| line.starts_with("error")) {
+        (line.to_string(), None)
+    } else {
+        (
+            format!("cargo check failed ({status}) without a panic or error"),
+            None,
+        )
+    };
+    if let Some((cut, _)) = message.char_indices().nth(MAX_MESSAGE_LEN) {
+        message.truncate(cut);
+    }
+    Failure { message, function }
 }
 
 /// A create on crates.io.

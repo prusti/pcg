@@ -72,7 +72,6 @@ pub struct GlobalPcgSettings {
     pub allow_borrowck_errors: bool,
     pub skip_bodies_with_loops: bool,
     pub max_basic_blocks: Option<usize>,
-    pub test_crates_start_from: Option<usize>,
     pub be_rustc: bool,
 }
 
@@ -93,8 +92,6 @@ impl GlobalPcgSettings {
             PcgSettings::process_bool_var(&mut processed_vars, "PCG_SKIP_BODIES_WITH_LOOPS", false);
         let max_basic_blocks =
             PcgSettings::process_usize_var(&mut processed_vars, "PCG_MAX_BASIC_BLOCKS");
-        let test_crates_start_from =
-            PcgSettings::process_usize_var(&mut processed_vars, "PCG_TEST_CRATES_START_FROM");
         let allow_borrowck_errors =
             PcgSettings::process_bool_var(&mut processed_vars, "PCG_ALLOW_BORROWCK_ERRORS", false);
         let be_rustc = PcgSettings::process_bool_var(&mut processed_vars, "PCG_BE_RUSTC", false);
@@ -103,7 +100,6 @@ impl GlobalPcgSettings {
                 allow_borrowck_errors,
                 skip_bodies_with_loops,
                 max_basic_blocks,
-                test_crates_start_from,
                 be_rustc,
             },
             processed_vars,
