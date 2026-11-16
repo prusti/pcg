@@ -211,7 +211,9 @@ pub fn download_crate(name: &str, version: &str, date: Option<&str>) -> PathBuf 
     let filename = format!("{dirname}.crate");
     if !std::path::PathBuf::from(&filename).exists() {
         let dl = format!("https://crates.io/api/v1/crates/{name}/{version}/download");
-        let mut resp = get(&dl).expect("Could not fetch top crates");
+        let mut resp = get(&dl)
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .expect("Could not fetch top crates");
         let mut file = std::fs::File::create(&filename).unwrap();
         resp.copy_to(&mut file).unwrap();
     }
