@@ -1,11 +1,11 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{OnceCell, Ref, RefCell};
 
 use derive_more::{Deref, IntoIterator};
 use itertools::Itertools;
 
 use crate::{
     borrow_pcg::{
-        borrow_pcg_edge::{BorrowPcgEdgeRef, LocalNode},
+        borrow_pcg_edge::{BlockedNode, BorrowPcgEdgeRef, LocalNode},
         edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData,
         validity_conditions::ValidityConditions,
@@ -31,6 +31,9 @@ impl<'graph, 'tcx> CachedBlockingEdges<'graph, 'tcx> {
 
 pub(crate) type CachedLeafEdges<'graph, 'tcx> = Vec<BorrowPcgEdgeRef<'tcx, 'graph>>;
 
+type EdgesBlocking<'graph, 'tcx, P, EdgeKind, VC> =
+    FxHashMap<BlockedNode<'tcx, P>, Vec<BorrowPcgEdgeRef<'tcx, 'graph, EdgeKind, VC>>>;
+
 /// A data structure used for querying the Borrow PCG
 ///
 /// It contains a reference to a Borrow PCG and mutable data structures for
@@ -44,7 +47,9 @@ pub struct FrozenGraphRef<
 > {
     graph: &'graph BorrowsGraph<'tcx, EdgeKind, VC>,
     nodes_cache: RefCell<Option<FxHashSet<PcgNodeWithPlace<'tcx, P>>>>,
-    edges_blocking_cache: RefCell<FxHashMap<PcgNode<'tcx>, CachedBlockingEdges<'graph, 'tcx>>>,
+    /// Maps each blocked node to the edges blocking it. Built on the first
+    /// query, in one pass over the edges.
+    edges_blocking: OnceCell<EdgesBlocking<'graph, 'tcx, P, EdgeKind, VC>>,
     leaf_edges_cache: RefCell<Option<CachedLeafEdges<'graph, 'tcx>>>,
     roots_cache: RefCell<Option<FxHashSet<PcgNode<'tcx>>>>,
 }
@@ -56,16 +61,44 @@ impl<'graph, 'tcx, EdgeKind, VC> FrozenGraphRef<'graph, 'tcx, Place<'tcx>, EdgeK
         Self {
             graph,
             nodes_cache: RefCell::new(None),
-            edges_blocking_cache: RefCell::new(FxHashMap::default()),
+            edges_blocking: OnceCell::new(),
             leaf_edges_cache: RefCell::new(None),
             roots_cache: RefCell::new(None),
         }
     }
 }
 
-impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
-    FrozenGraphRef<'_, 'tcx, P, EdgeKind, VC>
+impl<'graph, 'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
+    FrozenGraphRef<'graph, 'tcx, P, EdgeKind, VC>
 {
+    /// The map of the edges blocking each node. It does not depend on
+    /// `ctxt`, so the first caller's is used to build it.
+    fn edges_blocking<Ctxt: Copy>(
+        &self,
+        ctxt: Ctxt,
+    ) -> &EdgesBlocking<'graph, 'tcx, P, EdgeKind, VC>
+    where
+        EdgeKind: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.edges_blocking.get_or_init(|| {
+            let mut edges_blocking: EdgesBlocking<'graph, 'tcx, P, EdgeKind, VC> =
+                FxHashMap::default();
+            for (kind, conditions) in &self.graph.edges {
+                // `blocks_node` can be false for some of an edge's
+                // `blocked_nodes`, so each one is checked.
+                for node in kind.blocked_nodes(ctxt) {
+                    if kind.blocks_node(node, ctxt) {
+                        edges_blocking
+                            .entry(node)
+                            .or_default()
+                            .push(BorrowPcgEdgeRef::new(kind, conditions));
+                    }
+                }
+            }
+            edges_blocking
+        })
+    }
+
     pub fn leaf_nodes<'slf, Ctxt: Copy + DebugCtxt>(
         &'slf self,
         ctxt: Ctxt,
@@ -89,9 +122,7 @@ impl<'tcx, P: PcgNodeComponent, EdgeKind: std::hash::Hash + Eq, VC>
     where
         EdgeKind: std::hash::Hash + Eq + EdgeData<'tcx, Ctxt, P>,
     {
-        self.graph
-            .edges()
-            .all(|edge| !edge.kind.blocks_node(node.into(), ctxt))
+        !self.edges_blocking(ctxt).contains_key(&node.into())
     }
 
     pub fn nodes<'slf, Ctxt: Copy + DebugCtxt>(
@@ -220,17 +251,12 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
         node: PcgNode<'tcx>,
         ctxt: CompilerCtxt<'mir, 'tcx>,
     ) -> CachedBlockingEdges<'graph, 'tcx> {
-        {
-            let map = self.edges_blocking_cache.borrow();
-            if let Some(edges) = map.get(&node) {
-                return edges.clone();
-            }
-        }
-        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
-        self.edges_blocking_cache
-            .borrow_mut()
-            .insert(node, edges.clone());
-        edges
+        CachedBlockingEdges::new(
+            self.edges_blocking(ctxt)
+                .get(&node)
+                .cloned()
+                .unwrap_or_default(),
+        )
     }
 
     pub fn has_edge_blocking<'slf, 'a: 'graph, 'bc: 'graph>(
@@ -241,15 +267,6 @@ impl<'graph, 'tcx> FrozenGraphRef<'graph, 'tcx> {
     where
         'tcx: 'a,
     {
-        {
-            let map = self.edges_blocking_cache.borrow();
-            if let Some(edges) = map.get(&node) {
-                return !edges.is_empty();
-            }
-        }
-        let edges = CachedBlockingEdges::new(self.graph.edges_blocking_set(node, ctxt));
-        let result = !edges.is_empty();
-        self.edges_blocking_cache.borrow_mut().insert(node, edges);
-        result
+        self.edges_blocking(ctxt.bc_ctxt()).contains_key(&node)
     }
 }

@@ -361,9 +361,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             }
 
             let has_live_rawptr_delegation = |node: PcgNode<'tcx>| {
-                self.pcg
-                    .borrows_graph()
-                    .edges_blocking(node, ctxt)
+                fg.get_edges_blocking(node, ctxt.bc_ctxt())
                     .into_iter()
                     .any(|e| {
                         matches!(
@@ -478,10 +476,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     should_kill_node(delegation.rawptr_place.into(), &fg)
                 {
                     edges_to_remove.push(&edge, reason);
-                    let edges = self
-                        .pcg
-                        .borrows_graph()
-                        .edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
+                    let edges =
+                        fg.get_edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
                     for edge_to_remove in edges {
                         edges_to_remove.push(
                             &edge_to_remove.to_owned_edge(),
