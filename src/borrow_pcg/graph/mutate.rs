@@ -7,7 +7,10 @@ use crate::{
         has_pcs_elem::PlaceLabeller,
         validity_conditions::{PathCondition, ValidityConditionOps, ValidityConditions},
     },
-    rustc_interface::middle::mir::{BasicBlock, Local},
+    rustc_interface::{
+        data_structures::fx::FxBuildHasher,
+        middle::mir::{BasicBlock, Local},
+    },
     utils::{
         CompilerCtxt, FilterMutResult, PcgPlace, SnapshotLocation,
         data_structures::{HashMap, HashSet},
@@ -77,7 +80,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
         VC: ValidityConditionOps<Ctxt>,
     {
         let mut changed = false;
-        let mut new_edges = HashMap::default();
+        let mut new_edges = HashMap::with_capacity_and_hasher(self.edges.len(), FxBuildHasher);
         for (kind, conditions) in self.edges.drain() {
             let mut edge = Conditioned::new(kind, conditions);
             if f(&mut edge) {
@@ -99,7 +102,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
         VC: ValidityConditionOps<Ctxt>,
     {
         let mut changed = false;
-        let mut new_edges = HashMap::default();
+        let mut new_edges = HashMap::with_capacity_and_hasher(self.edges.len(), FxBuildHasher);
         for (kind, conditions) in self.edges.drain() {
             let mut edge = Conditioned::new(kind, conditions);
             match f(&mut edge) {
