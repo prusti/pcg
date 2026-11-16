@@ -378,8 +378,8 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// The place may still be dereferenced, reached by a dereference of its
     /// parent, or the borrow assigned to it still be in the graph, in edges
     /// that are removed only later; consumers of the actions may need the
-    /// place's value to apply those removals. Such a place is weakened only
-    /// once all edges removed together with `edge` are gone, see
+    /// place's value to apply those removals. Such a place is not weakened
+    /// while it is in use, see
     /// [`Self::finish_weakening_places_with_dead_lifetime_projections`].
     fn weaken_places_with_dead_lifetime_projections(
         &mut self,
@@ -395,16 +395,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
 
     /// Called once all of `removed_edges`, which are removed together, are
     /// gone: weakens the places whose lifetime projections their removal left
-    /// dead and that still have a capability above [`CapabilityKind::Write`],
-    /// e.g. because they were in use when the edge was removed.
+    /// dead and that are no longer in use.
     pub(crate) fn finish_weakening_places_with_dead_lifetime_projections(
         &mut self,
         removed_edges: &[BorrowPcgEdge<'tcx>],
     ) -> Result<(), PcgError> {
         for edge in removed_edges {
-            for place in self.places_with_dead_lifetime_projections(edge.kind()) {
-                self.weaken_place_with_dead_lifetime_projection(place)?;
-            }
+            self.weaken_places_with_dead_lifetime_projections(edge.kind())?;
         }
         Ok(())
     }
