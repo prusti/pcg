@@ -35,7 +35,7 @@ use frozen::{CachedLeafEdges, FrozenGraphRef};
 use itertools::Itertools;
 
 use super::{
-    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
+    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, LocalNode},
     edge::borrow::BorrowEdge,
     edge_data::EdgeData,
     validity_conditions::ValidityConditions,
@@ -174,6 +174,22 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC> {
+    /// The current places that loans block.
+    pub(crate) fn lent_places<Ctxt: Copy + DebugCtxt>(&self, ctxt: Ctxt) -> HashSet<P>
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.edges
+            .keys()
+            .filter(|kind| kind.is_loan())
+            .flat_map(|kind| {
+                kind.blocked_nodes(ctxt)
+                    .filter_map(|node| node.as_current_place())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
     ) -> impl Iterator<Item = &'slf AbstractionEdge<'tcx, P>> + 'slf {
@@ -379,18 +395,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.edges
             .into_iter()
             .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
-    }
-
-    pub(crate) fn abstraction_edges<'slf>(
-        &'slf self,
-    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionEdge<'tcx>>> + 'slf {
-        self.edges().filter_map(|edge| match edge.kind {
-            BorrowPcgEdgeKind::Abstraction(abstraction) => Some(Conditioned {
-                conditions: edge.conditions().clone(),
-                value: abstraction,
-            }),
-            _ => None,
-        })
     }
 
     /// All edges that are not blocked by any other edge. The argument

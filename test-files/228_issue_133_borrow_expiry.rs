@@ -29,9 +29,9 @@ pub fn whole_local_borrow_expiry(mut a: ListNode) {
     let x = &mut a;
     use_list_node(x);
     consume_u(a.value);
-    // PCG: bb1[0] pre_operands: Restore capability E to a
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: x = &mut  a returning E to a
     // PCG: bb1[0] post_operands: a: E
-    // ~PCG: bb1[0] pre_operands: Restore capability W to a
+    // ~PCG: bb1[0] pre_operands: Remove Edge borrow: x = &mut  a returning W to a
     // ~PCG: bb1[0] post_operands: a: W
 }
 
@@ -46,13 +46,15 @@ pub fn conditional_reborrow_expiry(mut a: ListNode) {
     // The borrow of `a` was split into two conditional edge variants (one
     // per match arm); on expiry it must be removed under the union of their
     // conditions, not just one branch's.
-    // PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> { bb3, bb2 }
-    // PCG: bb6[0] pre_operands: Restore capability E to a
+    // PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> { bb3, bb2 } returning E to a
     // PCG: bb6[0] post_operands: a: E
-    // ~PCG: bb6[0] pre_operands: Restore capability W to a
+    // ~PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> { bb3, bb2 } returning W to a
     // ~PCG: bb6[0] post_operands: a: W
     // ~PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> bb3
     // ~PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> bb2
+    // At the join, `(*x).value` is lent to the reborrow of `*x` made in the
+    // other arm.
+    // PCG: bb4 -> bb5: Lend (*x).value to borrow: x = &mut  *x under conditions bb0 -> bb3
 }
 
 fn main() {}

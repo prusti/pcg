@@ -26,7 +26,6 @@ use crate::{
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
-    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
         CompilerCtxt, DataflowCtxt, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt, HasCompilerCtxt,
@@ -92,10 +91,7 @@ pub(crate) enum ObtainType {
     ForStorageDead,
     Capability(CapabilityKind),
     TwoPhaseExpand,
-    LoopInvariant {
-        is_blocked: bool,
-        usage_type: PlaceUsageType,
-    },
+    LoopInvariant { usage_type: PlaceUsageType },
 }
 
 impl ObtainType {
@@ -137,10 +133,7 @@ impl ObtainType {
             ObtainType::ForStorageDead => CapabilityKind::Write,
             ObtainType::Capability(cap) => cap,
             ObtainType::TwoPhaseExpand => CapabilityKind::Read,
-            ObtainType::LoopInvariant {
-                is_blocked: _,
-                usage_type,
-            } => {
+            ObtainType::LoopInvariant { usage_type } => {
                 if usage_type == PlaceUsageType::Read
                     || place.is_shared_ref(ctxt)
                     || place.projects_shared_ref(ctxt)
@@ -238,13 +231,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
             {
                 continue;
             }
-            let action = PcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "restore capability to leaf place",
-                ctxt,
-            );
-            self.apply_action(action)?;
+            self.apply_action(BorrowPcgAction::unfreeze(place, "unfreeze leaf place").into())?;
         }
         Ok(())
     }
@@ -257,9 +244,23 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
+        // A place that holds nothing below one that holds a capability is
+        // lent, or only the layout of the loans of a place in it (a join
+        // holds the enum packed while a variant field is borrowed): it is
+        // left as it is.
         let to_collapse = self
             .get_local_expansions(place.local)
             .places_to_collapse_for_obtain_of(place, ctxt);
+        let capabilities = self.capabilities();
+        let to_collapse = to_collapse
+            .into_iter()
+            .filter(|p| {
+                capabilities.get(*p, ctxt).is_some()
+                    || !std::iter::successors(p.parent_place(), |q| q.parent_place())
+                        .take_while(|q| place.is_prefix_of(*q))
+                        .any(|q| capabilities.get(q, ctxt).is_some())
+            })
+            .collect::<Vec<_>>();
         // Collapsing a place removes its strict descendants from the owned
         // PCG, which would leave any borrow-PCG edge blocking such a
         // descendant referring to a place that is no longer there. Read
@@ -288,6 +289,17 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .cloned()
                 .collect::<Vec<_>>();
             for pe in expansions {
+                // Parts frozen apart are frozen together in `place`.
+                if capability.is_read()
+                    && place
+                        .expansion_places(&pe.expansion, ctxt)?
+                        .into_iter()
+                        .any(|part| self.capabilities().suspended(part).is_some())
+                {
+                    self.apply_action(
+                        BorrowPcgAction::pack_suspended(place, context.clone()).into(),
+                    )?;
+                }
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
                     Some(context.clone().into()),
@@ -322,8 +334,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         Ok(())
     }
 
-    /// Gives `place` read capability, downgrading the capabilities of the
-    /// places in its expansion to read.
+    /// Gives `place` read capability by freezing it, which makes the places in
+    /// its expansion read copies.
     ///
     /// This is how read capability is obtained for a place that cannot have
     /// its expansion collapsed, because one of its descendants is blocked by
@@ -333,48 +345,8 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         place: Place<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
-        let descendants = self
-            .get_local_expansions(place.local)
-            .all_descendants_of(place, ctxt);
-        for descendant in descendants {
-            let Some(cap) = self.capabilities().get(descendant, ctxt) else {
-                continue;
-            };
-            if cap == CapabilityKind::Read {
-                continue;
-            }
-            pcg_validity_assert!(
-                cap == CapabilityKind::Exclusive,
-                [ctxt],
-                "Cannot downgrade capability {:?} of {} to read",
-                cap,
-                descendant.display_string(ctxt.ctxt())
-            );
-            self.apply_action(
-                BorrowPcgAction::weaken(
-                    descendant,
-                    cap,
-                    Some(CapabilityKind::Read),
-                    "downgrade expansion to read",
-                )
-                .into(),
-            )?;
-        }
-        let place_cap = self.capabilities().get(place, ctxt);
-        if place_cap != Some(CapabilityKind::Read) {
-            pcg_validity_assert!(
-                place_cap.is_none(),
-                [ctxt],
-                "Cannot give read capability to {}: it has capability {:?}",
-                place.display_string(ctxt.ctxt()),
-                place_cap
-            );
-            self.apply_action(PcgAction::restore_capability(
-                place,
-                CapabilityKind::Read,
-                "downgrade expansion to read",
-                ctxt,
-            ))?;
+        if self.capabilities().get(place, ctxt) != Some(CapabilityKind::Read) {
+            self.apply_action(BorrowPcgAction::freeze(place, "read an unpacked place").into())?;
         }
         Ok(())
     }

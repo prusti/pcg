@@ -13,7 +13,7 @@ import {
   DotFileAtPhase,
   AppliedAction,
 } from "../generated_types";
-import { actionLine } from "../actionFormatting";
+import { actionLine, capabilityChangesLine } from "../actionFormatting";
 import {
   useLocalStorageBool,
   useLocalStorageNumber,
@@ -543,7 +543,10 @@ export default function PCGNavigator({
           const action =
             item.phase === "successor" ? item.action : item.action.action;
           let hoverText = action.data.debug_info || "";
-          const itemContent = actionLine(action.data.kind);
+          let itemContent = actionLine(action.data.kind);
+          if (action.data.capabilities.length > 0) {
+            itemContent += ` [${capabilityChangesLine(action.data.capabilities)}]`;
+          }
           if (item.phase !== "successor") {
             if (!hoverText) {
               hoverText = item.action.result.change_summary;

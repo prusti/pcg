@@ -52,4 +52,58 @@ fn write_only(mut a: H, cont: bool) -> H {
     a
 }
 
+fn consume(_s: String) {}
+
+fn moved_in_loop(stop: bool) {
+    // `s` is not definitely initialized at the loop head (bb2): the back edge
+    // arrives with it moved out, so the loop head holds it with W and the
+    // entry weakens it.
+    // PCG: bb1 -> bb2: Weaken s from E to W
+    // PCG: bb2[0] pre_operands: s: W
+    let mut s = String::new();
+    loop {
+        s = String::from("x");
+        consume(s);
+        if stop {
+            break;
+        }
+    }
+}
+
+// `x` is moved out on the back edge and frozen only on entry: the loop head
+// holds it with W.
+fn moved_in_loop_frozen_on_entry(c: bool) {
+    // PCG: bb2 -> bb3: Weaken x from E to W
+    // PCG: bb3[0] pre_operands: x: W
+    let mut x = String::new();
+    let y = String::new();
+    let mut r = &x;
+    loop {
+        let _ = r.len();
+        r = &y;
+        x = String::new();
+        drop(x);
+        if c {
+            break;
+        }
+    }
+}
+
+// `r` is moved out on the back edge while its referent is lent on entry.
+fn moved_in_loop_lent_on_entry(x: &mut i32, y: &mut i32, c: bool) {
+    // PCG: bb0 -> bb1: Weaken r from e to W
+    // PCG: bb1[0] pre_operands: r: W
+    let mut r = &mut *x;
+    let mut rr = &mut *r;
+    loop {
+        *rr += 1;
+        rr = &mut *y;
+        r = &mut *x;
+        let _r2 = r;
+        if c {
+            break;
+        }
+    }
+}
+
 fn main() {}

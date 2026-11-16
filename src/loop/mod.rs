@@ -30,7 +30,7 @@ use crate::{
         mir_dataflow::{Forward, JoinSemiLattice, fmt::DebugWithContext},
     },
     utils::{
-        HasCompilerCtxt, Place,
+        HasCompilerCtxt, Place, PlaceProjectable,
         data_structures::HashMap,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         visitor::FallableVisitor,
@@ -560,6 +560,26 @@ impl<'tcx> PlaceUsages<'tcx> {
             consolidated.insert(place, usage_type);
         }
         PlaceUsages(consolidated)
+    }
+
+    /// These usages, each place in an enum variant replaced by the enum: a
+    /// loop head does not know the variant, as not every path into it matched
+    /// it.
+    pub(crate) fn outside_variants<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Self
+    where
+        'tcx: 'a,
+    {
+        let mut usages = PlaceUsages::default();
+        for usage in self.iter() {
+            let place = usage
+                .place
+                .iter_projections(ctxt)
+                .into_iter()
+                .find(|(_, elem)| matches!(elem, mir::ProjectionElem::Downcast(..)))
+                .map_or(usage.place, |(enum_place, _)| enum_place);
+            let _ = usages.update(place, usage.usage);
+        }
+        usages
     }
 
     /// The usages of this set in the order in which the corresponding places

@@ -6,7 +6,7 @@ use crate::{
     HasSettings,
     borrow_pcg::{
         action::ApplyActionResult,
-        borrow_pcg_edge::{BlockingNode, LocalNode},
+        borrow_pcg_edge::BlockingNode,
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
         region_projection::PcgLifetimeProjectionBase,
@@ -14,10 +14,7 @@ use crate::{
             JoinValidityConditionsResult, ValidityConditionOps, ValidityConditionsLike,
         },
     },
-    pcg::{
-        PcgNodeWithPlace,
-        place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-    },
+    pcg::PcgNodeWithPlace,
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLocals, PlaceLike,
         data_structures::HashSet,
@@ -32,11 +29,10 @@ use super::{
     validity_conditions::{PathCondition, ValidityConditions},
 };
 use crate::{
-    action::BorrowPcgAction,
+    action::{BorrowPcgAction, CapabilityChanges},
     borrow_pcg::{
         action::{BorrowPcgActionKind, LabelPlaceReason},
         edge::{
-            borrow::BorrowEdge,
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
             kind::BorrowPcgEdgeKind,
         },
@@ -45,11 +41,14 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionLabel},
     },
     pcg::{
-        CapabilityKind, PcgNode, ctxt::AnalysisCtxt, place_capabilities::PlaceCapabilitiesInterface,
+        CapabilityKind, PcgNode,
+        ctxt::AnalysisCtxt,
+        meet,
+        place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
     },
     pcg_validity_assert,
     rustc_interface::middle::{
-        mir::{self, BasicBlock, BorrowKind, Location, MutBorrowKind},
+        mir::{self, BasicBlock},
         ty,
     },
     utils::{
@@ -87,6 +86,122 @@ fn map_label_predicate<'tcx, P: Copy>(
         LabelNodePredicate::EdgeType(edge_type) => LabelNodePredicate::EdgeType(*edge_type),
         LabelNodePredicate::InSourceNodes => LabelNodePredicate::InSourceNodes,
         LabelNodePredicate::InTargetNodes => LabelNodePredicate::InTargetNodes,
+    }
+}
+
+/// The capability changes of ending the freeze of `place` while `refrozen`
+/// stay frozen: the read unpacking of `place` becomes an exclusive one,
+/// except for `refrozen` and their unpackings. Each leaf gets back the
+/// capability suspended for it or for the frozen place it is a read copy of.
+fn end_freeze<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    refrozen: &[P],
+    capabilities: &impl PlaceCapabilitiesReader<'tcx, CapabilityKind, P>,
+    ctxt: Ctxt,
+) -> CapabilityChanges<P> {
+    let holders = std::iter::once(place)
+        .chain(
+            capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .map(|(p, _)| p),
+        )
+        .collect::<Vec<_>>();
+    let mut changes = CapabilityChanges::default();
+    for &p in &holders {
+        if refrozen.iter().any(|t| t.is_prefix_of(p)) {
+            continue;
+        }
+        let unpacked = holders.iter().any(|h| p.is_strict_prefix_of(*h));
+        changes.set(
+            p,
+            exclusively_unpacked_capability(
+                p,
+                unpacked,
+                suspended_for(place, p, capabilities),
+                ctxt,
+            ),
+        );
+    }
+    changes
+}
+
+/// The capability suspended for `p` by the freeze of `frozen`: the one
+/// suspended for `p` or for the closest place between `frozen` and `p`.
+fn suspended_for<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    frozen: P,
+    p: P,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx, CapabilityKind, P>,
+) -> Option<CapabilityKind> {
+    capabilities
+        .iter_suspended()
+        .filter(|(q, _)| frozen.is_prefix_of(*q) && q.is_prefix_of(p))
+        .reduce(|a, b| if a.0.is_strict_prefix_of(b.0) { b } else { a })
+        .map(|(_, capability)| capability)
+}
+
+/// Whether `p` is part of the current value of `place` that labelling it
+/// for `reason` labels.
+fn is_labelled<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    reason: LabelPlaceReason,
+    p: P,
+    ctxt: Ctxt,
+) -> bool {
+    match reason {
+        LabelPlaceReason::Detach => place.is_prefix_of(p),
+        _ => p.projects_indirection_from(place, ctxt),
+    }
+}
+
+/// The capability changes of labelling the current value of `place`: the
+/// current places that were part of the labelled value lose their
+/// capabilities.
+pub(crate) fn label_place_changes<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    reason: LabelPlaceReason,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx, CapabilityKind, P>,
+    ctxt: Ctxt,
+) -> CapabilityChanges<P> {
+    capabilities
+        .iter()
+        .filter(|(p, _)| is_labelled(place, reason, *p, ctxt))
+        .map(|(p, _)| (p, None))
+        .collect::<Vec<_>>()
+        .into()
+}
+
+fn is_behind_shared_ref<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(place: P, ctxt: Ctxt) -> bool {
+    place
+        .iter_projections(ctxt)
+        .into_iter()
+        .any(|(base, elem)| {
+            matches!(elem, mir::ProjectionElem::Deref)
+                && matches!(
+                    base.rust_ty(ctxt).kind(),
+                    ty::Ref(_, _, ty::Mutability::Not)
+                )
+        })
+}
+
+/// The capability of `place` in an exclusive unpacking: an `unpacked` place
+/// keeps none (`e` for a mutable reference, R for a dereferenced shared
+/// reference), and a leaf has `leaf`. Places behind a shared reference keep R.
+fn exclusively_unpacked_capability<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    unpacked: bool,
+    leaf: Option<CapabilityKind>,
+    ctxt: Ctxt,
+) -> Option<CapabilityKind> {
+    if is_behind_shared_ref(place, ctxt) {
+        return Some(CapabilityKind::Read);
+    }
+    if !unpacked {
+        return leaf;
+    }
+    match place.rust_ty(ctxt).kind() {
+        ty::Ref(_, _, ty::Mutability::Mut) => Some(CapabilityKind::ShallowExclusive),
+        ty::Ref(_, _, ty::Mutability::Not) => Some(CapabilityKind::Read),
+        _ => None,
     }
 }
 
@@ -177,28 +292,17 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     }
     fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, VC>;
 
-    fn leaf_nodes<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
-        &self,
-        ctxt: Ctxt,
-    ) -> Vec<LocalNode<'tcx>>
-    where
-        EdgeKind: Eq + std::hash::Hash + EdgeData<'tcx, Ctxt, Place<'tcx>>,
-        'tcx: 'a,
-    {
-        self.graph().frozen_graph().leaf_nodes(ctxt)
-    }
-
-    fn label_place_and_update_related_capabilities<
+    /// Labels the current value of `place` in the graph; the capability
+    /// changes are those of [`label_place_changes`].
+    fn label_place<
         'a,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
         Ctxt: Copy + HasCompilerCtxt<'a, 'tcx>,
-        C,
     >(
         &mut self,
         place: P,
         reason: LabelPlaceReason,
         labeller: &impl PlaceLabeller<'tcx, Ctxt, P>,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
         ctxt: Ctxt,
     ) -> ApplyActionResult
     where
@@ -209,12 +313,6 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     {
         let state = self.as_mut_ref();
         let replacements = state.graph.label_place(place, reason, labeller, ctxt);
-        // If in a join we don't want to change capabilities because this will
-        // essentially be handled by the join logic.
-        // See 69_http_header_map.rs
-        if reason != LabelPlaceReason::JoinOwnedReadAndWriteCapabilities {
-            capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt));
-        }
         let display = display_node_replacements(&replacements, ctxt, OutputMode::Normal);
         ApplyActionResult {
             changed: true,
@@ -237,110 +335,359 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             .label_lifetime_projections(predicate, label, ctxt)
     }
 
-    fn remove<'a, P: Copy + Eq + std::hash::Hash, Ctxt: Copy, C>(
-        &mut self,
-        edge: &EdgeKind,
-        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, C, P>,
-        ctxt: Ctxt,
-    ) -> bool
-    where
-        'tcx: 'a,
-        EdgeKind: EdgeData<'tcx, Ctxt, P> + Eq + std::hash::Hash,
-    {
-        let state = self.as_mut_ref();
-        let removed = state.graph.remove(edge).is_some();
-        if removed {
-            for node in edge.blocked_by_nodes(ctxt) {
-                if !state.graph.contains(node, ctxt)
-                    && let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
-                {
-                    let _ = capabilities.remove(place, ctxt);
-                }
-            }
-        }
-        removed
-    }
-
     fn apply_action<
         'a,
         Ctxt: DebugCtxt + HasCompilerCtxt<'a, 'tcx> + HasSettings<'a>,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
     >(
         &mut self,
-        action: BorrowPcgAction<'tcx, EdgeKind, P, VC>,
+        action: &mut BorrowPcgAction<'tcx, EdgeKind, P, VC>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
         ctxt: Ctxt,
     ) -> ApplyActionResult
     where
         'tcx: 'a,
-        VC: ValidityConditionOps<Ctxt>,
+        VC: ValidityConditionOps<Ctxt> + Clone,
         EdgeKind: EdgeData<'tcx, Ctxt, P>
             + LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
             + Eq
-            + std::hash::Hash,
+            + std::hash::Hash
+            + Clone,
         MaybeRemotePlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
     {
-        match action.kind {
-            BorrowPcgActionKind::Restore(restore) => {
-                let restore_place = restore.place();
-                if let Some(cap) = capabilities.get(restore_place, ctxt) {
-                    pcg_validity_assert!(cap < restore.capability());
-                }
-                if !capabilities.insert(restore_place, restore.capability(), ctxt) {
-                    // panic!("Capability should have been updated")
-                }
-                if restore.capability() == CapabilityKind::Exclusive {
-                    self.label_lifetime_projections(
-                        &LabelNodePredicate::all_future_postfixes(restore_place),
-                        None,
-                        ctxt,
-                    );
-                }
-                ApplyActionResult::changed_no_display()
-            }
+        // The changes the kind determines, then the ones given with the action.
+        let mut changes = CapabilityChanges::default();
+        let mut result = ApplyActionResult::changed_no_display();
+        match &action.kind {
             BorrowPcgActionKind::Weaken(weaken) => {
-                let weaken_place = weaken.place();
+                let current = capabilities.get(weaken.place, ctxt);
                 pcg_validity_assert!(
-                    capabilities.get(weaken_place, ctxt).unwrap() == weaken.from,
+                    current == Some(weaken.from) && weaken.from > weaken.to,
                     [ctxt],
-                    "Weakening from {:?} to {:?} is not valid",
-                    capabilities.get(weaken_place, ctxt).unwrap(),
-                    weaken.from
+                    "Weakening {} with capability {:?} from {:?} to {:?}",
+                    weaken.place.display_string(ctxt),
+                    current,
+                    weaken.from,
+                    weaken.to
                 );
-                match weaken.to {
-                    Some(to) => {
-                        capabilities.insert(weaken_place, to, ctxt);
-                    }
-                    None => {
-                        assert!(capabilities.remove(weaken_place, ctxt).is_some());
+                changes.set(weaken.place, Some(weaken.to));
+            }
+            BorrowPcgActionKind::Freeze { place } => {
+                pcg_validity_assert!(
+                    matches!(
+                        capabilities.get(*place, ctxt),
+                        Some(CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive) | None
+                    ),
+                    [ctxt],
+                    "Freezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(*place, ctxt)
+                );
+                // An unpacked place suspends what its parts hold together,
+                // a frozen part what its freeze suspends; what lies behind a
+                // shared reference is not part of its value.
+                let packed = capabilities
+                    .capabilities_for_strict_postfixes_of(*place)
+                    .filter(|(p, _)| !is_behind_shared_ref(*p, ctxt))
+                    .map(|(p, cap)| capabilities.suspended(p).unwrap_or(cap))
+                    .reduce(meet);
+                let suspended =
+                    std::iter::once((*place, capabilities.get(*place, ctxt).or(packed)))
+                        .chain(
+                            capabilities
+                                .capabilities_for_strict_postfixes_of(*place)
+                                .map(|(p, cap)| (p, Some(cap))),
+                        )
+                        .filter_map(|(p, cap)| Some((p, cap.filter(|cap| !cap.is_read())?)))
+                        .collect::<Vec<_>>();
+                for (p, cap) in suspended {
+                    capabilities.suspend(p, cap);
+                }
+                changes.set(*place, Some(CapabilityKind::Read));
+                for (p, cap) in capabilities.capabilities_for_strict_postfixes_of(*place) {
+                    pcg_validity_assert!(
+                        !cap.is_write(),
+                        [ctxt],
+                        "Freezing {} with uninitialised {}",
+                        place.display_string(ctxt),
+                        p.display_string(ctxt)
+                    );
+                    changes.set(p, Some(CapabilityKind::Read));
+                }
+            }
+            BorrowPcgActionKind::Unfreeze { place, refrozen } => {
+                pcg_validity_assert!(
+                    capabilities.get(*place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Unfreezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(*place, ctxt)
+                );
+                changes = end_freeze(*place, refrozen, capabilities, ctxt);
+                // The freeze moves, with what it suspends, to `refrozen` and
+                // to the shared references whose referents stay unpacked.
+                let still_frozen = refrozen
+                    .iter()
+                    .copied()
+                    .chain(
+                        changes
+                            .iter()
+                            .filter(|(p, cap)| {
+                                *cap == Some(CapabilityKind::Read)
+                                    && !is_behind_shared_ref(*p, ctxt)
+                            })
+                            .map(|(p, _)| p),
+                    )
+                    .collect::<Vec<_>>();
+                for &t in &still_frozen {
+                    if capabilities.suspended(t).is_none()
+                        && let Some(suspended) = suspended_for(*place, t, capabilities)
+                    {
+                        capabilities.suspend(t, suspended);
                     }
                 }
-                ApplyActionResult::changed_no_display()
+                capabilities.retain_suspended(|p, _| {
+                    !place.is_prefix_of(p) || still_frozen.iter().any(|t| t.is_prefix_of(p))
+                });
             }
-            BorrowPcgActionKind::LabelPlace(action) => self
-                .label_place_and_update_related_capabilities(
-                    action.place,
-                    action.reason,
-                    &SetLabel(action.location),
-                    capabilities,
-                    ctxt,
-                ),
-            BorrowPcgActionKind::RemoveEdge(edge) => {
-                ApplyActionResult::from_changed(self.remove(&edge.value, capabilities, ctxt))
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => {
+                let place = borrow.blocked_place.place();
+                let frozen = capabilities.get(place, ctxt) == Some(CapabilityKind::Read)
+                    && capabilities.suspended(place).is_some()
+                    && !capabilities
+                        .iter()
+                        .any(|(p, cap)| p.is_strict_prefix_of(place) && cap.is_read());
+                pcg_validity_assert!(
+                    frozen,
+                    [ctxt],
+                    "Activating a two-phase borrow of {}, which is not frozen (capability {:?})",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                changes.set(place, None);
+            }
+            BorrowPcgActionKind::LabelPlace(label) => {
+                changes = label_place_changes(label.place, label.reason, capabilities, ctxt);
+                capabilities
+                    .retain_suspended(|p, _| !is_labelled(label.place, label.reason, p, ctxt));
+                result =
+                    self.label_place(label.place, label.reason, &SetLabel(label.location), ctxt);
+            }
+            BorrowPcgActionKind::RemoveEdge { edge } => {
+                let graph = self.graph_mut();
+                let removed = graph.remove(&edge.value).is_some();
+                for node in edge.value.blocked_by_nodes(ctxt) {
+                    if !graph.contains(node, ctxt)
+                        && let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
+                    {
+                        if capabilities.get(place, ctxt).is_some() {
+                            changes.set(place, None);
+                        }
+                        capabilities.resume(place);
+                    }
+                }
+                for (place, cap) in action.capabilities.iter() {
+                    if let (Some(current), Some(cap)) = (capabilities.get(place, ctxt), cap) {
+                        pcg_validity_assert!(current < cap, [ctxt]);
+                    }
+                }
+                result = ApplyActionResult::from_changed(removed);
             }
             BorrowPcgActionKind::AddEdge { edge } => {
-                ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt))
+                // A loan suspends the capabilities it takes; an unpacking
+                // moves them to its expansion.
+                for (place, capability) in action.capabilities.iter() {
+                    if capability.is_none()
+                        && let Some(lent) = capabilities.get(place, ctxt)
+                        && !edge.value.blocked_by_nodes(ctxt).any(|node| {
+                            matches!(
+                                node,
+                                PcgNode::Place(MaybeLabelledPlace::Current(p))
+                                    if place.is_strict_prefix_of(p)
+                            )
+                        })
+                    {
+                        capabilities.suspend(place, lent);
+                    }
+                }
+                result =
+                    ApplyActionResult::from_changed(self.graph_mut().insert(edge.clone(), ctxt));
             }
-            BorrowPcgActionKind::LabelLifetimeProjection(action) => {
-                let predicate = map_label_predicate(action.predicate());
-                ApplyActionResult::from_changed(self.label_lifetime_projections(
+            BorrowPcgActionKind::Lend { place, edge } => {
+                // What `place` lends is recorded for it: a frozen place lends
+                // what its freeze suspends, with its read copies; the referent
+                // of a mutable reference held with E is lent through it, and
+                // the reference keeps e.
+                let reference = capabilities
+                    .iter()
+                    .find(|(reference, cap)| {
+                        *cap == CapabilityKind::Exclusive
+                            && reference.is_strict_prefix_of(*place)
+                            && place.projects_indirection_from(*reference, ctxt)
+                    })
+                    .map(|(reference, _)| reference);
+                if let Some(reference) = reference {
+                    changes.set(reference, Some(CapabilityKind::ShallowExclusive));
+                }
+                let held = capabilities.get(*place, ctxt);
+                let suspended = capabilities.suspended(*place);
+                if held == Some(CapabilityKind::Read) && suspended.is_some() {
+                    for (p, _) in capabilities.capabilities_for_strict_postfixes_of(*place) {
+                        changes.set(p, None);
+                    }
+                }
+                if let Some(lent) = suspended
+                    .or(held)
+                    .or(reference.map(|_| CapabilityKind::Exclusive))
+                {
+                    capabilities.suspend(*place, lent);
+                }
+                self.graph_mut().insert(edge.clone(), ctxt);
+                changes.set(*place, None);
+            }
+            BorrowPcgActionKind::UnpackSuspended { place, parts } => {
+                let suspended = capabilities.resume(*place);
+                pcg_validity_assert!(
+                    suspended.is_some(),
+                    [ctxt],
+                    "Unpacking the suspended capability of {}, which has none",
+                    place.display_string(ctxt)
+                );
+                if let Some(suspended) = suspended {
+                    for &part in parts {
+                        let share = if part.projects_indirection_from(*place, ctxt) {
+                            match (place.rust_ty(ctxt).kind(), suspended) {
+                                (ty::Ref(_, _, ty::Mutability::Mut), CapabilityKind::Exclusive) => {
+                                    capabilities.suspend(*place, CapabilityKind::ShallowExclusive);
+                                    CapabilityKind::Exclusive
+                                }
+                                (ty::Ref(_, _, ty::Mutability::Not), _) => {
+                                    capabilities.suspend(*place, suspended);
+                                    CapabilityKind::Read
+                                }
+                                _ => {
+                                    capabilities.suspend(*place, suspended);
+                                    continue;
+                                }
+                            }
+                        } else {
+                            suspended
+                        };
+                        // A part that records less gets back at most that.
+                        let share = capabilities
+                            .suspended(part)
+                            .map_or(share, |own| meet(own, share));
+                        capabilities.suspend(part, share);
+                    }
+                }
+            }
+            BorrowPcgActionKind::PackSuspended { place } => {
+                // The inverse of `UnpackSuspended` at a mutable reference: e
+                // and an E referent give E.
+                if let ty::Ref(_, _, ty::Mutability::Mut) = place.rust_ty(ctxt).kind()
+                    && capabilities.suspended(*place) == Some(CapabilityKind::ShallowExclusive)
+                {
+                    let referents = capabilities
+                        .iter_suspended()
+                        .filter(|(p, _)| {
+                            place.is_strict_prefix_of(*p)
+                                && p.projects_indirection_from(*place, ctxt)
+                        })
+                        .collect::<Vec<_>>();
+                    if !referents.is_empty()
+                        && referents
+                            .iter()
+                            .all(|(_, cap)| *cap == CapabilityKind::Exclusive)
+                    {
+                        for (referent, _) in referents {
+                            capabilities.resume(referent);
+                        }
+                        capabilities.suspend(*place, CapabilityKind::Exclusive);
+                    }
+                }
+                let parts = capabilities
+                    .iter_suspended()
+                    .filter(|(p, _)| {
+                        place.is_strict_prefix_of(*p) && !p.projects_indirection_from(*place, ctxt)
+                    })
+                    .collect::<Vec<_>>();
+                for (part, _) in &parts {
+                    capabilities.resume(*part);
+                }
+                if let Some(packed) = parts.into_iter().map(|(_, cap)| cap).reduce(meet) {
+                    let packed = capabilities
+                        .resume(*place)
+                        .map_or(packed, |own| meet(own, packed));
+                    capabilities.suspend(*place, packed);
+                }
+            }
+            BorrowPcgActionKind::WeakenSuspended { place, from, to } => {
+                let current = capabilities.resume(*place);
+                pcg_validity_assert!(
+                    current == Some(*from)
+                        && to.is_none_or(|to| to != *from && meet(*from, to) == to),
+                    [ctxt],
+                    "Weakening the suspended {:?} of {} from {:?} to {:?}",
+                    current,
+                    place.display_string(ctxt),
+                    from,
+                    to
+                );
+                if let Some(to) = to {
+                    capabilities.suspend(*place, *to);
+                }
+            }
+            BorrowPcgActionKind::LabelLifetimeProjection(label) => {
+                let predicate = map_label_predicate(label.predicate());
+                result = ApplyActionResult::from_changed(self.label_lifetime_projections(
                     &predicate,
-                    action.label(),
+                    label.label(),
                     ctxt,
-                ))
+                ));
             }
         }
+        changes.extend(&action.capabilities);
+        result.changed |= if matches!(
+            action.kind,
+            BorrowPcgActionKind::Unfreeze { .. } | BorrowPcgActionKind::RemoveEdge { .. }
+        ) {
+            self.regain(&changes, capabilities, ctxt)
+        } else {
+            changes.apply(capabilities, ctxt)
+        };
+        action.capabilities = changes;
+        result
+    }
+
+    /// Gives back the capabilities `changes`, ending the suspension of the
+    /// places that get one above R (a place that gets R stays frozen); the
+    /// places that get E back are accessed exclusively again.
+    fn regain<'a, Ctxt: Copy, P: Copy + Eq + std::hash::Hash>(
+        &mut self,
+        changes: &CapabilityChanges<P>,
+        capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
+        ctxt: Ctxt,
+    ) -> bool
+    where
+        'tcx: 'a,
+        EdgeKind: LabelEdgeLifetimeProjections<'tcx, Ctxt, P> + Eq + std::hash::Hash,
+        VC: ValidityConditionOps<Ctxt>,
+    {
+        let changed = changes.apply(capabilities, ctxt);
+        for (place, cap) in changes.iter() {
+            if cap.is_some_and(|cap| !cap.is_read()) {
+                capabilities.resume(place);
+            }
+            if cap == Some(CapabilityKind::Exclusive) {
+                self.label_lifetime_projections(
+                    &LabelNodePredicate::all_future_postfixes(place),
+                    None,
+                    ctxt,
+                );
+            }
+        }
+        changed
     }
 
     fn edges_blocking<'slf, Ctxt: Copy + DebugCtxt>(
@@ -447,7 +794,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
             .unwrap();
             assert!(
                 self.apply_action(
-                    BorrowPcgAction::add_edge(
+                    &mut BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
                                 source_projection,
@@ -533,72 +880,6 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx> {
             .edges_blocking(node, ctxt)
             .flat_map(|e| e.blocked_by_nodes(ctxt).collect::<Vec<_>>())
             .collect()
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn add_borrow<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
-        &mut self,
-        blocked_place: Place<'tcx>,
-        assigned_place: Place<'tcx>,
-        kind: BorrowKind,
-        location: Location,
-        region: ty::Region<'tcx>,
-        capabilities: &mut PlaceCapabilities<'tcx>,
-        ctxt: Ctxt,
-    ) where
-        'tcx: 'a,
-    {
-        assert!(
-            assigned_place.ty(ctxt).ty.ref_mutability().is_some(),
-            "{:?}:{:?} Assigned place {:?} is not a reference. Ty: {:?}",
-            ctxt.body().source.def_id(),
-            location,
-            assigned_place,
-            assigned_place.ty(ctxt).ty
-        );
-        let borrow_edge = BorrowEdge::new(
-            blocked_place.into(),
-            assigned_place.into(),
-            kind,
-            location,
-            region,
-            ctxt,
-        );
-        assert!(self.graph.insert(
-            BorrowPcgEdge::new(
-                BorrowPcgEdgeKind::Borrow(borrow_edge),
-                self.validity_conditions.clone(),
-            ),
-            ctxt.ctxt()
-        ));
-
-        if let BorrowKind::Mut {
-            kind: MutBorrowKind::Default | MutBorrowKind::ClosureCapture,
-        } = kind
-        {
-            let _ = capabilities.remove(blocked_place, ctxt);
-        } else {
-            let blocked_place_capability = capabilities.get(blocked_place, ctxt);
-            match blocked_place_capability {
-                Some(CapabilityKind::Exclusive) => {
-                    assert!(capabilities.insert(blocked_place, CapabilityKind::Read, ctxt));
-                }
-                Some(CapabilityKind::Read) => {
-                    // Do nothing, this just adds another shared borrow
-                }
-                other => {
-                    // Shouldn't be None or Write, due to capability updates
-                    // based on the TripleWalker analysis
-                    pcg_validity_assert!(
-                        false,
-                        "{:?}: Unexpected capability for borrow blocked place {:?}: {:?}",
-                        location,
-                        blocked_place,
-                        other
-                    );
-                }
-            }
-        }
     }
 }
 

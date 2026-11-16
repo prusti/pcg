@@ -11,7 +11,7 @@ use crate::{
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
-    pcg::{BodyAnalysis, CompilerCtxtWithSettings, ctxt::AnalysisCtxt},
+    pcg::{BodyAnalysis, ctxt::AnalysisCtxt},
     pcg_validity_assert,
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
@@ -387,10 +387,6 @@ pub(crate) trait DataflowCtxt<'a, 'tcx: 'a>:
 
     fn is_loop_head(self, block: BasicBlock) -> bool {
         self.body_analysis().is_loop_head(block)
-    }
-
-    fn compiler_ctxt_with_settings(self) -> CompilerCtxtWithSettings<'a, 'tcx> {
-        CompilerCtxtWithSettings::new(self.bc_ctxt(), self.settings(), self.body_analysis())
     }
 }
 pub trait HasBorrowCheckerCtxt<'a, 'tcx, BC = &'a dyn BorrowCheckerInterface<'tcx>>:
