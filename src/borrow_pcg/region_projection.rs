@@ -12,7 +12,7 @@ use crate::{
         GeneralizedLifetime,
         graph::loop_abstraction::MaybeRemoteCurrentPlace,
         has_pcs_elem::{LabelLifetimeProjectionResult, LabelPlace, PlaceLabeller},
-        visitor::{LifetimeDataCtxt, LifetimeKind},
+        visitor::{LifetimeDataCtxt, LifetimeKind, has_generalized_lifetime_at},
     },
     error::PcgError,
     pcg::{LocalNodeLike, PcgNode, PcgNodeLike, PcgNodeWithPlace},
@@ -1011,21 +1011,17 @@ impl<
     Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt,
     T: PcgNodeComponent + HasTy<'tcx, Ctxt>,
 > HasValidityCheck<Ctxt> for LifetimeProjection<'tcx, T>
-where
-    Ctxt: ExtractRegionsCtxt<'tcx, ty::Ty<'tcx>, GeneralizedLifetime<'tcx>>,
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
-        let num_regions: IndexVec<LifetimeProjectionIdx, GeneralizedLifetime<'tcx>> =
-            ctxt.extract_regions(self.base.rust_ty(ctxt));
-        if self.region_idx.index() >= num_regions.len() {
+        if has_generalized_lifetime_at(self.base.rust_ty(ctxt), self.region_idx.index()) {
+            Ok(())
+        } else {
             Err(format!(
                 "Region index {} is out of bounds for place {:?}:{:?}",
                 self.region_idx.index(),
                 self.base,
                 self.base.rust_ty(ctxt)
             ))
-        } else {
-            Ok(())
         }
     }
 }

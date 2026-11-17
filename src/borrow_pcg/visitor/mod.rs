@@ -208,9 +208,17 @@ struct GeneralizedLifetimeExtractor<'a, 'tcx> {
     /// When provided, trait-bound regions for type parameters are included
     /// as separate `Region(r)` entries after the `RegionsIn(T)` entry.
     trait_bound_regions: Option<&'a HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>>,
+    /// The visitor stops visiting once it has found at least this many
+    /// lifetimes. The lifetimes found are then the first ones of the full
+    /// list.
+    limit: usize,
 }
 
 impl<'tcx> GeneralizedLifetimeExtractor<'_, 'tcx> {
+    fn is_full(&self) -> bool {
+        self.lifetimes.len() >= self.limit
+    }
+
     fn push_if_absent(&mut self, gl: GeneralizedLifetime<'tcx>) {
         if !self.lifetimes.contains(&gl) {
             self.lifetimes.push(gl);
@@ -232,6 +240,9 @@ impl<'tcx> GeneralizedLifetimeExtractor<'_, 'tcx> {
 
 impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
+        if self.is_full() {
+            return;
+        }
         match ty.kind() {
             ty::TyKind::Param(param_ty) => {
                 let opaque = OpaqueTy::Param(*param_ty);
@@ -259,7 +270,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
         }
     }
     fn visit_region(&mut self, rr: ty::Region<'tcx>) {
-        self.push_if_absent(GeneralizedLifetime::Region(rr.into()));
+        if !self.is_full() {
+            self.push_if_absent(GeneralizedLifetime::Region(rr.into()));
+        }
     }
 }
 
@@ -275,7 +288,20 @@ pub(crate) fn extract_generalized_lifetimes<'tcx>(
     let mut visitor = GeneralizedLifetimeExtractor {
         lifetimes: vec![],
         trait_bound_regions,
+        limit: usize::MAX,
     };
     ty.visit_with(&mut visitor);
     visitor.lifetimes.into_iter().collect()
+}
+
+/// Whether `ty` has more than `idx` generalized lifetimes, i.e. whether `idx`
+/// indexes [`extract_generalized_lifetimes`]`(ty, None)`.
+pub(crate) fn has_generalized_lifetime_at(ty: ty::Ty<'_>, idx: usize) -> bool {
+    let mut visitor = GeneralizedLifetimeExtractor {
+        lifetimes: vec![],
+        trait_bound_regions: None,
+        limit: idx.saturating_add(1),
+    };
+    ty.visit_with(&mut visitor);
+    visitor.lifetimes.len() > idx
 }
