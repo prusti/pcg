@@ -205,12 +205,12 @@ jobs:
         path: coverage/html/
 
   # Runs the PCG with validity checks on the top crates of crates.io. The
-  # crates are split by index into groups that run on separate runners. The
-  # group bounds balance the measured check times of the crates, taking for
-  # each crate the longer of its checks with failing and with warning
-  # validity checks, so that each group takes about an hour also once the
-  # PCG fails on fewer crates. Crates are checked one at a time because the
-  # PCG needs over 10 GB on some of them.
+  # crates are split into groups that run on separate runners; the sweep
+  # balances the groups by the check times of the crates in CI, listed in
+  # `pcg-tests/tests/top-crates/<date>-seconds.tsv`. Six groups take about
+  # 45 minutes each, which no more groups can shorten because single crates
+  # run into the 45-minute timeout. Crates are checked one at a time because
+  # the PCG needs up to the sweep's memory limit of 12 GiB on some of them.
   top_crates:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
@@ -218,17 +218,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group:
-          - { start: 0, end: 67 }
-          - { start: 67, end: 84 }
-          - { start: 84, end: 129 }
-          - { start: 129, end: 157 }
-          - { start: 157, end: 230 }
-          - { start: 230, end: 302 }
-          - { start: 302, end: 417 }
-          - { start: 417, end: 426 }
-          - { start: 426, end: 436 }
-          - { start: 436, end: 500 }
+        group: [0, 1, 2, 3, 4, 5]
     steps:
     - uses: actions/checkout@v4
     # The cache is saved right after the build, before the sweep fills the
@@ -259,11 +249,11 @@ jobs:
           pcg-bin/target
           pcg-tests/target
         key: ${{ steps.restore-cache.outputs.cache-primary-key }}
-    - name: Run the PCG on crates ${{ matrix.group.start }} to ${{ matrix.group.end }}
+    - name: Run the PCG on crate group ${{ matrix.group }}
       working-directory: pcg-tests
       env:
-        TOP_CRATES_START: ${{ matrix.group.start }}
-        TOP_CRATES_END: ${{ matrix.group.end }}
+        TOP_CRATES_GROUP: ${{ matrix.group }}
+        TOP_CRATES_GROUPS: ${{ strategy.job-total }}
         TEST_CRATES_PARALLELISM: 1
         TOP_CRATES_TIMEOUT_SECS: 2700
       run: cargo test --test top_crates -- --ignored --nocapture
@@ -273,7 +263,7 @@ jobs:
       run: |
         if [ -f tmp/top-crates-results.tsv ]; then
           {
-            echo "### Crates ${{ matrix.group.start }} to ${{ matrix.group.end }}"
+            echo "### Crate group ${{ matrix.group }}"
             echo '```'
             awk -F '\t' '$4 != "pass"' tmp/top-crates-results.tsv
             echo '```'
@@ -283,7 +273,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: top-crates-${{ matrix.group.start }}-${{ matrix.group.end }}
+        name: top-crates-${{ matrix.group }}
         path: |
           pcg-tests/tmp/top-crates-results.tsv
           pcg-tests/tmp/top-crates-logs/

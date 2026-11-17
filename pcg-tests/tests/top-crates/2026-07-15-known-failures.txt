@@ -111,6 +111,8 @@ rayon-core               owned state: expected allocated local
 addr2line                local join: expected read capability
 libc                     visitor: unsupported MIR statement (todo!)
 nom                      timeout: PCG takes over an hour
-rustls                   compiler killed by SIGKILL
+quinn-udp                timeout: borrowing `a[i].f` of an array `a` and reading `a[i].g` never ends (Linux-only code)
+rustls                   memory: PCG needs over 12 GiB
+sha2                     memory: PCG needs over 12 GiB
 bincode                  does not compile: deliberate compile_error!
 windows                  does not compile outside Windows

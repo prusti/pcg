@@ -7,12 +7,14 @@ use rayon::prelude::*;
 use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::{
+    cmp::Reverse,
     collections::BTreeSet,
     io::{ErrorKind, Write},
+    ops::Range,
     os::unix::process::CommandExt,
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
-    process::{Command, ExitStatus},
+    process::{Child, Command, ExitStatus},
     str::FromStr,
     sync::{LazyLock, Mutex},
     time::{Duration, Instant},
@@ -32,7 +34,7 @@ const LOG_DIR: &str = "tmp/top-crates-logs";
 
 const RESULTS_FILE: &str = "tmp/top-crates-results.tsv";
 
-const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tfunction\tmessage";
+const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\tfunction\tmessage";
 
 /// Runs the PCG with validity checks on every function of the most downloaded
 /// crates of `DATE`, and fails if a crate fails that is not a known failure.
@@ -42,9 +44,18 @@ const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tfunction\t
 /// variables it does not know:
 /// - `TOP_CRATES_START`, `TOP_CRATES_END`: the index range of the crates to
 ///   check (default: all crates of the list).
+/// - `TOP_CRATES_GROUP`, `TOP_CRATES_GROUPS`: split the crates of the range
+///   into `TOP_CRATES_GROUPS` groups of about equal check time (see
+///   `crate_group`) and check only group `TOP_CRATES_GROUP`, counted from 0
+///   (default: one group).
 /// - `TEST_CRATES_PARALLELISM`: how many crates are checked at once (default 1).
 /// - `TOP_CRATES_TIMEOUT_SECS`: how long a crate may take before its check is
 ///   killed and the crate counts as failed (default 3600).
+/// - `TOP_CRATES_MEMORY_LIMIT_MIB`: how much memory the processes of a
+///   crate's check may use together before the check is killed and the crate
+///   counts as failed (default 12 GiB). The default is the same everywhere,
+///   so that whether a crate fails does not depend on the memory of the
+///   machine, and it leaves room for the system on a 16 GB CI runner.
 ///
 /// Each crate's result is appended to `RESULTS_FILE` as soon as the crate is
 /// done, and the output of its check is written to `LOG_DIR`.
@@ -58,9 +69,16 @@ pub fn top_crates() {
         start <= end && end <= NUM_CRATES,
         "Invalid crate range {start}..{end}"
     );
+    let group = env_var("TOP_CRATES_GROUP", 0);
+    let groups = env_var("TOP_CRATES_GROUPS", 1);
+    assert!(group < groups, "Invalid crate group {group} of {groups}");
     let parallelism = env_var("TEST_CRATES_PARALLELISM", 1);
-    let timeout = Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 3600));
+    let limits = Limits {
+        timeout: Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 3600)),
+        memory_mib: env_var("TOP_CRATES_MEMORY_LIMIT_MIB", 12 * 1024),
+    };
     let known_failures = known_failures(DATE, &all_crates);
+    let indices = crate_group(start..end, &check_seconds(DATE, &all_crates), group, groups);
 
     std::fs::create_dir_all(LOG_DIR).unwrap();
     let mut results_file = std::fs::File::create(RESULTS_FILE).unwrap();
@@ -70,20 +88,20 @@ pub fn top_crates() {
         .num_threads(parallelism)
         .build_global()
         .unwrap();
-    let results: Vec<CrateResult> = all_crates[start..end]
+    let results: Vec<CrateResult> = indices
         .par_iter()
-        .enumerate()
-        .map(|(offset, krate)| {
-            let index = start + offset;
+        .map(|&index| {
+            let krate = &all_crates[index];
             let version = krate.version();
             println!("Starting: {index} ({} {version})", krate.name);
             let began = Instant::now();
-            let outcome = check_crate(krate, timeout);
+            let (outcome, peak_mib) = check_crate(krate, &limits);
             let result = CrateResult {
                 index,
                 krate: krate.clone(),
                 outcome,
                 time: began.elapsed(),
+                peak_mib,
                 known_failure: known_failures.contains(&krate.name),
             };
             println!(
@@ -175,11 +193,63 @@ fn known_failures(date: &str, crates: &[Crate]) -> BTreeSet<String> {
         .collect()
 }
 
+/// How long the check of a crate is assumed to take if the timing file does
+/// not list the crate: the median time of a crate in CI.
+const DEFAULT_CHECK_SECONDS: u64 = 2;
+
+/// The check time in seconds of each of `crates`, the list for `date`, as
+/// measured in CI, for balancing the crate groups. The file lists the `crate`
+/// and `seconds` columns of the `RESULTS_FILE`s of all groups of a CI run
+/// under a header line; e.g. for the files `results/*.tsv`:
+/// `awk -F'\t' 'NR == 1 || FNR > 1 { print $2 "\t" $5 }' results/*.tsv`.
+fn check_seconds(date: &str, crates: &[Crate]) -> Vec<u64> {
+    let path = PathBuf::from("tests/top-crates").join(format!("{date}-seconds.tsv"));
+    let mut seconds = vec![DEFAULT_CHECK_SECONDS; crates.len()];
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return seconds,
+        Err(e) => panic!("Failed to read {}: {e}", path.display()),
+    };
+    for line in content.lines().skip(1) {
+        let (name, time) = line
+            .split_once('\t')
+            .unwrap_or_else(|| panic!("{}: `{line}` is not `crate\tseconds`", path.display()));
+        let index = crates
+            .iter()
+            .position(|krate| krate.name == name)
+            .unwrap_or_else(|| panic!("{}: {name} is not in the crate list", path.display()));
+        seconds[index] = time
+            .parse()
+            .unwrap_or_else(|_| panic!("{}: `{line}` gives no seconds", path.display()));
+    }
+    seconds
+}
+
+/// The indices of group `group` of the crates in `range`, in increasing
+/// order. The crates are split into `groups` groups by giving each crate, from
+/// the slowest to the fastest by `seconds`, to the group with the least total
+/// time so far.
+fn crate_group(range: Range<usize>, seconds: &[u64], group: usize, groups: usize) -> Vec<usize> {
+    let mut totals = vec![0; groups];
+    let mut members = Vec::new();
+    for index in range.sorted_by_key(|&index| (Reverse(seconds[index]), index)) {
+        let lightest = (0..groups).min_by_key(|&g| (totals[g], g)).unwrap();
+        totals[lightest] += seconds[index];
+        if lightest == group {
+            members.push(index);
+        }
+    }
+    members.sort_unstable();
+    members
+}
+
 struct CrateResult {
     index: usize,
     krate: Crate,
     outcome: Outcome,
     time: Duration,
+    /// The largest memory use of the crate's check, in MiB.
+    peak_mib: u64,
     known_failure: bool,
 }
 
@@ -203,12 +273,13 @@ impl CrateResult {
             Outcome::Passed => ("", ""),
         };
         format!(
-            "{}\t{}\t{}\t{}\t{}\t{function}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{function}\t{}",
             self.index,
             self.krate.name,
             self.krate.version(),
             self.status(),
             self.time.as_secs(),
+            self.peak_mib,
             message.replace(['\t', '\n'], " "),
         )
     }
@@ -241,10 +312,18 @@ fn crate_log_file(krate: &Crate) -> PathBuf {
     PathBuf::from(LOG_DIR).join(format!("{}-{}.log", krate.name, krate.version()))
 }
 
-fn check_crate(krate: &Crate, timeout: Duration) -> Outcome {
+/// The resources the check of a crate may use.
+struct Limits {
+    timeout: Duration,
+    memory_mib: u64,
+}
+
+/// Checks `krate` within `limits`. Returns the outcome and the largest memory
+/// use of the check in MiB.
+fn check_crate(krate: &Crate, limits: &Limits) -> (Outcome, u64) {
     let (name, version) = (krate.name.as_str(), krate.version());
     if let Err(reason) = is_supported_crate(name, version) {
-        return Outcome::Unsupported(reason);
+        return (Outcome::Unsupported(reason), 0);
     }
     let log = crate_log_file(krate);
     let run = catch_unwind(AssertUnwindSafe(|| {
@@ -267,61 +346,127 @@ fn check_crate(krate: &Crate, timeout: Duration) -> Outcome {
             if std::env::var_os("RUST_LOG").is_none() {
                 command.env("RUST_LOG", "warn,pcg[debug_ctxt]=info,pcg_bin=info");
             }
-            run_with_timeout(command, &log, timeout)
+            run_with_limits(command, &log, limits)
         })
     }));
-    match run {
-        Ok(Some(status)) if status.success() => Outcome::Passed,
-        Ok(Some(status)) => Outcome::Failed(failure_from_log(&log, status)),
-        Ok(None) => Outcome::Failed(Failure {
-            message: format!("timed out after {}s", timeout.as_secs()),
+    let killed = |message: String| {
+        Outcome::Failed(Failure {
+            message,
             function: last_analysed_function(&read_log(&log).lines().collect::<Vec<_>>()),
-        }),
-        Err(payload) => Outcome::Failed(Failure {
-            message: format!(
-                "harness panicked: {}",
-                payload
-                    .downcast_ref::<String>()
-                    .map(String::as_str)
-                    .or_else(|| payload.downcast_ref::<&str>().copied())
-                    .unwrap_or("unknown panic")
-            ),
-            function: None,
-        }),
+        })
+    };
+    match run {
+        Ok((End::Exited(status), peak_mib)) if status.success() => (Outcome::Passed, peak_mib),
+        Ok((End::Exited(status), peak_mib)) => {
+            (Outcome::Failed(failure_from_log(&log, status)), peak_mib)
+        }
+        Ok((End::TimedOut, peak_mib)) => (
+            killed(format!("timed out after {}s", limits.timeout.as_secs())),
+            peak_mib,
+        ),
+        Ok((End::OutOfMemory, peak_mib)) => (
+            killed(format!(
+                "exceeded the memory limit of {} MiB",
+                limits.memory_mib
+            )),
+            peak_mib,
+        ),
+        Err(payload) => (
+            Outcome::Failed(Failure {
+                message: format!(
+                    "harness panicked: {}",
+                    payload
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or_else(|| payload.downcast_ref::<&str>().copied())
+                        .unwrap_or("unknown panic")
+                ),
+                function: None,
+            }),
+            0,
+        ),
     }
 }
 
-/// Runs `command` with its output written to `log`. Returns `None` if it did
-/// not finish within `timeout`.
-fn run_with_timeout(mut command: Command, log: &Path, timeout: Duration) -> Option<ExitStatus> {
+/// How a run of `run_with_limits` ended.
+enum End {
+    Exited(ExitStatus),
+    /// Killed because it ran longer than the timeout.
+    TimedOut,
+    /// Killed because it used more memory than the memory limit.
+    OutOfMemory,
+}
+
+/// Runs `command` with its output written to `log`, killing it if it exceeds
+/// `limits`. Returns how the run ended and the largest memory use of its
+/// processes in MiB, sampled every second.
+fn run_with_limits(mut command: Command, log: &Path, limits: &Limits) -> (End, u64) {
     let output = std::fs::File::create(log).unwrap();
     // `cargo` does not pass a kill on to the compilers it runs, so it gets its
-    // own process group, which is killed as a whole on timeout.
+    // own process group, which is killed as a whole and whose memory use is
+    // the sum over its processes.
     command
         .stdout(output.try_clone().unwrap())
         .stderr(output)
         .process_group(0);
-    let mut child = command.spawn().expect("Failed to run cargo check");
-    let deadline = Instant::now() + timeout;
+    let mut child = ProcessGroup(command.spawn().expect("Failed to run cargo check"));
+    let group = libc::pid_t::try_from(child.0.id()).unwrap();
+    let deadline = Instant::now() + limits.timeout;
+    let mut peak_mib = 0;
     loop {
-        if let Some(status) = child.try_wait().unwrap() {
-            return Some(status);
+        if let Some(status) = child.0.try_wait().unwrap() {
+            return (End::Exited(status), peak_mib);
         }
+        peak_mib = peak_mib.max(process_group_rss_mib(group));
         if Instant::now() >= deadline {
-            let group = libc::pid_t::try_from(child.id()).unwrap();
-            // SAFETY: `killpg` only sends a signal and has no memory-safety
-            // preconditions.
-            let killed = unsafe { libc::killpg(group, libc::SIGKILL) };
-            assert!(
-                killed == 0,
-                "Failed to kill cargo check: {}",
-                std::io::Error::last_os_error()
-            );
-            child.wait().unwrap();
-            return None;
+            return (End::TimedOut, peak_mib);
+        }
+        if peak_mib > limits.memory_mib {
+            return (End::OutOfMemory, peak_mib);
         }
         std::thread::sleep(Duration::from_secs(1));
     }
+}
+
+/// A child that leads its own process group. Dropping it kills the group
+/// unless the child has exited, so that the group is also killed when the
+/// harness panics while the child runs.
+struct ProcessGroup(Child);
+
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        if let Ok(Some(_)) = self.0.try_wait() {
+            return;
+        }
+        let group = libc::pid_t::try_from(self.0.id()).unwrap();
+        // SAFETY: `killpg` only sends a signal and has no memory-safety
+        // preconditions.
+        if unsafe { libc::killpg(group, libc::SIGKILL) } != 0 {
+            eprintln!(
+                "Failed to kill cargo check: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        let _ = self.0.wait();
+    }
+}
+
+/// The summed resident memory of the processes in process group `group`, in
+/// MiB.
+fn process_group_rss_mib(group: libc::pid_t) -> u64 {
+    let output = Command::new("ps")
+        .args(["-A", "-o", "pgid=,rss="])
+        .output()
+        .expect("Failed to run ps");
+    assert!(output.status.success(), "ps failed: {}", output.status);
+    let rss_kib: u64 = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let (pgid, rss) = line.split_whitespace().collect_tuple()?;
+            (pgid.parse() == Ok(group)).then(|| rss.parse::<u64>().unwrap())
+        })
+        .sum();
+    rss_kib / 1024
 }
 
 fn read_log(log: &Path) -> String {
