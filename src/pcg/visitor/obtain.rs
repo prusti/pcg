@@ -172,18 +172,18 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
-        // Snapshot the borrow-graph places *before* acquiring `fg` so the
-        // owned HashSet doesn't hold a borrow of the graph across the
-        // restore_place call below.
-        let borrow_places = self.pcg.borrow.graph.places(self.ctxt.bc_ctxt());
-
-        let fg = self.pcg.borrow.graph.frozen_graph();
+        let graph = &self.pcg.borrow.graph;
         let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
         // After removing an edge, some nodes may become accessible, their capabilities should be restored
         let to_restore = blocked_nodes
             .into_iter()
-            .filter(|node| !fg.has_edge_blocking(*node, self.ctxt.bc_ctxt()))
+            .filter(|node| {
+                graph
+                    .edges_blocking(*node, self.ctxt.bc_ctxt())
+                    .next()
+                    .is_none()
+            })
             .collect::<Vec<_>>();
 
         for node in to_restore {
@@ -194,7 +194,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 // PCG or the borrow graph; restoring a capability there would
                 // violate the invariant that every capability-holding place must
                 // be tracked.
-                if !borrow_places.contains(&place)
+                if !self.pcg.borrow.graph.contains(place, self.ctxt.bc_ctxt())
                     && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
                 {
                     continue;
