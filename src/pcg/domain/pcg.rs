@@ -298,7 +298,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
 }
 
 impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
-    pub(crate) fn is_expansion_leaf(
+    pub fn is_expansion_leaf(
         &self,
         place: Place<'tcx>,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
