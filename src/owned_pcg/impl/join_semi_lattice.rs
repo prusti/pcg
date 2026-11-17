@@ -32,7 +32,6 @@ use crate::{
 };
 
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx>> {
-    #[tracing::instrument(skip(self, other, ctxt), fields(self.snapshot_location = ?self.snapshot_location, other.snapshot_location = ?other.snapshot_location), level = "warn")]
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
@@ -111,6 +110,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
 }
 
 impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
+    #[tracing::instrument(skip(self, other, ctxt), fields(self.snapshot_location = ?self.snapshot_location, other.snapshot_location = ?other.snapshot_location), level = "warn")]
     pub(crate) fn join(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
