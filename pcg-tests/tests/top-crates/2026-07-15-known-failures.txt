@@ -111,7 +111,7 @@ addr2line                local join: expected read capability
 ansi_term                owned update: no capability for a local after a closure borrowed it mutably
 nu-ansi-term             owned update: no capability for a local after a closure borrowed it mutably
 libc                     visitor: unsupported MIR statement (todo!)
-nom                      timeout: PCG takes over 12 minutes
+nom                      timeout: PCG takes over 8 minutes
 rustls                   memory: PCG needs over 12 GiB
 bincode                  does not compile: deliberate compile_error!
 windows                  does not compile outside Windows

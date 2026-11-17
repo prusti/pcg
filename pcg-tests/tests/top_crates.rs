@@ -51,7 +51,7 @@ const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\t
 ///   (default: one group).
 /// - `TEST_CRATES_PARALLELISM`: how many crates are checked at once (default 1).
 /// - `TOP_CRATES_TIMEOUT_SECS`: how long a crate may take before its check is
-///   killed and the crate counts as failed (default 12 minutes, the same
+///   killed and the crate counts as failed (default 8 minutes, the same
 ///   everywhere for the same reason as the memory limit; it bounds how long
 ///   a CI group takes).
 /// - `TOP_CRATES_MEMORY_LIMIT_MIB`: how much memory the processes of a
@@ -77,7 +77,7 @@ pub fn top_crates() {
     assert!(group < groups, "Invalid crate group {group} of {groups}");
     let parallelism = env_var("TEST_CRATES_PARALLELISM", 1);
     let limits = Limits {
-        timeout: Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 12 * 60)),
+        timeout: Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 8 * 60)),
         memory_mib: env_var("TOP_CRATES_MEMORY_LIMIT_MIB", 12 * 1024),
     };
     let known_failures = known_failures(DATE, &all_crates);
