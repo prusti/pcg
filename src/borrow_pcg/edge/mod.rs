@@ -2,6 +2,7 @@
 //!
 //! TODO: `borrow_pcg_edge` should be merged into this
 pub mod abstraction;
+pub mod aggregate;
 pub mod borrow;
 pub mod borrow_flow;
 pub mod delegation;

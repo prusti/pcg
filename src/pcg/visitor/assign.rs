@@ -91,27 +91,19 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 fields,
             ) => {
                 let target: Place<'tcx> = (*target).into();
-                for (field_idx, field) in fields.iter().enumerate() {
+                let mut sources = Vec::new();
+                for field in fields {
                     let operand_place: Place<'tcx> = if let Some(place) = field.place() {
                         place.into()
                     } else {
                         continue;
                     };
-                    for (source_rp_idx, source_proj) in operand_place
-                        .lifetime_projections(self.ctxt)
-                        .iter()
-                        .enumerate()
-                    {
-                        let maybe_labelled = self.maybe_labelled_operand(field);
-                        let source_proj = source_proj.with_base(maybe_labelled);
-                        self.connect_outliving_projections(source_proj, target, |_| {
-                            BorrowFlowEdgeKind::Aggregate {
-                                field_idx,
-                                target_rp_index: source_rp_idx,
-                            }
-                        })?;
+                    let maybe_labelled = self.maybe_labelled_operand(field);
+                    for source_proj in operand_place.lifetime_projections(self.ctxt) {
+                        sources.push(source_proj.with_base(maybe_labelled));
                     }
                 }
+                self.connect_aggregate(&sources, target)?;
             }
             Rvalue::Use(operand, ..) => {
                 let p = operand.place();

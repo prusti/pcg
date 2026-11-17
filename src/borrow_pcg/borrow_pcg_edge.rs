@@ -395,6 +395,7 @@ edgedata_enum!(
     BorrowPcgExpansion(crate::borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx, P>),
     Abstraction(crate::borrow_pcg::edge::abstraction::AbstractionEdge<'tcx, P>),
     BorrowFlow(crate::borrow_pcg::edge::borrow_flow::BorrowFlowEdge<'tcx, P>),
+    Aggregate(crate::borrow_pcg::edge::aggregate::AggregateEdge<'tcx, P>),
     Deref(crate::borrow_pcg::edge::deref::DerefEdge<'tcx, P>),
     Coupled(crate::coupling::PcgCoupledEdgeKind<'tcx, P>),
     Delegation(crate::borrow_pcg::edge::delegation::DelegationEdge<'tcx, P>),
