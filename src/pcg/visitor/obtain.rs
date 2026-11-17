@@ -172,33 +172,48 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
-        let ctxt = self.ctxt.bc_ctxt();
         let graph = &self.pcg.borrow.graph;
+        let blocked_nodes = edge.blocked_nodes(self.ctxt.bc_ctxt());
 
         // After removing an edge, some nodes may become accessible, their capabilities should be restored
-        let to_restore = edge
-            .blocked_nodes(ctxt)
-            .filter(|node| graph.edges_blocking(*node, ctxt).next().is_none())
-            .filter_map(|node| node.as_current_place())
-            // Borrow-graph membership is decided before any place is
-            // restored, since restoring a place can relabel and remove edges.
-            .map(|place| (place, graph.contains(place, ctxt)))
+        let to_restore = blocked_nodes
+            .into_iter()
+            .filter(|node| {
+                graph
+                    .edges_blocking(*node, self.ctxt.bc_ctxt())
+                    .next()
+                    .is_none()
+            })
             .collect::<Vec<_>>();
 
-        for (place, in_borrow_graph) in to_restore {
-            // Only restore if the place is still tracked somewhere.  After
-            // a loop abstraction edge is removed, the blocked place (e.g.
-            // `(*variant).fields`) may no longer appear in either the owned
-            // PCG or the borrow graph; restoring a capability there would
-            // violate the invariant that every capability-holding place must
-            // be tracked.
-            if !in_borrow_graph && !self.pcg.owned.contains_place(place, ctxt) {
-                continue;
+        // Which of them are in the borrow graph is decided before any is
+        // restored, since restoring a place can relabel and remove edges.
+        let borrow_places = to_restore
+            .iter()
+            .filter_map(|node| {
+                node.as_current_place()
+                    .filter(|place| graph.contains(*place, self.ctxt.bc_ctxt()))
+            })
+            .collect::<HashSet<_>>();
+
+        for node in to_restore {
+            if let Some(place) = node.as_current_place() {
+                // Only restore if the place is still tracked somewhere.  After
+                // a loop abstraction edge is removed, the blocked place (e.g.
+                // `(*variant).fields`) may no longer appear in either the owned
+                // PCG or the borrow graph; restoring a capability there would
+                // violate the invariant that every capability-holding place must
+                // be tracked.
+                if !borrow_places.contains(&place)
+                    && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
+                {
+                    continue;
+                }
+                self.restore_place(
+                    place,
+                    "update_unblocked_node_capabilities_and_remove_placeholder_projections",
+                )?;
             }
-            self.restore_place(
-                place,
-                "update_unblocked_node_capabilities_and_remove_placeholder_projections",
-            )?;
         }
         Ok(())
     }
