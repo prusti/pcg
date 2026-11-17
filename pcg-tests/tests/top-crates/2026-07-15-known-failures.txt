@@ -57,6 +57,8 @@ iri-string               loop join: BorrowFlowEdge from a node to itself
 rsa                      loop join: BorrowFlowEdge from a node to itself
 opentelemetry_sdk        loop join: BorrowFlowEdge from a node to itself
 async-compression        loop join: BorrowFlowEdge from a node to itself
+tracing-core             loop join: BorrowFlowEdge from a node to itself
+pyo3                     loop join: BorrowFlowEdge from a node to itself
 syn                      loop join: no unique delegation edge for a raw pointer place
 memchr                   loop join: no unique delegation edge for a raw pointer place
 parking_lot_core         loop join: no unique delegation edge for a raw pointer place
@@ -69,17 +71,6 @@ crossbeam-queue          loop join: no unique delegation edge for a raw pointer 
 concurrent-queue         loop join: no unique delegation edge for a raw pointer place
 lru                      loop join: no unique delegation edge for a raw pointer place
 unsafe-libyaml           loop join: no unique delegation edge for a raw pointer place
-tokio                    thread_local! initializer: return place is not exclusive
-tracing-core             thread_local! initializer: return place is not exclusive
-futures-executor         thread_local! initializer: return place is not exclusive
-thread_local             thread_local! initializer: return place is not exclusive
-tracing-subscriber       thread_local! initializer: return place is not exclusive
-env_logger               thread_local! initializer: return place is not exclusive
-backtrace                thread_local! initializer: return place is not exclusive
-foldhash                 thread_local! initializer: return place is not exclusive
-async-stream             thread_local! initializer: return place is not exclusive
-pyo3                     thread_local! initializer: return place is not exclusive
-async-io                 thread_local! initializer: return place is not exclusive
 rayon                    collapse: joins read and write field capabilities
 quick-xml                collapse: joins read and write field capabilities
 pest                     collapse: joins read and write field capabilities
