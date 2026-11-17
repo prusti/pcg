@@ -37,7 +37,8 @@ const RESULTS_FILE: &str = "tmp/top-crates-results.tsv";
 const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\tfunction\tmessage";
 
 /// Runs the PCG with validity checks on every function of the most downloaded
-/// crates of `DATE`, and fails if a crate fails that is not a known failure.
+/// crates of `DATE`, and fails if a crate fails that is not a known failure or
+/// a known failure passes.
 ///
 /// The harness settings are environment variables outside the `PCG_`
 /// namespace, because `pcg_bin` inherits the environment and rejects `PCG_`
@@ -120,15 +121,6 @@ pub fn top_crates() {
         println!("{}", result.row());
     }
 
-    for result in &results {
-        if result.known_failure && matches!(result.outcome, Outcome::Passed) {
-            println!(
-                "Known failure {} now passes; remove it from {}",
-                result.krate.name,
-                known_failures_file(DATE).display()
-            );
-        }
-    }
     let failures: Vec<String> = results
         .iter()
         .filter(|result| !result.known_failure)
@@ -144,12 +136,30 @@ pub fn top_crates() {
             Outcome::Passed | Outcome::Unsupported(_) => None,
         })
         .collect();
-    assert!(
-        failures.is_empty(),
-        "{} crates failed, see {RESULTS_FILE}:\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
+    // A known failure that passes must be removed from the list, so that the
+    // sweep catches it if it fails again.
+    let fixed: Vec<&str> = results
+        .iter()
+        .filter(|result| result.known_failure && matches!(result.outcome, Outcome::Passed))
+        .map(|result| result.krate.name.as_str())
+        .collect();
+    let mut problems = Vec::new();
+    if !failures.is_empty() {
+        problems.push(format!(
+            "{} crates failed, see {RESULTS_FILE}:\n{}",
+            failures.len(),
+            failures.join("\n")
+        ));
+    }
+    if !fixed.is_empty() {
+        problems.push(format!(
+            "{} known failures now pass; remove them from {}:\n{}",
+            fixed.len(),
+            known_failures_file(DATE).display(),
+            fixed.join("\n")
+        ));
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
 }
 
 fn env_var<T: FromStr>(name: &str, default: T) -> T {
