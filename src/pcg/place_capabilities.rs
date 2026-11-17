@@ -235,15 +235,12 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
                 ));
             }
         }
+        let mut caps_by_local = self.iter().into_group_map_by(|(place, _)| place.local);
         for (local, _) in ctxt.body().local_decls.iter_enumerated() {
-            let caps_from_local = self
-                .iter()
-                .filter(|(place, _)| place.local == local)
-                .sorted_by_key(|(place, _)| place.projection.len())
-                .collect_vec();
-            if caps_from_local.is_empty() {
+            let Some(mut caps_from_local) = caps_by_local.remove(&local) else {
                 continue;
-            }
+            };
+            caps_from_local.sort_by_key(|(place, _)| place.projection.len());
             fn allowed_child_cap<
                 'a,
                 'tcx: 'a,
