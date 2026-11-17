@@ -280,6 +280,43 @@ jobs:
           pcg-tests/tmp/top-crates-logs/
         if-no-files-found: warn
 
+  # Collects the check times of all groups of `top_crates` into the timing
+  # file the groups are balanced by, uploaded as the `top-crates-seconds`
+  # artifact; to rebalance the groups, replace
+  # `pcg-tests/tests/top-crates/<date>-seconds.tsv` with it. The summary shows
+  # the total time of each group.
+  top_crates_timing:
+    needs: top_crates
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: top-crates-*
+        path: results
+    - name: Write the timing file and summarize the group times
+      run: |
+        {
+          printf 'crate\tseconds\n'
+          awk -F '\t' 'FNR > 1 { print $1 "\t" $2 "\t" $5 }' results/*/top-crates-results.tsv |
+            sort -n | cut -f 2-
+        } > seconds.tsv
+        {
+          echo '### Top-crates group times'
+          echo '```'
+          printf 'group\tcrates\tseconds\n'
+          for results in results/*/top-crates-results.tsv; do
+            group=$(basename "$(dirname "$results")")
+            awk -F '\t' -v group="${group#top-crates-}" \
+              'FNR > 1 { n++; s += $5 } END { print group "\t" n "\t" s }' "$results"
+          done
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/upload-artifact@v4
+      with:
+        name: top-crates-seconds
+        path: seconds.tsv
+
   pcg_server_tests:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
