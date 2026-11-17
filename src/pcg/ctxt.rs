@@ -104,6 +104,16 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
         effective_successors(other, self.body()).contains(&self.block)
             && !self.ctxt.is_back_edge(other, self.block)
     }
+
+    /// This context without the debug graphs of its block. Effects analysed
+    /// on a CFG edge use it: their actions are not those of a location.
+    pub(crate) fn without_debug_graphs(self) -> Self {
+        Self {
+            #[cfg(feature = "visualization")]
+            graphs: None,
+            ..self
+        }
+    }
 }
 
 impl<'a, 'tcx> HasCompilerCtxt<'a, 'tcx> for AnalysisCtxt<'a, 'tcx> {

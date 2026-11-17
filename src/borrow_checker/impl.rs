@@ -61,6 +61,12 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> RustBorrowCheckerData<'mir, 'tcx> {
+    /// Whether `location` is in a cleanup block. The return place is read only
+    /// by `return`, which no cleanup block leads to, so it is dead there.
+    fn is_in_cleanup_block(&self, location: Location) -> bool {
+        self.body[location.block].is_cleanup
+    }
+
     pub(crate) fn borrows_in_scope_at(&self, location: Location, before: bool) -> InScopeBorrows {
         if before {
             self.in_scope_borrows
@@ -202,6 +208,15 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
         self.borrow_checker_data.tcx
     }
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool {
+        // The universal regions in the return place's type are live
+        // everywhere, also where the return place no longer is.
+        if node
+            .related_maybe_labelled_place()
+            .is_some_and(|place| place.local() == RETURN_PLACE)
+            && self.borrow_checker_data.is_in_cleanup_block(location)
+        {
+            return false;
+        }
         let ctxt = self.ctxt();
         let regions: Vec<GeneralizedLifetime<'tcx>> = match node {
             PcgNode::Place(place) => ctxt.extract_regions(place).into_iter().collect(),
@@ -337,7 +352,7 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
             return true;
         };
         if local == RETURN_PLACE {
-            return true;
+            return !self.borrow_checker_data.is_in_cleanup_block(location);
         }
         self.place_liveness.is_live(local.into(), location)
     }

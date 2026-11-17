@@ -14,6 +14,7 @@ use super::{DataflowStmtPhase, ErrorState, EvalStmtPhase, domain::PcgDomain, vis
 use crate::visualization::stmt_graphs;
 use crate::{
     BodyAndBorrows, HasSettings,
+    action::AppliedActions,
     error::PcgError,
     r#loop::{LoopAnalysis, LoopId, PlaceUsages},
     pcg::{
@@ -235,16 +236,6 @@ pub(crate) fn edges_to_analyze<'tcx, 'mir>(
         mir::TerminatorKind::FalseUnwind { real_target, .. } => {
             TerminatorEdges::Single(*real_target)
         }
-        mir::TerminatorKind::Call { target, .. } => {
-            if let Some(target) = target {
-                TerminatorEdges::Single(*target)
-            } else {
-                TerminatorEdges::None
-            }
-        }
-        mir::TerminatorKind::Assert { target, .. } | mir::TerminatorKind::Drop { target, .. } => {
-            TerminatorEdges::Single(*target)
-        }
         _ => terminator.edges(),
     }
 }
@@ -309,14 +300,15 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         )
     }
 
-    fn visit_all_phases<Ctxt: DataflowCtxt<'a, 'tcx>>(
+    fn visit_phases<Ctxt: DataflowCtxt<'a, 'tcx>>(
         state: &mut DomainDataWithCtxt<'a, 'tcx, Ctxt>,
         object: AnalysisObject<'_, 'tcx>,
         tw: &TripleWalker<'a, 'tcx>,
         location: Location,
+        phases: &[EvalStmtPhase],
     ) -> Result<(), PcgError> {
         let domain = &mut state.data;
-        for phase in EvalStmtPhase::phases() {
+        for &phase in phases {
             let curr = PcgArenaRef::make_mut(&mut domain.pcg.states.0[phase]);
             let analysis_location = AnalysisLocation {
                 location,
@@ -364,6 +356,37 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         }
         pcg.states.0.pre_operands = pcg.entry_state.clone();
 
+        // A call's `PostMain` phase assigns its destination, which happens
+        // only when the call returns, so it is the call return effect. The
+        // `PostMain` state left by this effect equals the `PreMain` one: that
+        // is the state on the call's unwind edge, to which the cleanup
+        // block's join applies the effect of the unwinding call (see
+        // `Pcg::unwind_call_into`).
+        if let AnalysisObject::Terminator(Terminator {
+            kind: mir::TerminatorKind::Call { .. },
+            ..
+        }) = object
+        {
+            let phases = [
+                EvalStmtPhase::PreOperands,
+                EvalStmtPhase::PostOperands,
+                EvalStmtPhase::PreMain,
+            ];
+            self.analyze_phases(state, object, location, &phases)?;
+            state.data_mut().actions[EvalStmtPhase::PostMain] = AppliedActions::default();
+            Ok(())
+        } else {
+            self.analyze_phases(state, object, location, &EvalStmtPhase::phases())
+        }
+    }
+
+    fn analyze_phases(
+        &self,
+        state: &mut PcgDomain<'a, 'tcx>,
+        object: AnalysisObject<'_, 'tcx>,
+        location: Location,
+        phases: &[EvalStmtPhase],
+    ) -> Result<(), PcgError> {
         let mut tw = TripleWalker::new(self.ctxt);
         match object {
             AnalysisObject::Statement(statement) => {
@@ -376,9 +399,9 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
         match state {
             PcgDomain::Analysis(DataflowState::Transfer(state)) => {
-                Self::visit_all_phases(state, object, &tw, location)?;
+                Self::visit_phases(state, object, &tw, location, phases)?;
             }
-            PcgDomain::Results(state) => Self::visit_all_phases(state, object, &tw, location)?,
+            PcgDomain::Results(state) => Self::visit_phases(state, object, &tw, location, phases)?,
             _ => todo!(),
         }
 
@@ -390,13 +413,35 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
 
             #[cfg(feature = "visualization")]
             {
-                state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
-                for phase in EvalStmtPhase::phases() {
+                if phases.first() == Some(&EvalStmtPhase::first()) {
+                    state.generate_dot_graph(DataflowStmtPhase::Initial, location, state.ctxt);
+                }
+                for &phase in phases {
                     state.generate_dot_graph(phase.into(), location, state.ctxt);
                 }
             }
         }
         Ok(())
+    }
+
+    /// The `PostMain` phase of the call terminating `block`, see
+    /// [`Self::analyze`].
+    fn analyze_call_return(
+        &self,
+        state: &mut PcgDomain<'a, 'tcx>,
+        block: BasicBlock,
+    ) -> Result<(), PcgError> {
+        if !self.reachable_blocks.borrow().contains(block.index()) {
+            return Ok(());
+        }
+        let body = self.ctxt.body();
+        let terminator = body[block].terminator();
+        self.analyze_phases(
+            state,
+            terminator.into(),
+            body.terminator_loc(block),
+            &[EvalStmtPhase::PostMain],
+        )
     }
 
     pub(crate) fn new(
@@ -493,6 +538,17 @@ impl<'a, 'tcx: 'a> Analysis<'tcx> for PcgEngine<'a, 'tcx> {
         terminator: &'mir Terminator<'tcx>,
     ) -> TerminatorEdges<'mir, 'tcx> {
         edges_to_analyze(terminator)
+    }
+
+    fn apply_call_return_effect(&self, state: &mut Self::Domain, block: BasicBlock) {
+        if let Some(error) = state.error() {
+            self.record_error_if_first(error);
+            return;
+        }
+        if let Err(e) = self.analyze_call_return(state, block) {
+            self.record_error_if_first(&e);
+            state.record_error(e);
+        }
     }
 
     type Direction = Forward;

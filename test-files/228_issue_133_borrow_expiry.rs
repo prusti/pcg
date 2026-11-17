@@ -46,7 +46,7 @@ pub fn conditional_reborrow_expiry(mut a: ListNode) {
     // The borrow of `a` was split into two conditional edge variants (one
     // per match arm); on expiry it must be removed under the union of their
     // conditions, not just one branch's.
-    // PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> { bb3, bb2 }
+    // PCG: bb6[0] pre_operands: Remove Edge borrow: x = &mut  a under conditions bb0 -> { bb3, bb2 }, bb5 -> bb6
     // PCG: bb6[0] pre_operands: Restore capability E to a
     // PCG: bb6[0] post_operands: a: E
     // ~PCG: bb6[0] pre_operands: Restore capability W to a

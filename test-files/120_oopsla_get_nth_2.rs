@@ -19,12 +19,12 @@ impl <'a> StringList<'a> {
     fn set_nth(self, n: usize, value: String) {
         if let Some(node) = self.get_nth(n) {
             *node = value;
-// PCG: bb4[0] post_main: (_4@Some).0 before bb3[1]:PostOperands↓'?6 -> node↓'?8 before bb4[0]:PreMain under conditions bb1 -> bb2
-// PCG: bb4[0] post_main: Remote(_1)↓'?5 -> self before bb0[2]:PostOperands↓'?5 under conditions bb1 -> bb2
-// PCG: bb4[0] post_main: call StringList::<'a>::get_nth at bb0[5]: _5 before bb0[5]:PostOperands↓'?7 before bb0[5]:PostMain -> _4↓'?6 before bb3[1]:PreOperands under conditions bb1 -> bb2
-// PCG: bb4[0] post_main: self before bb0[2]:PostOperands↓'?5 -> _5 before bb0[5]:PostOperands↓'?7 before bb0[5]:PostMain under conditions bb1 -> bb2
-// PCG: bb4[0] post_main: {(_4@Some)↓'?6 before bb3[1]:PreOperands} -> {(_4@Some).0 before bb3[1]:PostOperands↓'?6} under conditions bb1 -> bb2
-// PCG: bb4[0] post_main: {_4↓'?6 before bb3[1]:PreOperands} -> {(_4@Some)↓'?6 before bb3[1]:PreOperands} (guide=Downcast(Some("Some"), 1)) under conditions bb1 -> bb2
+// PCG: bb4[0] post_main: (_4@Some).0 before bb3[1]:PostOperands↓'?6 -> node↓'?8 before bb4[0]:PreMain under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
+// PCG: bb4[0] post_main: Remote(_1)↓'?5 -> self before bb0[2]:PostOperands↓'?5 under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
+// PCG: bb4[0] post_main: call StringList::<'a>::get_nth at bb0[5]: _5 before bb0[5]:PostOperands↓'?7 before bb0[5]:PostMain -> _4↓'?6 before bb3[1]:PreOperands under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
+// PCG: bb4[0] post_main: self before bb0[2]:PostOperands↓'?5 -> _5 before bb0[5]:PostOperands↓'?7 before bb0[5]:PostMain under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
+// PCG: bb4[0] post_main: {(_4@Some)↓'?6 before bb3[1]:PreOperands} -> {(_4@Some).0 before bb3[1]:PostOperands↓'?6} under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
+// PCG: bb4[0] post_main: {_4↓'?6 before bb3[1]:PreOperands} -> {(_4@Some)↓'?6 before bb3[1]:PreOperands} (guide=Downcast(Some("Some"), 1)) under conditions bb0 -> bb1, bb1 -> bb2, bb3 -> bb4
         }
     }
 }

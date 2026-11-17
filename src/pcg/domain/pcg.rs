@@ -14,18 +14,19 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{RepackOp, join::data::JoinOwnedData},
     pcg::{
-        CapabilityKind,
+        CapabilityKind, EvalStmtPhase,
         ctxt::{AnalysisCtxt, HasSettings},
         obtain::{ObtainType, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
-        triple::Triple,
+        triple::{Triple, TripleWalker},
+        visitor::PcgVisitor,
     },
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        AnalysisLocation, CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, validity::HasValidityCheck,
     },
 };
 
@@ -413,22 +414,111 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) -> Result<PcgActions<'tcx>, PcgError> {
         let target = other;
         let mut slf = self.clone();
+        let mut actions = if ctxt.body()[other_block].is_cleanup {
+            slf.expire_and_collapse_on_edge_to_cleanup(other_block, ctxt)?
+        } else {
+            PcgActions::new(Vec::new())
+        };
         let repacks = slf.join_owned(
             target,
             SnapshotLocation::After(self_block),
             SnapshotLocation::BeforeJoin(other_block),
             ctxt,
         )?;
-        let mut actions = PcgActions::new(
+        actions.extend(PcgActions::new(
             repacks
                 .into_iter()
                 .map(|repack| OwnedPcgAction::new(repack, None).into())
                 .collect(),
-        );
+        ));
         if ctxt.is_loop_head(other_block) {
             actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
         }
         Ok(actions)
+    }
+
+    /// Brings the state on a CFG edge to the cleanup block `block` into the
+    /// form in which states reach a join: expires the borrows that end on the
+    /// edge (the old and dead leaves that the first location of `block` would
+    /// expire), then restores the capabilities and collapses the owned places
+    /// that the expiry frees, which normal paths do in the locations after an
+    /// expiry, before they reach a join. The analysis applies it to each state
+    /// entering `block` before the join there, and `bridge` reports its
+    /// actions on the edge.
+    ///
+    /// The PCG expires a borrow that ends at a terminator (e.g. a reborrow
+    /// moved into a call) at the first location of the successor, after the
+    /// join there. On normal paths, a borrow passed to a call is moved out of
+    /// an argument temporary, whose `StorageDead` starts the call's return
+    /// target, so that block has no other predecessor. An unwind edge,
+    /// however, leads directly into a cleanup block that other unwinding
+    /// terminators may share.
+    pub(crate) fn expire_and_collapse_on_edge_to_cleanup(
+        &mut self,
+        block: mir::BasicBlock,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) -> Result<PcgActions<'tcx>, PcgError> {
+        let mut applied = AppliedActions::default();
+        let mut obtainer = PlaceObtainer::new(
+            PcgMutRef::from(&mut *self),
+            Some(&mut applied),
+            ctxt,
+            mir::Location {
+                block,
+                statement_index: 0,
+            },
+            SnapshotLocation::before_block(block),
+        );
+        obtainer.pack_old_and_dead_borrow_leaves(None)?;
+        obtainer.restore_capability_to_unblocked_leaf_places(None)?;
+        obtainer.collapse_owned_places()?;
+        Ok(PcgActions::new(
+            applied.actions.into_iter().map(|a| a.action).collect(),
+        ))
+    }
+
+    /// Applies the effect of the call terminating `block` when it unwinds to
+    /// the state before the call's main effect (its `PreMain` state): the
+    /// main effect without assigning the destination. The callee runs before
+    /// it unwinds and may use its arguments as when it returns, so the call
+    /// abstraction is the same; its edges into the result, which is never
+    /// assigned, expire on the edge into the cleanup block. The analysis
+    /// applies it to the state entering the call's cleanup block, and the
+    /// results report its actions on that edge. Does nothing unless `block`
+    /// ends with a call that unwinds to `cleanup`.
+    pub(crate) fn unwind_call_into<Ctxt: DataflowCtxt<'a, 'tcx>>(
+        &mut self,
+        block: mir::BasicBlock,
+        cleanup: mir::BasicBlock,
+        ctxt: Ctxt,
+    ) -> Result<PcgActions<'tcx>, PcgError> {
+        let body = ctxt.body();
+        let terminator = body[block].terminator();
+        if !matches!(
+            terminator.kind,
+            mir::TerminatorKind::Call {
+                unwind: mir::UnwindAction::Cleanup(target),
+                ..
+            } if target == cleanup
+        ) {
+            return Ok(PcgActions::new(Vec::new()));
+        }
+        // A walker without triples: the call's main triple ensures the
+        // destination's capability, which an unwinding call does not assign.
+        let tw = TripleWalker::new(ctxt.bc_ctxt());
+        let applied = PcgVisitor::visit(
+            self,
+            &tw,
+            AnalysisLocation {
+                location: body.terminator_loc(block),
+                eval_stmt_phase: EvalStmtPhase::PostMain,
+            },
+            terminator.into(),
+            ctxt,
+        )?;
+        Ok(PcgActions::new(
+            applied.actions.into_iter().map(|a| a.action).collect(),
+        ))
     }
 
     /// Reconcile owned layouts and capabilities. Repacking can update borrow
