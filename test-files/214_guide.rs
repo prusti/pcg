@@ -57,8 +57,9 @@ enum E {
     B,
 }
 
-/// A constant-index expansion is one expansion with one guide although its
-/// children are different elements, so the join collapses it once.
+/// The pattern `[x, _]` expands `e.0` into both of its elements under one
+/// guide, that of the bound element (offset 0), so the join collapses it once
+/// and emits no collapse with an offset-1 guide.
 fn join_collapses_constant_index_expansion_once(e: E, c: bool) {
     match e {
         E::A([x, _]) if c => drop(x),

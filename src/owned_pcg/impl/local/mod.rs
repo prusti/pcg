@@ -137,8 +137,7 @@ impl<'tcx> LocalExpansions<'tcx> {
     /// The places all of whose expansions lead only to unexpanded places.
     /// These are the places that can be collapsed without first collapsing
     /// one of their descendants. A place can have several expansions, one
-    /// per guide (e.g. `a[_5]` and `a[_8]`), and it is one of these places
-    /// only if none of those expansions has an expanded child.
+    /// per guide (e.g. to `a[_5]` and to `a[_8]`), and all of them count.
     pub(crate) fn places_expanded_only_to_leaves<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,

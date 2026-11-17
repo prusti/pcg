@@ -215,9 +215,9 @@ impl<'tcx> LocalExpansions<'tcx> {
                     .expansion_places(ctxt)
                     .unwrap()
                     .into_iter()
-                    .map(|child| capabilities.get(child, ctxt).unwrap())
-                    .reduce(|acc, child_cap| acc.minimum(child_cap).unwrap())
-                    .unwrap();
+                    .fold(CapabilityKind::Exclusive, |acc, child| {
+                        acc.minimum(capabilities.get(child, ctxt).unwrap()).unwrap()
+                    });
                 RepackCollapse::new(place, cap, expanded.guide())
             })
             .collect()
@@ -236,18 +236,20 @@ impl<'tcx> LocalExpansions<'tcx> {
     {
         // A place has one expansion per guide (e.g. one per index local), and
         // a collapse names one of them; the other expansions stay in place.
-        let expansion_places = self
+        let Some(expanded) = self
             .expansions_from(collapse.to)
-            .filter(|expanded| expanded.guide() == collapse.guide)
-            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap())
-            .collect::<HashSet<_>>();
-        pcg_validity_assert!(
-            !expansion_places.is_empty(),
-            [ctxt],
-            "Collapse {:?} names no expansion of {}",
-            collapse,
-            collapse.to.display_string(ctxt.ctxt())
-        );
+            .find(|expanded| expanded.guide() == collapse.guide)
+        else {
+            pcg_validity_assert!(
+                false,
+                [ctxt],
+                "Collapse {:?} names no expansion of {}",
+                collapse,
+                collapse.to.display_string(ctxt.ctxt())
+            );
+            return;
+        };
+        let expansion_places = expanded.expansion_places(ctxt).unwrap();
         self.remove_expansion(collapse.to, collapse.guide, ctxt);
         // Two expansions can have the same children (e.g. constant-index
         // expansions for different offsets). A child of an expansion that
@@ -279,8 +281,9 @@ impl<'tcx> LocalExpansions<'tcx> {
                         acc
                     )
                 });
-        // While another expansion of `collapse.to` remains, `collapse.to`
-        // keeps the capability that expansion gave it.
+        // While another expansion of `collapse.to` remains, the capability of
+        // `collapse.to` stays as it is; the collapse of its last expansion
+        // sets it from that expansion's children.
         if !self.contains_expansion_from(collapse.to) {
             place_capabilities.insert(collapse.to, retained_cap, ctxt);
         }
