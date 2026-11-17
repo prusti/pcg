@@ -506,8 +506,9 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     /// The part of this state that a successor's pending state keeps. The
     /// actions are dropped, since joining does not read them. A phase whose
     /// state equals the entry state or the state after the last phase shares
-    /// that state, so that its own copy does not stay alive until the
-    /// analysis completes. Each phase still compares equal to its own state,
+    /// that state, so that the contents of its own copy are freed instead of
+    /// kept until the analysis completes. Each phase still compares equal to
+    /// its own state,
     /// so [`PendingDataflowState::push`] keeps the same states.
     fn for_successor(&self) -> Self {
         let mut result = self.clone();
