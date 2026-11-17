@@ -113,7 +113,6 @@ ansi_term                owned update: no capability for a local after a closure
 nu-ansi-term             owned update: no capability for a local after a closure borrowed it mutably
 libc                     visitor: unsupported MIR statement (todo!)
 nom                      timeout: PCG takes over 12 minutes
-quinn-udp                timeout: borrowing `a[i].f` of an array `a` and reading `a[i].g` never ends (Linux-only code)
 rustls                   memory: PCG needs over 12 GiB
 sha2                     memory: PCG needs over 12 GiB
 bincode                  does not compile: deliberate compile_error!
