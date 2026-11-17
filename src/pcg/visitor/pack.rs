@@ -269,9 +269,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     .blocked_place
                     .as_current_place()
                     .is_some_and(|blocked| {
-                        accessed.iter().any(|&accessed| {
-                            blocked.is_prefix_of(accessed) || accessed.is_prefix_of(blocked)
-                        })
+                        accessed
+                            .iter()
+                            .any(|&accessed| blocked.conflicts_with(accessed))
                     })
             })
             .map(BorrowPcgEdgeLike::to_owned_edge)
