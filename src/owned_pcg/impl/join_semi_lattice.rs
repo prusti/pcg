@@ -23,6 +23,7 @@ use crate::{
     },
 };
 use itertools::Itertools;
+use std::rc::Rc;
 
 use crate::{
     owned_pcg::LocalExpansions,
@@ -49,12 +50,12 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                 },
             ) => {
                 let self_allocated = JoinOwnedData {
-                    owned: to_places,
+                    owned: Rc::make_mut(to_places),
                     borrows: self.borrows,
                     capabilities: self.capabilities,
                     snapshot_location: self.snapshot_location,
                 };
-                let mut from_places = from_places.clone();
+                let mut from_places = (**from_places).clone();
                 let other_allocated = JoinOwnedData {
                     owned: &mut from_places,
                     borrows: other.borrows,
@@ -64,6 +65,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                 self_allocated.join(other_allocated, ctxt)
             }
             (LocalInitState::Allocated { expansions, .. }, LocalInitState::Unallocated) => {
+                let expansions = Rc::make_mut(expansions);
                 self.borrows.label_place_and_update_related_capabilities(
                     expansions.local.into(),
                     LabelPlaceReason::StorageDead,
