@@ -251,8 +251,8 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         let removed = state.graph.remove(edge).is_some();
         if removed {
             for node in edge.blocked_by_nodes(ctxt) {
-                if !state.graph.contains(node, ctxt)
-                    && let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
+                if let PcgNode::Place(MaybeLabelledPlace::Current(place)) = node
+                    && !state.graph.contains(node, ctxt)
                 {
                     let _ = capabilities.remove(place, ctxt);
                 }
