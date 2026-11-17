@@ -52,6 +52,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool;
 
+    /// Freezes `base` if it has E and is about to be unpacked for read.
+    fn freeze_for_read_unpacking(&mut self, _base: Place<'tcx>) -> Result<(), PcgError> {
+        Ok(())
+    }
+
     #[tracing::instrument(skip(self, obtain_type, ctxt))]
     fn expand_to(
         &mut self,
@@ -147,14 +152,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 .into(),
             )?;
         } else if !base.is_raw_ptr(ctxt) {
+            let capability = self.capability_for_expand(expansion.base_place(), obtain_type, ctxt);
+            if capability.is_read() {
+                self.freeze_for_read_unpacking(expansion.base_place())?;
+            }
             self.apply_action(
                 OwnedPcgAction::new(
-                    RepackOp::expand(
-                        expansion.base_place(),
-                        expansion.guide(),
-                        self.capability_for_expand(expansion.base_place(), obtain_type, ctxt),
-                        ctxt,
-                    ),
+                    RepackOp::expand(expansion.base_place(), expansion.guide(), capability, ctxt),
                     Some(format!("Expand owned place one level ({obtain_type:?})").into()),
                 )
                 .into(),
@@ -197,11 +201,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             );
             self.apply_action(action.into())?;
             self.render_debug_graph(None, "expand_place_one_level: after apply action");
-            self.update_capabilities_for_deref(
-                base,
-                obtain_type.capability(base, ctxt),
-                ctxt.bc_ctxt(),
-            );
+            let capability = obtain_type.capability(base, ctxt);
+            if capability.is_read() || base.is_shared_ref(ctxt) {
+                self.freeze_for_read_unpacking(base)?;
+            }
+            self.update_capabilities_for_deref(base, capability, ctxt.bc_ctxt());
             self.render_debug_graph(
                 None,
                 "expand_place_one_level: after update_capabilities_for_deref",
@@ -227,11 +231,11 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             );
             self.apply_action(action.into())?;
             self.render_debug_graph(None, "expand_place_one_level: after apply action");
-            let _ = self.update_capabilities_for_deref(
-                base,
-                obtain_type.capability(base, ctxt),
-                ctxt.bc_ctxt(),
-            );
+            let capability = obtain_type.capability(base, ctxt);
+            if capability.is_read() {
+                self.freeze_for_read_unpacking(base)?;
+            }
+            let _ = self.update_capabilities_for_deref(base, capability, ctxt.bc_ctxt());
             Ok(true)
         } else if let Some(owned_base) = base.as_owned_place(ctxt) {
             self.expand_owned_place_one_level(owned_base, expansion, obtain_type, ctxt)
@@ -289,6 +293,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 expansion.display_string(ctxt.bc_ctxt())
             ),
         );
+        if block_type.blocked_place_maximum_retained_capability() == Some(CapabilityKind::Read) {
+            self.freeze_for_read_unpacking(base)?;
+        }
         self.update_capabilities_for_borrow_expansion(&expansion, block_type, ctxt.bc_ctxt());
         self.render_debug_graph(
             None,

@@ -6,7 +6,7 @@ use crate::{
     HasSettings,
     borrow_pcg::{
         action::ApplyActionResult,
-        borrow_pcg_edge::{BlockingNode, LocalNode},
+        borrow_pcg_edge::BlockingNode,
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
         graph::join::JoinBorrowsArgs,
         region_projection::PcgLifetimeProjectionBase,
@@ -87,6 +87,77 @@ fn map_label_predicate<'tcx, P: Copy>(
         LabelNodePredicate::EdgeType(edge_type) => LabelNodePredicate::EdgeType(*edge_type),
         LabelNodePredicate::InSourceNodes => LabelNodePredicate::InSourceNodes,
         LabelNodePredicate::InTargetNodes => LabelNodePredicate::InTargetNodes,
+    }
+}
+
+/// Ends the freeze of `place` while `to` stay frozen: the read unpacking of
+/// `place` becomes an exclusive one, except for `to` and their unpackings.
+/// Returns the places that get E.
+fn end_freeze<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    to: &[P],
+    capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, P>,
+    ctxt: Ctxt,
+) -> Vec<P> {
+    let holders = std::iter::once(place)
+        .chain(
+            capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .map(|(p, _)| p),
+        )
+        .collect::<Vec<_>>();
+    let mut exclusive = vec![];
+    for &p in &holders {
+        if to.iter().any(|t| t.is_prefix_of(p)) {
+            continue;
+        }
+        let unpacked = holders.iter().any(|h| p.is_strict_prefix_of(*h));
+        match exclusively_unpacked_capability(p, unpacked, ctxt) {
+            Some(cap) => {
+                capabilities.insert(p, cap, ctxt);
+                if cap == CapabilityKind::Exclusive {
+                    exclusive.push(p);
+                }
+            }
+            None => {
+                let _ = capabilities.remove(p, ctxt);
+            }
+        }
+    }
+    exclusive
+}
+
+/// The capability of `place` in an exclusive unpacking: an `unpacked` place
+/// keeps none (`e` for a mutable reference or a raw pointer, R for a
+/// dereferenced shared reference), and a leaf has E. Places behind a shared
+/// reference keep R.
+fn exclusively_unpacked_capability<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    unpacked: bool,
+    ctxt: Ctxt,
+) -> Option<CapabilityKind> {
+    let behind_shared_ref = place
+        .iter_projections(ctxt)
+        .into_iter()
+        .any(|(base, elem)| {
+            matches!(elem, mir::ProjectionElem::Deref)
+                && matches!(
+                    base.rust_ty(ctxt).kind(),
+                    ty::Ref(_, _, ty::Mutability::Not)
+                )
+        });
+    if behind_shared_ref {
+        return Some(CapabilityKind::Read);
+    }
+    if !unpacked {
+        return Some(CapabilityKind::Exclusive);
+    }
+    match place.rust_ty(ctxt).kind() {
+        ty::Ref(_, _, ty::Mutability::Mut) | ty::RawPtr(..) => {
+            Some(CapabilityKind::ShallowExclusive)
+        }
+        ty::Ref(_, _, ty::Mutability::Not) => Some(CapabilityKind::Read),
+        _ => None,
     }
 }
 
@@ -177,17 +248,6 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
     }
     fn graph(&self) -> &BorrowsGraph<'tcx, EdgeKind, VC>;
 
-    fn leaf_nodes<'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt>(
-        &self,
-        ctxt: Ctxt,
-    ) -> Vec<LocalNode<'tcx>>
-    where
-        EdgeKind: Eq + std::hash::Hash + EdgeData<'tcx, Ctxt, Place<'tcx>>,
-        'tcx: 'a,
-    {
-        self.graph().frozen_graph().leaf_nodes(ctxt)
-    }
-
     fn label_place_and_update_related_capabilities<
         'a,
         P: PlaceLike<'tcx, Ctxt> + DisplayWithCtxt<Ctxt>,
@@ -212,8 +272,13 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         // If in a join we don't want to change capabilities because this will
         // essentially be handled by the join logic.
         // See 69_http_header_map.rs
-        if reason != LabelPlaceReason::JoinOwnedReadAndWriteCapabilities {
-            capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt));
+        match reason {
+            LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {}
+            // The referent and its read copies move to the label.
+            LabelPlaceReason::DetachSharedReferent => {
+                capabilities.retain(|p, _| !place.is_prefix_of(p));
+            }
+            _ => capabilities.retain(|p, _| !p.projects_indirection_from(place, ctxt)),
         }
         let display = display_node_replacements(&replacements, ctxt, OutputMode::Normal);
         ApplyActionResult {
@@ -316,6 +381,79 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                         assert!(capabilities.remove(weaken_place, ctxt).is_some());
                     }
                 }
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::Freeze { place } => {
+                pcg_validity_assert!(
+                    matches!(
+                        capabilities.get(place, ctxt),
+                        Some(CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive) | None
+                    ),
+                    [ctxt],
+                    "Freezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                capabilities.insert(place, CapabilityKind::Read, ctxt);
+                for (p, cap) in capabilities
+                    .capabilities_for_strict_postfixes_of(place)
+                    .collect::<Vec<_>>()
+                {
+                    pcg_validity_assert!(
+                        !cap.is_write(),
+                        [ctxt],
+                        "Freezing {} with uninitialised {}",
+                        place.display_string(ctxt),
+                        p.display_string(ctxt)
+                    );
+                    capabilities.insert(p, CapabilityKind::Read, ctxt);
+                }
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::Unfreeze { place } => {
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Unfreezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                for p in end_freeze(place, &[], capabilities, ctxt) {
+                    self.label_lifetime_projections(
+                        &LabelNodePredicate::all_future_postfixes(p),
+                        None,
+                        ctxt,
+                    );
+                }
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::Refreeze { place, to } => {
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Refreezing {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                for p in end_freeze(place, &to, capabilities, ctxt) {
+                    self.label_lifetime_projections(
+                        &LabelNodePredicate::all_future_postfixes(p),
+                        None,
+                        ctxt,
+                    );
+                }
+                ApplyActionResult::changed_no_display()
+            }
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => {
+                let place = borrow.blocked_place.place();
+                pcg_validity_assert!(
+                    capabilities.get(place, ctxt) == Some(CapabilityKind::Read),
+                    [ctxt],
+                    "Activating a two-phase borrow of {} with capability {:?}",
+                    place.display_string(ctxt),
+                    capabilities.get(place, ctxt)
+                );
+                let _ = capabilities.remove(place, ctxt);
                 ApplyActionResult::changed_no_display()
             }
             BorrowPcgActionKind::LabelPlace(action) => self
