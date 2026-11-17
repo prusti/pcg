@@ -109,18 +109,21 @@ impl<'tcx> LocalExpansions<'tcx> {
         !self.expansions.is_empty()
     }
 
-    pub(crate) fn remove_all_expansions_from<'a>(
+    pub(crate) fn remove_expansion<'a>(
         &mut self,
         place: Place<'tcx>,
+        guide: Option<RepackGuide>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) where
         'tcx: 'a,
     {
         tracing::debug!(
-            "Removing all expansions from {}",
-            place.display_string(ctxt.ctxt())
+            "Removing the expansion of {} with guide {:?}",
+            place.display_string(ctxt.ctxt()),
+            guide
         );
-        self.expansions.retain(|pe| pe.place != place);
+        self.expansions
+            .retain(|pe| pe.place != place || pe.guide() != guide);
     }
 
     pub(crate) fn insert_expansion(&mut self, place: Place<'tcx>, expansion: PlaceExpansion<'tcx>) {
@@ -131,22 +134,27 @@ impl<'tcx> LocalExpansions<'tcx> {
         &self.expansions
     }
 
-    pub(crate) fn leaf_expansions<'a>(
+    /// The places all of whose expansions lead only to unexpanded places.
+    /// These are the places that can be collapsed without first collapsing
+    /// one of their descendants. A place can have several expansions, one
+    /// per guide (e.g. to `a[_5]` and to `a[_8]`), and all of them count.
+    pub(crate) fn places_expanded_only_to_leaves<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> HashSet<ExpandedPlace<'tcx>>
+    ) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
     {
-        self.expansions
+        let expanded_places: HashSet<Place<'tcx>> =
+            self.expansions.iter().map(|e| e.place).collect();
+        expanded_places
             .iter()
-            .filter(|e| {
-                e.expansion_places(ctxt)
-                    .unwrap()
+            .filter(|place| {
+                self.all_children_of(**place, ctxt)
                     .iter()
-                    .all(|p| !self.contains_expansion_from(*p))
+                    .all(|p| !expanded_places.contains(p))
             })
-            .cloned()
+            .copied()
             .collect()
     }
 

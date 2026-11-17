@@ -12,14 +12,13 @@ use crate::{
     },
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
+        ExpandedPlace, RepackCollapse, RepackExpand, RepackOp,
         join::{data::JoinOwnedData, obtain::JoinCtxt},
     },
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place,
-        data_structures::{HashMap, HashSet},
+        DebugCtxt, HasCompilerCtxt, Place, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -210,27 +209,17 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        let children = self.all_children_of(place, ctxt);
-        let mut collapses_by_guide: HashMap<Option<RepackGuide>, CapabilityKind> =
-            HashMap::default();
-        for child in children {
-            let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
-            // The place does not carry the label of an index guide; the
-            // stored expansion does.
-            let guide = guide.map(|guide| {
-                self.expansions
-                    .iter()
-                    .filter(|expanded| expanded.place == place)
-                    .find_map(|expanded| expanded.guide().filter(|stored| *stored == guide))
-                    .unwrap_or(guide)
-            });
-            let child_cap = capabilities.get(child, ctxt).unwrap();
-            let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
-            *entry = entry.minimum(child_cap).unwrap();
-        }
-        collapses_by_guide
-            .into_iter()
-            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
+        self.expansions_from(place)
+            .map(|expanded| {
+                let cap = expanded
+                    .expansion_places(ctxt)
+                    .unwrap()
+                    .into_iter()
+                    .fold(CapabilityKind::Exclusive, |acc, child| {
+                        acc.minimum(capabilities.get(child, ctxt).unwrap()).unwrap()
+                    });
+                RepackCollapse::new(place, cap, expanded.guide())
+            })
             .collect()
     }
 
@@ -245,12 +234,36 @@ impl<'tcx> LocalExpansions<'tcx> {
     ) where
         'tcx: 'a,
     {
-        let expansion_places = self.all_children_of(collapse.to, ctxt);
+        // A place has one expansion per guide (e.g. one per index local), and
+        // a collapse names one of them; the other expansions stay in place.
+        let Some(expanded) = self
+            .expansions_from(collapse.to)
+            .find(|expanded| expanded.guide() == collapse.guide)
+        else {
+            pcg_validity_assert!(
+                false,
+                [ctxt],
+                "Collapse {:?} names no expansion of {}",
+                collapse,
+                collapse.to.display_string(ctxt.ctxt())
+            );
+            return;
+        };
+        let expansion_places = expanded.expansion_places(ctxt).unwrap();
+        self.remove_expansion(collapse.to, collapse.guide, ctxt);
+        // Two expansions can have the same children (e.g. constant-index
+        // expansions for different offsets). A child of an expansion that
+        // remains keeps its capability.
+        let children_of_remaining_expansions = self.all_children_of(collapse.to, ctxt);
         let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
                 .fold(CapabilityKind::Exclusive, |acc, place| {
-                    let removed_cap = place_capabilities.remove(*place, ctxt);
+                    let removed_cap = if children_of_remaining_expansions.contains(place) {
+                        place_capabilities.get(*place, ctxt)
+                    } else {
+                        place_capabilities.remove(*place, ctxt)
+                    };
                     let removed_cap = pcg_validity_expect_some!(
                         removed_cap,
                         fallback: CapabilityKind::Exclusive,
@@ -268,7 +281,11 @@ impl<'tcx> LocalExpansions<'tcx> {
                         acc
                     )
                 });
-        self.remove_all_expansions_from(collapse.to, ctxt);
-        place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        // While another expansion of `collapse.to` remains, the capability of
+        // `collapse.to` stays as it is; the collapse of its last expansion
+        // sets it from that expansion's children.
+        if !self.contains_expansion_from(collapse.to) {
+            place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        }
     }
 }
