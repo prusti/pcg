@@ -67,3 +67,20 @@ fn join_collapses_constant_index_expansion_once(e: E, c: bool) {
     // PCG: bb7 -> bb8: Collapse(RepackCollapse { to: (_1@A).0, capability: W, guide: Some(ConstantIndex(ConstantIndex { offset: 0, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
     // ~PCG: bb7 -> bb8: Collapse(RepackCollapse { to: (_1@A).0, capability: W, guide: Some(ConstantIndex(ConstantIndex { offset: 1, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
 }
+
+/// Each branch expands `a` for read with a constant-index guide of its own
+/// offset, so after the join `a` has two expansions with the same children.
+/// Collapsing one of them leaves the children to the other.
+fn join_two_constant_index_read_expansions(a: [String; 2], c: bool) -> usize {
+    let r = if c {
+        let [ref x, _] = a;
+        x
+    } else {
+        let [_, ref y] = a;
+        y
+    };
+    r.len()
+    // PCG: bb4[0] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: Some(ConstantIndex(ConstantIndex { offset: 0, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
+    // PCG: bb4[0] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: Some(ConstantIndex(ConstantIndex { offset: 1, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
+    // PCG: bb4[0] post_operands: a: E
+}

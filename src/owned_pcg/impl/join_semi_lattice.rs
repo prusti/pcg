@@ -248,11 +248,20 @@ impl<'tcx> LocalExpansions<'tcx> {
             collapse,
             collapse.to.display_string(ctxt.ctxt())
         );
+        self.remove_expansion(collapse.to, collapse.guide, ctxt);
+        // Two expansions can have the same children (e.g. constant-index
+        // expansions for different offsets). A child of an expansion that
+        // remains keeps its capability.
+        let children_of_remaining_expansions = self.all_children_of(collapse.to, ctxt);
         let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
                 .fold(CapabilityKind::Exclusive, |acc, place| {
-                    let removed_cap = place_capabilities.remove(*place, ctxt);
+                    let removed_cap = if children_of_remaining_expansions.contains(place) {
+                        place_capabilities.get(*place, ctxt)
+                    } else {
+                        place_capabilities.remove(*place, ctxt)
+                    };
                     let removed_cap = pcg_validity_expect_some!(
                         removed_cap,
                         fallback: CapabilityKind::Exclusive,
@@ -270,7 +279,6 @@ impl<'tcx> LocalExpansions<'tcx> {
                         acc
                     )
                 });
-        self.remove_expansion(collapse.to, collapse.guide, ctxt);
         // While another expansion of `collapse.to` remains, `collapse.to`
         // keeps the capability that expansion gave it.
         if !self.contains_expansion_from(collapse.to) {
