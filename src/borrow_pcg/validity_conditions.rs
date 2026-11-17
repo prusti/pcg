@@ -11,6 +11,7 @@ use bit_set::BitSet;
 use itertools::Itertools;
 use serde_derive::Serialize;
 use smallvec::SmallVec;
+use std::rc::Rc;
 
 use crate::rustc_interface::middle::mir::BasicBlock;
 
@@ -76,7 +77,6 @@ impl<'a, 'tcx: 'a> DebugRepr<&'a mir::Body<'tcx>> for BranchChoices {
 enum BranchChoicesJoinResult {
     CoversAllChoices,
     Changed,
-    Unchanged,
 }
 
 impl BranchChoices {
@@ -109,14 +109,13 @@ impl BranchChoices {
             .is_some_and(|pos| self.chosen.contains(pos))
     }
 
+    /// Adds `other`'s choices. Called only when `other` has a choice that
+    /// `self` does not.
     fn join(&mut self, other: &Self, body: &mir::Body<'_>) -> BranchChoicesJoinResult {
         assert_eq!(self.from, other.from);
-        let old_len = self.chosen.len();
         let successors = effective_successors(self.from, body);
         self.chosen.union_with(&other.chosen);
-        if self.chosen.len() == old_len {
-            BranchChoicesJoinResult::Unchanged
-        } else if self.chosen.len() == successors.len() {
+        if self.chosen.len() == successors.len() {
             BranchChoicesJoinResult::CoversAllChoices
         } else {
             BranchChoicesJoinResult::Changed
@@ -153,8 +152,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Br
 
 /// Validity conditions describing the control-flow paths for which a given edge
 /// in the PCG applies.
+///
+/// The conditions are copied with every copy of a PCG state but rarely change,
+/// so copies share their [`BranchChoices`].
 #[derive(PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Debug)]
-pub struct ValidityConditions(SmallVec<[BranchChoices; 8]>);
+pub struct ValidityConditions(SmallVec<[Rc<BranchChoices>; 8]>);
 
 #[derive(Serialize)]
 #[cfg_attr(feature = "type-export", derive(ts_rs::TS))]
@@ -280,11 +282,11 @@ impl ValidityConditions {
     /// - `b'` is in the set of valid successors defined by the
     ///   [`BranchChoices`] for `b`
     pub fn all_branch_choices(&self) -> impl Iterator<Item = &BranchChoices> {
-        self.0.iter()
+        self.0.iter().map(|c| &**c)
     }
 
     fn branch_choices_for(&self, from: BasicBlock) -> Option<&BranchChoices> {
-        self.0.iter().find(|c| c.from == from)
+        self.all_branch_choices().find(|c| c.from == from)
     }
 
     /// The join is a disjunction: every path satisfying either operand must
@@ -299,14 +301,21 @@ impl ValidityConditions {
                 unconstrained.push(branch_choices.from);
                 continue;
             };
-            match branch_choices.join(other_branch_choices, body) {
+            // Choices that already include the other side's are unchanged by
+            // the join; skipping them keeps `make_mut` from copying them.
+            if other_branch_choices
+                .chosen
+                .is_subset(&branch_choices.chosen)
+            {
+                continue;
+            }
+            match Rc::make_mut(branch_choices).join(other_branch_choices, body) {
                 BranchChoicesJoinResult::CoversAllChoices => {
                     unconstrained.push(branch_choices.from);
                 }
                 BranchChoicesJoinResult::Changed => {
                     changed = true;
                 }
-                BranchChoicesJoinResult::Unchanged => {}
             }
         }
         if !unconstrained.is_empty() {
@@ -349,7 +358,7 @@ impl ValidityConditions {
         let chosen_idx = successors.iter().position(|s| *s == pc.to).unwrap();
         self.0.insert(
             bc_index,
-            BranchChoices::new(pc.from, successors.len(), chosen_idx),
+            Rc::new(BranchChoices::new(pc.from, successors.len(), chosen_idx)),
         );
         tracing::debug!("After insert, {self:?}");
         true
