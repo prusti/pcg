@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, cell::LazyCell};
 
 use crate::{
     DebugLines,
@@ -232,8 +232,9 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             return Err("PCG is not acyclic".to_owned());
         }
 
+        let borrow_places = LazyCell::new(|| self.borrow.graph.places(ctxt.bc_ctxt()));
         for local in self.owned.unallocated_locals() {
-            if self.borrow.graph.contains(local, ctxt) {
+            if borrow_places.contains(&Place::from(local)) {
                 return Err(format!(
                     "Unallocated local {} is in the borrow graph",
                     local.display_string(ctxt)
@@ -243,7 +244,7 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
 
         for (place, cap) in self.place_capabilities.iter() {
             if !self.owned.contains_place(place, ctxt.bc_ctxt())
-                && !self.borrow.graph.places(ctxt.bc_ctxt()).contains(&place)
+                && !borrow_places.contains(&place)
                 && !place.contains_unsafe_deref(ctxt)
             {
                 return Err(format!(
