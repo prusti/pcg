@@ -483,17 +483,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .flat_map(|edge| edge.blocked_nodes(ctxt).collect::<Vec<_>>())
             .collect()
     }
-
-    pub(crate) fn edges_blocking_set<'slf, 'a: 'slf, 'bc: 'slf>(
-        &'slf self,
-        node: BlockedNode<'tcx>,
-        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-    ) -> Vec<BorrowPcgEdgeRef<'tcx, 'slf>>
-    where
-        'tcx: 'a,
-    {
-        self.edges_blocking(node, ctxt.bc_ctxt()).collect()
-    }
 }
 
 impl<'tcx, EdgeKind: Eq + std::hash::Hash, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
