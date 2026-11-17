@@ -51,3 +51,19 @@ fn borrow_and_read_fields_of_indexed_element_in_loop(hdrs: [H; 32], n: usize) ->
     }
     x
 }
+
+enum E {
+    A([String; 2]),
+    B,
+}
+
+/// A constant-index expansion is one expansion with one guide although its
+/// children are different elements, so the join collapses it once.
+fn join_collapses_constant_index_expansion_once(e: E, c: bool) {
+    match e {
+        E::A([x, _]) if c => drop(x),
+        _ => {}
+    }
+    // PCG: bb7 -> bb8: Collapse(RepackCollapse { to: (_1@A).0, capability: W, guide: Some(ConstantIndex(ConstantIndex { offset: 0, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
+    // ~PCG: bb7 -> bb8: Collapse(RepackCollapse { to: (_1@A).0, capability: W, guide: Some(ConstantIndex(ConstantIndex { offset: 1, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
+}

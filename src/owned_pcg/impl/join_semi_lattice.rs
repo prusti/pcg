@@ -12,14 +12,13 @@ use crate::{
     },
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, RepackCollapse, RepackExpand, RepackGuide, RepackOp,
+        ExpandedPlace, RepackCollapse, RepackExpand, RepackOp,
         join::{data::JoinOwnedData, obtain::JoinCtxt},
     },
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
-        DebugCtxt, HasCompilerCtxt, Place,
-        data_structures::{HashMap, HashSet},
+        DebugCtxt, HasCompilerCtxt, Place, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -210,27 +209,17 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        let children = self.all_children_of(place, ctxt);
-        let mut collapses_by_guide: HashMap<Option<RepackGuide>, CapabilityKind> =
-            HashMap::default();
-        for child in children {
-            let guide: Option<RepackGuide> = child.last_projection().unwrap().1.try_into().ok();
-            // The place does not carry the label of an index guide; the
-            // stored expansion does.
-            let guide = guide.map(|guide| {
-                self.expansions
-                    .iter()
-                    .filter(|expanded| expanded.place == place)
-                    .find_map(|expanded| expanded.guide().filter(|stored| *stored == guide))
-                    .unwrap_or(guide)
-            });
-            let child_cap = capabilities.get(child, ctxt).unwrap();
-            let entry = collapses_by_guide.entry(guide).or_insert(child_cap);
-            *entry = entry.minimum(child_cap).unwrap();
-        }
-        collapses_by_guide
-            .into_iter()
-            .map(|(guide, cap)| RepackCollapse::new(place, cap, guide))
+        self.expansions_from(place)
+            .map(|expanded| {
+                let cap = expanded
+                    .expansion_places(ctxt)
+                    .unwrap()
+                    .into_iter()
+                    .map(|child| capabilities.get(child, ctxt).unwrap())
+                    .reduce(|acc, child_cap| acc.minimum(child_cap).unwrap())
+                    .unwrap();
+                RepackCollapse::new(place, cap, expanded.guide())
+            })
             .collect()
     }
 
