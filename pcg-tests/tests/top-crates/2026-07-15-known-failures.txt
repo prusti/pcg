@@ -1,0 +1,117 @@
+# Crates of 2026-07-15.json that fail the `top_crates` sweep. Each line is a
+# crate name followed by the reason it fails. A failure of a listed crate does
+# not fail the sweep, but a listed crate that passes does, so that the change
+# that fixes a crate also removes it from this list.
+hashbrown                loop join: BorrowFlowEdge from a node to itself
+rand_core                loop join: BorrowFlowEdge from a node to itself
+rand                     loop join: BorrowFlowEdge from a node to itself
+regex-syntax             loop join: BorrowFlowEdge from a node to itself
+thiserror-impl           loop join: BorrowFlowEdge from a node to itself
+serde_derive             loop join: BorrowFlowEdge from a node to itself
+heck                     loop join: BorrowFlowEdge from a node to itself
+serde_json               loop join: BorrowFlowEdge from a node to itself
+aho-corasick             loop join: BorrowFlowEdge from a node to itself
+http                     loop join: BorrowFlowEdge from a node to itself
+idna                     loop join: BorrowFlowEdge from a node to itself
+miniz_oxide              loop join: BorrowFlowEdge from a node to itself
+toml                     loop join: BorrowFlowEdge from a node to itself
+futures-util             loop join: BorrowFlowEdge from a node to itself
+url                      loop join: BorrowFlowEdge from a node to itself
+winnow                   loop join: BorrowFlowEdge from a node to itself
+chrono                   loop join: BorrowFlowEdge from a node to itself
+toml_edit                loop join: BorrowFlowEdge from a node to itself
+tokio-util               loop join: BorrowFlowEdge from a node to itself
+rustls-webpki            loop join: BorrowFlowEdge from a node to itself
+clap_builder             loop join: BorrowFlowEdge from a node to itself
+flate2                   loop join: BorrowFlowEdge from a node to itself
+object                   loop join: BorrowFlowEdge from a node to itself
+pin-project-internal     loop join: BorrowFlowEdge from a node to itself
+gimli                    loop join: BorrowFlowEdge from a node to itself
+displaydoc               loop join: BorrowFlowEdge from a node to itself
+yoke-derive              loop join: BorrowFlowEdge from a node to itself
+wasm-bindgen-macro-support loop join: BorrowFlowEdge from a node to itself
+petgraph                 loop join: BorrowFlowEdge from a node to itself
+icu_normalizer           loop join: BorrowFlowEdge from a node to itself
+tokio-stream             loop join: BorrowFlowEdge from a node to itself
+which                    loop join: BorrowFlowEdge from a node to itself
+schemars                 loop join: BorrowFlowEdge from a node to itself
+bindgen                  loop join: BorrowFlowEdge from a node to itself
+tonic                    loop join: BorrowFlowEdge from a node to itself
+console                  loop join: BorrowFlowEdge from a node to itself
+async-channel            loop join: BorrowFlowEdge from a node to itself
+async-stream-impl        loop join: BorrowFlowEdge from a node to itself
+futures-lite             loop join: BorrowFlowEdge from a node to itself
+quinn-proto              loop join: BorrowFlowEdge from a node to itself
+crypto-bigint            loop join: BorrowFlowEdge from a node to itself
+brotli                   loop join: BorrowFlowEdge from a node to itself
+brotli-decompressor      loop join: BorrowFlowEdge from a node to itself
+zip                      loop join: BorrowFlowEdge from a node to itself
+combine                  loop join: BorrowFlowEdge from a node to itself
+zeroize_derive           loop join: BorrowFlowEdge from a node to itself
+ciborium                 loop join: BorrowFlowEdge from a node to itself
+toml_parser              loop join: BorrowFlowEdge from a node to itself
+tar                      loop join: BorrowFlowEdge from a node to itself
+plotters-backend         loop join: BorrowFlowEdge from a node to itself
+indicatif                loop join: BorrowFlowEdge from a node to itself
+iri-string               loop join: BorrowFlowEdge from a node to itself
+rsa                      loop join: BorrowFlowEdge from a node to itself
+opentelemetry_sdk        loop join: BorrowFlowEdge from a node to itself
+async-compression        loop join: BorrowFlowEdge from a node to itself
+syn                      loop join: no unique delegation edge for a raw pointer place
+memchr                   loop join: no unique delegation edge for a raw pointer place
+parking_lot_core         loop join: no unique delegation edge for a raw pointer place
+semver                   loop join: no unique delegation edge for a raw pointer place
+futures-channel          loop join: no unique delegation edge for a raw pointer place
+crossbeam-deque          loop join: no unique delegation edge for a raw pointer place
+crossbeam-channel        loop join: no unique delegation edge for a raw pointer place
+bstr                     loop join: no unique delegation edge for a raw pointer place
+crossbeam-queue          loop join: no unique delegation edge for a raw pointer place
+concurrent-queue         loop join: no unique delegation edge for a raw pointer place
+lru                      loop join: no unique delegation edge for a raw pointer place
+unsafe-libyaml           loop join: no unique delegation edge for a raw pointer place
+tokio                    thread_local! initializer: return place is not exclusive
+tracing-core             thread_local! initializer: return place is not exclusive
+futures-executor         thread_local! initializer: return place is not exclusive
+thread_local             thread_local! initializer: return place is not exclusive
+tracing-subscriber       thread_local! initializer: return place is not exclusive
+env_logger               thread_local! initializer: return place is not exclusive
+backtrace                thread_local! initializer: return place is not exclusive
+foldhash                 thread_local! initializer: return place is not exclusive
+async-stream             thread_local! initializer: return place is not exclusive
+pyo3                     thread_local! initializer: return place is not exclusive
+async-io                 thread_local! initializer: return place is not exclusive
+rayon                    collapse: joins read and write field capabilities
+quick-xml                collapse: joins read and write field capabilities
+pest                     collapse: joins read and write field capabilities
+async-lock               collapse: joins read and write field capabilities
+serde_path_to_error      collapse: joins read and write field capabilities
+pyo3-macros-backend      collapse: joins read and write field capabilities
+predicates               collapse: joins read and write field capabilities
+serde                    collapse: child place has no capability (unwrap on None)
+slab                     collapse: child place has no capability (unwrap on None)
+axum                     collapse: child place has no capability (unwrap on None)
+serde_yaml               collapse: child place has no capability (unwrap on None)
+prost-build              collapse: child place has no capability (unwrap on None)
+serde_with               collapse: child place has no capability (unwrap on None)
+strsim                   placeholder projection has edges to its current version
+libm                     placeholder projection has edges to its current version
+linked-hash-map          placeholder projection has edges to its current version
+unicode-segmentation     read place has an exclusive child
+flume                    read place has an exclusive child
+bit-vec                  exclusive place missing from owned PCG and borrow graph
+multimap                 exclusive place missing from owned PCG and borrow graph
+once_cell                restored capability is not above the current one
+windows-core             restored capability is not above the current one
+lock_api                 expanded base keeps write capability
+opentelemetry            expanded base keeps write capability
+crossbeam-epoch          deref edge: read base, dereference without capability
+regex-automata           collapse: child place has no capability
+rayon-core               owned state: expected allocated local
+addr2line                local join: expected read capability
+ansi_term                owned update: no capability for a local after a closure borrowed it mutably
+nu-ansi-term             owned update: no capability for a local after a closure borrowed it mutably
+libc                     visitor: unsupported MIR statement (todo!)
+nom                      timeout: PCG takes over 8 minutes
+rustls                   memory: PCG needs over 12 GiB
+bincode                  does not compile: deliberate compile_error!
+windows                  does not compile outside Windows
