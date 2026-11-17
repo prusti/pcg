@@ -131,22 +131,27 @@ impl<'tcx> LocalExpansions<'tcx> {
         &self.expansions
     }
 
-    pub(crate) fn leaf_expansions<'a>(
+    /// The expanded places none of whose children is expanded, over all the
+    /// expansions from the place. Collapsing a place removes every expansion
+    /// from it, so these are the places that can be collapsed without first
+    /// collapsing one of their descendants. A place with several index
+    /// expansions (e.g. `a[_5]` and `a[_8]`) is not one of them while any of
+    /// those expansions has an expanded child.
+    pub(crate) fn places_expanded_only_to_leaves<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> HashSet<ExpandedPlace<'tcx>>
+    ) -> HashSet<Place<'tcx>>
     where
         'tcx: 'a,
     {
         self.expansions
             .iter()
-            .filter(|e| {
-                e.expansion_places(ctxt)
-                    .unwrap()
+            .map(|e| e.place)
+            .filter(|place| {
+                self.all_children_of(*place, ctxt)
                     .iter()
                     .all(|p| !self.contains_expansion_from(*p))
             })
-            .cloned()
             .collect()
     }
 

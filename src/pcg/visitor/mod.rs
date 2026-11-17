@@ -328,11 +328,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         places_to_keep_unpacked: &[Place<'tcx>],
     ) -> Result<bool, PcgError> {
         let local_expansions = self.pcg.owned[local].expansions();
-        let leaf_expansions = local_expansions.leaf_expansions(self.ctxt);
-        let parent_places = leaf_expansions
-            .iter()
-            .map(|pe| pe.place)
-            .collect::<HashSet<_>>();
+        let parent_places = local_expansions.places_expanded_only_to_leaves(self.ctxt);
         let places_to_collapse = parent_places
             .into_iter()
             .filter(|place| {
