@@ -510,7 +510,9 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     /// analysis completes. Each phase still compares equal to its own state,
     /// so [`PendingDataflowState::push`] keeps the same states.
     fn for_successor(&self) -> Self {
-        let mut pcg = self.data.pcg.clone();
+        let mut result = self.clone();
+        result.data.actions = EvalStmtData::default();
+        let pcg = &mut result.data.pcg;
         for phase in [
             EvalStmtPhase::PreOperands,
             EvalStmtPhase::PostOperands,
@@ -522,13 +524,7 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
                 pcg.states[phase] = pcg.states[EvalStmtPhase::PostMain].clone();
             }
         }
-        Self::new(
-            PcgDomainData {
-                pcg,
-                actions: EvalStmtData::default(),
-            },
-            self.ctxt,
-        )
+        result
     }
 
     fn into_results(self) -> DomainDataWithCtxt<'a, 'tcx, ResultsCtxt<'a, 'tcx>> {
