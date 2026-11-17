@@ -712,32 +712,48 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     ///
     /// This also handles corresponding lifetime projections of the place.
     #[tracing::instrument(skip(self))]
-    /// Owned leaves below `place` without capability (e.g. from joining a
-    /// [`CapabilityKind::Write`] leaf with a read-only expansion) are no longer
-    /// blocked once `place` has been labelled for a write, so they regain
-    /// [`CapabilityKind::Write`].
-    fn restore_write_to_unblocked_owned_leaves(
-        &mut self,
-        place: Place<'tcx>,
-    ) -> Result<(), PcgError> {
+    /// Restores [`CapabilityKind::Write`] to the leaves at or below `place`
+    /// that have no capability, once `place` has been labelled for a write.
+    /// The label moves the loans of `place` to its old value, so nothing
+    /// blocks these leaves any more. For an owned `place` they are the owned
+    /// leaves at or below it (one can lack a capability after a join of a
+    /// [`CapabilityKind::Write`] leaf with a read-only expansion, or because
+    /// `place` itself was lent); a borrowed `place` has only borrowed places
+    /// below it, and is restored itself when it is a leaf of the borrow PCG.
+    /// Without this, a lent `place` would regain a capability only when its
+    /// loans end, which can be later: for `let r = &mut *x; let t = &**r;`,
+    /// the reborrow `t` keeps the loan of `*x` in the graph while `t` lives,
+    /// although `r` is dead.
+    fn restore_write_to_unblocked_leaves(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        if place.as_owned_place(ctxt).is_none() {
+            if self.pcg.capability_of(place, ctxt).is_none()
+                && self.pcg.borrow.graph.leaf_places(ctxt).contains(&place)
+            {
+                self.record_and_apply_action(PcgAction::restore_capability(
+                    place,
+                    CapabilityKind::Write,
+                    "restore write to unblocked borrowed place",
+                    ctxt,
+                ))?;
+            }
+            return Ok(());
+        }
         if !self.pcg.owned.is_allocated(place.local) {
             return Ok(());
         }
-        // The leaves below `place` are leaves of its local.
+        // The leaves at or below `place` are leaves of its local.
         let to_restore = self
             .get_local_expansions(place.local)
             .leaf_places(self.ctxt)
             .into_iter()
             .map(Place::from)
-            .filter(|p| {
-                place.is_strict_prefix_of(*p) && self.pcg.capability_of(*p, self.ctxt).is_none()
-            })
+            .filter(|p| place.is_prefix_of(*p) && self.pcg.capability_of(*p, self.ctxt).is_none())
             .collect::<Vec<_>>();
         if to_restore.is_empty() {
             return Ok(());
         }
         let blocked = self.blocked_owned_places(self.ctxt.bc_ctxt());
-        let ctxt = self.ctxt;
         for leaf in to_restore {
             pcg_validity_assert!(
                 !blocked.contains(&leaf),
@@ -801,7 +817,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 )
                 .into(),
             )?;
-            self.restore_write_to_unblocked_owned_leaves(place)?;
+            self.restore_write_to_unblocked_leaves(place)?;
             self.render_debug_graph(None, "after step 1");
         }
 
