@@ -109,18 +109,21 @@ impl<'tcx> LocalExpansions<'tcx> {
         !self.expansions.is_empty()
     }
 
-    pub(crate) fn remove_all_expansions_from<'a>(
+    pub(crate) fn remove_expansion<'a>(
         &mut self,
         place: Place<'tcx>,
+        guide: Option<RepackGuide>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) where
         'tcx: 'a,
     {
         tracing::debug!(
-            "Removing all expansions from {}",
-            place.display_string(ctxt.ctxt())
+            "Removing the expansion of {} with guide {:?}",
+            place.display_string(ctxt.ctxt()),
+            guide
         );
-        self.expansions.retain(|pe| pe.place != place);
+        self.expansions
+            .retain(|pe| pe.place != place || pe.guide() != guide);
     }
 
     pub(crate) fn insert_expansion(&mut self, place: Place<'tcx>, expansion: PlaceExpansion<'tcx>) {
@@ -131,12 +134,11 @@ impl<'tcx> LocalExpansions<'tcx> {
         &self.expansions
     }
 
-    /// The expanded places none of whose children is expanded, over all the
-    /// expansions from the place. Collapsing a place removes every expansion
-    /// from it, so these are the places that can be collapsed without first
-    /// collapsing one of their descendants. A place with several index
-    /// expansions (e.g. `a[_5]` and `a[_8]`) is not one of them while any of
-    /// those expansions has an expanded child.
+    /// The places all of whose expansions lead only to unexpanded places.
+    /// These are the places that can be collapsed without first collapsing
+    /// one of their descendants. A place can have several expansions, one
+    /// per guide (e.g. `a[_5]` and `a[_8]`), and it is one of these places
+    /// only if none of those expansions has an expanded child.
     pub(crate) fn places_expanded_only_to_leaves<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -144,14 +146,16 @@ impl<'tcx> LocalExpansions<'tcx> {
     where
         'tcx: 'a,
     {
-        self.expansions
+        let expanded_places: HashSet<Place<'tcx>> =
+            self.expansions.iter().map(|e| e.place).collect();
+        expanded_places
             .iter()
-            .map(|e| e.place)
             .filter(|place| {
-                self.all_children_of(*place, ctxt)
+                self.all_children_of(**place, ctxt)
                     .iter()
-                    .all(|p| !self.contains_expansion_from(*p))
+                    .all(|p| !expanded_places.contains(p))
             })
+            .copied()
             .collect()
     }
 

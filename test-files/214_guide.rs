@@ -26,11 +26,28 @@ fn borrow_and_read_fields_of_indexed_element(hdrs: [H; 32], i: usize) -> u8 {
     // PCG: bb3[0] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: Some(Index(_8)), _marker: PhantomData<&()> })
 }
 
-/// The same in a loop body.
+struct S {
+    arr: [H; 32],
+    z: u8,
+}
+
+/// The same for an array in a field. Each of the two collapses of `s.arr`
+/// removes only the expansion of its own guide.
+fn borrow_and_read_fields_of_indexed_element_of_field(s: S, i: usize) -> u8 {
+    g(&s.arr[i].a, s.arr[i].b)
+    // PCG: bb3[0] pre_operands: Collapse(RepackCollapse { to: _1.0, capability: R, guide: Some(Index(_8)), _marker: PhantomData<&()> })
+    // PCG: bb3[0] pre_operands: Collapse(RepackCollapse { to: _1.0, capability: R, guide: Some(Index(_5)), _marker: PhantomData<&()> })
+    // PCG: bb3[0] post_operands: s: E
+}
+
+/// The same in a loop body. `hdrs` is only read in the loop, so it keeps R
+/// after its expansions are collapsed.
 fn borrow_and_read_fields_of_indexed_element_in_loop(hdrs: [H; 32], n: usize) -> u8 {
     let mut x = 0;
     for i in 0..n {
         x = g(&hdrs[i].a, hdrs[i].b);
+        // PCG: bb11[0] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: Some(Index(_23)), _marker: PhantomData<&()> })
+        // PCG: bb11[0] post_operands: hdrs: R
     }
     x
 }

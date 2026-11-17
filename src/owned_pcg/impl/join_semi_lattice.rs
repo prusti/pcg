@@ -245,7 +245,20 @@ impl<'tcx> LocalExpansions<'tcx> {
     ) where
         'tcx: 'a,
     {
-        let expansion_places = self.all_children_of(collapse.to, ctxt);
+        // A place has one expansion per guide (e.g. one per index local), and
+        // a collapse names one of them; the other expansions stay in place.
+        let expansion_places = self
+            .expansions_from(collapse.to)
+            .filter(|expanded| expanded.guide() == collapse.guide)
+            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap())
+            .collect::<HashSet<_>>();
+        pcg_validity_assert!(
+            !expansion_places.is_empty(),
+            [ctxt],
+            "Collapse {:?} names no expansion of {}",
+            collapse,
+            collapse.to.display_string(ctxt.ctxt())
+        );
         let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
@@ -268,7 +281,11 @@ impl<'tcx> LocalExpansions<'tcx> {
                         acc
                     )
                 });
-        self.remove_all_expansions_from(collapse.to, ctxt);
-        place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        self.remove_expansion(collapse.to, collapse.guide, ctxt);
+        // While another expansion of `collapse.to` remains, `collapse.to`
+        // keeps the capability that expansion gave it.
+        if !self.contains_expansion_from(collapse.to) {
+            place_capabilities.insert(collapse.to, retained_cap, ctxt);
+        }
     }
 }
