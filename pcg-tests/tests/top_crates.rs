@@ -200,8 +200,9 @@ const DEFAULT_CHECK_SECONDS: u64 = 2;
 /// The check time in seconds of each of `crates`, the list for `date`, as
 /// measured in CI, for balancing the crate groups. The file lists the `crate`
 /// and `seconds` columns of the `RESULTS_FILE`s of all groups of a CI run
-/// under a header line; e.g. for the files `results/*.tsv`:
-/// `awk -F'\t' 'NR == 1 || FNR > 1 { print $2 "\t" $5 }' results/*.tsv`.
+/// under a header line, in crate order; e.g. for the files `results/*.tsv`:
+/// `{ printf 'crate\tseconds\n'; awk -F'\t' 'FNR > 1 { print $1 "\t" $2 "\t"
+/// $5 }' results/*.tsv | sort -n | cut -f 2-; }`.
 fn check_seconds(date: &str, crates: &[Crate]) -> Vec<u64> {
     let path = PathBuf::from("tests/top-crates").join(format!("{date}-seconds.tsv"));
     let mut seconds = vec![DEFAULT_CHECK_SECONDS; crates.len()];
