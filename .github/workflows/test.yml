@@ -207,11 +207,11 @@ jobs:
   # Runs the PCG with validity checks on the top crates of crates.io. The
   # crates are split into groups that run on separate runners; the sweep
   # balances the groups by the check times of the crates in CI, listed in
-  # `pcg-tests/tests/top-crates/<date>-seconds.tsv`. Five groups take about
-  # 48 minutes each; more groups would be uneven and barely shorter, because
-  # single crates run into the 45-minute timeout. Crates are checked one at a
-  # time because the PCG needs up to the sweep's memory limit of 12 GiB on
-  # some of them.
+  # `pcg-tests/tests/top-crates/<date>-seconds.tsv`. A group cannot be shorter
+  # than its slowest crate, which may take up to the 45-minute timeout, so
+  # there are only as many groups as keep them about equally long (three
+  # groups of about 51 minutes). Crates are checked one at a time because the
+  # PCG needs up to the sweep's memory limit of 12 GiB on some of them.
   top_crates:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
@@ -219,7 +219,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3, 4]
+        group: [0, 1, 2]
     steps:
     - uses: actions/checkout@v4
     # The cache is saved right after the build, before the sweep fills the
