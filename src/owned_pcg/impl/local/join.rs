@@ -160,7 +160,16 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
-        if let Some(expand_cap) = self_cap.minimum(other_cap) {
+        // A place with W has no value in any of its parts, so it can be
+        // unpacked with W to the expansion that `other` holds with R. When
+        // `other` is joined with this expansion (see the loop in `join`), each
+        // R leaf there meets a W leaf.
+        let expand_cap = if (self_cap, other_cap) == (CapabilityKind::Write, CapabilityKind::Read) {
+            Some(CapabilityKind::Write)
+        } else {
+            self_cap.minimum(other_cap)
+        };
+        if let Some(expand_cap) = expand_cap {
             tracing::debug!(
                 "Expanding from place {} with cap {:?}",
                 place.display_string(ctxt),
@@ -181,37 +190,9 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             let actions = self.join_leaf_read_and_write_capabilities(other, place, ctxt)?;
             pcg_validity_assert!(!actions.is_empty());
             Ok(actions)
-        } else if self_cap == CapabilityKind::Write && other_cap == CapabilityKind::Read {
-            self.join_write_leaf_with_read_expansion(other, place, ctxt);
-            Ok(vec![])
         } else {
             Ok(vec![])
         }
-    }
-
-    /// Joins `place`, a leaf with [`CapabilityKind::Write`] in `self`, with
-    /// the read-only expansion of `place` in `other`.
-    ///
-    /// Neither capability is available on both paths, so the joined place
-    /// retains the expansion of `other` (whose places may be blocked by
-    /// borrows from that path) without any capability.
-    fn join_write_leaf_with_read_expansion(
-        &mut self,
-        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
-        place: Place<'tcx>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) {
-        tracing::debug!(
-            "Joining write leaf {} with read expansion to no capability",
-            place.display_string(ctxt)
-        );
-        for expansion in other.owned.expansions() {
-            if place.is_prefix_of(expansion.place) {
-                self.owned
-                    .insert_expansion(expansion.place, expansion.expansion.clone());
-            }
-        }
-        self.capabilities.remove_all_postfixes(place, ctxt);
     }
 
     fn join_all_places_in_expansion(
@@ -487,19 +468,28 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
-            actions.extend(
-                other
+            // The second pass joins the expansions of `other` into `self` and
+            // can unpack W leaves of `self` (see `expand_from_place_with_caps`).
+            // Repeat the first pass so that `other` is joined with the new
+            // expansions.
+            loop {
+                actions.extend(
+                    other
+                        .reborrow()
+                        .visit_each_other_expansion(self.reborrow(), ctxt)?,
+                );
+                self.render_debug_graph("Self After join_expansions (other)", ctxt);
+                other.render_debug_graph("Other After join_expansions (other)", ctxt);
+                let self_actions = self
                     .reborrow()
-                    .visit_each_other_expansion(self.reborrow(), ctxt)?,
-            );
-            self.render_debug_graph("Self After join_expansions (other)", ctxt);
-            other.render_debug_graph("Other After join_expansions (other)", ctxt);
-            actions.extend(
-                self.reborrow()
-                    .visit_each_other_expansion(other.reborrow(), ctxt)?,
-            );
-            self.render_debug_graph("Self After join_expansions (self)", ctxt);
-            other.render_debug_graph("Other After join_expansions (self)", ctxt);
+                    .visit_each_other_expansion(other.reborrow(), ctxt)?;
+                self.render_debug_graph("Self After join_expansions (self)", ctxt);
+                other.render_debug_graph("Other After join_expansions (self)", ctxt);
+                if self_actions.is_empty() {
+                    break;
+                }
+                actions.extend(self_actions);
+            }
         } else {
             let place = Place::from(self.owned.get_local());
             actions.extend(self.reborrow().join_owned_places(&other, place, ctxt)?);
