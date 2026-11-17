@@ -1,7 +1,7 @@
 # Crates of 2026-07-15.json that fail the `top_crates` sweep. Each line is a
 # crate name followed by the reason it fails. A failure of a listed crate does
-# not fail the sweep; the sweep reports listed crates that pass so that they
-# can be removed.
+# not fail the sweep, but a listed crate that passes does, so that the change
+# that fixes a crate also removes it from this list.
 hashbrown                loop join: BorrowFlowEdge from a node to itself
 rand_core                loop join: BorrowFlowEdge from a node to itself
 rand                     loop join: BorrowFlowEdge from a node to itself
