@@ -78,6 +78,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     {
         let mut changed = false;
         let mut new_edges = HashMap::default();
+        new_edges.reserve(self.edges.len());
         for (kind, conditions) in self.edges.drain() {
             let mut edge = Conditioned::new(kind, conditions);
             if f(&mut edge) {
@@ -100,6 +101,7 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
     {
         let mut changed = false;
         let mut new_edges = HashMap::default();
+        new_edges.reserve(self.edges.len());
         for (kind, conditions) in self.edges.drain() {
             let mut edge = Conditioned::new(kind, conditions);
             match f(&mut edge) {
