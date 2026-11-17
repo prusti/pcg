@@ -186,16 +186,6 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             })
             .collect::<Vec<_>>();
 
-        // Which of them are in the borrow graph is decided before any is
-        // restored, since restoring a place can relabel and remove edges.
-        let borrow_places = to_restore
-            .iter()
-            .filter_map(|node| {
-                node.as_current_place()
-                    .filter(|place| graph.contains(*place, self.ctxt.bc_ctxt()))
-            })
-            .collect::<HashSet<_>>();
-
         for node in to_restore {
             if let Some(place) = node.as_current_place() {
                 // Only restore if the place is still tracked somewhere.  After
@@ -204,7 +194,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 // PCG or the borrow graph; restoring a capability there would
                 // violate the invariant that every capability-holding place must
                 // be tracked.
-                if !borrow_places.contains(&place)
+                if !self.pcg.borrow.graph.contains(place, self.ctxt.bc_ctxt())
                     && !self.pcg.owned.contains_place(place, self.ctxt.bc_ctxt())
                 {
                     continue;
