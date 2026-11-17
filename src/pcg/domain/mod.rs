@@ -503,17 +503,25 @@ impl<'a, 'tcx: 'a, T> HasPcgDomainData<'a, 'tcx> for DomainDataWithCtxt<'a, 'tcx
 }
 
 impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
-    /// The part of this state that a successor's pending state keeps: joining
-    /// reads only the state after the last phase, and the entry state is kept
-    /// so that [`PendingDataflowState::push`] still tells states apart. The
-    /// other phases' states and the actions are dropped so that they do not
-    /// stay alive until the analysis completes. The other phases share the
-    /// entry state, so that the state after the last phase is not aliased by
-    /// them and joining can update it in place when no other successor holds
-    /// it.
+    /// The part of this state that a successor's pending state keeps. The
+    /// actions are dropped, since joining does not read them. A phase whose
+    /// state equals the entry state or the state after the last phase shares
+    /// that state, so that its own copy does not stay alive until the
+    /// analysis completes. Each phase still compares equal to its own state,
+    /// so [`PendingDataflowState::push`] keeps the same states.
     fn for_successor(&self) -> Self {
-        let mut pcg = DomainData::new(self.data.pcg.entry_state.clone());
-        pcg.states.0.post_main = self.data.pcg.states.0.post_main.clone();
+        let mut pcg = self.data.pcg.clone();
+        for phase in [
+            EvalStmtPhase::PreOperands,
+            EvalStmtPhase::PostOperands,
+            EvalStmtPhase::PreMain,
+        ] {
+            if pcg.states[phase] == pcg.entry_state {
+                pcg.states[phase] = pcg.entry_state.clone();
+            } else if pcg.states[phase] == pcg.states[EvalStmtPhase::PostMain] {
+                pcg.states[phase] = pcg.states[EvalStmtPhase::PostMain].clone();
+            }
+        }
         Self::new(
             PcgDomainData {
                 pcg,
