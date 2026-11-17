@@ -77,4 +77,66 @@ fn borrow_field_or_move_parent(c: bool) {
     p = mkp();
 }
 
+// `p.a` and `p.a.v` are both borrowed on the `else` branch, and `p.a` is
+// moved out on the other. The edge from the borrowing branch drops the values
+// of `p.a.v` and `p.a.w`, so both borrows are labelled with their values at
+// the end of that branch, and the current `p.a` is W.
+fn move_parent_or_borrow_parent_and_field(c: bool) {
+    let mut p = mkp();
+    let os = mk();
+    let o = T { n: 0 };
+    let q;
+    let r;
+    if c {
+        consume(p.a);
+        q = &os;
+        r = &o;
+    } else {
+        q = &p.a;
+        r = &p.a.v;
+    }
+    // PCG: bb4 -> bb6: unpack p.a with capability W
+    // PCG: bb5 -> bb6: Restore capability E to p.a.w
+    // PCG: bb5 -> bb6: Weaken(Weaken { place: _2.0.1, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb5 -> bb6: Restore capability E to p.a.v
+    // PCG: bb5 -> bb6: Weaken(Weaken { place: _2.0.0, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb6[0] pre_operands: borrow: _14 before bb5[6]:PreMain = & p.a after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: borrow: _16 before bb5[13]:PreMain = & p.a.v after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: p.a: W
+    read(q);
+    read(r);
+    p = mkp();
+}
+
+// `p.a` and `p.a.v` are both borrowed on the `else` branch, and `p.a.v` is
+// moved out on the other. The edge from the borrowing branch drops the value
+// of `p.a.v`, so both borrows are labelled with their values at the end of
+// that branch, and the current `p.a.w` keeps its value. `p.a.w` is E while `q`
+// is live: the borrow refers to the labelled value, and its expiry cannot
+// reach the current places through the label.
+fn move_field_or_borrow_parent_and_field(c: bool) {
+    let mut p = mkp();
+    let os = mk();
+    let o = T { n: 0 };
+    let q;
+    let r;
+    if c {
+        consume(p.a.v);
+        q = &os;
+        r = &o;
+    } else {
+        q = &p.a;
+        r = &p.a.v;
+    }
+    // PCG: bb5 -> bb6: Restore capability E to p.a.v
+    // PCG: bb5 -> bb6: Weaken(Weaken { place: _2.0.0, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb6[0] pre_operands: borrow: _14 before bb5[6]:PreMain = & p.a after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: borrow: _16 before bb5[13]:PreMain = & p.a.v after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: p.a.v: W
+    // PCG: bb6[0] pre_operands: p.a.w: E
+    read(q);
+    read(r);
+    p = mkp();
+}
+
 fn main() {}

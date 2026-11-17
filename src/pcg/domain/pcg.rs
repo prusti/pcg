@@ -260,6 +260,11 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        let write_places: Vec<Place<'tcx>> = self
+            .place_capabilities
+            .iter()
+            .filter_map(|(p, c)| (c == CapabilityKind::Write).then_some(p))
+            .collect();
         for edge in self.borrow.graph.edges() {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
@@ -281,13 +286,27 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
                 BorrowPcgEdgeKind::Borrow(borrow_edge) => {
                     if let MaybeLabelledPlace::Current(blocked_place) = borrow_edge.blocked_place
                         && blocked_place.as_owned_place(ctxt).is_some()
-                        && !self.owned.contains_place(blocked_place, ctxt.bc_ctxt())
                     {
-                        return Err(format!(
-                            "Borrow edge {} blocks owned place {}, which is not in the owned PCG",
-                            borrow_edge.display_string(ctxt.bc_ctxt()),
-                            blocked_place.display_string(ctxt.bc_ctxt())
-                        ));
+                        if !self.owned.contains_place(blocked_place, ctxt.bc_ctxt()) {
+                            return Err(format!(
+                                "Borrow edge {} blocks owned place {}, which is not in the owned PCG",
+                                borrow_edge.display_string(ctxt.bc_ctxt()),
+                                blocked_place.display_string(ctxt.bc_ctxt())
+                            ));
+                        }
+                        // A borrow of a current place refers to its current
+                        // value, so no place at or under it can have W.
+                        if let Some(place) = write_places
+                            .iter()
+                            .find(|p| blocked_place.is_prefix_of(**p))
+                        {
+                            return Err(format!(
+                                "Borrow edge {} blocks current place {}, but {} has capability W",
+                                borrow_edge.display_string(ctxt.bc_ctxt()),
+                                blocked_place.display_string(ctxt.bc_ctxt()),
+                                place.display_string(ctxt.bc_ctxt())
+                            ));
+                        }
                     }
                 }
                 _ => {}

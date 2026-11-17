@@ -74,6 +74,7 @@ fn map_label_predicate<'tcx, P: Copy>(
         LabelNodePredicate::Equals(node) => LabelNodePredicate::Equals(*node),
         LabelNodePredicate::PlaceEquals(place) => LabelNodePredicate::PlaceEquals(*place),
         LabelNodePredicate::PlaceIsPostfixOf(place) => LabelNodePredicate::PlaceIsPostfixOf(*place),
+        LabelNodePredicate::PlaceOverlaps(place) => LabelNodePredicate::PlaceOverlaps(*place),
         LabelNodePredicate::NodeType(node_type) => LabelNodePredicate::NodeType(*node_type),
         LabelNodePredicate::And(predicates) => {
             LabelNodePredicate::And(predicates.iter().map(map_label_predicate).collect())
