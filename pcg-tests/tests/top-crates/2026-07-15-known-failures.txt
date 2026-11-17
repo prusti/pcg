@@ -109,6 +109,8 @@ crossbeam-epoch          deref edge: read base, dereference without capability
 regex-automata           collapse: child place has no capability
 rayon-core               owned state: expected allocated local
 addr2line                local join: expected read capability
+ansi_term                owned update: no capability for a local after a closure borrowed it mutably
+nu-ansi-term             owned update: no capability for a local after a closure borrowed it mutably
 libc                     visitor: unsupported MIR statement (todo!)
 nom                      timeout: PCG takes over an hour
 quinn-udp                timeout: borrowing `a[i].f` of an array `a` and reading `a[i].g` never ends (Linux-only code)
