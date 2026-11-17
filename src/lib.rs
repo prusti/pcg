@@ -785,41 +785,49 @@ macro_rules! pcg_validity_assert {
         pcg_validity_assert!(@parse_context $cond, [$($ctxt_and_loc)*], $($arg)*)
     };
 
-    // Parse context patterns - match the entire token sequence
+    // Parse context patterns - match the entire token sequence. The message
+    // is a block that `@with_test_case` evaluates only when the check fails,
+    // since naming the function is costly.
     (@parse_context $cond:expr, [$ctxt:tt at $loc:tt], $($arg:tt)*) => {
         {
             let ctxt = $ctxt;
             let loc = $loc;
-            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
-            pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*));
+            pcg_validity_assert!(@with_test_case $cond, ctxt, {
+                let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
+                let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
+                format!("PCG Assertion Failed {crate_part}: [{func_name} at {loc:?}] {}", format!($($arg)*))
+            });
         }
     };
     (@parse_context $cond:expr, [$ctxt:tt], $($arg:tt)*) => {
         {
             let ctxt = $ctxt;
-            let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
-            let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
-            pcg_validity_assert!(@with_test_case $cond, ctxt, func_name, "PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*));
+            pcg_validity_assert!(@with_test_case $cond, ctxt, {
+                let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&ctxt);
+                let crate_part = std::env::var("CARGO_CRATE_NAME").map(|s| format!(" (Crate: {s})")).unwrap_or_default();
+                format!("PCG Assertion Failed {crate_part}: [{func_name}] {}", format!($($arg)*))
+            });
         }
     };
 
     // Helper branch that generates test case format when context is available
-    (@with_test_case $cond:expr, $ctxt:expr, $func_name:expr, $($arg:tt)*) => {
+    (@with_test_case $cond:expr, $ctxt:expr, $message:expr) => {
         if $ctxt.settings().validity_checks {
             #[allow(clippy::neg_cmp_op_on_partial_ord)]
             if !$cond {
-                tracing::error!($($arg)*);
+                let message = $message;
+                tracing::error!("{message}");
                 // Generate test case format if we're in a crate
                 if let Ok(crate_name) = std::env::var("CARGO_CRATE_NAME") {
                     let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_owned());
+                    let func_name = $crate::utils::ctxt::DebugCtxt::func_name(&$ctxt);
                     let num_bbs = $crate::utils::ctxt::DebugCtxt::num_basic_blocks(&$ctxt);
                     let test_case = format!("{};{};2025-03-13;{};{}",
-                        crate_name, crate_version, $func_name, num_bbs);
+                        crate_name, crate_version, func_name, num_bbs);
                     tracing::error!("To reproduce this failure, use test case: {test_case}");
                 }
                 if !$crate::validity_checks_warn_only() {
-                    assert!($cond, $($arg)*);
+                    panic!("{message}");
                 }
             }
         }
