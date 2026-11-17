@@ -508,8 +508,7 @@ impl<'a, 'tcx: 'a> DomainDataWithCtxt<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
     /// state equals the entry state or the state after the last phase shares
     /// that state, so that the contents of its own copy are freed instead of
     /// kept until the analysis completes. Each phase still compares equal to
-    /// its own state,
-    /// so [`PendingDataflowState::push`] keeps the same states.
+    /// its own state, so [`PendingDataflowState::push`] keeps the same states.
     fn for_successor(&self) -> Self {
         let mut result = self.clone();
         result.data.actions = EvalStmtData::default();
