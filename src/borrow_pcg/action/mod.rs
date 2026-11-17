@@ -160,11 +160,11 @@ pub enum LabelPlaceReason {
     StorageDead,
     MoveOut,
     /// A join ends this path's lending of a place that it holds with Read
-    /// (or ShallowExclusive) while the other path holds it with Write, and
-    /// drops the value of the place on this path. Nodes whose place is a
-    /// prefix or a postfix of the place refer to a value that contains, or is
-    /// part of, the dropped one, so they are labelled with the predecessor's
-    /// snapshot.
+    /// (or ShallowExclusive): the other path holds the place with Write, and
+    /// the join drops its value on this path, or the other path has unpacked
+    /// it. Nodes whose place is a prefix or a postfix of the place refer to a
+    /// value that contains, or is part of, the value of the place on this
+    /// path, so they are labelled with the predecessor's snapshot.
     ///
     /// In particular, the place could be a shared reference that is
     /// dereferenced: reborrows derived from the dereference may still have

@@ -16,6 +16,7 @@ struct P {
 
 fn consume<X>(_s: X) {}
 fn read<X>(_s: &X) {}
+fn touch<X>(_s: &mut X) {}
 fn mk() -> S {
     S {
         v: T { n: 1 },
@@ -136,6 +137,90 @@ fn move_field_or_borrow_parent_and_field(c: bool) {
     // PCG: bb6[0] pre_operands: p.a.w: E
     read(q);
     read(r);
+    p = mkp();
+}
+
+// One path shared-borrows `p.a`, the other moves `p.a.v` out of it. The join
+// ends the read lending of `p.a` on the borrowing path: the borrow keeps the
+// predecessor's `p.a`, and the current `p.a` regains E and is unpacked to
+// meet the other path's expansion. The borrow's expiry then restores nothing
+// to the current `p.a`, whose child `p.a.v` stays W.
+// `p.a.w` is E while `q` is live: the borrow refers to the labelled value, and
+// its expiry cannot reach the current places through the label.
+fn parent_borrow_child_move(c: bool) {
+    let mut p = mkp();
+    let os = mk();
+    let q: &S;
+    if c {
+        consume(p.a.v);
+        q = &os;
+    } else {
+        q = &p.a;
+    }
+    // PCG: bb5 -> bb6: Restore capability E to p.a
+    // PCG: bb5 -> bb6: unpack p.a with capability E
+    // PCG: bb5 -> bb6: Weaken(Weaken { place: _2.0.0, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb6[0] pre_operands: borrow: _12 before bb5[6]:PreMain = & p.a after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: p.a.v: W
+    // PCG: bb6[0] pre_operands: p.a.w: E
+    read(q);
+    // PCG: bb7[0] post_main: p.a.v: W
+    // PCG: bb7[0] post_main: p.a.w: E
+    p = mkp();
+}
+
+// The same join at the root of the local: one path shared-borrows all of
+// `p`, the other moves `p.a` out of it.
+// `p.b` is E while `q` is live: the borrow refers to the labelled value, and
+// its expiry cannot reach the current places through the label.
+fn whole_borrow_field_move(c: bool) {
+    let mut p = mkp();
+    let op = mkp();
+    let q: &P;
+    if c {
+        consume(p.a);
+        q = &op;
+    } else {
+        q = &p;
+    }
+    // PCG: bb5 -> bb6: Restore capability E to p
+    // PCG: bb5 -> bb6: unpack p with capability E
+    // PCG: bb5 -> bb6: Weaken(Weaken { place: _2.0, from: E, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb6[0] pre_operands: borrow: _12 before bb5[6]:PreMain = & p after bb5 under conditions bb2 -> bb5
+    // PCG: bb6[0] pre_operands: p.a: W
+    // PCG: bb6[0] pre_operands: p.b: E
+    read(q);
+    // PCG: bb7[0] post_main: p.a: W
+    // PCG: bb7[0] post_main: p.b: E
+    p = mkp();
+}
+
+// One path shared-borrows `p.a`, the other mutably borrows `p.a.v`, and both
+// borrows are live after the join. The join ends the read lending of `p.a` on
+// the shared-borrowing path as above; `p.a.v` stays blocked by the mutable
+// borrow.
+// `p.a.w` is E while `q` is live: the borrow refers to the labelled value, and
+// its expiry cannot reach the current places through the label.
+fn mut_borrow_child(c: bool) {
+    let mut p = mkp();
+    let os = mk();
+    let mut ot = T { n: 0 };
+    let q: &S;
+    let r: &mut T;
+    if c {
+        r = &mut p.a.v;
+        q = &os;
+    } else {
+        r = &mut ot;
+        q = &p.a;
+    }
+    // PCG: bb4 -> bb5: Restore capability E to p.a
+    // PCG: bb4 -> bb5: unpack p.a with capability E
+    // PCG: bb5[0] pre_operands: borrow: _16 before bb4[13]:PreMain = & p.a after bb4 under conditions bb2 -> bb4
+    // PCG: bb5[0] pre_operands: p.a.w: E
+    read(q);
+    touch(r);
+    // PCG: bb7[0] pre_operands: Restore capability E to p.a.v
     p = mkp();
 }
 

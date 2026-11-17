@@ -269,13 +269,24 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 ));
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion(ops))
             } else {
-                // We might as well just expand our place
-                let expand_action = RepackExpand::new(place, other_expansion.guide(), self_cap);
+                // `other` has unpacked `place` and holds no capability for
+                // `place` itself, for example because it moved out or lent a
+                // part of it. A borrow of `place` on this path would, on
+                // expiry, restore capability to `place` over those parts, so
+                // an R leaf ends its lending first and is unpacked with E.
+                let (mut actions, expand_cap) = if self_cap == CapabilityKind::Read {
+                    (
+                        self.end_read_lending(place, ctxt)?,
+                        CapabilityKind::Exclusive,
+                    )
+                } else {
+                    (vec![], self_cap)
+                };
+                let expand_action = RepackExpand::new(place, other_expansion.guide(), expand_cap);
                 self.owned
                     .perform_expand_action(expand_action, self.capabilities, ctxt);
-                Ok(JoinExpandedPlaceResult::CreatedExpansion(vec![
-                    RepackOp::Expand(expand_action),
-                ]))
+                actions.push(RepackOp::Expand(expand_action));
+                Ok(JoinExpandedPlaceResult::CreatedExpansion(actions))
             }
         } else {
             Ok(JoinExpandedPlaceResult::JoinedWithOtherExpansions(
@@ -349,16 +360,14 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         );
     }
 
-    fn join_leaf_read_and_write_capabilities(
+    /// Labels the prefixes and postfixes of `place` in the borrow graph with
+    /// the predecessor's snapshot, so that outstanding borrows of them refer
+    /// to the values they held before the join rather than the joined places.
+    fn label_with_predecessor_snapshot(
         &mut self,
-        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
-        pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
-        pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
-        pcg_validity_assert!(other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write));
         let mut join_obtainer = JoinObtainer {
             ctxt,
             data: self,
@@ -370,19 +379,43 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             LabelPlaceReason::JoinOwnedReadAndWriteCapabilities,
         );
         join_obtainer.apply_action(PcgAction::Borrow(action))?;
-        join_obtainer
-            .data
-            .capabilities
-            .insert(place, CapabilityKind::Write, ctxt);
-        let mut actions = join_obtainer.actions;
-        // This side's read-lending has ended and the value it still holds is
-        // dropped by the join (the other side moved it out): restore the
-        // place to exclusive and then weaken it, so consumers see a
-        // capability restoration followed by an ordinary value drop.
+        Ok(join_obtainer.actions)
+    }
+
+    /// Ends this side's lending of `place`, a leaf with
+    /// [`CapabilityKind::Read`], at the join: the borrows keep the
+    /// predecessor's value of `place` and `place` regains
+    /// [`CapabilityKind::Exclusive`].
+    fn end_read_lending(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        let mut actions = self.label_with_predecessor_snapshot(place, ctxt)?;
+        self.capabilities
+            .insert(place, CapabilityKind::Exclusive, ctxt);
         actions.push(RepackOp::RegainLoanedCapability(RegainedCapability::new(
             place,
             CapabilityKind::Exclusive,
         )));
+        Ok(actions)
+    }
+
+    fn join_leaf_read_and_write_capabilities(
+        &mut self,
+        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        place: Place<'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
+        pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
+        pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
+        pcg_validity_assert!(other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write));
+        // The join drops this side's value of `place`: end its lending
+        // (Restore E) and then weaken it to W, so that consumers see an
+        // ordinary value drop.
+        let mut actions = self.end_read_lending(place, ctxt)?;
+        self.capabilities.insert(place, CapabilityKind::Write, ctxt);
         actions.push(RepackOp::weaken(
             place,
             CapabilityKind::Exclusive,
@@ -428,22 +461,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // other: the joined state can only be Write. Preserve the
                 // predecessor's value with a label before emitting the
                 // weaken; outstanding borrows still refer to that value.
-                let mut join_obtainer = JoinObtainer {
-                    ctxt,
-                    data: self,
-                    actions: vec![],
-                };
-                let action = BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    join_obtainer.prev_snapshot_location(),
-                    LabelPlaceReason::JoinOwnedReadAndWriteCapabilities,
-                );
-                join_obtainer.apply_action(PcgAction::Borrow(action))?;
-                join_obtainer
-                    .data
-                    .capabilities
-                    .insert(place, CapabilityKind::Write, ctxt);
-                let mut actions = join_obtainer.actions;
+                let mut actions = self.label_with_predecessor_snapshot(place, ctxt)?;
+                self.capabilities.insert(place, CapabilityKind::Write, ctxt);
                 actions.push(RepackOp::weaken(
                     place,
                     CapabilityKind::ShallowExclusive,
