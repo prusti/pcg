@@ -720,10 +720,12 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         &mut self,
         place: Place<'tcx>,
     ) -> Result<(), PcgError> {
-        let blocked = self.blocked_owned_places(self.ctxt.bc_ctxt());
+        if !self.pcg.owned.is_allocated(place.local) {
+            return Ok(());
+        }
+        // The leaves below `place` are leaves of its local.
         let to_restore = self
-            .pcg
-            .owned
+            .get_local_expansions(place.local)
             .leaf_places(self.ctxt)
             .into_iter()
             .map(Place::from)
@@ -731,6 +733,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 place.is_strict_prefix_of(*p) && self.pcg.capability_of(*p, self.ctxt).is_none()
             })
             .collect::<Vec<_>>();
+        if to_restore.is_empty() {
+            return Ok(());
+        }
+        let blocked = self.blocked_owned_places(self.ctxt.bc_ctxt());
         let ctxt = self.ctxt;
         for leaf in to_restore {
             pcg_validity_assert!(
