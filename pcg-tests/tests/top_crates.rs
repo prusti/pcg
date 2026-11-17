@@ -51,7 +51,9 @@ const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\t
 ///   (default: one group).
 /// - `TEST_CRATES_PARALLELISM`: how many crates are checked at once (default 1).
 /// - `TOP_CRATES_TIMEOUT_SECS`: how long a crate may take before its check is
-///   killed and the crate counts as failed (default 3600).
+///   killed and the crate counts as failed (default 12 minutes, the same
+///   everywhere for the same reason as the memory limit; it bounds how long
+///   a CI group takes).
 /// - `TOP_CRATES_MEMORY_LIMIT_MIB`: how much memory the processes of a
 ///   crate's check may use together before the check is killed and the crate
 ///   counts as failed (default 12 GiB). The default is the same everywhere,
@@ -75,11 +77,17 @@ pub fn top_crates() {
     assert!(group < groups, "Invalid crate group {group} of {groups}");
     let parallelism = env_var("TEST_CRATES_PARALLELISM", 1);
     let limits = Limits {
-        timeout: Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 3600)),
+        timeout: Duration::from_secs(env_var("TOP_CRATES_TIMEOUT_SECS", 12 * 60)),
         memory_mib: env_var("TOP_CRATES_MEMORY_LIMIT_MIB", 12 * 1024),
     };
     let known_failures = known_failures(DATE, &all_crates);
-    let indices = crate_group(start..end, &check_seconds(DATE, &all_crates), group, groups);
+    // A check takes at most the timeout, also if it took longer when it was
+    // timed.
+    let seconds = check_seconds(DATE, &all_crates)
+        .into_iter()
+        .map(|seconds| seconds.min(limits.timeout.as_secs()))
+        .collect_vec();
+    let indices = crate_group(start..end, &seconds, group, groups);
 
     std::fs::create_dir_all(LOG_DIR).unwrap();
     let mut results_file = std::fs::File::create(RESULTS_FILE).unwrap();
