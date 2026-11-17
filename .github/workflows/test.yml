@@ -208,7 +208,7 @@ jobs:
   # crates are split into groups that run on separate runners; the sweep
   # balances the groups by the check times of the crates in CI, listed in
   # `pcg-tests/tests/top-crates/<date>-seconds.tsv`. A group cannot be shorter
-  # than its slowest crate, which may take up to the sweep's 12-minute
+  # than its slowest crate, which may take up to the sweep's 8-minute
   # timeout. There are enough groups that the others stay well below that,
   # because the check time of a crate varies by up to 1.8x between runs.
   # Crates are checked one at a time because the PCG needs up to the sweep's
@@ -220,7 +220,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3, 4, 5]
+        group: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
     - uses: actions/checkout@v4
     # The cache is saved right after the build, before the sweep fills the
