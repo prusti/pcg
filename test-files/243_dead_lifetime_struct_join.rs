@@ -26,8 +26,9 @@ fn local<'a>(t: T<'a>) -> Option<&'a i32> {
     // PCG: bb3[0] pre_operands: Weaken u from E to W
     // ~PCG: bb4[0] pre_operands: u: W
     // ~PCG: bb4[0] pre_operands: u: R
-    // PCG: bb4[1] pre_main: Restore capability W to u.ctx
-    // PCG: bb4[1] pre_main: Restore capability W to u.valid
+    // Labelling `u` for the write gives its fields W, so it packs at W.
+    // PCG: bb4[1] pre_main: Label place u (Write)
+    // PCG: bb4[1] pre_main: Collapse(RepackCollapse { to: _2, capability: W, guide: None, _marker: PhantomData<&()> })
     let u = t;
     if u.valid { Some(u.ctx.row()) } else { None }
 }

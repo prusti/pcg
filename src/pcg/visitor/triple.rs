@@ -69,7 +69,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
             }
             PlaceCondition::Unalloc(_) | PlaceCondition::Return => {}
-            PlaceCondition::RemoveCapability(_) | PlaceCondition::Freeze(_) => unreachable!(),
+            PlaceCondition::Freeze(_) => unreachable!(),
         }
         Ok(())
     }

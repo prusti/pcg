@@ -202,8 +202,8 @@ fn pack_under_frozen(p: &mut Top) {
     let r = &p.y;
     let _ = *x;
     // PCG: bb0[5] pre_operands: Freeze (*p).y
-    // PCG: bb0[8] pre_operands: Restore (*p).y.a to R
-    // ~PCG: bb0[8] pre_operands: Restore (*p).y.a to E
+    // PCG: bb0[8] pre_operands: Remove Edge {(*p).y.a} -> {(*p).y.a.x, (*p).y.a.y} returning R to (*p).y.a
+    // ~PCG: bb0[8] pre_operands: Remove Edge {(*p).y.a} -> {(*p).y.a.x, (*p).y.a.y} returning E to (*p).y.a
     let _ = r.b;
     p.y.b = 4;
 }
@@ -231,8 +231,7 @@ impl<'a> Lazy<'a> {
     fn loop_entry(&mut self) {
         // PCG: bb4[0] pre_operands: borrow: _6 before bb0[6]:PostOperands <before bb0[6]:PostMain> = & (*(*self).dfa).classes loop bb4
         // ~PCG: bb4[0] pre_operands: {*self} -> {(*self).dfa, (*self).cache}
-        // PCG: bb4[0] pre_operands: Remove Edge {self} -> {*self}
-        // PCG: bb4[0] pre_operands: Restore capability E to self
+        // PCG: bb4[0] pre_operands: Remove Edge {self} -> {*self} returning E to self
         // PCG: bb7[0] pre_operands: Remove Edge borrow: _6 before bb0[6]:PostOperands <before bb0[6]:PostMain> = & (*(*self).dfa).classes loop bb4 under conditions bb6 -> bb7
         for c in self.dfa.classes.iter() {
             self.set(*c);

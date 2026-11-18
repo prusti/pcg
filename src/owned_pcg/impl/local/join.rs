@@ -1,11 +1,11 @@
 use crate::{
     DebugLines,
-    action::{BorrowPcgAction, PcgAction},
-    borrow_pcg::action::LabelPlaceReason,
+    action::{BorrowPcgAction, CapabilityChanges, OwnedPcgAction, PcgAction},
+    borrow_pcg::{action::LabelPlaceReason, state::BorrowsStateLike},
     capability_gte,
     error::PcgError,
     owned_pcg::{
-        ExpandedPlace, LocalExpansions, RegainedCapability, RepackExpand, RepackOp,
+        ExpandedPlace, LocalExpansions, RepackExpand, RepackOp,
         join::{
             data::JoinOwnedData,
             obtain::{JoinCtxt, JoinObtainer},
@@ -25,18 +25,19 @@ use crate::{
         display::DisplayWithCompilerCtxt,
     },
 };
+use itertools::Itertools;
 
 enum JoinDifferentExpansionsResult<'tcx> {
-    ExpandedForRead(RepackExpand<'tcx>),
+    ExpandedForRead(RepackExpand<'tcx>, CapabilityChanges<Place<'tcx>>),
     ExpandedForNoCapability,
-    Collapsed(Vec<RepackOp<'tcx>>),
+    Collapsed(Vec<PcgAction<'tcx>>),
 }
 
 impl<'tcx> JoinDifferentExpansionsResult<'tcx> {
-    fn actions(self) -> Vec<RepackOp<'tcx>> {
+    fn actions(self) -> Vec<PcgAction<'tcx>> {
         match self {
-            JoinDifferentExpansionsResult::ExpandedForRead(action) => {
-                vec![RepackOp::Expand(action)]
+            JoinDifferentExpansionsResult::ExpandedForRead(action, changes) => {
+                vec![recorded_expand(action, changes)]
             }
             JoinDifferentExpansionsResult::ExpandedForNoCapability => vec![],
             JoinDifferentExpansionsResult::Collapsed(actions) => actions,
@@ -45,14 +46,14 @@ impl<'tcx> JoinDifferentExpansionsResult<'tcx> {
 }
 
 enum JoinExpandedPlaceResult<'tcx> {
-    JoinedWithSameExpansion(Vec<RepackOp<'tcx>>),
-    CreatedExpansion(Vec<RepackOp<'tcx>>),
+    JoinedWithSameExpansion(Vec<PcgAction<'tcx>>),
+    CreatedExpansion(Vec<PcgAction<'tcx>>),
     JoinedWithOtherExpansions(JoinDifferentExpansionsResult<'tcx>),
-    CollapsedOtherExpansion(Vec<RepackOp<'tcx>>),
+    CollapsedOtherExpansion(Vec<PcgAction<'tcx>>),
 }
 
 impl<'tcx> JoinExpandedPlaceResult<'tcx> {
-    fn actions(self) -> Vec<RepackOp<'tcx>> {
+    fn actions(self) -> Vec<PcgAction<'tcx>> {
         match self {
             JoinExpandedPlaceResult::JoinedWithSameExpansion(actions)
             | JoinExpandedPlaceResult::CreatedExpansion(actions)
@@ -88,9 +89,12 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         if self_cap == Some(CapabilityKind::Read) && other_cap == Some(CapabilityKind::Read) {
             let action =
                 RepackExpand::new(base_place, other_expansion.guide(), CapabilityKind::Read);
-            self.owned
+            let changes = self
+                .owned
                 .perform_expand_action(action, self.capabilities, ctxt);
-            Ok(JoinDifferentExpansionsResult::ExpandedForRead(action))
+            Ok(JoinDifferentExpansionsResult::ExpandedForRead(
+                action, changes,
+            ))
         } else if other
             .owned
             .contains_descendent_leaf_node_without_capability(base_place, other.capabilities, ctxt)
@@ -159,7 +163,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         self_cap: CapabilityKind,
         other_cap: CapabilityKind,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
@@ -170,9 +174,10 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 expand_cap
             );
             let expand_action = RepackExpand::new(place, guide, expand_cap);
-            self.owned
+            let changes = self
+                .owned
                 .perform_expand_action(expand_action, self.capabilities, ctxt);
-            let mut actions = vec![RepackOp::Expand(expand_action)];
+            let mut actions = vec![recorded_expand(expand_action, changes)];
             actions.extend(self.join_all_places_in_expansion(other, expansion, ctxt)?);
             Ok(actions)
         } else if self_cap == CapabilityKind::Read {
@@ -222,7 +227,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         expansion: &ExpandedPlace<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let mut actions = vec![];
         for expansion_place in expansion.expansion_places(ctxt).unwrap() {
             actions.extend(self.join_owned_places(other, expansion_place, ctxt)?);
@@ -272,12 +277,12 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // operations: leaves with capability greater than write are weakened
                 // first, so that the emitted collape guarantees
                 // that all packed-up places hold exactly its capability.
-                let mut ops: Vec<RepackOp<'tcx>> = other
+                let mut ops: Vec<PcgAction<'tcx>> = other
                     .capabilities
                     .owned_capabilities(place.local, ctxt)
                     .filter_map(|(p, k)| {
                         (place.is_prefix_of(p) && *k > CapabilityKind::Write).then(|| {
-                            let weaken = RepackOp::weaken(p, *k, CapabilityKind::Write);
+                            let weaken = recorded_weaken(p, *k, CapabilityKind::Write);
                             *k = CapabilityKind::Write;
                             weaken
                         })
@@ -293,10 +298,11 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             } else {
                 // We might as well just expand our place
                 let expand_action = RepackExpand::new(place, other_expansion.guide(), self_cap);
-                self.owned
-                    .perform_expand_action(expand_action, self.capabilities, ctxt);
+                let changes =
+                    self.owned
+                        .perform_expand_action(expand_action, self.capabilities, ctxt);
                 Ok(JoinExpandedPlaceResult::CreatedExpansion(vec![
-                    RepackOp::Expand(expand_action),
+                    recorded_expand(expand_action, changes),
                 ]))
             }
         } else {
@@ -310,13 +316,13 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let expansions_shortest_first = other
             .owned
             .expansions_shortest_first()
             .cloned()
             .collect::<Vec<_>>();
-        let mut actions: Vec<RepackOp<'tcx>> = vec![];
+        let mut actions: Vec<PcgAction<'tcx>> = vec![];
         let mut collapsed_places: HashSet<Place<'tcx>> = HashSet::default();
         for other_expansion in expansions_shortest_first {
             if collapsed_places
@@ -339,7 +345,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let mut actions = vec![];
         let mut iteration = 0;
         loop {
@@ -376,7 +382,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
         pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
@@ -397,15 +403,15 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             .capabilities
             .insert(place, CapabilityKind::Write, ctxt);
         let mut actions = join_obtainer.actions;
-        // This side's read-lending has ended and the value it still holds is
-        // dropped by the join (the other side moved it out): restore the
-        // place to exclusive and then weaken it, so consumers see a
-        // capability restoration followed by an ordinary value drop.
-        actions.push(RepackOp::RegainLoanedCapability(RegainedCapability::new(
-            place,
-            CapabilityKind::Exclusive,
-        )));
-        actions.push(RepackOp::weaken(
+        // This side's freeze has ended and the value it still holds is
+        // dropped by the join (the other side moved it out): the place is
+        // unfrozen and then weakened, so consumers see an ordinary value drop.
+        actions.push(
+            BorrowPcgAction::unfreeze(place, "join with a moved-out place")
+                .with_capabilities(vec![(place, Some(CapabilityKind::Exclusive))].into())
+                .into(),
+        );
+        actions.push(recorded_weaken(
             place,
             CapabilityKind::Exclusive,
             CapabilityKind::Write,
@@ -418,7 +424,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         if !self.owned.is_leaf_place(place, ctxt) || !other.owned.is_leaf_place(place, ctxt) {
             return Ok(vec![]);
         }
@@ -466,7 +472,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                     .capabilities
                     .insert(place, CapabilityKind::Write, ctxt);
                 let mut actions = join_obtainer.actions;
-                actions.push(RepackOp::weaken(
+                actions.push(recorded_weaken(
                     place,
                     CapabilityKind::ShallowExclusive,
                     CapabilityKind::Write,
@@ -485,20 +491,16 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // raw pointer, whose unpacking stays) but unpacked exclusively
                 // on the other: as for an exclusive access, the freeze of its
                 // frozen ancestor ends.
-                let action = end_freeze_action(
+                let mut action = end_freeze_action(
                     self.borrows.graph(),
                     self.capabilities,
                     frozen_ancestor(self.capabilities, place, ctxt),
                     "join with an exclusive unpacking".to_owned(),
                     ctxt,
                 );
-                let mut join_obtainer = JoinObtainer {
-                    ctxt,
-                    data: self,
-                    actions: vec![],
-                };
-                join_obtainer.apply_action(action.into())?;
-                Ok(join_obtainer.actions)
+                self.borrows
+                    .apply_action(&mut action, self.capabilities, ctxt);
+                Ok(vec![action.into()])
             }
             (
                 CapabilityKind::Read
@@ -514,8 +516,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
+        let mut actions: Vec<PcgAction<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
             actions.extend(
                 other
@@ -538,7 +540,10 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         tracing::debug!(
             "Join {} actions:\n\t{}",
             Place::from(self.owned.get_local()).display_string(ctxt),
-            actions.debug_lines(ctxt).join("\n\t")
+            actions
+                .iter()
+                .map(|action| action.debug_line(ctxt))
+                .join("\n\t")
         );
         tracing::debug!(
             "Capabilities:\n\t{}",
@@ -571,6 +576,23 @@ impl<'tcx> LocalExpansions<'tcx> {
             }
         })
     }
+}
+
+/// The action of the join's expansion `expand`, which made `changes`.
+fn recorded_expand<'tcx>(
+    expand: RepackExpand<'tcx>,
+    changes: CapabilityChanges<Place<'tcx>>,
+) -> PcgAction<'tcx> {
+    OwnedPcgAction::new(RepackOp::Expand(expand), None)
+        .with_capabilities(changes)
+        .into()
+}
+
+/// A weaken of `place` that the join performs itself.
+fn recorded_weaken(place: Place<'_>, from: CapabilityKind, to: CapabilityKind) -> PcgAction<'_> {
+    BorrowPcgAction::weaken(place, from, to, "join")
+        .with_capabilities(vec![(place, Some(to))].into())
+        .into()
 }
 
 fn copy_read_capabilities<'a, 'tcx: 'a>(

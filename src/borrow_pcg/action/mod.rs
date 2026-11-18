@@ -6,7 +6,7 @@ use serde_derive::Serialize;
 
 use super::borrow_pcg_edge::BorrowPcgEdge;
 use crate::{
-    RestoreCapability, Weaken,
+    Weaken,
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
@@ -69,94 +69,95 @@ impl ApplyActionResult {
 }
 
 impl<'tcx, EdgeKind, P> BorrowPcgAction<'tcx, EdgeKind, P> {
+    /// An `AddEdge` that changes no capability.
     pub(crate) fn add_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::AddEdge { edge },
-            debug_info: Some(context.into()),
-        }
+        Self::add_edge_setting(edge, vec![], context)
+    }
+
+    /// An `AddEdge` that sets `capabilities` (`None` removes one).
+    pub(crate) fn add_edge_setting(
+        edge: BorrowPcgEdge<'tcx, EdgeKind>,
+        capabilities: Vec<(P, Option<CapabilityKind>)>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::new(BorrowPcgActionKind::AddEdge { edge }, Some(context.into()))
+            .with_capabilities(capabilities.into())
     }
 
     pub(crate) fn remove_edge(
         edge: BorrowPcgEdge<'tcx, EdgeKind>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction {
-            kind: BorrowPcgActionKind::RemoveEdge(edge),
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(BorrowPcgActionKind::RemoveEdge(edge), Some(context.into()))
     }
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-    pub(crate) fn restore_capability(
-        place: P,
-        capability: CapabilityKind,
-        debug_context: impl Into<DisplayOutput>,
-    ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Restore(
-                RestoreCapability::new(place, capability),
-            ),
-            debug_info: Some(debug_context.into()),
-        }
-    }
-
     pub(crate) fn weaken(
         place: P,
         from: CapabilityKind,
-        to: Option<CapabilityKind>,
+        to: CapabilityKind,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::Weaken(
-                Weaken::new(place, from, to),
-            ),
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::Weaken(Weaken::new(place, from, to)),
+            Some(context.into()),
+        )
+    }
+
+    /// Temporary: a weaken for a `StorageDead`, until
+    /// <https://github.com/prusti/pcg/issues/137> is resolved.
+    pub(crate) fn weaken_for_storage_dead(
+        place: P,
+        from: CapabilityKind,
+        to: CapabilityKind,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::Weaken(Weaken::new_for_storage_dead(place, from, to)),
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn freeze(place: P, context: impl Into<DisplayOutput>) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::Freeze { place },
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(BorrowPcgActionKind::Freeze { place }, Some(context.into()))
     }
 
     pub(crate) fn unfreeze(place: P, context: impl Into<DisplayOutput>) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::Unfreeze { place },
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::Unfreeze { place },
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn refreeze(place: P, to: Vec<P>, context: impl Into<DisplayOutput>) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::Refreeze { place, to },
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::Refreeze { place, to },
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn activate_two_phase_borrow(
         borrow: BorrowEdge<'tcx, P>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow },
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow },
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn remove_lifetime_projection_label(
         projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::remove_lifetime_projection_label(projection),
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::remove_lifetime_projection_label(projection),
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn label_lifetime_projection(
@@ -164,10 +165,10 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
         label: Option<LifetimeProjectionLabel>,
         context: impl Into<DisplayOutput>,
     ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::label_lifetime_projection(predicate, label),
-            debug_info: Some(context.into()),
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::label_lifetime_projection(predicate, label),
+            Some(context.into()),
+        )
     }
 
     pub(crate) fn label_place_and_update_related_capabilities(
@@ -175,12 +176,10 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
         location: SnapshotLocation,
         reason: LabelPlaceReason,
     ) -> Self {
-        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
-            kind: BorrowPcgActionKind::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC>::LabelPlace(
-                LabelPlaceAction::new(place, location, reason),
-            ),
-            debug_info: None,
-        }
+        BorrowPcgAction::new(
+            BorrowPcgActionKind::LabelPlace(LabelPlaceAction::new(place, location, reason)),
+            None,
+        )
     }
 }
 
@@ -390,8 +389,8 @@ pub enum BorrowPcgActionKind<
     VC = ValidityConditions,
 > {
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
+    /// The capability of the place goes down to the strictly lower `to`.
     Weaken(Weaken<'tcx, P>),
-    Restore(RestoreCapability<'tcx, P>),
     /// The place goes from E to R because it is read or borrowed for read.
     /// Unlike a [`Weaken`], the E capability is only suspended: it comes back
     /// through [`BorrowPcgActionKind::Unfreeze`] or
@@ -410,7 +409,8 @@ pub enum BorrowPcgActionKind<
     /// The place goes from R back to the E suspended by
     /// [`BorrowPcgActionKind::Freeze`], because no borrow of it is left. If
     /// the place is unpacked, the read unpacking becomes an exclusive one (as
-    /// for [`BorrowPcgActionKind::Refreeze`] with no `to`).
+    /// for [`BorrowPcgActionKind::Refreeze`] with no `to`). The read copies
+    /// that the action's capability changes remove are given up instead.
     Unfreeze {
         place: P,
     },
@@ -419,7 +419,8 @@ pub enum BorrowPcgActionKind<
     /// rest of the unpacking of `place` gets its E back. The unpacking becomes
     /// an exclusive one: `place` and the places between it and `to` keep no
     /// capability (`e` for a mutable reference), and the other read copies
-    /// get E (R if they are behind a shared reference).
+    /// get E (R if they are behind a shared reference). The read copies that
+    /// the action's capability changes remove are given up instead.
     Refreeze {
         place: P,
         to: Vec<P>,
@@ -430,6 +431,11 @@ pub enum BorrowPcgActionKind<
     ActivateTwoPhaseBorrow {
         borrow: BorrowEdge<'tcx, P>,
     },
+    /// The current value of the place is labelled: the edges referring to the
+    /// place (and, depending on the reason, its postfixes) now refer to the
+    /// labelled place, and the current places reached from the place through
+    /// a dereference lose their capabilities. A label for a write also gives
+    /// W to the owned leaves below the place that it unblocks.
     LabelPlace(LabelPlaceAction<'tcx, P>),
     /// Remove an edge from the PCG. In terms of the PCG itself, the validity
     /// conditions associated with the edge are not relevant (there is no
@@ -438,7 +444,18 @@ pub enum BorrowPcgActionKind<
     /// symbolic-execution based Prusti purification already performs some
     /// filtering on edges based on validity conditions and might want to ignore
     /// removal actions for edges that it already ignored.
+    ///
+    /// The places the edge is blocked by that no other edge refers to lose
+    /// their capabilities. The action's capability changes also list the
+    /// capabilities the places it unblocks get back, if any: the edge was an
+    /// unpacking (its base is packed) or a loan (the lent place is no longer
+    /// lent).
     RemoveEdge(BorrowPcgEdge<'tcx, EdgeKind, VC>),
+    /// Add an edge to the PCG. An unpacking (a borrow-PCG expansion or a
+    /// dereference) gives its expansion the capability of its base, which
+    /// keeps what the unpacking leaves it (R, `e` or none), and a mutable
+    /// borrow that is not two-phase takes the capability of the borrowed
+    /// place.
     AddEdge {
         edge: BorrowPcgEdge<'tcx, EdgeKind, VC>,
     },
@@ -489,9 +506,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 action.display_output(ctxt, mode)
             }
             BorrowPcgActionKind::Weaken(weaken) => weaken.display_output(ctxt, mode),
-            BorrowPcgActionKind::Restore(restore_capability) => {
-                restore_capability.display_output(ctxt, mode)
-            }
             BorrowPcgActionKind::Freeze { place } => DisplayOutput::join(
                 vec!["Freeze".into(), place.display_output(ctxt, mode)],
                 &DisplayOutput::SPACE,
@@ -529,5 +543,46 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
                 &DisplayOutput::SPACE,
             ),
         }
+    }
+}
+
+/// Shows the kind and, for an added edge, the capabilities it sets and, for a
+/// removed edge, the ones it returns.
+impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCtxt<Ctxt>>
+    DisplayWithCtxt<Ctxt> for BorrowPcgAction<'tcx, EdgeKind>
+{
+    fn display_output(&self, ctxt: Ctxt, mode: OutputMode) -> DisplayOutput {
+        let kind = self.kind.display_output(ctxt, mode);
+        let gained = self
+            .capabilities
+            .iter()
+            .filter_map(|(place, cap)| Some((place, cap?)))
+            .collect::<Vec<_>>();
+        let suffix = match &self.kind {
+            BorrowPcgActionKind::AddEdge { .. } if !self.capabilities.is_empty() => {
+                vec![
+                    "setting".into(),
+                    self.capabilities.display_output(ctxt, mode),
+                ]
+            }
+            BorrowPcgActionKind::RemoveEdge(_) if !gained.is_empty() => {
+                vec![DisplayOutput::join(
+                    gained.into_iter().map(|(place, cap)| {
+                        DisplayOutput::join(
+                            vec![
+                                "returning".into(),
+                                cap.display_output(ctxt, mode),
+                                "to".into(),
+                                place.display_output(ctxt, mode),
+                            ],
+                            &DisplayOutput::SPACE,
+                        )
+                    }),
+                    &", ".into(),
+                )]
+            }
+            _ => return kind,
+        };
+        DisplayOutput::join(std::iter::once(kind).chain(suffix), &DisplayOutput::SPACE)
     }
 }

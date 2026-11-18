@@ -6,7 +6,7 @@ struct Node {
 
 fn snapshot_before_join_weakening(mut node: Node) {
     // PCG: bb4[4] post_main: x: e
-    // PCG: bb4 -> bb5: Weaken(Weaken { place: _2, from: e, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb4 -> bb5: Weaken x from e to W
     // PCG: bb5[0] pre_operands: x: W
 
     // We use after bb4 instead of before bb5 because Prusti can refer to the version of `x` after bb4:
@@ -35,8 +35,8 @@ fn snapshots_from_multiple_predecessors(mut node: BranchNode) {
     // Each borrowed arm must retain its own snapshot and branch condition.
     // PCG: bb5[4] post_main: x: e
     // PCG: bb6[4] post_main: x: e
-    // PCG: bb5 -> bb7: Weaken(Weaken { place: _2, from: e, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
-    // PCG: bb6 -> bb7: Weaken(Weaken { place: _2, from: e, to: W, for_storage_dead: false, _marker: PhantomData<&()> })
+    // PCG: bb5 -> bb7: Weaken x from e to W
+    // PCG: bb6 -> bb7: Weaken x from e to W
     // PCG: bb7[0] pre_operands: x: W
     // PCG: bb7[0] pre_operands: {*x after bb5} -> {(*x).next after bb5} under conditions bb0 -> bb3
     // PCG: bb7[0] pre_operands: {*x after bb6} -> {(*x).next after bb6} under conditions bb0 -> bb2
