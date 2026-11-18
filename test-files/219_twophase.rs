@@ -234,4 +234,34 @@ impl Tree<'_> {
     }
 }
 
+// The argument of the reserved `v.push` runs a loop, and `v` is dead at the
+// loop head: the reservation keeps it frozen there for the activation.
+fn reserved_dead_across_loop(mut v: Vec<Vec<&u32>>, n: u32) {
+    // PCG: bb1[0] pre_operands: v: R
+    // PCG: bb6[1] pre_operands: Activate two-phase borrow borrow: _4 = &mut  v
+    v.push({
+        let mut i = 0;
+        while i < n {
+            i += 1
+        }
+        Vec::new()
+    });
+}
+
+// As above, with `v` a mutable reference: the loop head weakens the dead
+// `v` and labels its value, so the reservation is of the labelled referent,
+// and its activation takes no capability.
+fn reservation_across_loop(v: &mut Vec<u32>, n: u32) {
+    // PCG: bb1[0] pre_operands: borrow: _4 = &mut  *v loop bb1
+    // PCG: bb1[0] pre_operands: v: W
+    // PCG: bb5[9] pre_operands: Activate two-phase borrow borrow: _4 = &mut  *v loop bb1
+    v.push({
+        let mut i = 0;
+        while i < n {
+            i += 1;
+        }
+        i
+    });
+}
+
 fn main() {}

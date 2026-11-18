@@ -8,7 +8,7 @@ use std::fmt::Debug;
 
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
-    error::PcgUnsupportedError,
+    error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
     pcg::place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     rustc_interface::middle::mir::Local,
@@ -119,6 +119,32 @@ impl<'tcx> LocalExpansions<'tcx> {
 
     pub(crate) fn insert_expansion(&mut self, place: Place<'tcx>, expansion: PlaceExpansion<'tcx>) {
         self.expansions.insert(ExpandedPlace { place, expansion });
+    }
+
+    /// Adds the expansions on the way to `place` that the layout lacks. It
+    /// changes no capability.
+    pub(crate) fn insert_layout_to<'a>(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Result<(), PcgError>
+    where
+        'tcx: 'a,
+    {
+        for (base, _) in place
+            .iter_projections_after(self.local.into(), ctxt)
+            .into_iter()
+            .flatten()
+        {
+            let expansion = base.expand_one_level(place, ctxt)?;
+            if !self.contains_expansion_to(expansion.target_place, ctxt) {
+                self.insert_expansion(
+                    base,
+                    PlaceExpansion::from_places(expansion.expansion(), ctxt),
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Removes the expansion to `place` and the expansions of `place` and of

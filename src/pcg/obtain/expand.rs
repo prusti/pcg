@@ -42,6 +42,19 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
     /// Whether `place` or a place below it has a capability.
     fn holds_capability_at_or_below(&self, place: Place<'tcx>) -> bool;
 
+    /// Whether the borrow PCG already unpacks `expanded.place` as `expanded`.
+    /// An implementation may not count an unpacking that is only layout, so
+    /// that unpacking it again gives its parts capabilities.
+    fn contains_borrow_pcg_expansion(
+        &self,
+        expanded: &ExpandedPlace<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<bool, PcgError> {
+        self.borrows_graph()
+            .contains_borrow_pcg_expansion(expanded, ctxt)
+            .map_err(PcgError::from)
+    }
+
     /// The capabilities that adding the borrow-PCG expansion `expansion` sets.
     fn borrow_expansion_capabilities(
         &self,
@@ -293,10 +306,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             place: base,
             expansion: place_expansion,
         };
-        if self
-            .borrows_graph()
-            .contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())?
-        {
+        if self.contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())? {
             return Ok(false);
         }
         tracing::debug!(

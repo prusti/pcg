@@ -503,10 +503,19 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 );
                 // An unpacked place suspends what its parts hold packed
                 // together (see `packed`), a frozen part what its freeze
-                // suspends.
-                let holders = capabilities
+                // suspends; a place stored in a part that holds a capability
+                // counts through that part.
+                let below = capabilities
                     .capabilities_for_strict_postfixes_of(*place)
-                    .map(|(p, cap)| (p, capabilities.suspended(p).unwrap_or(cap)))
+                    .collect::<Vec<_>>();
+                let holders = below
+                    .iter()
+                    .filter(|(p, _)| {
+                        !below
+                            .iter()
+                            .any(|(q, _)| q.is_strict_prefix_of(*p) && q.in_storage(*p, ctxt))
+                    })
+                    .map(|&(p, cap)| (p, capabilities.suspended(p).unwrap_or(cap)))
                     .collect::<Vec<_>>();
                 let (packed, _) = packed(*place, &holders, ctxt);
                 let suspended =
@@ -555,6 +564,9 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                 changes = end_freeze(*place, to, &dropped, capabilities, ctxt);
                 keep_records_of_still_frozen(*place, to, &changes, capabilities, ctxt);
             }
+            // A reservation of a labelled place takes no capability.
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow }
+                if !matches!(borrow.blocked_place, MaybeLabelledPlace::Current(_)) => {}
             BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => {
                 let place = borrow.blocked_place.place();
                 let frozen = capabilities.get(place, ctxt) == Some(CapabilityKind::Read)

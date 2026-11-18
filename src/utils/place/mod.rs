@@ -417,6 +417,12 @@ pub(crate) fn selects_element(elem: PlaceElem<'_>) -> bool {
     )
 }
 
+/// Whether `other` selects an element of an array or slice at another index
+/// than `elem`, which may be the same element.
+pub(crate) fn is_other_index<'tcx>(elem: PlaceElem<'tcx>, other: PlaceElem<'tcx>) -> bool {
+    !elem_eq((elem, other)) && may_be_same_step(elem, other)
+}
+
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
     fn local(self) -> Local {
         self.0.local

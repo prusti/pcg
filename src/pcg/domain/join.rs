@@ -16,7 +16,7 @@ use crate::{
     },
     error::PcgError,
     r#loop::PlaceUsageType,
-    owned_pcg::RepackOp,
+    owned_pcg::{RepackCollapse, RepackOp},
     pcg::{
         CapabilityKind, PcgMutRef, PcgRefLike,
         obtain::{HasSnapshotLocation, ObtainType, PlaceObtainer, expand::PlaceExpander},
@@ -672,7 +672,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
             {
                 let obtain_type = match self.prev_snapshot_location() {
                     SnapshotLocation::Loop(_) => ObtainType::LoopInvariant {
-                        is_blocked: false,
                         usage_type: if capability.is_read() {
                             PlaceUsageType::Read
                         } else {
@@ -892,21 +891,37 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
         }
     }
 
-    /// Weakens to [`CapabilityKind::Write`] the owned places that are not
-    /// definitely initialized here, held or suspended, and the local
-    /// references that are dead here.
+    /// Weakens to [`CapabilityKind::Write`] what the loop head may not hold:
+    /// - the records above W of owned places that are not definitely
+    ///   initialized here, or that hold nothing and contain references of a
+    ///   local that is dead here;
+    /// - the held owned places that are not definitely initialized here, and
+    ///   those holding references of a dead local (the holders, not their
+    ///   read copies) that no loan keeps from being overwritten, also a
+    ///   reference frozen for a loan into its referent, which the loop may
+    ///   end;
+    /// - a dead place that a loan of it keeps from being overwritten is lent
+    ///   to that loan instead and records W, as is a dead place that is lent
+    ///   here: the loop may end the loan, and the back edge lends the
+    ///   weakened place to it again.
     pub(super) fn weaken_maybe_uninitialized(&mut self) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         let location = self.location();
         let body_analysis = ctxt.body_analysis();
+        let dead_reference = |place: Place<'tcx>| {
+            !place.lifetime_projections(ctxt).is_empty()
+                && !body_analysis.is_live_and_initialized_at(location, place.local.into())
+        };
         let suspended = self
             .pcg
             .place_capabilities
             .iter_suspended()
-            .filter(|(place, capability)| {
-                *capability > CapabilityKind::Write
+            .filter(|&(place, capability)| {
+                capability > CapabilityKind::Write
                     && place.as_owned_place(ctxt).is_some()
-                    && !body_analysis.is_definitely_initialized_at(location, *place)
+                    && (!body_analysis.is_definitely_initialized_at(location, place)
+                        || dead_reference(place)
+                            && self.pcg.place_capabilities.get(place, ctxt).is_none())
             })
             .collect::<Vec<_>>();
         for (place, from) in suspended {
@@ -920,6 +935,14 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 .into(),
             )?;
         }
+        // A read copy goes with the frozen place it is copied from.
+        let dead_holder = |slf: &Self, place: Place<'tcx>| {
+            place.as_owned_place(ctxt).is_some()
+                && dead_reference(place)
+                && place
+                    .parent_place()
+                    .is_none_or(|parent| slf.pcg.place_capabilities.get(parent, ctxt).is_none())
+        };
         let mut places = self
             .pcg
             .place_capabilities
@@ -927,12 +950,14 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
             .filter_map(|(place, capability)| {
                 (capability != CapabilityKind::Write
                     && (!body_analysis.is_definitely_initialized_at(location, place)
-                        || matches!(
-                            capability,
-                            CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive
-                        ) && place.projection.is_empty()
-                            && !place.lifetime_projections(ctxt).is_empty()
-                            && !body_analysis.is_live_and_initialized_at(location, place)))
+                        || dead_holder(self, place)
+                            && self
+                                .pcg
+                                .borrow
+                                .graph
+                                .loans_blocking(place, CapabilityKind::Write, ctxt.bc_ctxt())
+                                .next()
+                                .is_none()))
                 .then(|| place.as_owned_place(ctxt))
                 .flatten()
             })
@@ -946,6 +971,50 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 self.pcg
                     .owned
                     .apply_capability_change(owned, CapabilityKind::Write, ctxt);
+            }
+        }
+        // A dead place that a loan of it keeps from being overwritten is lent
+        // to that loan instead, recording W.
+        let lent = self
+            .pcg
+            .place_capabilities
+            .iter()
+            .filter(|&(place, capability)| {
+                capability != CapabilityKind::Write
+                    && dead_holder(self, place)
+                    && body_analysis.is_definitely_initialized_at(location, place)
+            })
+            .filter_map(|(place, _)| {
+                // A held place that a mutable borrow blocks is reserved by a
+                // two-phase borrow: it stays frozen for the activation.
+                let loan = self
+                    .pcg
+                    .borrow
+                    .graph
+                    .edges_blocking(place.into(), ctxt.bc_ctxt())
+                    .filter(|edge| {
+                        edge.kind().is_loan()
+                            && !matches!(edge.kind(), BorrowPcgEdgeKind::Borrow(borrow) if borrow.is_mut())
+                    })
+                    .min_by_key(|edge| format!("{:?}", edge.kind()))
+                    .map(BorrowPcgEdgeLike::to_owned_edge)?;
+                Some((place, loan))
+            })
+            .collect::<Vec<_>>();
+        for (place, loan) in lent {
+            self.record_and_apply_action(BorrowPcgAction::lend(place, loan, "loop head").into())?;
+            if let Some(record) = self.pcg.place_capabilities.suspended(place)
+                && record > CapabilityKind::Write
+            {
+                self.record_and_apply_action(
+                    BorrowPcgAction::weaken_suspended(
+                        place,
+                        record,
+                        Some(CapabilityKind::Write),
+                        "loop head",
+                    )
+                    .into(),
+                )?;
             }
         }
         Ok(())
@@ -965,8 +1034,70 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 continue;
             }
             self.pack(place, capability, &|base| target.unpacks(base))?;
+            if capability == CapabilityKind::Read {
+                self.pack_owned_read_unpackings(place, target)?;
+            }
         }
         Ok(())
+    }
+
+    /// Packs the owned read unpackings below the frozen `place` whose parts
+    /// `target` does not hold and no edge blocks, leaves first: a path that
+    /// unpacked an enum variant the path across the join did not match gives
+    /// up its read copies.
+    fn pack_owned_read_unpackings(
+        &mut self,
+        place: Place<'tcx>,
+        target: &PlaceCapabilities<'tcx>,
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        if place.as_owned_place(ctxt).is_none() {
+            return Ok(());
+        }
+        let graph = &self.pcg.borrow.graph;
+        let blocked = graph
+            .owned_places(ctxt.bc_ctxt())
+            .into_iter()
+            .chain(graph.lent_places(ctxt.bc_ctxt()))
+            .collect::<HashSet<_>>();
+        loop {
+            let capabilities = &self.pcg.place_capabilities;
+            let layout = self.pcg.owned[place.local].expansions();
+            let packable = layout
+                .expansions()
+                .iter()
+                .filter(|expanded| {
+                    place.is_prefix_of(expanded.place)
+                        && capabilities.get(expanded.place, ctxt) == Some(CapabilityKind::Read)
+                })
+                .find(|expanded| {
+                    expanded
+                        .expansion_places(ctxt)
+                        .unwrap()
+                        .into_iter()
+                        .all(|part| {
+                            target.get(part, ctxt).is_none()
+                                && capabilities.get(part, ctxt) == Some(CapabilityKind::Read)
+                                && !layout.contains_expansion_from(part)
+                                && !blocked.iter().any(|b| part.is_prefix_of(*b))
+                        })
+                })
+                .cloned();
+            let Some(expanded) = packable else {
+                return Ok(());
+            };
+            self.record_and_apply_action(
+                OwnedPcgAction::new(
+                    RepackOp::Collapse(RepackCollapse::new(
+                        expanded.place,
+                        CapabilityKind::Read,
+                        expanded.guide(),
+                    )),
+                    Some("join".into()),
+                )
+                .into(),
+            )?;
+        }
     }
 
     /// Packs what this state holds below `place` into `place` at

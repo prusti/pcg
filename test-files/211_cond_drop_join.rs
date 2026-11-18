@@ -789,3 +789,53 @@ fn borrowed_variant_nested_referent_part_lent(x: &mut Option<&mut (u32, &mut (u3
         None => 0,
     }
 }
+
+// A variant field is borrowed on one path only, as in
+// `variant_field_read_other_variant_borrowed`, and `x` is moved after the loan
+// of `x@A.0` ends: `x` is unfrozen and the layout below it is forgotten, not
+// collapsed.
+fn variant_field_read_then_moved(x: AC) -> AC {
+    // PCG: bb4[2] pre_operands: Unfreeze x
+    // PCG: bb4[3] pre_operands: x: W
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = x {
+        a = p;
+    }
+    let _ = *a;
+    x
+}
+
+// As `variant_field_read_other_variant_borrowed`, behind a reference: the
+// layout of the borrowed field is unpackings in the borrow PCG.
+fn variant_field_read_other_variant_borrowed_through_ref(x: &mut AC) -> u32 {
+    // PCG: bb6[1] pre_operands: Refreeze x to *x
+    // PCG: bb6[1] pre_operands: Refreeze *x to (*x)@A
+    // PCG: bb6[1] pre_operands: (*x)@C.0: E
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = *x {
+        a = p;
+    }
+    if let AC::C(ref mut q) = *x {
+        *q = 1;
+    }
+    *a
+}
+
+// As `variant_field_read_same_variant_borrowed`, behind a reference: the
+// freeze of `x` moves to `*x`, and from there to `(*x)@A.0`.
+fn variant_field_read_same_variant_borrowed_through_ref(x: &mut AC) -> u32 {
+    // PCG: bb6[1] pre_operands: Refreeze x to *x
+    // PCG: bb6[1] pre_operands: Refreeze *x to (*x)@A.0
+    // PCG: bb6[1] pre_operands: (*x)@A.1: E
+    let y = 0;
+    let mut a: &u32 = &y;
+    if let AC::A(ref p, _) = *x {
+        a = p;
+    }
+    if let AC::A(_, ref mut q) = *x {
+        *q = 1;
+    }
+    *a
+}

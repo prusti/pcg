@@ -138,12 +138,38 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let path = std::iter::successors(toward.parent_place(), |p| p.parent_place())
             .take_while(|p| frozen.is_prefix_of(*p))
             .collect::<Vec<_>>();
-        let mut beside = self.pcg.owned[frozen.local]
+        let owned_unpackings = self.pcg.owned[frozen.local]
             .expansions()
             .expansions()
             .iter()
             .filter(|expanded| path.contains(&expanded.place))
-            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap())
+            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap());
+        let borrowed_unpackings = self
+            .pcg
+            .borrow
+            .graph
+            .edges
+            .keys()
+            .filter_map(|kind| match kind {
+                BorrowPcgEdgeKind::BorrowPcgExpansion(expansion)
+                    if expansion
+                        .base()
+                        .as_current_place()
+                        .is_some_and(|base| path.contains(&base)) =>
+                {
+                    Some(
+                        expansion
+                            .expansion()
+                            .iter()
+                            .filter_map(|node| node.as_current_place())
+                            .collect::<Vec<_>>(),
+                    )
+                }
+                _ => None,
+            })
+            .flatten();
+        let mut beside = owned_unpackings
+            .chain(borrowed_unpackings)
             .filter(|part| {
                 !part.is_prefix_of(toward) && borrowed.iter().any(|b| part.is_prefix_of(*b))
             })

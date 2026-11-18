@@ -2,30 +2,38 @@ use crate::{
     HasSettings,
     borrow_pcg::{
         action::LabelPlaceReason,
-        borrow_pcg_edge::BorrowPcgEdgeLike,
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
+        borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::kind::BorrowPcgEdgeKind,
         edge_data::{LabelEdgeLifetimeProjections, LabelNodePredicate},
         graph::loop_abstraction::ConstructAbstractionGraphResult,
         has_pcs_elem::SetLabel,
         region_projection::LifetimeProjectionLabel,
-        state::BorrowStateRef,
+        state::{BorrowStateRef, packed},
         validity_conditions::ValidityConditions,
     },
-    r#loop::{PlaceUsage, PlaceUsages},
+    error::PcgError,
+    r#loop::{LoopId, PlaceUsage, PlaceUsages},
+    owned_pcg::ExpandedPlace,
     pcg::{
         BodyAnalysis, CapabilityKind, PcgNode, PcgNodeLike, PcgRef, PcgRefLike,
         ctxt::AnalysisCtxt,
+        meet,
         owned_state::OwnedPcg,
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
     },
     pcg_validity_assert,
-    rustc_interface::middle::mir::{self, BasicBlock},
+    rustc_interface::{
+        borrowck::TwoPhaseActivation,
+        middle::mir::{self, BasicBlock},
+    },
     utils::{
-        DebugImgcat, HasBorrowCheckerCtxt, SnapshotLocation,
+        DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike, SnapshotLocation,
         data_structures::HashSet,
         display::DisplayWithCtxt,
+        is_other_index,
         logging::{self, LogPredicate},
         validity::HasValidityCheck,
     },
@@ -360,7 +368,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .loop_analysis
             .loop_head_of(loop_head)
             .unwrap();
-        let invariant_capabilities = ctxt.body_analysis.loop_invariant_capabilities(loop_id);
+        let invariant_capabilities = ctxt
+            .body_analysis
+            .loop_invariant_capabilities(loop_id)
+            .outside_variants(ctxt.ctxt)
+            .consolidate();
 
         logging::log!(
             &LogPredicate::DebugBlock,
@@ -370,22 +382,38 @@ impl<'tcx> BorrowsGraph<'tcx> {
         );
 
         self.unpack_for_loop_invariant_capabilities(
-            &loop_blocked_places,
-            invariant_capabilities,
+            &invariant_capabilities,
             validity_conditions,
             &mut args.reborrow(),
             ctxt,
         );
 
-        let expand_places = loop_blocker_places.joined_with(&loop_blocked_places);
+        // The loop abstraction blocks and is blocked by places in enum
+        // variants precisely, but the loop head holds them at the enum: not
+        // every path into the head matched the variant. Below the enum, the
+        // head has only the layout down to the blocked places.
+        let expand_places = loop_blocker_places
+            .outside_variants(ctxt.ctxt)
+            .joined_with(&loop_blocked_places.outside_variants(ctxt.ctxt));
 
         self.expand_places_for_abstraction(
-            &loop_blocked_places,
             &expand_places,
             validity_conditions,
             &mut args.reborrow(),
             ctxt,
         );
+        for blocked in loop_blocked_places.iter_places() {
+            pack_other_index_unpackings(blocked, args.capabilities, ctxt);
+            if blocked.as_owned_place(ctxt.ctxt).is_some() {
+                args.owned[blocked.local]
+                    .expansions_mut()
+                    .insert_layout_to(blocked, ctxt.ctxt)
+                    .unwrap();
+            } else {
+                self.insert_layout_to(blocked, validity_conditions, ctxt)
+                    .unwrap();
+            }
+        }
         let capabilities = args.capabilities;
         self.render_debug_graph(
             loop_head,
@@ -440,7 +468,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         let ConstructAbstractionGraphResult {
             graph: mut abstraction_graph,
             to_label,
-            capability_updates,
             blocked_root_places,
         } = self.get_loop_abstraction_graph(
             &loop_blocked_places,
@@ -474,21 +501,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 },
                 ctxt,
             );
-        }
-
-        // The places that the loop abstraction blocks are lent to it, or
-        // frozen if it only reads them.
-        for (place, cap_option) in capability_updates {
-            if let Some(held) = capabilities.get(place, ctxt.ctxt)
-                && !held.is_read()
-            {
-                capabilities.suspend(place, held);
-            }
-            if let Some(cap) = cap_option {
-                capabilities.insert(place, cap, ctxt);
-            } else {
-                capabilities.remove(place, ctxt);
-            }
         }
 
         // For each root place that is actually blocked by the loop abstraction,
@@ -586,6 +598,7 @@ impl<'tcx> BorrowsGraph<'tcx> {
                 capabilities.remove(place, ctxt);
             }
         }
+        self.restrict_to_loans(capabilities, loop_head, loop_id, ctxt);
         self.render_debug_graph(
             loop_head,
             Some(DebugImgcat::JoinLoop),
@@ -593,5 +606,191 @@ impl<'tcx> BorrowsGraph<'tcx> {
             "Final graph",
             ctxt.ctxt,
         );
+    }
+
+    /// Lowers the capabilities of the loop head to what the loans of this
+    /// graph leave, for each place whose capability a loan of the graph
+    /// conflicts with (see `PlaceLike::conflicts_with_loan_of`). Whether such
+    /// a loan is mutable and active here is rustc's borrow in scope at the
+    /// head. A place that a mutable borrow covers (it borrows the place or a
+    /// place it is part of, at any index of an array or slice) holds nothing.
+    /// A place a mutable borrow takes a part of its value from keeps the R of
+    /// a read unpacking and holds nothing if it holds more (also a reference
+    /// held with E whose referent the borrow reaches into: the head does not
+    /// unpack it to give it e). Otherwise, a place holding E or e holds R;
+    /// one holding R or W keeps it. Each place records what it held, which
+    /// comes back once the loan ends in the loop.
+    fn restrict_to_loans(
+        &self,
+        capabilities: &mut PlaceCapabilities<'tcx>,
+        loop_head: BasicBlock,
+        loop_id: LoopId,
+        ctxt: AnalysisCtxt<'_, 'tcx>,
+    ) {
+        // A two-phase borrow is mutable once activated: on every path to the
+        // head, or on the back edge if the loop contains the activation.
+        // Until then it is reserved, and shared.
+        let is_active_here = |activation| match activation {
+            TwoPhaseActivation::NotTwoPhase => true,
+            TwoPhaseActivation::NotActivated => false,
+            TwoPhaseActivation::ActivatedAt(activation) => {
+                ctxt.body()
+                    .basic_blocks
+                    .dominators()
+                    .dominates(activation.block, loop_head)
+                    || ctxt
+                        .body_analysis
+                        .loop_analysis
+                        .in_loop(activation.block, loop_id)
+            }
+        };
+        let location = mir::Location {
+            block: loop_head,
+            statement_index: 0,
+        };
+        let lent = self.lent_places(ctxt.bc_ctxt());
+        let restricted = capabilities
+            .iter()
+            .filter(|(place, held)| {
+                !place.contains_unsafe_deref(ctxt.ctxt)
+                    && lent
+                        .iter()
+                        .any(|lent| place.conflicts_with_loan_of(*held, *lent, ctxt.ctxt))
+            })
+            .filter_map(|(place, held)| {
+                let (covered, part_taken) = ctxt
+                    .bc()
+                    .borrows_blocking(place, location, ctxt.bc_ctxt())
+                    .iter()
+                    .filter(|borrow| {
+                        borrow.kind().mutability().is_mut()
+                            && is_active_here(borrow.activation_location())
+                    })
+                    .map(|borrow| Place::from(borrow.borrowed_place()))
+                    .fold((false, false), |(covered, part_taken), borrowed| {
+                        (
+                            covered || borrowed.may_be_ancestor_of(place, ctxt.ctxt).is_some(),
+                            part_taken
+                                || place
+                                    .may_be_ancestor_of(borrowed, ctxt.ctxt)
+                                    .is_some_and(|aliased| aliased != borrowed)
+                                    && place.conflicts_with_loan_of(held, borrowed, ctxt.ctxt),
+                        )
+                    });
+                let lent_with = covered || part_taken && !held.is_read();
+                let allowed = (!lent_with).then_some(CapabilityKind::Read);
+                (lent_with
+                    || matches!(
+                        held,
+                        CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive
+                    ))
+                .then_some((place, held, allowed))
+            })
+            .collect::<Vec<_>>();
+        for (place, held, allowed) in restricted {
+            if !held.is_read() {
+                capabilities.suspend(place, held);
+            }
+            if let Some(allowed) = allowed {
+                capabilities.insert(place, allowed, ctxt);
+            } else {
+                capabilities.remove(place, ctxt);
+            }
+        }
+    }
+
+    /// Adds the unpackings in the borrow PCG on the way to the borrowed
+    /// `place` that the graph lacks, below the dereferences it has. It
+    /// changes no capability.
+    fn insert_layout_to(
+        &mut self,
+        place: Place<'tcx>,
+        validity_conditions: &ValidityConditions,
+        ctxt: AnalysisCtxt<'_, 'tcx>,
+    ) -> Result<(), PcgError> {
+        for (base, elem) in place.iter_projections() {
+            let base: Place<'tcx> = base.into();
+            if elem == mir::ProjectionElem::Deref {
+                if !self.contains_deref_edge_to(base.project_deref(ctxt.ctxt)) {
+                    return Ok(());
+                }
+                continue;
+            }
+            if base.as_owned_place(ctxt.ctxt).is_some() {
+                continue;
+            }
+            let expansion = base.expand_one_level(place, ctxt.ctxt)?;
+            let expanded = ExpandedPlace {
+                place: base,
+                expansion: PlaceExpansion::from_places(expansion.expansion(), ctxt.ctxt)
+                    .with_guide(expansion.guide()),
+            };
+            if !self.contains_borrow_pcg_expansion(&expanded, ctxt.ctxt)? {
+                let edge =
+                    BorrowPcgExpansion::new_place_expansion(base, &expanded.expansion, ctxt)?;
+                self.insert(
+                    BorrowPcgEdge::new(edge.into(), validity_conditions.clone()),
+                    ctxt.ctxt,
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Packs what the unpackings at other indices of the places on the way to
+/// `place` hold or record into a record at the place they unpack, unless they
+/// only read (read copies and frozen places). Places at different indices may
+/// be the same element, so no other place shares an element with an exclusive
+/// or lent one; the packed unpackings remain as layout.
+fn pack_other_index_unpackings<'tcx>(
+    place: Place<'tcx>,
+    capabilities: &mut PlaceCapabilities<'tcx>,
+    ctxt: AnalysisCtxt<'_, 'tcx>,
+) {
+    for (depth, (base, elem)) in place.iter_projections().enumerate() {
+        let base: Place<'tcx> = base.into();
+        let under_other_index = |other: Place<'tcx>| {
+            other
+                .iter_projections()
+                .nth(depth)
+                .is_some_and(|(other_base, other_elem)| {
+                    Place::from(other_base) == base && is_other_index(elem, other_elem)
+                })
+        };
+        let records = capabilities
+            .iter_suspended()
+            .filter(|(other, _)| under_other_index(*other))
+            .collect::<Vec<_>>();
+        let held = capabilities
+            .iter()
+            .filter(|(other, _)| under_other_index(*other))
+            .collect::<Vec<_>>();
+        let only_reads = held.iter().all(|(_, held)| held.is_read())
+            && records.iter().all(|(recorded, record)| {
+                record.is_read() || held.iter().any(|(frozen, _)| frozen == recorded)
+            });
+        if only_reads {
+            continue;
+        }
+        let entries = held
+            .iter()
+            .filter(|(other, _)| !records.iter().any(|(recorded, _)| recorded == other))
+            .chain(&records)
+            .copied()
+            .collect::<Vec<_>>();
+        let (packed, _) = packed(base, &entries, ctxt.ctxt);
+        for (other, _) in held {
+            capabilities.remove(other, ctxt);
+        }
+        for (other, _) in records {
+            capabilities.resume(other);
+        }
+        if let Some(packed) = packed {
+            let record = capabilities
+                .resume(base)
+                .map_or(packed, |own| meet(own, packed));
+            capabilities.suspend(base, record);
+        }
     }
 }

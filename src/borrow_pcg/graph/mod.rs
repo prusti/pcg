@@ -27,7 +27,6 @@ use crate::{
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
         },
-        maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -358,7 +357,8 @@ impl<'tcx> BorrowsGraph<'tcx> {
     }
 
     /// The owned places that an edge blocks: the references and raw pointers
-    /// a dereference unpacks and the places a borrow blocks.
+    /// a dereference unpacks and the places a loan (a borrow, a call, a loop)
+    /// blocks.
     pub(crate) fn owned_places(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> HashSet<Place<'tcx>> {
         let mut result = HashSet::default();
         for edge in self.edges() {
@@ -371,12 +371,12 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         result.insert(base);
                     }
                 }
-                BorrowPcgEdgeKind::Borrow(borrow) => {
-                    if let MaybeLabelledPlace::Current(place) = borrow.blocked_place
-                        && place.is_owned(ctxt)
-                    {
-                        result.insert(place);
-                    }
+                kind if kind.is_loan() => {
+                    result.extend(
+                        kind.blocked_nodes(ctxt)
+                            .filter_map(|node| node.as_current_place())
+                            .filter(|place| place.is_owned(ctxt)),
+                    );
                 }
                 _ => {}
             }

@@ -512,7 +512,16 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             self.location(),
             borrow.display_string(self.ctxt)
         );
-        let blocked_place = borrow.blocked_place.place();
+        // A reservation of a labelled place (an old value, such as that of a
+        // dead reference labelled at a loop head) has no capability to take:
+        // it is activated without changing any.
+        let Some(blocked_place) = borrow.blocked_place.as_current_place() else {
+            let borrow = borrow.clone();
+            return self.record_and_apply_action(
+                BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow")
+                    .into(),
+            );
+        };
         let ctxt = self.ctxt;
         if !self
             .pcg
