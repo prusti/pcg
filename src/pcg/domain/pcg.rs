@@ -26,9 +26,9 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, selects_element, validity::HasValidityCheck,
     },
 };
 
@@ -276,6 +276,71 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        // A place holds a capability above R only while no loan conflicts
+        // with it (see `PlaceLike::conflicts_with_loan_of`): a shared loan
+        // keeps what it conflicts with frozen until it ends.
+        let lent = self.borrow.graph.lent_places(ctxt.bc_ctxt());
+        for (place, cap) in self.place_capabilities.iter() {
+            if !cap.is_read()
+                && !place.contains_unsafe_deref(ctxt)
+                && let Some(lent) = lent
+                    .iter()
+                    .find(|lent| place.conflicts_with_loan_of(cap, **lent, ctxt))
+            {
+                return Err(format!(
+                    "Place {} holds {:?} while {} is lent",
+                    place.display_string(ctxt.bc_ctxt()),
+                    cap,
+                    lent.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
+        // Places under different indices of one array or slice may be the
+        // same element: of two such places that hold or record a capability,
+        // neither holds more than R or, holding nothing, records more than R
+        // (read copies and frozen places may share an element; a lent or
+        // exclusive one shares it with nothing). Only places at or below an
+        // element can share one.
+        let holders = self
+            .place_capabilities
+            .iter()
+            .map(|(place, _)| place)
+            .chain(
+                self.place_capabilities
+                    .iter_suspended()
+                    .map(|(place, _)| place),
+            )
+            .filter(|place| place.projection.iter().any(|elem| selects_element(*elem)))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let exclusive = |place: Place<'tcx>| match self.place_capabilities.get(place, ctxt) {
+            Some(cap) => !cap.is_read(),
+            None => self
+                .place_capabilities
+                .suspended(place)
+                .is_some_and(|record| !record.is_read()),
+        };
+        for (i, &place) in holders.iter().enumerate() {
+            for &other in &holders[i + 1..] {
+                if place.local == other.local
+                    && !place.is_prefix_of(other)
+                    && !other.is_prefix_of(place)
+                    && (place.may_be_ancestor_of(other, ctxt).is_some()
+                        || other.may_be_ancestor_of(place, ctxt).is_some())
+                    && (exclusive(place) || exclusive(other))
+                {
+                    return Err(format!(
+                        "{} and {}, which may be the same element, both hold or record a \
+                         capability",
+                        place.display_string(ctxt.bc_ctxt()),
+                        other.display_string(ctxt.bc_ctxt())
+                    ));
+                }
+            }
+        }
+
         // A frozen place, which holds R below no place holding R, records what
         // its freeze suspends.
         for (place, cap) in self.place_capabilities.iter() {
@@ -446,19 +511,16 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         let mut reached = self.clone();
         // Most edges lead to a state that holds and records the same as this
         // one, with the same layout: there is nothing to reach.
-        let mut actions =
-            if self.place_capabilities == other.place_capabilities && self.owned == other.owned {
-                vec![]
-            } else {
-                let mut actions =
-                    reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
-                actions.extend(reached.weaken_suspended_to(
-                    &other.place_capabilities,
-                    snapshot,
-                    ctxt,
-                )?);
-                actions
-            };
+        let mut actions = if self.place_capabilities == other.place_capabilities
+            && self.owned == other.owned
+        {
+            vec![]
+        } else {
+            let mut actions =
+                reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
+            actions.extend(reached.reach_suspended(&other.place_capabilities, snapshot, ctxt)?);
+            actions
+        };
         pcg_validity_assert!(
             reached.place_capabilities.suspended == other.place_capabilities.suspended,
             [ctxt],
@@ -544,7 +606,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         pcg_validity_assert!(
             self.place_capabilities == other.place_capabilities,
             [ctxt],
-            "predecessors reach different capabilities at the join"
+            "predecessors reach different capabilities at the join: {:?} and {:?}",
+            self.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
         );
         self.owned.join_capabilities(&other.owned);
         self.borrow.merge(&other_borrows, ctxt);

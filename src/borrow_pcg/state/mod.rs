@@ -42,7 +42,7 @@ use crate::{
     },
     pcg::{
         CapabilityKind, PcgNode, ctxt::AnalysisCtxt, meet,
-        place_capabilities::PlaceCapabilitiesInterface,
+        place_capabilities::PlaceCapabilitiesInterface, value::StepKind,
     },
     pcg_validity_assert,
     rustc_interface::middle::{
@@ -174,55 +174,122 @@ fn suspended_for<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
         .map(|(_, capability)| capability)
 }
 
+/// The record `place` gets by packing the records in its value into it; see
+/// [`packed`]. Returns it with the places whose records it packs, `place`
+/// aside.
+pub(crate) fn packed_record<
+    'a,
+    'tcx: 'a,
+    Ctxt: HasCompilerCtxt<'a, 'tcx>,
+    P: PlaceLike<'tcx, Ctxt>,
+>(
+    place: P,
+    capabilities: &impl PlaceCapabilitiesReader<'tcx, CapabilityKind, P>,
+    ctxt: Ctxt,
+) -> (Option<CapabilityKind>, Vec<P>) {
+    packed(
+        place,
+        &capabilities.iter_suspended().collect::<Vec<_>>(),
+        ctxt,
+    )
+}
+
+/// What `place` gets when the capabilities (or records) `entries` in its
+/// value are packed into it, the inverse of unpacking: the meet of the
+/// entries stored in it, where a mutable reference with e whose referent
+/// packs to E counts as E. What lies behind a shared reference or a raw
+/// pointer adds nothing. Returns it with the places whose entries it packs,
+/// `place` aside.
+pub(crate) fn packed<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>, P: PlaceLike<'tcx, Ctxt>>(
+    place: P,
+    entries: &[(P, CapabilityKind)],
+    ctxt: Ctxt,
+) -> (Option<CapabilityKind>, Vec<P>) {
+    let mut packed_capability = None;
+    let mut parts = vec![];
+    for &(p, entry) in entries.iter().filter(|(p, _)| place.in_storage(*p, ctxt)) {
+        let entry = if entry == CapabilityKind::ShallowExclusive
+            && let ty::Ref(_, _, ty::Mutability::Mut) = p.rust_ty(ctxt).kind()
+            && let Ok(referent) = p.project_deeper(mir::ProjectionElem::Deref, ctxt)
+            && let (Some(CapabilityKind::Exclusive), referent_parts) =
+                packed(referent, entries, ctxt)
+        {
+            parts.extend(referent_parts);
+            if entries.iter().any(|(q, _)| *q == referent) {
+                parts.push(referent);
+            }
+            CapabilityKind::Exclusive
+        } else {
+            entry
+        };
+        if p != place {
+            parts.push(p);
+        }
+        packed_capability = Some(packed_capability.map_or(entry, |acc| meet(acc, entry)));
+    }
+    (packed_capability, parts)
+}
+
 /// Whether `p` is part of the current value of `place` that labelling it
-/// for `reason` labels.
+/// for `reason` labels: all of it for a detach, otherwise what lies behind
+/// a reference or raw pointer in it (the rest is overwritten in place). A
+/// written place behind a reference is unpacked in the borrow PCG, and the
+/// label gives that unpacking to the old value: all its parts are labelled.
 fn is_labelled<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     place: P,
     reason: LabelPlaceReason,
     p: P,
     ctxt: Ctxt,
 ) -> bool {
+    let local: P = place.local().into();
     match reason {
         // The referent and its read copies move to the label.
         LabelPlaceReason::Detach => place.is_prefix_of(p),
-        _ => p.projects_indirection_from(place, ctxt),
+        LabelPlaceReason::Write if !local.in_storage(place, ctxt) => place.is_strict_prefix_of(p),
+        _ => place.is_prefix_of(p) && !place.in_storage(p, ctxt),
     }
 }
 
 /// The capability changes of labelling the current value of `place`: the
 /// current places reached from `place` through a dereference lose their
-/// capabilities; a detached referent loses them with all its postfixes.
+/// capabilities; a detached referent loses them with all its postfixes. A
+/// written place behind a reference whose parts went with the old value
+/// holds nothing of its own but is about to be written: it gets W.
 pub(crate) fn label_place_changes<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     place: P,
     reason: LabelPlaceReason,
     capabilities: &impl PlaceCapabilitiesReader<'tcx, CapabilityKind, P>,
     ctxt: Ctxt,
 ) -> CapabilityChanges<P> {
-    capabilities
+    let mut changes: CapabilityChanges<P> = capabilities
         .iter()
         .filter(|(p, _)| is_labelled(place, reason, *p, ctxt))
         .map(|(p, _)| (p, None))
         .collect::<Vec<_>>()
-        .into()
+        .into();
+    let local: P = place.local().into();
+    if reason == LabelPlaceReason::Write
+        && !local.in_storage(place, ctxt)
+        && capabilities.get(place, ctxt).is_none()
+        && capabilities
+            .iter()
+            .any(|(p, _)| place.is_strict_prefix_of(p))
+    {
+        changes.set(place, Some(CapabilityKind::Write));
+    }
+    changes
 }
 
 fn is_behind_shared_ref<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(place: P, ctxt: Ctxt) -> bool {
     place
-        .iter_projections(ctxt)
-        .into_iter()
-        .any(|(base, elem)| {
-            matches!(elem, mir::ProjectionElem::Deref)
-                && matches!(
-                    base.rust_ty(ctxt).kind(),
-                    ty::Ref(_, _, ty::Mutability::Not)
-                )
-        })
+        .steps_from(place.local().into(), ctxt)
+        .is_some_and(|steps| steps.contains(&StepKind::SharedDeref))
 }
 
 /// The capability of `place` in an exclusive unpacking: an `unpacked` place
-/// keeps none (`e` for a mutable reference or a raw pointer, R for a
-/// dereferenced shared reference), and a leaf has `leaf`. Places behind a
-/// shared reference keep R.
+/// keeps what unpacking E leaves it (see [`StepKind::kept`]; a raw pointer
+/// keeps its own, `leaf`), and a leaf has `leaf`. Places behind a shared
+/// reference keep R.
 fn exclusively_unpacked_capability<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     place: P,
     unpacked: bool,
@@ -235,12 +302,15 @@ fn exclusively_unpacked_capability<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     if !unpacked {
         return leaf;
     }
-    match place.rust_ty(ctxt).kind() {
-        ty::Ref(_, _, ty::Mutability::Mut) | ty::RawPtr(..) => {
-            Some(CapabilityKind::ShallowExclusive)
-        }
-        ty::Ref(_, _, ty::Mutability::Not) => Some(CapabilityKind::Read),
-        _ => None,
+    let ty = place.rust_ty(ctxt);
+    let step = if ty.is_ref() || ty.is_raw_ptr() || ty.is_box() {
+        place.step_kind(mir::ProjectionElem::Deref, ctxt)
+    } else {
+        StepKind::Owned
+    };
+    match step {
+        StepKind::RawDeref => leaf,
+        step => step.kept(CapabilityKind::Exclusive),
     }
 }
 
@@ -431,14 +501,14 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                     place.display_string(ctxt),
                     capabilities.get(*place, ctxt)
                 );
-                // An unpacked place suspends what its parts hold together,
-                // a frozen part what its freeze suspends; what lies behind a
-                // shared reference is not part of its value.
-                let packed = capabilities
+                // An unpacked place suspends what its parts hold packed
+                // together (see `packed`), a frozen part what its freeze
+                // suspends.
+                let holders = capabilities
                     .capabilities_for_strict_postfixes_of(*place)
-                    .filter(|(p, _)| !is_behind_shared_ref(*p, ctxt))
-                    .map(|(p, cap)| capabilities.suspended(p).unwrap_or(cap))
-                    .reduce(meet);
+                    .map(|(p, cap)| (p, capabilities.suspended(p).unwrap_or(cap)))
+                    .collect::<Vec<_>>();
+                let (packed, _) = packed(*place, &holders, ctxt);
                 let suspended =
                     std::iter::once((*place, capabilities.get(*place, ctxt).or(packed)))
                         .chain(
@@ -546,49 +616,101 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                     ApplyActionResult::from_changed(self.graph_mut().insert(edge.clone(), ctxt));
             }
             BorrowPcgActionKind::Lend { place, edge } => {
-                // The edge gives back what is lent to the place it blocks,
-                // which is `place`, a part of it or the place `place` is part
-                // of (not through a dereference: a referent is not part of
-                // the reference's value). A frozen place lends the capability
-                // its freeze suspends; the referent of a mutable reference
-                // held with E is lent through it, and the reference keeps e.
-                let reference = capabilities
-                    .iter()
-                    .find(|(reference, cap)| {
-                        *cap == CapabilityKind::Exclusive
-                            && reference.is_strict_prefix_of(*place)
-                            && place.projects_indirection_from(*reference, ctxt)
-                    })
-                    .map(|(reference, _)| reference);
-                if let Some(reference) = reference {
-                    changes.set(reference, Some(CapabilityKind::ShallowExclusive));
-                }
-                if let Some(lent) = capabilities
-                    .resume(*place)
-                    .or_else(|| capabilities.get(*place, ctxt))
-                    .or(reference.map(|_| CapabilityKind::Exclusive))
-                {
-                    for node in edge.value.blocked_nodes(ctxt) {
-                        if let PcgNode::Place(MaybeLabelledPlace::Current(blocked)) = node
-                            && (blocked.is_prefix_of(*place)
-                                && !place.projects_indirection_from(blocked, ctxt)
-                                || place.is_prefix_of(blocked)
-                                    && !blocked.projects_indirection_from(*place, ctxt))
-                        {
-                            let suspended = capabilities
-                                .suspended(blocked)
-                                .map_or(lent, |suspended| meet(suspended, lent));
-                            capabilities.suspend(blocked, suspended);
-                        }
+                // What `place` lends is recorded for it: a frozen place lends
+                // what its freeze suspends, with its read copies; a place
+                // behind a reference held with E is lent through it with its
+                // share, and the reference keeps what the dereference leaves
+                // it (e for a mutable one).
+                let reference = capabilities.iter().find_map(|(reference, cap)| {
+                    if cap != CapabilityKind::Exclusive || !reference.is_strict_prefix_of(*place) {
+                        return None;
                     }
+                    let deref = place
+                        .steps_from(reference, ctxt)?
+                        .into_iter()
+                        .find(|step| !step.is_storage())?;
+                    matches!(deref, StepKind::MutDeref | StepKind::SharedDeref)
+                        .then_some((reference, deref))
+                });
+                if let Some((reference, deref)) = reference {
+                    changes.set(reference, deref.kept(CapabilityKind::Exclusive));
+                }
+                let held = capabilities.get(*place, ctxt);
+                let suspended = capabilities.suspended(*place);
+                if held == Some(CapabilityKind::Read) && suspended.is_some() {
+                    for (p, _) in capabilities.capabilities_for_strict_postfixes_of(*place) {
+                        changes.set(p, None);
+                    }
+                }
+                if let Some(lent) = suspended.or(held).or(reference.and_then(|(reference, _)| {
+                    reference.share_at(CapabilityKind::Exclusive, *place, ctxt)
+                })) {
+                    capabilities.suspend(*place, lent);
                 }
                 self.graph_mut().insert(edge.clone(), ctxt);
                 changes.set(*place, None);
             }
+            BorrowPcgActionKind::UnpackSuspended { place, parts } => {
+                let suspended = capabilities.resume(*place);
+                pcg_validity_assert!(
+                    suspended.is_some(),
+                    [ctxt],
+                    "Unpacking the suspended capability of {}, which has none",
+                    place.display_string(ctxt)
+                );
+                if let Some(suspended) = suspended {
+                    for &part in parts {
+                        // Across a dereference the base keeps its record (the
+                        // capability it gets back once the referent is packed
+                        // again), a mutable reference e of E; the referent
+                        // gets its share, if any. A base whose record gives
+                        // its stored part nothing (a Box without contents)
+                        // keeps it.
+                        let Some(&[step]) = part.steps_from(*place, ctxt).as_deref() else {
+                            pcg_validity_assert!(
+                                false,
+                                [ctxt],
+                                "Unpacking the suspended capability of {} to {}, which is not one \
+                                 level below it",
+                                place.display_string(ctxt),
+                                part.display_string(ctxt)
+                            );
+                            continue;
+                        };
+                        let share = step.share(suspended);
+                        if !step.is_storage() || share.is_none() {
+                            let kept = match step {
+                                StepKind::MutDeref => step.kept(suspended),
+                                _ => None,
+                            };
+                            capabilities.suspend(*place, kept.unwrap_or(suspended));
+                        }
+                        let Some(share) = share else {
+                            continue;
+                        };
+                        // A part that records less gets back at most that.
+                        let share = capabilities
+                            .suspended(part)
+                            .map_or(share, |own| meet(own, share));
+                        capabilities.suspend(part, share);
+                    }
+                }
+            }
+            BorrowPcgActionKind::PackSuspended { place } => {
+                let (packed, parts) = packed_record(*place, capabilities, ctxt);
+                for part in parts {
+                    capabilities.resume(part);
+                }
+                if let Some(packed) = packed {
+                    capabilities.resume(*place);
+                    capabilities.suspend(*place, packed);
+                }
+            }
             BorrowPcgActionKind::WeakenSuspended { place, from, to } => {
                 let current = capabilities.resume(*place);
                 pcg_validity_assert!(
-                    current == Some(*from) && to.is_none_or(|to| *from > to),
+                    current == Some(*from)
+                        && to.is_none_or(|to| to != *from && meet(*from, to) == to),
                     [ctxt],
                     "Weakening the suspended {:?} of {} from {:?} to {:?}",
                     current,

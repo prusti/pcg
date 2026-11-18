@@ -50,7 +50,7 @@ use crate::{
         region_projection::{LifetimeProjection, LifetimeProjectionIdx, PcgRegion},
         visitor::extract_regions,
     },
-    pcg::{LocalNodeLike, PcgNode, PcgNodeLike},
+    pcg::{CapabilityKind, LocalNodeLike, PcgNode, PcgNodeLike, value::StepKind},
 };
 
 pub mod corrected;
@@ -285,12 +285,136 @@ impl<'tcx, Ctxt, P: PcgPlace<'tcx, Ctxt>> PcgNodeLike<'tcx, Ctxt, P> for P {
 pub trait PlaceLike<'tcx, Ctxt: Copy>: PcgPlace<'tcx, Ctxt> + From<Local> {
     fn local(self) -> Local;
     fn is_owned(self, ctxt: Ctxt) -> bool;
-    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool;
+    /// The kind of the step from `self` to its projection `elem`.
+    fn step_kind(self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> StepKind;
+    /// The kinds of the steps from `ancestor` down to `self`, or `None` if
+    /// `ancestor` is not a prefix of `self`.
+    fn steps_from(self, ancestor: Self, ctxt: Ctxt) -> Option<Vec<StepKind>>;
     fn expansion_places(
         self,
         expansion: &PlaceExpansion<'tcx>,
         ctxt: Ctxt,
     ) -> std::result::Result<Vec<Self>, PcgUnsupportedError>;
+
+    /// The capability `part` gets when `self`, holding `capability`, is
+    /// unpacked down to it (see [`StepKind::share`]), if any.
+    fn share_at(
+        self,
+        capability: CapabilityKind,
+        part: Self,
+        ctxt: Ctxt,
+    ) -> Option<CapabilityKind> {
+        part.steps_from(self, ctxt)?
+            .into_iter()
+            .try_fold(capability, |capability, step| step.share(capability))
+    }
+
+    /// Whether `part` is in the value of `self` holding (or recording)
+    /// `capability`: reached through steps that each pass on a share of it
+    /// and along which loans are tracked. A loan of such a place conflicts
+    /// with `self` holding `capability`, and a record of `capability` at
+    /// `self` covers it.
+    fn in_value(self, capability: CapabilityKind, part: Self, ctxt: Ctxt) -> bool {
+        part.steps_from(self, ctxt).is_some_and(|steps| {
+            steps
+                .into_iter()
+                .try_fold(capability, |capability, step| {
+                    step.tracks_loans()
+                        .then(|| step.share(capability))
+                        .flatten()
+                })
+                .is_some()
+        })
+    }
+
+    /// Whether `part` is stored in `self`, which overwriting or dropping
+    /// `self` replaces: reached through fields, variants, elements and Box
+    /// contents only.
+    fn in_storage(self, part: Self, ctxt: Ctxt) -> bool {
+        part.steps_from(self, ctxt)
+            .is_some_and(|steps| steps.into_iter().all(StepKind::is_storage))
+    }
+
+    /// The ancestor of `other` as deep as `self` (or `other` itself), if it
+    /// may be the same place as `self`: their projections agree except where
+    /// both select an element of an array or slice at indices that may be
+    /// equal, as in rustc's access check.
+    fn may_be_ancestor_of(self, other: Self, ctxt: Ctxt) -> Option<Self> {
+        if self.local() != other.local() {
+            return None;
+        }
+        let own = self.iter_projections(ctxt);
+        let others = other.iter_projections(ctxt);
+        if own.len() > others.len()
+            || own
+                .iter()
+                .zip(&others)
+                .any(|((_, elem), (_, other_elem))| !may_be_same_step(*elem, *other_elem))
+        {
+            return None;
+        }
+        Some(others.get(own.len()).map_or(other, |(base, _)| *base))
+    }
+
+    /// Whether a live loan of `borrowed` reaches what `self` holding
+    /// `capability` accesses (the places rustc's access check compares): a
+    /// loan of `self` or of a place it is part of, or, for E and R (a deep
+    /// access), of a place in its value, or, for W and e (an overwrite), of a
+    /// place in its storage. A place under another index of the same array
+    /// or slice counts as the same place. A loan past a shared reference or
+    /// a raw pointer in `self` never conflicts: rustc does not track it. For
+    /// R, only a mutable loan conflicts; callers that care tell the loans
+    /// apart.
+    fn conflicts_with_loan_of(
+        self,
+        capability: CapabilityKind,
+        borrowed: Self,
+        ctxt: Ctxt,
+    ) -> bool {
+        if borrowed.may_be_ancestor_of(self, ctxt).is_some() {
+            return true;
+        }
+        let Some(aliased) = self.may_be_ancestor_of(borrowed, ctxt) else {
+            return false;
+        };
+        match capability {
+            CapabilityKind::Exclusive | CapabilityKind::Read => {
+                aliased.in_value(capability, borrowed, ctxt)
+            }
+            CapabilityKind::Write | CapabilityKind::ShallowExclusive => {
+                aliased.in_storage(borrowed, ctxt)
+            }
+        }
+    }
+}
+
+/// Whether the projection steps `elem` and `other` may select the same
+/// place: they are equal, or both select elements of an array or slice whose
+/// indices may be equal (constant indices from the same end are compared).
+fn may_be_same_step<'tcx>(elem: PlaceElem<'tcx>, other: PlaceElem<'tcx>) -> bool {
+    match (elem, other) {
+        (
+            ProjectionElem::ConstantIndex {
+                offset, from_end, ..
+            },
+            ProjectionElem::ConstantIndex {
+                offset: other_offset,
+                from_end: other_from_end,
+                ..
+            },
+        ) if from_end == other_from_end => offset == other_offset,
+        _ => elem_eq((elem, other)) || selects_element(elem) && selects_element(other),
+    }
+}
+
+/// Whether the projection step `elem` selects elements of an array or slice.
+pub(crate) fn selects_element(elem: PlaceElem<'_>) -> bool {
+    matches!(
+        elem,
+        ProjectionElem::Index(_)
+            | ProjectionElem::ConstantIndex { .. }
+            | ProjectionElem::Subslice { .. }
+    )
 }
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Place<'tcx> {
@@ -304,11 +428,28 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> PlaceLike<'tcx, Ctxt> for Pl
             .any(|(place, elem)| elem == ProjectionElem::Deref && !place.ty(ctxt).ty.is_box())
     }
 
-    fn projects_indirection_from(self, other: Self, ctxt: Ctxt) -> bool {
-        let Some(mut projections_after) = self.iter_projections_after(other, ctxt) else {
-            return false;
-        };
-        projections_after.any(|(p, elem)| matches!(elem, ProjectionElem::Deref) && p.is_ref(ctxt))
+    fn step_kind(self, elem: PlaceElem<'tcx>, ctxt: Ctxt) -> StepKind {
+        if elem != ProjectionElem::Deref {
+            return StepKind::Owned;
+        }
+        let ty = self.ty(ctxt).ty;
+        match ty.kind() {
+            TyKind::Ref(_, _, Mutability::Mut) => StepKind::MutDeref,
+            TyKind::Ref(_, _, Mutability::Not) => StepKind::SharedDeref,
+            TyKind::RawPtr(..) => StepKind::RawDeref,
+            _ => {
+                debug_assert!(ty.is_box(), "Dereference of {ty:?}");
+                StepKind::BoxDeref
+            }
+        }
+    }
+
+    fn steps_from(self, ancestor: Self, ctxt: Ctxt) -> Option<Vec<StepKind>> {
+        Some(
+            self.iter_projections_after(ancestor, ctxt)?
+                .map(|(base, elem)| base.step_kind(elem, ctxt))
+                .collect(),
+        )
     }
 
     fn expansion_places(
@@ -775,10 +916,7 @@ impl<'tcx> Place<'tcx> {
         }
         let diff = self.compare_projections(right).find(|(eq, _, _)| !eq);
         if let Some((_, left, right)) = diff {
-            use ProjectionElem::{ConstantIndex, Downcast, Field, Index, OpaqueCast, Subslice};
-            fn is_index(elem: PlaceElem<'_>) -> bool {
-                matches!(elem, Index(_) | ConstantIndex { .. } | Subslice { .. })
-            }
+            use ProjectionElem::{ConstantIndex, Downcast, Field, OpaqueCast};
             match (left, right) {
                 (Field(..), Field(..)) => None,
                 (
@@ -796,7 +934,9 @@ impl<'tcx> Place<'tcx> {
                 (Downcast(_, _), Downcast(_, _)) | (OpaqueCast(_), OpaqueCast(_)) => {
                     Some(PlaceOrdering::Both)
                 }
-                (left, right) if is_index(left) && is_index(right) => Some(PlaceOrdering::Both),
+                (left, right) if selects_element(left) && selects_element(right) => {
+                    Some(PlaceOrdering::Both)
+                }
                 diff => unreachable!("Unexpected diff: {diff:?}"),
             }
         } else {

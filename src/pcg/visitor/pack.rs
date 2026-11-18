@@ -15,7 +15,7 @@ use crate::{
         obtain::{PlaceCollapser, PlaceObtainer},
     },
     utils::{
-        DataflowCtxt, DebugCtxt, HasPlace, PackStrategy, Place,
+        DataflowCtxt, DebugCtxt, HasPlace, PackStrategy, Place, PlaceLike,
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -131,16 +131,22 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut iteration = 0;
         let ctxt = self.ctxt;
         let block = self.location().block;
-        self.restore_capability_to_leaf_places(
-            for_place,
-            |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
-            ctxt,
-        )?;
         let mut removed_edges = Vec::new();
         loop {
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
+                let lent = self.pcg.borrow.graph.lent_places(ctxt.bc_ctxt());
+                self.restore_capability_to_leaf_places(
+                    for_place,
+                    |place| {
+                        !ctxt.body_analysis().is_read_only_in_loop(block, place)
+                            && !lent.iter().any(|lent| {
+                                place.conflicts_with_loan_of(CapabilityKind::Exclusive, *lent, ctxt)
+                            })
+                    },
+                    ctxt,
+                )?;
                 break self.finish_weakening_places_with_dead_lifetime_projections(&removed_edges);
             }
             for action in edges_to_remove.removal_actions() {
@@ -420,7 +426,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             if p.is_place()
                 && !place.place().projection.is_empty()
                 && !fg.has_edge_blocking(place.into(), ctxt)
-                && !place.place().contains_unsafe_deref(ctxt)
             {
                 return ShouldKillNode::Yes {
                     reason:

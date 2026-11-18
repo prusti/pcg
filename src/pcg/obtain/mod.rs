@@ -34,7 +34,6 @@ use crate::{
         display::DisplayWithCompilerCtxt,
     },
 };
-use itertools::Itertools;
 
 /// The frozen place of whose read unpacking `place` is part: the topmost of
 /// `place` and its ancestors that hold R, where the places of the unpacking
@@ -73,34 +72,6 @@ pub(crate) fn holds_freeze<'a, 'tcx: 'a>(
                     | BorrowPcgEdgeKind::RawPtrDeref(_)
             )
         })
-}
-
-/// The action that ends the freeze of `frozen`: if parts of its read
-/// unpacking are still borrowed, the freeze moves to them and the rest gets E
-/// back.
-pub(crate) fn end_freeze_action<'a, 'tcx: 'a>(
-    graph: &BorrowsGraph<'tcx>,
-    capabilities: &PlaceCapabilities<'tcx>,
-    frozen: Place<'tcx>,
-    context: String,
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
-) -> BorrowPcgAction<'tcx> {
-    let borrowed = capabilities
-        .capabilities_for_strict_postfixes_of(frozen)
-        .map(|(p, _)| p)
-        .filter(|p| holds_freeze(graph, *p, ctxt))
-        .collect::<Vec<_>>();
-    let to = borrowed
-        .iter()
-        .copied()
-        .filter(|p| !borrowed.iter().any(|q| q.is_strict_prefix_of(*p)))
-        .sorted()
-        .collect::<Vec<_>>();
-    if to.is_empty() {
-        BorrowPcgAction::unfreeze(frozen, context)
-    } else {
-        BorrowPcgAction::refreeze(frozen, to, context)
-    }
 }
 
 pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
@@ -329,9 +300,23 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
         context: String,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
+        // A place that holds nothing below one that holds a capability is
+        // lent, or only the layout of the loans of a place in it (a join
+        // holds the enum packed while a variant field is borrowed): it is
+        // left as it is.
         let to_collapse = self
             .get_local_expansions(place.local)
             .places_to_collapse_for_obtain_of(place, ctxt);
+        let capabilities = self.capabilities();
+        let to_collapse = to_collapse
+            .into_iter()
+            .filter(|p| {
+                capabilities.get(*p, ctxt).is_some()
+                    || !std::iter::successors(p.parent_place(), |q| q.parent_place())
+                        .take_while(|q| place.is_prefix_of(*q))
+                        .any(|q| capabilities.get(q, ctxt).is_some())
+            })
+            .collect::<Vec<_>>();
         // Collapsing a place removes its strict descendants from the owned
         // PCG, which would leave any borrow-PCG edge blocking such a
         // descendant referring to a place that is no longer there. Read
@@ -360,6 +345,17 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                 .cloned()
                 .collect::<Vec<_>>();
             for pe in expansions {
+                // Parts frozen apart are frozen together in `place`.
+                if capability.is_read()
+                    && place
+                        .expansion_places(&pe.expansion, ctxt)?
+                        .into_iter()
+                        .any(|part| self.capabilities().suspended(part).is_some())
+                {
+                    self.apply_action(
+                        BorrowPcgAction::pack_suspended(place, context.clone()).into(),
+                    )?;
+                }
                 self.apply_action(PcgAction::Owned(OwnedPcgAction::new(
                     RepackOp::Collapse(RepackCollapse::new(place, capability, pe.guide())),
                     Some(context.clone().into()),

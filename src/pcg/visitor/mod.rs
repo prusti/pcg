@@ -16,7 +16,7 @@ use crate::{
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
-        obtain::{PlaceCollapser, PlaceObtainer, end_freeze_action, expand::PlaceExpander},
+        obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
         place_capabilities::PlaceCapabilitiesInterface,
         triple::TripleWalker,
@@ -195,14 +195,11 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     Some(CapabilityKind::Read)
                         if self.place_obtainer().frozen_ancestor(place) == place =>
                     {
-                        let action = end_freeze_action(
-                            &self.pcg.borrow.graph,
-                            &self.pcg.place_capabilities,
+                        self.place_obtainer().end_freeze(
                             place,
-                            "Leaf future node unfreeze".to_owned(),
-                            self.ctxt,
-                        );
-                        self.record_and_apply_action(action.into())?;
+                            None,
+                            AdjustCapabilityReason::UnborrowedFutureNode,
+                        )?;
                     }
                     _ => {}
                 }
@@ -276,17 +273,16 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt) {
-            if self.outlives_generalized(
-                source_proj.region(ctxt.ctxt()),
-                target_proj.region(ctxt.ctxt()),
-            ) {
+            let source_region = source_proj.region(ctxt.ctxt());
+            let target_region = target_proj.region(ctxt.ctxt());
+            if self.outlives_generalized(source_region, target_region) {
                 self.record_and_apply_action(
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
                                 source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
-                                kind(target_proj.region(self.ctxt.ctxt())),
+                                kind(target_region),
                             )
                             .into(),
                             self.pcg.borrow.validity_conditions.clone(),
@@ -296,7 +292,16 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .into(),
                 )?;
             }
-            if let PlaceOrConst::Place(base) = source_proj.base {
+            // A future edge of the source says that what is written into its
+            // region through a mutable borrow becomes the borrowed place's
+            // future value. The moved value holds those writes only in a
+            // target region equal to the source's (the same position below
+            // the mutable reference), not in one the source merely
+            // outlives, such as the lifetime of a reference to it.
+            if let PlaceOrConst::Place(base) = source_proj.base
+                && self.outlives_generalized(source_region, target_region)
+                && self.outlives_generalized(target_region, source_region)
+            {
                 let local_source_proj = source_proj.with_base(base);
                 self.place_obtainer().redirect_source_of_future_edges(
                     local_source_proj,
@@ -528,11 +533,14 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // shared borrow of it), the freeze moves to the place first.
         let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
         if frozen != blocked_place {
-            self.place_obtainer()
-                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+            self.place_obtainer().end_freeze(
+                frozen,
+                Some(blocked_place),
+                AdjustCapabilityReason::TwoPhaseBorrowActivation,
+            )?;
         }
         self.place_obtainer()
-            .detach_borrowed_shared_referents(blocked_place, &|_| false)?;
+            .detach_borrowed_untracked_referents(blocked_place, &|_| false)?;
         self.place_obtainer()
             .pack_read_unpacking(blocked_place, &|_| false)?;
         // Reads during the reservation may have unpacked the place at R.

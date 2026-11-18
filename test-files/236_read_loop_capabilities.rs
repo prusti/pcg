@@ -75,4 +75,16 @@ impl Stack {
     }
 }
 
+// The loop reads through the reference field `(*s).0`, which is unpacked on
+// entry: its freeze records e and the referent's E, which the edge into the
+// loop packs into the E the loop head records.
+fn read_through_reference_field_in_loop(s: &mut (&mut u32, u32)) {
+    // PCG: bb0 -> bb1: Pack suspended (*s).0
+    // PCG: bb1[0] pre_operands: (*s).0: suspended E
+    while s.1 != *s.0 {
+        s.1 = 0;
+    }
+    *s.0 = 1;
+}
+
 fn main() {}

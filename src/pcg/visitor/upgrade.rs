@@ -9,20 +9,23 @@ use crate::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind, private::FutureEdgeKind},
             kind::BorrowPcgEdgeKind,
         },
-        edge_data::LabelNodePredicate,
+        edge_data::{EdgeData, LabelNodePredicate},
         region_projection::{LifetimeProjection, LifetimeProjectionIdx, PcgRegion, Region},
         state::BorrowsStateLike,
     },
     error::PcgError,
     pcg::{
-        PcgNode,
+        CapabilityKind, PcgNode,
         obtain::{
-            HasSnapshotLocation, PlaceObtainer, end_freeze_action, frozen_ancestor, holds_freeze,
+            HasSnapshotLocation, ObtainType, PlaceObtainer, expand::PlaceExpander, frozen_ancestor,
+            holds_freeze,
         },
+        place_capabilities::PlaceCapabilitiesReader,
     },
     rustc_interface::index::IndexVec,
     utils::{
-        DataflowCtxt, DebugCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        DataflowCtxt, DebugCtxt, Place, PlaceLike, data_structures::HashSet,
+        display::DisplayWithCompilerCtxt,
     },
 };
 
@@ -35,25 +38,126 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         frozen_ancestor(self.pcg.place_capabilities, place, self.ctxt)
     }
 
+    /// The places in the value of `frozen`, below it, that loans borrow:
+    /// they hold the freeze. Loans past a shared reference or a raw pointer
+    /// do not.
+    fn borrowed_in(&self, frozen: Place<'tcx>) -> Vec<Place<'tcx>> {
+        let ctxt = self.ctxt;
+        self.pcg
+            .borrow
+            .graph
+            .loans_blocking(frozen, CapabilityKind::Exclusive, ctxt.bc_ctxt())
+            .flat_map(|kind| {
+                kind.blocked_nodes(ctxt.bc_ctxt())
+                    .filter_map(|node| node.as_current_place())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|place| {
+                *place != frozen && frozen.in_value(CapabilityKind::Exclusive, *place, ctxt)
+            })
+            .collect()
+    }
+
     /// Whether `place` holds a freeze (see [`holds_freeze`]).
     pub(crate) fn holds_freeze(&self, place: Place<'tcx>) -> bool {
         holds_freeze(self.pcg.borrow.graph, place, self.ctxt)
     }
 
-    /// Ends the freeze of `frozen` (see [`end_freeze_action`]).
+    /// Ends the freeze of `frozen`: if parts of its value are still borrowed,
+    /// the freeze moves to them and the rest, with `toward` (the place being
+    /// obtained), gets E back. The freeze moves to the topmost read copies
+    /// that are borrowed or have a borrowed place in their value that their
+    /// own read unpacking does not reach.
     pub(crate) fn end_freeze(
         &mut self,
         frozen: Place<'tcx>,
+        toward: Option<Place<'tcx>>,
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError> {
-        let action = end_freeze_action(
-            self.pcg.borrow.graph,
-            self.pcg.place_capabilities,
-            frozen,
-            format!("{reason:?}"),
-            self.ctxt,
-        );
+        let in_value = self.borrowed_in(frozen);
+        if !in_value.is_empty() {
+            self.unpack_read_toward(frozen, toward, &in_value)?;
+        }
+        let copies = self
+            .pcg
+            .place_capabilities
+            .capabilities_for_strict_postfixes_of(frozen)
+            .map(|(p, _)| p)
+            .collect::<Vec<_>>();
+        let borrowed = copies
+            .iter()
+            .copied()
+            .filter(|copy| {
+                in_value.iter().any(|place| {
+                    copy.is_prefix_of(*place)
+                        && !copies
+                            .iter()
+                            .any(|c| copy.is_strict_prefix_of(*c) && c.is_prefix_of(*place))
+                })
+            })
+            .collect::<Vec<_>>();
+        let to = borrowed
+            .iter()
+            .copied()
+            .filter(|p| !borrowed.iter().any(|q| q.is_strict_prefix_of(*p)))
+            .sorted()
+            .collect::<Vec<_>>();
+        let action = if to.is_empty() {
+            BorrowPcgAction::unfreeze(frozen, format!("{reason:?}"))
+        } else {
+            BorrowPcgAction::refreeze(frozen, to, format!("{reason:?}"))
+        };
         self.record_and_apply_action(action.into())
+    }
+
+    /// Unpacks the read unpacking of `frozen` toward `toward`, a part of its
+    /// value being obtained, and at each place on the way, one level into
+    /// every other unpacking of the layout that holds a place of `borrowed`.
+    /// A join that holds an enum packed keeps the layout of a borrowed
+    /// variant field but drops its read copies: the freeze moves to the
+    /// variant without entering it, and the variant being obtained gets E.
+    /// Obtaining `frozen` itself leaves no part to give E back to.
+    fn unpack_read_toward(
+        &mut self,
+        frozen: Place<'tcx>,
+        toward: Option<Place<'tcx>>,
+        borrowed: &[Place<'tcx>],
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let Some(toward) =
+            toward.filter(|place| *place != frozen && frozen.in_storage(*place, ctxt))
+        else {
+            return Ok(());
+        };
+        self.expand_to(
+            toward,
+            None,
+            ObtainType::Capability(CapabilityKind::Read),
+            ctxt,
+        )?;
+        let path = std::iter::successors(toward.parent_place(), |p| p.parent_place())
+            .take_while(|p| frozen.is_prefix_of(*p))
+            .collect::<Vec<_>>();
+        let mut beside = self.pcg.owned[frozen.local]
+            .expansions()
+            .expansions()
+            .iter()
+            .filter(|expanded| path.contains(&expanded.place))
+            .flat_map(|expanded| expanded.expansion_places(ctxt).unwrap())
+            .filter(|part| {
+                !part.is_prefix_of(toward) && borrowed.iter().any(|b| part.is_prefix_of(*b))
+            })
+            .collect::<Vec<_>>();
+        beside.sort_by_key(|part| (part.projection.len(), *part));
+        for part in beside {
+            self.expand_to(
+                part,
+                None,
+                ObtainType::Capability(CapabilityKind::Read),
+                ctxt,
+            )?;
+        }
+        Ok(())
     }
 
     /// Labels the lifetime projections of `place` and its ancestors up to
@@ -221,4 +325,9 @@ pub(crate) enum AdjustCapabilityReason {
     /// To handle this case, we would remove capability from `pair` and upgrade
     /// `pair.1` to `E`.
     UpgradeReadToExclusive,
+
+    /// A frozen leaf has a future node that the borrow checker does not
+    /// consider borrowed: the reservation of a two-phase borrow of a place
+    /// behind a raw pointer, which the borrow checker never activates.
+    UnborrowedFutureNode,
 }

@@ -95,4 +95,29 @@ fn same_alias_repeated_region<'a, T: AssocWithTwoLifetimes<'a, 'a>>(w: W<'a, T>)
     y
 }
 
+fn take_mut<X: ?Sized>(_x: &mut X) {}
+
+// A mutable borrow of `key` is moved into a tuple, which is then borrowed.
+// What is written through the borrow into `RegionsIn(K)` stays in the
+// tuple's `RegionsIn(K)`, not in the lifetime of the reference in it: the
+// future of `key` does not block that lifetime, so the borrow ends after
+// the call and `key` can be moved.
+fn borrow_moved_into_tuple<K>(mut key: K) -> K {
+    // PCG: bb0[6] post_main: Add Edge _5↓RegionsIn(K) -> key↓RegionsIn(K) FUTURE
+    // ~PCG: bb0[6] post_main: Add Edge _5↓'?10 -> key↓RegionsIn(K) FUTURE
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: _6 before bb0[6]:PostOperands = &mut  key returning E to key
+    take_mut(&mut (&mut key,));
+    key
+}
+
+// Coerced to a trait object, the borrow has no region equal to
+// `RegionsIn(K)`: its future edge stays on the moved-out borrow.
+fn borrow_coerced_to_dyn<K: core::fmt::Debug>(mut key: K) -> K {
+    // ~PCG: bb0[5] post_main: Add Edge c↓'?8 -> (*_4)↓RegionsIn(K) FUTURE
+    // PCG: bb1[0] pre_operands: Remove Edge borrow: _4 before bb0[9]:PreMain <before bb0[4]:PreOperands> = &mut  key returning E to key
+    let c: &mut dyn core::fmt::Debug = &mut key;
+    take_mut(c);
+    key
+}
+
 fn main() {}

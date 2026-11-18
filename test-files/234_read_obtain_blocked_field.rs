@@ -63,14 +63,14 @@ struct Raw {
 }
 
 /// The dereference of the raw pointer `s.p` is part of the read unpacking of
-/// `s`, not a borrow of `s.p`: writing `s.q` unfreezes all of `s`, and `s.p`
-/// stays unpacked with `e`.
+/// `s`, not a borrow of `s.p`: once the read is done, it is packed and all of
+/// `s` is unfrozen, before `s.q` is written.
 unsafe fn raw_field_read(mut s: Raw) -> u32 {
     let a = unsafe { *s.p };
     s.q = a;
     // PCG: bb0[1] pre_operands: Freeze s
-    // PCG: bb0[5] pre_main: Unfreeze s
-    // PCG: bb0[5] post_main: s.p: e
+    // PCG: bb0[2] pre_operands: Remove Edge {s.p} -> {*s.p}
+    // PCG: bb0[2] pre_operands: Unfreeze s
     // ~PCG: bb0[5] pre_main: Refreeze s to s.p
     let b = s.p;
     unsafe { *b + s.q }
@@ -93,9 +93,9 @@ unsafe fn raw_part_borrowed(p: *mut Pair) -> u32 {
     }
 }
 
-/// Reading through the raw pointer `p` freezes `p`, whose unpacking stays
-/// after the read, while the other path unpacks `p` exclusively. The join
-/// ends the freeze, so that `p` keeps a capability.
+/// Reading through the raw pointer `p` freezes `p`, while the other path
+/// unpacks `p` exclusively. Both paths pack `p` once they are done with `*p`,
+/// so the join holds `p` at E.
 unsafe fn raw_read_or_write(p: *mut u32, b: bool) -> *mut u32 {
     unsafe {
         if b {
@@ -103,8 +103,7 @@ unsafe fn raw_read_or_write(p: *mut u32, b: bool) -> *mut u32 {
         } else {
             *p = 1;
         }
-        // PCG: bb3[0] post_main: p: e
-        // PCG: bb3[0] post_main: *p: E
+        // PCG: bb3[0] post_main: p: E
         p
     }
 }
@@ -123,22 +122,21 @@ impl Buf {
             } else {
                 *self.ptr = 0;
             }
-            // PCG: bb3[0] post_main: self: e
-            // PCG: bb3[0] post_main: (*self).ptr: e
-            // PCG: bb3[0] post_main: *(*self).ptr: E
+            // PCG: bb3[0] post_main: self: E
             self.len
         }
     }
 }
 
-/// Reading `(*s).q` does not unpack `s` again: the existing exclusive
-/// unpacking of `s` already holds `(*s).q`.
+/// Reading `(*s).q` reads the raw pointer `s`: the exclusive unpacking of `s`
+/// is packed, and `s` is frozen and unpacked for the read. No place in an
+/// exclusive unpacking becomes R.
 unsafe fn raw_read_after_write(s: *mut Raw) -> u32 {
     unsafe {
         *(*s).p = 1;
-        // PCG: bb0[1] post_main: s: e
-        // PCG: bb0[1] post_main: (*s).q: E
-        // ~PCG: bb0[1] post_main: *s: R
+        // PCG: bb0[1] pre_operands: Remove Edge {*s} -> {(*s).p, (*s).q} returning E to *s
+        // PCG: bb0[1] pre_operands: Freeze s
+        // PCG: bb0[1] post_main: (*s).q: R
         (*s).q
     }
 }
@@ -313,6 +311,84 @@ fn owned_activation(mut l: Lazy<'_>) -> Lazy<'_> {
     l.set(0);
     it.next();
     l
+}
+
+/// A frozen struct is moved while a borrow of the referent of its reference
+/// field lives: the referent is detached, and the struct is packed once its
+/// parts are exclusive again.
+fn moved_while_referent_borrowed<'a>(x: Lazy<'a>) -> (Lazy<'a>, u8) {
+    // PCG: bb1[4] pre_operands: Label place *x.dfa (Detach)
+    // PCG: bb1[4] pre_operands: Unfreeze x
+    // PCG: bb1[4] pre_operands: Collapse(RepackCollapse { to: _1, capability: E, guide: None, _marker: PhantomData<&()> })
+    // PCG: bb1[4] pre_operands: x: E
+    let c = &x.dfa.classes[0];
+    let y = x;
+    (y, *c)
+}
+
+struct RawLazy {
+    item: *const (u8, u8),
+    cache: Vec<u8>,
+}
+
+/// The same with a raw pointer field: a borrow through a raw pointer does not
+/// depend on the place holding the pointer either.
+unsafe fn moved_while_raw_referent_borrowed(x: RawLazy) -> (RawLazy, u8) {
+    // PCG: bb0[4] pre_operands: Label place *x.item (Detach)
+    // PCG: bb0[4] pre_operands: Remove Edge {x.item} -> {*x.item before bb0[4]:PreOperands}
+    // PCG: bb0[4] pre_operands: Collapse(RepackCollapse { to: _1, capability: E, guide: None, _marker: PhantomData<&()> })
+    // PCG: bb0[4] pre_operands: x: E
+    let c = &(*x.item).1;
+    let y = x;
+    (y, *c)
+}
+
+/// A raw pointer dereferenced only for read is part of the read unpacking:
+/// once the read is done, it is packed like any other unpacking nothing
+/// blocks, dropping what its referent was read with.
+unsafe fn moved_after_raw_read(x: RawLazy) -> (RawLazy, u8) {
+    // PCG: bb0[2] pre_operands: Remove Edge {x.item} -> {*x.item}
+    // PCG: bb0[2] pre_operands: Unfreeze x
+    // PCG: bb0[4] pre_operands: x: E
+    let n = (*x.item).0;
+    let y = x;
+    (y, n)
+}
+
+/// The same while a sibling field is borrowed: only the pointer field is
+/// frozen, and its freeze ends with the read.
+unsafe fn raw_read_while_sibling_borrowed(mut x: RawLazy) -> RawLazy {
+    // PCG: bb0[4] pre_operands: Freeze x.item
+    // PCG: bb0[5] pre_operands: Remove Edge {x.item} -> {*x.item}
+    // PCG: bb0[5] pre_operands: Unfreeze x.item
+    let m = &mut x.cache;
+    let n = (*x.item).0;
+    m.push(n);
+    x
+}
+
+/// `*t` is part of the read unpacking of `t`, which `r` keeps frozen, and is
+/// then overwritten. The write labels the unpacking of `*t`, which moves the
+/// loan to the old referent and ends the freeze: `t` keeps e and `*t` gets W.
+fn write_read_unpacked_referent<'a>(t: &mut (&'a mut u32, u32), x: &'a mut u32) -> u32 {
+    // PCG: bb0[5] pre_main: Unfreeze t
+    // PCG: bb0[5] pre_main: Weaken *t from E to W
+    let r = &*t.0;
+    *t = (x, 2);
+    *t.0 += 1;
+    *r
+}
+
+/// As above, with `*t` unpacked for the mutable loan of the referent and not
+/// frozen: the parts of `*t` go with the old value, and `*t` gets W to be
+/// written.
+fn write_unpacked_referent<'a>(t: &mut (&'a mut u32, u32), x: &'a mut u32) -> u32 {
+    // PCG: bb0[5] pre_main: Label place *t (Write) returning W to *t
+    let r = &mut *t.0;
+    *t = (x, 2);
+    *t.0 += 1;
+    *r += 1;
+    t.1
 }
 
 fn main() {}

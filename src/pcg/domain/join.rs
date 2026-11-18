@@ -11,6 +11,8 @@ use crate::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData,
+        graph::BorrowsGraph,
+        state::{packed, packed_record},
     },
     error::PcgError,
     r#loop::PlaceUsageType,
@@ -18,6 +20,7 @@ use crate::{
     pcg::{
         CapabilityKind, PcgMutRef, PcgRefLike,
         obtain::{HasSnapshotLocation, ObtainType, PlaceObtainer, expand::PlaceExpander},
+        owned_state::OwnedPcg,
         place_capabilities::{
             PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
@@ -25,7 +28,8 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::middle::mir::{self, ProjectionElem},
     utils::{
-        DataflowCtxt, HasCompilerCtxt, HasPlace, Place, SnapshotLocation,
+        DataflowCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, Place, PlaceLike,
+        SnapshotLocation,
         data_structures::HashSet,
         display::{DebugLines, DisplayWithCompilerCtxt},
     },
@@ -37,7 +41,8 @@ use super::{Pcg, is_variant_unpacking};
 /// and `b`: the lower one. A reference that one path holds frozen (R) and
 /// the other with its referent lent (e) keeps its own value: e. A place that
 /// one path holds frozen and the other has moved out (W) can only be
-/// overwritten: W.
+/// overwritten: W. A meet above R that a live loan conflicts with is not
+/// held at all (see `Pcg::joined_capabilities`).
 pub(crate) fn meet(a: CapabilityKind, b: CapabilityKind) -> CapabilityKind {
     match (a, b) {
         (CapabilityKind::Read, CapabilityKind::ShallowExclusive)
@@ -58,23 +63,94 @@ fn unpacked_capability<'a, 'tcx: 'a>(
     enter_variants: bool,
     ctxt: impl HasCompilerCtxt<'a, 'tcx>,
 ) -> Option<CapabilityKind> {
+    unpacked(|p| capabilities.get(p, ctxt), place, enter_variants, ctxt)
+}
+
+/// The capability `place` has in `lookup` or, if it has none, gets by
+/// unpacking its closest ancestor that has one; see [`unpacked_capability`].
+pub(crate) fn unpacked<'a, 'tcx: 'a>(
+    lookup: impl Fn(Place<'tcx>) -> Option<CapabilityKind>,
+    place: Place<'tcx>,
+    enter_variants: bool,
+    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+) -> Option<CapabilityKind> {
     let (ancestor, mut capability) = std::iter::successors(Some(place), |p| p.parent_place())
-        .find_map(|p| Some((p, capabilities.get(p, ctxt)?)))?;
+        .find_map(|p| Some((p, lookup(p)?)))?;
     for (base, elem) in place.iter_projections_after(ancestor, ctxt)? {
-        capability = match (elem, capability) {
-            (ProjectionElem::Downcast(..), _) if !enter_variants => return None,
-            (ProjectionElem::Deref, _) if base.is_raw_ptr(ctxt) => return None,
-            (ProjectionElem::Deref, CapabilityKind::Exclusive) if !base.is_shared_ref(ctxt) => {
-                CapabilityKind::Exclusive
-            }
-            (ProjectionElem::Deref, CapabilityKind::Exclusive | CapabilityKind::Read) => {
-                CapabilityKind::Read
-            }
-            (ProjectionElem::Deref, _) => return None,
-            _ => capability,
-        };
+        if matches!(elem, ProjectionElem::Downcast(..)) && !enter_variants {
+            return None;
+        }
+        capability = base.step_kind(elem, ctxt).share(capability)?;
     }
     Some(capability)
+}
+
+/// The capability `place` gets when what lies below it is packed into it (see
+/// [`packed`]), none if a leaf of its layout (an owned expansion, a
+/// borrow-PCG expansion or a dereference) that shares its capability has
+/// none, by itself or from a place it is part of (it is borrowed). Where a
+/// path holds `place` at W (`bound`), the meet is at most W, and only the
+/// leaves in its storage count: a referent lent through a mutable reference
+/// in `place` does not keep it from being overwritten. Loans that do are
+/// checked against the meet by the caller.
+fn packed_capability<'a, 'tcx: 'a>(
+    capabilities: &PlaceCapabilities<'tcx>,
+    owned: &OwnedPcg<'tcx>,
+    graph: &BorrowsGraph<'tcx>,
+    place: Place<'tcx>,
+    bound: Option<CapabilityKind>,
+    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+) -> Option<CapabilityKind> {
+    if let Some(capability) = unpacked_capability(capabilities, place, false, ctxt) {
+        return Some(capability);
+    }
+    let owned_leaves = owned
+        .is_allocated(place.local)
+        .then(|| owned[place.local].expansions().leaf_places(ctxt))
+        .into_iter()
+        .flatten()
+        .map(Place::from);
+    let borrowed_expansions = graph
+        .edges
+        .keys()
+        .filter_map(|kind| match kind {
+            BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) => Some(expansion),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let referents = graph.edges.keys().filter_map(|kind| match kind {
+        BorrowPcgEdgeKind::Deref(deref) => deref.deref_place.as_current_place(),
+        _ => None,
+    });
+    let borrowed_leaves = borrowed_expansions
+        .iter()
+        .flat_map(|expansion| {
+            expansion
+                .expansion()
+                .iter()
+                .filter_map(|node| node.as_current_place())
+                .collect::<Vec<_>>()
+        })
+        .chain(referents)
+        .filter(|part| {
+            !borrowed_expansions
+                .iter()
+                .any(|expansion| expansion.base().as_current_place() == Some(*part))
+        });
+    let counts = |leaf| {
+        if bound == Some(CapabilityKind::Write) {
+            place.in_storage(leaf, ctxt)
+        } else {
+            place.in_value(CapabilityKind::Exclusive, leaf, ctxt)
+        }
+    };
+    if owned_leaves
+        .chain(borrowed_leaves)
+        .any(|leaf| counts(leaf) && unpacked_capability(capabilities, leaf, true, ctxt).is_none())
+    {
+        return None;
+    }
+    packed(place, &capabilities.iter().collect::<Vec<_>>(), ctxt).0
 }
 
 impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
@@ -92,12 +168,18 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     /// The capabilities of the join of this state and `other`: the meet of
-    /// the capabilities each path has or gets by unpacking. Where the paths
-    /// unpack different variants of an enum, the join holds the enum packed.
+    /// the capabilities each path has or gets by unpacking. Where the meet is
+    /// more than R (e, W or E), there is none while a loan of either path
+    /// conflicts with it (a loan of the place, of a place it is part of or of
+    /// a place in its storage): the loan keeps the place frozen or lent, also
+    /// where a path packs a frozen part into it. Where the paths unpack
+    /// different variants of an enum, the join holds the enum packed, and so
+    /// it holds a Box packed where one path holds it at W and the other
+    /// unpacks it.
     fn joined_capabilities(
         &self,
         other: &Self,
-        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> PlaceCapabilities<'tcx> {
         let places = self
             .place_capabilities
@@ -107,25 +189,57 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             .collect::<HashSet<_>>();
         let mut joined = PlaceCapabilities::default();
         for place in places {
-            let capability = match (
+            let capabilities = match (
                 unpacked_capability(&self.place_capabilities, place, false, ctxt),
                 unpacked_capability(&other.place_capabilities, place, false, ctxt),
             ) {
-                (Some(a), Some(b)) => Some((place, meet(a, b))),
-                (Some(_), None) | (None, Some(_)) => self
-                    .diverging_variant_base(other, place, ctxt)
-                    .and_then(|base| {
+                (Some(a), Some(b)) => Some((place, a, b)),
+                (Some(_), None) | (None, Some(_)) => {
+                    let at_base = |base| {
+                        // The path that holds `base` bounds what the join
+                        // holds there.
+                        let bound = [self, other].into_iter().find_map(|pcg| {
+                            unpacked_capability(&pcg.place_capabilities, base, false, ctxt)
+                        });
                         Some((
                             base,
-                            meet(
-                                self.packed_capability(base, ctxt)?,
-                                other.packed_capability(base, ctxt)?,
-                            ),
+                            packed_capability(
+                                &self.place_capabilities,
+                                &self.owned,
+                                &self.borrow.graph,
+                                base,
+                                bound,
+                                ctxt,
+                            )?,
+                            packed_capability(
+                                &other.place_capabilities,
+                                &other.owned,
+                                &other.borrow.graph,
+                                base,
+                                bound,
+                                ctxt,
+                            )?,
                         ))
-                    }),
+                    };
+                    self.diverging_variant_base(other, place, ctxt)
+                        .and_then(at_base)
+                        .or_else(|| self.unshared_base(other, place, ctxt).and_then(at_base))
+                }
                 (None, None) => None,
             };
-            if let Some((place, capability)) = capability {
+            let Some((place, a, b)) = capabilities else {
+                continue;
+            };
+            let capability = meet(a, b);
+            if capability.is_read()
+                || [self, other].iter().all(|pcg| {
+                    pcg.borrow
+                        .graph
+                        .loans_blocking(place, capability, ctxt.bc_ctxt())
+                        .next()
+                        .is_none()
+                })
+            {
                 joined.insert(place, capability, ctxt);
             }
         }
@@ -170,35 +284,22 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             })
     }
 
-    /// The capability `place` gets when what lies below it is packed into
-    /// it: the meet of the capabilities below it, none if an owned place
-    /// below it has none (it is borrowed).
-    fn packed_capability(
+    /// The place above `place` that the path without a capability for
+    /// `place` has one for, but cannot unpack toward `place`: its capability
+    /// gives the next part nothing (a Box holding W has no contents to give).
+    fn unshared_base(
         &self,
+        other: &Self,
         place: Place<'tcx>,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Option<CapabilityKind> {
-        if let Some(capability) = unpacked_capability(&self.place_capabilities, place, false, ctxt)
-        {
-            return Some(capability);
-        }
-        if self.owned.is_allocated(place.local)
-            && self.owned[place.local]
-                .expansions()
-                .leaf_places(ctxt)
-                .into_iter()
-                .map(Place::from)
-                .any(|leaf| {
-                    place.is_prefix_of(leaf) && self.place_capabilities.get(leaf, ctxt).is_none()
-                })
-        {
-            return None;
-        }
-        self.place_capabilities
-            .iter()
-            .filter(|(p, _)| place.is_strict_prefix_of(*p))
-            .map(|(_, capability)| capability)
-            .reduce(meet)
+    ) -> Option<Place<'tcx>> {
+        let capability =
+            |pcg: &Self, p| unpacked_capability(&pcg.place_capabilities, p, false, ctxt);
+        let without = [self, other]
+            .into_iter()
+            .find(|pcg| capability(pcg, place).is_none())?;
+        std::iter::successors(place.parent_place(), |p| p.parent_place())
+            .find(|p| capability(without, *p).is_some())
     }
 
     /// Gives this state the capabilities `target`, recording the actions.
@@ -232,9 +333,148 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         Ok(applied.actions.into_iter().map(|a| a.action).collect())
     }
 
-    /// Weakens the capabilities this state suspends to the ones `target`
-    /// suspends, recording the actions.
-    pub(crate) fn weaken_suspended_to(
+    /// Gives this state the owned layout that `other` has below the places
+    /// neither holds or both hold frozen: the parts that are lent or blocked
+    /// on the other path (a variant field borrowed while the join holds the
+    /// enum packed). It changes no capability.
+    pub(crate) fn join_lent_layout(
+        &mut self,
+        other: &OwnedPcg<'tcx>,
+        ctxt: impl DataflowCtxt<'a, 'tcx>,
+    ) {
+        for local in (0..self.owned.num_locals()).map(mir::Local::from) {
+            if !self.owned.is_allocated(local) || !other.is_allocated(local) {
+                continue;
+            }
+            let mut expansions = other[local]
+                .expansions()
+                .expansions()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            expansions.sort_by_key(|expanded| expanded.place.projection.len());
+            for expanded in expansions {
+                let layout = self.owned[local].expansions();
+                if layout.expansions().contains(&expanded)
+                    || !layout.contains_place(expanded.place, ctxt.bc_ctxt())
+                {
+                    continue;
+                }
+                pcg_validity_assert!(
+                    self.place_capabilities
+                        .get(expanded.place, ctxt)
+                        .is_none_or(CapabilityKind::is_read),
+                    [ctxt],
+                    "the join unpacks {}, which holds more than R",
+                    expanded.place.display_string(ctxt.bc_ctxt())
+                );
+                self.owned[local]
+                    .expansions_mut()
+                    .insert_expansion(expanded.place, expanded.expansion);
+            }
+        }
+    }
+
+    /// The capabilities that the join of `states` suspends: at the finest
+    /// places that every state records or covers, the meet of what each state
+    /// has for them. The candidates are the recorded places, the places whose
+    /// value they are in (such as the enum whose variants the states unpack
+    /// differently), and the parts of each unpacking on the way, which
+    /// unpacking a record gives their share. A place is replaced by the parts
+    /// stored in it; a reference and its referent are separate places.
+    pub(crate) fn joined_suspended(
+        states: &[&Self],
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Result<PlaceCapabilities<'tcx>, PcgError> {
+        let mut candidates = HashSet::default();
+        for (holder, _) in states
+            .iter()
+            .flat_map(|state| state.place_capabilities.iter_suspended())
+        {
+            candidates.insert(holder);
+            let mut part = holder;
+            while let Some(base) = part.parent_place()
+                && base.in_value(CapabilityKind::Exclusive, part, ctxt)
+            {
+                candidates.extend(base.expand_one_level(part, ctxt)?.expansion());
+                candidates.insert(base);
+                part = base;
+            }
+        }
+        let covered = candidates
+            .into_iter()
+            .filter_map(|place| {
+                let capability = states
+                    .iter()
+                    .map(|state| state.covered_suspended(place, ctxt))
+                    .collect::<Option<Vec<_>>>()?
+                    .into_iter()
+                    .reduce(meet)?;
+                Some((place, capability))
+            })
+            .collect::<Vec<_>>();
+        // A place frozen on every path keeps its record, next to the records
+        // of its parts and of the places it is part of: its freeze gives it
+        // back.
+        let frozen = |place: Place<'tcx>| {
+            states.iter().all(|state| {
+                state.place_capabilities.get(place, ctxt) == Some(CapabilityKind::Read)
+                    && state.place_capabilities.suspended(place).is_some()
+            })
+        };
+        let mut joined = PlaceCapabilities::default();
+        for &(place, capability) in &covered {
+            if frozen(place)
+                || !covered
+                    .iter()
+                    .any(|(part, _)| *part != place && place.in_storage(*part, ctxt))
+            {
+                joined.suspend(place, capability);
+            }
+        }
+        // A place past the dereference of a place the join records gets its
+        // share by unpacking that record: a record of its own that is no
+        // lower is not kept.
+        let redundant = joined
+            .iter_suspended()
+            .filter(|&(place, capability)| {
+                !frozen(place)
+                    && unpacked(
+                        |p| (p != place).then(|| joined.suspended(p)).flatten(),
+                        place,
+                        false,
+                        ctxt,
+                    ) == Some(capability)
+            })
+            .map(|(place, _)| place)
+            .collect::<Vec<_>>();
+        joined.retain_suspended(|place, _| !redundant.contains(&place));
+        Ok(joined)
+    }
+
+    /// The capability suspended for `place`, or for it as part of a lent
+    /// ancestor, or for its lent parts packed together (see
+    /// [`packed_record`]) when nothing stored in it is held.
+    fn covered_suspended(
+        &self,
+        place: Place<'tcx>,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<CapabilityKind> {
+        unpacked(|p| self.place_capabilities.suspended(p), place, false, ctxt).or_else(|| {
+            if self
+                .place_capabilities
+                .iter()
+                .any(|(p, _)| place.in_storage(p, ctxt))
+            {
+                return None;
+            }
+            packed_record(place, &self.place_capabilities, ctxt).0
+        })
+    }
+
+    /// Gives this state the suspended capabilities `target`, recording the
+    /// actions.
+    pub(crate) fn reach_suspended(
         &mut self,
         target: &PlaceCapabilities<'tcx>,
         snapshot: SnapshotLocation,
@@ -248,8 +488,41 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             snapshot.location(),
             snapshot,
         )
-        .weaken_suspended_to(target)?;
+        .reach_suspended(target)?;
         Ok(applied.actions.into_iter().map(|a| a.action).collect())
+    }
+}
+
+/// Where the places a path gives up at a join are lent: to the edges of the
+/// state across the join that the path did not have before the join.
+struct Lending<'r, 'a, 'tcx> {
+    other: &'r Pcg<'a, 'tcx>,
+    own_edges: &'r HashSet<BorrowPcgEdgeKind<'tcx>>,
+    self_block: mir::BasicBlock,
+}
+
+impl<'a, 'tcx: 'a> Lending<'_, 'a, 'tcx> {
+    /// The edge that `blocked` is lent to: one that is a loan, not an
+    /// unpacking (except of an enum variant this path did not match).
+    fn edge(
+        &self,
+        blocked: Place<'tcx>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Option<BorrowPcgEdge<'tcx>> {
+        self.other
+            .borrow
+            .graph()
+            .edges_blocking(blocked.into(), ctxt.bc_ctxt())
+            .filter(|edge| {
+                (is_variant_unpacking(edge.kind()) || edge.kind().is_loan())
+                    && !self.own_edges.contains(edge.kind())
+            })
+            .min_by_key(|edge| format!("{:?}", edge.kind()))
+            .map(|edge| {
+                let mut edge = edge.to_owned_edge();
+                edge.conditions = edge.conditions.without_branch_choice(self.self_block);
+                edge
+            })
     }
 }
 
@@ -265,61 +538,104 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 self.storage_dead(local)?;
             }
         }
-        self.move_capabilities_to(target, other, self_block)?;
-        self.unpack_to(target, other)?;
-        self.move_capabilities_to(target, other, self_block)?;
-        self.pack_to(target)?;
-        self.give_up_places_outside(target, other, self_block)
-    }
-
-    /// The edge of `other` that `blocked` is lent to at the join: one that
-    /// this state lacks and that is a loan, not an unpacking (except of an
-    /// enum variant this path did not match).
-    fn lending_edge(
-        &self,
-        blocked: Place<'tcx>,
-        other: &Pcg<'a, 'tcx>,
-        self_block: mir::BasicBlock,
-    ) -> Option<BorrowPcgEdge<'tcx>> {
-        other
+        let own_edges = self
+            .pcg
             .borrow
-            .graph()
-            .edges_blocking(blocked.into(), self.ctxt.bc_ctxt())
-            .find(|edge| {
-                (is_variant_unpacking(edge.kind())
-                    || !matches!(
-                        edge.kind(),
-                        BorrowPcgEdgeKind::Deref(_)
-                            | BorrowPcgEdgeKind::RawPtrDeref(_)
-                            | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
-                    ))
-                    && !self.pcg.borrow.graph.edges.contains_key(edge.kind())
-            })
-            .map(|edge| {
-                let mut edge = edge.to_owned_edge();
-                edge.conditions = edge.conditions.without_branch_choice(self_block);
-                edge
-            })
+            .graph
+            .edges
+            .keys()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let lending = Lending {
+            other,
+            own_edges: &own_edges,
+            self_block,
+        };
+        self.move_capabilities_to(target, &lending)?;
+        self.unpack_to(target, other)?;
+        // The places the unpacking adds get their capabilities moved too.
+        self.move_capabilities_to(target, &lending)?;
+        self.pack_to(target)?;
+        self.give_up_places_outside(target, &lending)
     }
 
-    /// Weakens each capability this state suspends to the meet with the one
-    /// `target` suspends, or drops it if `target` does not suspend one.
-    pub(crate) fn weaken_suspended_to(
+    /// Gives this state the suspended capabilities `target`: each place of
+    /// `target` gets its record by unpacking the record of a lent ancestor
+    /// or packing those of its lent parts, then weakened to the target; the
+    /// other records are dropped.
+    pub(crate) fn reach_suspended(
         &mut self,
         target: &PlaceCapabilities<'tcx>,
     ) -> Result<(), PcgError> {
-        let weakened = self
+        let mut places = target.iter_suspended().collect::<Vec<_>>();
+        places.sort_by_key(|(place, _)| (place.projection.len(), *place));
+        for &(place, to) in &places {
+            match self.pcg.place_capabilities.suspended(place) {
+                None => match std::iter::successors(place.parent_place(), |p| p.parent_place())
+                    .find(|p| self.pcg.place_capabilities.suspended(*p).is_some())
+                {
+                    Some(ancestor) => self.unpack_suspended_to(ancestor, place)?,
+                    None => self.record_and_apply_action(
+                        BorrowPcgAction::pack_suspended(place, "join").into(),
+                    )?,
+                },
+                // The place records less than the target, but packing the
+                // records of its parts into it reaches the target (a mutable
+                // reference frozen while unpacked records e and its referent
+                // E, which pack to E).
+                Some(from)
+                    if meet(from, to) != to
+                        && packed_record(place, &*self.pcg.place_capabilities, self.ctxt)
+                            .0
+                            .is_some_and(|packed| meet(packed, to) == to) =>
+                {
+                    self.record_and_apply_action(
+                        BorrowPcgAction::pack_suspended(place, "join").into(),
+                    )?;
+                }
+                Some(_) => {}
+            }
+        }
+        for (place, to) in places {
+            if let Some(from) = self.pcg.place_capabilities.suspended(place)
+                && meet(from, to) != from
+            {
+                self.record_and_apply_action(
+                    BorrowPcgAction::weaken_suspended(place, from, Some(meet(from, to)), "join")
+                        .into(),
+                )?;
+            }
+        }
+        let mut dropped = self
             .pcg
             .place_capabilities
             .iter_suspended()
-            .filter_map(|(place, from)| {
-                let to = target.suspended(place).map(|to| meet(from, to));
-                (to != Some(from)).then_some((place, from, to))
-            })
+            .filter(|(place, _)| target.suspended(*place).is_none())
             .collect::<Vec<_>>();
-        for (place, from, to) in weakened {
+        dropped.sort_by_key(|(place, _)| *place);
+        for (place, from) in dropped {
             self.record_and_apply_action(
-                BorrowPcgAction::weaken_suspended(place, from, to, "join").into(),
+                BorrowPcgAction::weaken_suspended(place, from, None, "join").into(),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Unpacks the capability suspended for `ancestor` level by level down to
+    /// `place`.
+    fn unpack_suspended_to(
+        &mut self,
+        ancestor: Place<'tcx>,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        for (base, _) in place
+            .iter_projections_after(ancestor, self.ctxt)
+            .into_iter()
+            .flatten()
+        {
+            let parts = base.expand_one_level(place, self.ctxt)?.expansion();
+            self.record_and_apply_action(
+                BorrowPcgAction::unpack_suspended(base, parts, "join").into(),
             )?;
         }
         Ok(())
@@ -373,14 +689,14 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
 
     /// Moves the capability of each place this state holds to the one it
     /// has or gets by unpacking in `target`; a frozen place that `target`
-    /// unpacks exclusively is unfrozen to be unpacked, and a place this state
-    /// unpacks exclusively that `target` reads is frozen. Read copies follow
-    /// the place they are copied from.
+    /// unpacks exclusively is unfrozen to be unpacked, one whose parts
+    /// `target` only reads has its freeze moved to its read copies, and a
+    /// place this state unpacks exclusively that `target` reads is frozen.
+    /// Read copies follow the place they are copied from.
     fn move_capabilities_to(
         &mut self,
         target: &PlaceCapabilities<'tcx>,
-        other: &Pcg<'a, 'tcx>,
-        self_block: mir::BasicBlock,
+        lending: &Lending<'_, 'a, 'tcx>,
     ) -> Result<(), PcgError> {
         let mut places = self
             .pcg
@@ -413,9 +729,19 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                     self.pcg
                         .place_capability_equals(parent, CapabilityKind::Read, self.ctxt)
                 });
-            let unpacked_exclusively = target.get(place, self.ctxt) != Some(CapabilityKind::Read)
+            let unpacked = target.get(place, self.ctxt) != Some(CapabilityKind::Read)
                 && target_unpacks.contains(&place);
-            let to = if unpacked_exclusively {
+            if unpacked
+                && from == CapabilityKind::Read
+                && !is_read_copy
+                && target
+                    .capabilities_for_strict_postfixes_of(place)
+                    .all(|(_, capability)| capability.is_read())
+            {
+                self.refreeze_to_copies(place)?;
+                continue;
+            }
+            let to = if unpacked {
                 (from == CapabilityKind::Read).then_some(CapabilityKind::Exclusive)
             } else {
                 unpacked_capability(target, place, true, self.ctxt)
@@ -424,10 +750,27 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 && to != from
                 && !is_read_copy
             {
-                self.move_capability(place, from, to, target, other, self_block)?;
+                self.move_capability(place, from, to, target, lending)?;
             }
         }
         Ok(())
+    }
+
+    /// Moves the freeze of `place` to its read copies one level down, if it
+    /// has been unpacked.
+    fn refreeze_to_copies(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        let mut copies = self
+            .pcg
+            .place_capabilities
+            .capabilities_for_strict_postfixes_of(place)
+            .filter(|(copy, _)| copy.parent_place() == Some(place))
+            .map(|(copy, _)| copy)
+            .collect::<Vec<_>>();
+        copies.sort();
+        if copies.is_empty() {
+            return Ok(());
+        }
+        self.record_and_apply_action(BorrowPcgAction::refreeze(place, copies, "join").into())
     }
 
     fn move_capability(
@@ -436,12 +779,11 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
         from: CapabilityKind,
         to: CapabilityKind,
         target: &PlaceCapabilities<'tcx>,
-        other: &Pcg<'a, 'tcx>,
-        self_block: mir::BasicBlock,
+        lending: &Lending<'_, 'a, 'tcx>,
     ) -> Result<(), PcgError> {
         match (from, to) {
             (CapabilityKind::ShallowExclusive, CapabilityKind::Exclusive) => {
-                self.remove_edges_absent_from(place, other)
+                self.remove_edges_absent_from(place, lending.other)
             }
             (
                 CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive,
@@ -452,19 +794,29 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                 self.weaken_to(place, to)
             }
             (CapabilityKind::Read, _) => {
-                self.upgrade_read_to_exclusive(place, &|base| target.unpacks(base))?;
+                self.upgrade_read_to_exclusive(place, place, &|base| target.unpacks(base))?;
                 self.weaken_to(place, to)
             }
             // The referent of a mutable reference is lent, through the
-            // reference, to the edge of `other` that blocks it.
+            // reference, to the edge of `other` that blocks it. Otherwise the
+            // reference is unpacked, and the referent is given up with the
+            // other places `target` does not hold: its parts go with the
+            // loans of `other` that block them.
             (CapabilityKind::Exclusive, CapabilityKind::ShallowExclusive)
-                if place.is_mut_ref(self.ctxt)
-                    && let Some(edge) =
-                        self.lending_edge(place.project_deref(self.ctxt), other, self_block) =>
+                if place.is_mut_ref(self.ctxt) =>
             {
-                self.record_and_apply_action(
-                    BorrowPcgAction::lend(place.project_deref(self.ctxt), edge, "join").into(),
-                )
+                let referent = place.project_deref(self.ctxt);
+                match lending.edge(referent, self.ctxt) {
+                    Some(edge) => self.record_and_apply_action(
+                        BorrowPcgAction::lend(referent, edge, "join").into(),
+                    ),
+                    None => self.expand_to(
+                        referent,
+                        Some(lending.other.borrow.graph()),
+                        ObtainType::Capability(CapabilityKind::Exclusive),
+                        self.ctxt,
+                    ),
+                }
             }
             (
                 CapabilityKind::Exclusive,
@@ -627,7 +979,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
     ) -> Result<(), PcgError> {
         match capability {
             CapabilityKind::Read => {
-                self.detach_borrowed_shared_referents(place, keep)?;
+                self.detach_borrowed_untracked_referents(place, keep)?;
                 self.pack_read_unpacking(place, keep)
             }
             CapabilityKind::Exclusive | CapabilityKind::Write => {
@@ -638,24 +990,25 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
     }
 
     /// Gives up the places this state holds and `target` does not: each is
-    /// lent to the edge of `other` that blocks it or, where `other` unpacked
-    /// it further and lent its parts, unpacked to lend those. Otherwise the
-    /// value of the place on this path is detached from it.
+    /// lent to the edge of `other` that blocks it, or to the loan of this
+    /// state that still blocks it, or, where `other` unpacked it further and
+    /// lent its parts, unpacked to lend those. Otherwise the value of the
+    /// place on this path is detached from it.
     fn give_up_places_outside(
         &mut self,
         target: &PlaceCapabilities<'tcx>,
-        other: &Pcg<'a, 'tcx>,
-        self_block: mir::BasicBlock,
+        lending: &Lending<'_, 'a, 'tcx>,
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
+        let other = lending.other;
         while let Some((place, capability)) = self
             .pcg
             .place_capabilities
             .iter()
             .filter(|(place, _)| target.get(*place, ctxt).is_none())
-            .min_by_key(|(place, _)| place.projection.len())
+            .min_by_key(|(place, _)| (place.projection.len(), *place))
         {
-            let lending_edge = |blocked| self.lending_edge(blocked, other, self_block);
+            let lending_edge = |blocked| lending.edge(blocked, ctxt);
             let lent_part = || {
                 other
                     .borrow
@@ -667,47 +1020,68 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                             .collect::<Vec<_>>()
                     })
                     .filter_map(|node| node.related_maybe_labelled_place()?.as_current_place())
-                    .filter(|blocked| place.is_strict_prefix_of(*blocked))
+                    .filter(|blocked| {
+                        *blocked != place
+                            && place.in_value(CapabilityKind::Exclusive, *blocked, ctxt)
+                    })
                     .find_map(|blocked| Some((blocked, lending_edge(blocked)?)))
             };
             let place_lent_to = std::iter::successors(Some(place), |p| p.parent_place())
                 .find_map(|lent| Some((lent, lending_edge(lent)?)));
-            let part_lent = (capability != CapabilityKind::Read)
-                .then(lent_part)
-                .flatten();
-            if let Some((ancestor, edge)) = place_lent_to {
-                // A lent ancestor that the join gives up takes the parts this
-                // path holds with it, where they can be packed into it.
-                let gives_up_ancestor = target.get(ancestor, ctxt).is_none();
-                if gives_up_ancestor
-                    && ancestor != place
-                    && let Some(packed) = self
-                        .pcg
-                        .place_capabilities
-                        .capabilities_for_strict_postfixes_of(ancestor)
-                        .map(|(_, capability)| capability)
-                        .reduce(meet)
-                {
-                    self.pack(ancestor, packed, &|_| false)?;
-                }
-                let lent = if gives_up_ancestor
-                    && self.pcg.place_capabilities.get(ancestor, ctxt).is_some()
-                {
-                    ancestor
-                } else {
-                    place
-                };
-                self.record_and_apply_action(BorrowPcgAction::lend(lent, edge, "join").into())?;
+            // Each part this path holds of a lent place is lent with what it
+            // holds.
+            if let Some((_, edge)) = place_lent_to {
+                self.record_and_apply_action(BorrowPcgAction::lend(place, edge, "join").into())?;
                 continue;
             }
-            if let Some((part, edge)) = part_lent {
+            // A place that a loan of this path still blocks, directly or as
+            // part of a lent place, stays with that loan; a place stored in a
+            // place that the join gives up as a whole goes with the loan of
+            // this path on another part of that place's value.
+            let given_up = std::iter::successors(Some(place), |p| p.parent_place())
+                .take_while(|value| {
+                    value.in_storage(place, ctxt)
+                        && !target.iter().any(|(held, _)| value.is_prefix_of(held))
+                })
+                .last()
+                .unwrap_or(place);
+            let own_loan = self
+                .pcg
+                .borrow
+                .graph
+                .edges()
+                .filter(|edge| edge.kind().is_loan())
+                .filter_map(|edge| {
+                    let holds_place = edge
+                        .kind()
+                        .blocked_nodes(ctxt.bc_ctxt())
+                        .filter_map(|node| node.as_current_place())
+                        .filter(|blocked| {
+                            blocked.is_prefix_of(place)
+                                || given_up.in_value(CapabilityKind::Exclusive, *blocked, ctxt)
+                        })
+                        .map(|blocked| blocked.is_prefix_of(place))
+                        .max()?;
+                    Some((!holds_place, edge.to_owned_edge()))
+                })
+                .min_by_key(|(elsewhere, edge)| (*elsewhere, format!("{:?}", edge.kind())))
+                .map(|(_, edge)| edge);
+            if let Some(edge) = own_loan {
+                self.record_and_apply_action(BorrowPcgAction::lend(place, edge, "join").into())?;
+                continue;
+            }
+            if let Some((part, edge)) = lent_part() {
                 // This path holds `place` packed, so it did not match an enum
-                // variant on the way to the part: the place itself is lent.
-                if part
-                    .iter_projections_after(place, ctxt)
-                    .is_some_and(|mut projections| {
-                        projections.any(|(_, elem)| matches!(elem, ProjectionElem::Downcast(..)))
-                    })
+                // variant on the way to the part, or holds it with a
+                // capability that gives the part nothing (a Box at W has no
+                // contents to unpack): then the place itself is lent.
+                if place.share_at(capability, part, ctxt).is_none()
+                    || part
+                        .iter_projections_after(place, ctxt)
+                        .is_some_and(|mut projections| {
+                            projections
+                                .any(|(_, elem)| matches!(elem, ProjectionElem::Downcast(..)))
+                        })
                 {
                     self.record_and_apply_action(
                         BorrowPcgAction::lend(place, edge, "join").into(),
@@ -720,6 +1094,12 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceObtainer<'pcg,
                     ObtainType::Capability(capability),
                     ctxt,
                 )?;
+                // A frozen place's freeze moves to its read copies, which
+                // are lent or given up apart.
+                if capability == CapabilityKind::Read {
+                    self.refreeze_to_copies(place)?;
+                    continue;
+                }
             }
             if self.pcg.place_capabilities.get(place, ctxt).is_some() {
                 self.record_and_apply_action(
