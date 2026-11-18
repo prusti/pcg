@@ -34,3 +34,31 @@ fn main() {
     rl.push(&mut x);
     // let y = *rl1.pop();
 }
+
+// The back edge to the loop head snapshots `v`'s lifetime projection for the
+// next iteration, while the snapshot taken at the start of this iteration is
+// still in the graph. On the path without the push, the current projection is
+// that snapshot's direct future (the path does not change it); the two must
+// stay distinct nodes.
+fn push_on_one_path<'a>(v: &mut Vec<&'a u32>, xs: &'a [u32]) {
+    for x in xs {
+        if *x > 3 {
+            v.push(x);
+        }
+    }
+}
+
+// The same in a `while let` loop inside a closure, where the captured `packed`
+// is written on only one path.
+fn closure_writes_on_one_path(items: &[u32]) -> bool {
+    let mut packed = false;
+    let mut f = |input: &mut std::slice::Iter<'_, u32>| {
+        while let Some(t) = input.next() {
+            if *t == 3 {
+                packed |= true;
+            }
+        }
+    };
+    f(&mut items.iter());
+    packed
+}

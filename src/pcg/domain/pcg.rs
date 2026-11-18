@@ -2,10 +2,11 @@ use std::borrow::Cow;
 
 use crate::{
     DebugLines,
-    action::{AppliedActions, OwnedPcgAction, PcgActions},
+    action::{AppliedActions, BorrowPcgAction, OwnedPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+        edge_data::LabelNodePredicate,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
@@ -524,6 +525,30 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 },
                 SnapshotLocation::Loop(loop_head),
             );
+            if !obtainer.contains_expansion(base, &expansion, guide, ctxt)? {
+                // The expansion may snapshot the current projections of `base`
+                // with the loop-head label, while the graph still holds the
+                // loop-head snapshots taken when this iteration began. If both
+                // are present they would become one node, so the old snapshot
+                // is first relabelled as the snapshot after the predecessor
+                // block.
+                for rp in base.lifetime_projections(ctxt) {
+                    let current = rp.with_base(MaybeLabelledPlace::Current(rp.base));
+                    let snapshot =
+                        current.with_label(Some(SnapshotLocation::Loop(loop_head).into()), ctxt);
+                    let graph = obtainer.borrows_graph();
+                    if graph.contains(current, ctxt) && graph.contains(snapshot, ctxt) {
+                        obtainer.record_and_apply_action(
+                            BorrowPcgAction::label_lifetime_projection(
+                                LabelNodePredicate::equals_lifetime_projection(snapshot),
+                                Some(SnapshotLocation::After(self_block).into()),
+                                "bridge: relabel the iteration's loop-head snapshot",
+                            )
+                            .into(),
+                        )?;
+                    }
+                }
+            }
             if obtainer.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
                 obtainer.expand_lifetime_projections_one_level(
                     base,
