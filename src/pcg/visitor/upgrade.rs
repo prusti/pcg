@@ -40,12 +40,10 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         holds_freeze(self.pcg.borrow.graph, place, self.ctxt)
     }
 
-    /// Ends the freeze of `frozen` (see [`end_freeze_action`]). The read
-    /// copies `dropped` lose their capabilities instead.
+    /// Ends the freeze of `frozen` (see [`end_freeze_action`]).
     pub(crate) fn end_freeze(
         &mut self,
         frozen: Place<'tcx>,
-        dropped: &[Place<'tcx>],
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError> {
         let action = end_freeze_action(
@@ -55,8 +53,7 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             format!("{reason:?}"),
             self.ctxt,
         );
-        let dropped = dropped.iter().map(|p| (*p, None)).collect::<Vec<_>>();
-        self.record_and_apply_action(action.with_capabilities(dropped.into()).into())
+        self.record_and_apply_action(action.into())
     }
 
     /// Labels the lifetime projections of `place` and its ancestors up to

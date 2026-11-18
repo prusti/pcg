@@ -1,10 +1,14 @@
 use crate::{
     action::{AppliedActions, BorrowPcgAction, CapabilityChanges},
+    borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         GeneralizedLifetime,
         action::LabelPlaceReason,
-        borrow_pcg_edge::BorrowPcgEdge,
-        edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
+        edge::{
+            borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+            kind::BorrowPcgEdgeKind,
+        },
         edge_data::LabelNodePredicate,
         region_projection::{LifetimeProjection, PcgLifetimeProjectionLike, PlaceOrConst},
     },
@@ -18,6 +22,7 @@ use crate::{
         triple::TripleWalker,
         visitor::upgrade::AdjustCapabilityReason,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir::{self, Location, Operand, Rvalue, Statement, Terminator},
     utils::{data_structures::HashSet, display::DisplayWithCompilerCtxt},
 };
@@ -86,12 +91,52 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         self.analysis_location.location
     }
 
+    /// Removes the borrows that the borrow checker tracks and no longer has
+    /// in scope here. Such a borrow can stay in the graph while a value that
+    /// flows from it lives (the regions of a type parameter in a result), but
+    /// it no longer blocks its place, which gets back what the borrow took.
+    /// Borrows behind a raw pointer are not tracked, and a borrow of a place
+    /// that has since been overwritten blocks a labelled place: the borrow
+    /// checker ends it at the write while its reference can still be used.
+    fn remove_borrows_out_of_scope(&mut self) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let location = self.location();
+        let ended = self
+            .pcg
+            .borrow
+            .graph
+            .edges()
+            .filter(|edge| {
+                let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind() else {
+                    return false;
+                };
+                let Some(place) = borrow.blocked_place().as_current_place() else {
+                    return false;
+                };
+                borrow.borrow_index().is_some()
+                    && !place.contains_unsafe_deref(ctxt)
+                    && !ctxt
+                        .bc()
+                        .borrows_blocking(place, location, ctxt.bc_ctxt())
+                        .iter()
+                        .any(|in_scope| get_reserve_location(in_scope) == borrow.reserve_location())
+            })
+            .map(BorrowPcgEdgeLike::to_owned_edge)
+            .collect::<Vec<_>>();
+        for edge in ended {
+            self.place_obtainer()
+                .remove_edge_and_perform_associated_state_updates(&edge, "borrow out of scope")?;
+        }
+        Ok(())
+    }
+
     fn perform_borrow_initial_pre_operand_actions(&mut self) -> Result<(), PcgError> {
         self.place_obtainer()
             .pack_old_and_dead_borrow_leaves(None)?;
         for created_location in self.ctxt.bc().twophase_borrow_activations(self.location()) {
             self.activate_twophase_borrow_created_at(created_location)?;
         }
+        self.remove_borrows_out_of_scope()?;
         let frozen_graph = self.pcg.borrow.graph.frozen_graph();
         let leaf_nodes = frozen_graph.leaf_nodes(self.ctxt.bc_ctxt());
         let leaf_future_node_places = leaf_nodes
@@ -109,7 +154,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             .collect::<HashSet<_>>();
         for place in leaf_future_node_places {
             // If the place is a leaf, and it's not borrowed, then we remove the
-            // future label: a lent place gets E back, and the freeze of a
+            // future label of a place without capability, and the freeze of a
             // frozen place ends. The latter ends a two-phase reservation of a
             // place behind a raw pointer, which the borrow checker does not
             // track and therefore never activates.
@@ -120,16 +165,29 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
             {
                 match self.pcg.capability_of(place, self.ctxt) {
-                    None => {
-                        // The place is accessed exclusively again.
+                    None if self
+                        .pcg
+                        .borrow
+                        .graph
+                        .edges_blocking(place.into(), self.ctxt.bc_ctxt())
+                        .next()
+                        .is_none() =>
+                    {
+                        // The edge that blocked the place would have returned
+                        // its capability when it was removed.
+                        let ctxt = self.ctxt;
+                        pcg_validity_assert!(
+                            false,
+                            [ctxt],
+                            "{:?}: {} is unblocked without a capability",
+                            self.location(),
+                            place.display_string(ctxt)
+                        );
                         self.record_and_apply_action(
                             BorrowPcgAction::label_lifetime_projection(
                                 LabelNodePredicate::all_future_postfixes(place),
                                 None,
-                                "Leaf future node restore cap",
-                            )
-                            .with_capabilities(
-                                vec![(place, Some(CapabilityKind::Exclusive))].into(),
+                                "Leaf future node: remove future label",
                             )
                             .into(),
                         )?;
@@ -146,7 +204,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                         );
                         self.record_and_apply_action(action.into())?;
                     }
-                    Some(_) => {}
+                    _ => {}
                 }
             }
         }
@@ -450,10 +508,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
+        let ctxt = self.ctxt;
         if !self
             .pcg
-            .place_capability_equals(blocked_place, CapabilityKind::Read, self.ctxt)
+            .place_capability_equals(blocked_place, CapabilityKind::Read, ctxt)
         {
+            pcg_validity_assert!(
+                false,
+                [ctxt],
+                "Activating a two-phase borrow of {} with capability {:?}",
+                blocked_place.display_string(ctxt),
+                self.pcg.capability_of(blocked_place, ctxt)
+            );
             return Ok(());
         }
         let borrow = borrow.clone();
@@ -462,15 +528,13 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // shared borrow of it), the freeze moves to the place first.
         let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
         if frozen != blocked_place {
-            self.place_obtainer().end_freeze(
-                frozen,
-                &[],
-                AdjustCapabilityReason::TwoPhaseBorrowActivation,
-            )?;
+            self.place_obtainer()
+                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
         }
         self.place_obtainer()
-            .detach_borrowed_shared_referents(blocked_place)?;
-        self.place_obtainer().pack_read_unpacking(blocked_place)?;
+            .detach_borrowed_shared_referents(blocked_place, &|_| false)?;
+        self.place_obtainer()
+            .pack_read_unpacking(blocked_place, &|_| false)?;
         // Reads during the reservation may have unpacked the place at R.
         if blocked_place.as_owned_place(self.ctxt).is_some() {
             let ctxt = self.ctxt;

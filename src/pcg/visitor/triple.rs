@@ -91,13 +91,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         self.pcg.ensure_triple(triple, self.ctxt);
         if let Some(PlaceCondition::Freeze(place)) = triple.post() {
             let cap = self.pcg.capability_of(place, self.ctxt);
-            let unpacked = cap.is_none()
-                && self
-                    .pcg
-                    .place_capabilities
-                    .capabilities_for_strict_postfixes_of(place)
-                    .next()
-                    .is_some();
+            let unpacked = cap.is_none() && self.pcg.place_capabilities.unpacks(place);
             if matches!(
                 cap,
                 Some(CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive)

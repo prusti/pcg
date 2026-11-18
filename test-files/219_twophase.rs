@@ -170,4 +170,45 @@ fn reservation_reads_reference(bytes: &mut Bytes) {
     bytes.advance(*bytes.as_ref());
 }
 
+pub struct Header<'a> {
+    pub name: &'a str,
+}
+
+pub struct Request<'h, 'b> {
+    pub method: Option<&'b str>,
+    pub headers: &'h mut [Header<'b>],
+}
+
+impl<'h, 'b> Request<'h, 'b> {
+    fn parse_uninit(
+        &mut self,
+        buf: &'b [u8],
+        headers: &'h mut [std::mem::MaybeUninit<Header<'b>>],
+    ) -> Result<usize, ()> {
+        let _ = (buf, headers);
+        Err(())
+    }
+
+    // The loan of `(*self).headers` taken by `mem::take` ends although the raw
+    // pointer `headers` aliases its result, so activating the two-phase
+    // borrow of `*self` detaches nothing.
+    pub fn parse(&mut self, buf: &'b [u8]) -> Result<usize, ()> {
+        // PCG: bb1[0] pre_operands: Remove Edge borrow: _5 <before bb0[4]:PreOperands> = &mut  (*self).headers returning E to (*self).headers
+        // ~PCG: bb1[26] pre_operands: Label place (*self).method (Detach)
+        // PCG: bb1[26] pre_operands: Activate two-phase borrow borrow: _11 = &mut  *self
+        let headers = std::mem::take(&mut self.headers);
+        unsafe {
+            let headers: *mut [Header<'_>] = headers;
+            let headers = headers as *mut [std::mem::MaybeUninit<Header<'_>>];
+            match self.parse_uninit(buf, &mut *headers) {
+                Ok(idx) => Ok(idx),
+                other => {
+                    self.headers = &mut *(headers as *mut [Header<'_>]);
+                    other
+                }
+            }
+        }
+    }
+}
+
 fn main() {}

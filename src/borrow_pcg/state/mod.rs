@@ -160,12 +160,8 @@ pub(crate) fn label_place_changes<'tcx, Ctxt: Copy, P: PlaceLike<'tcx, Ctxt>>(
     ctxt: Ctxt,
 ) -> CapabilityChanges<P> {
     let labelled = |p: P| match reason {
-        // If in a join we don't want to change capabilities because this will
-        // essentially be handled by the join logic.
-        // See 69_http_header_map.rs
-        LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => false,
         // The referent and its read copies move to the label.
-        LabelPlaceReason::DetachSharedReferent => place.is_prefix_of(p),
+        LabelPlaceReason::Detach => place.is_prefix_of(p),
         _ => p.projects_indirection_from(place, ctxt),
     };
     capabilities
@@ -429,6 +425,10 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
             BorrowPcgActionKind::AddEdge { edge } => {
                 result =
                     ApplyActionResult::from_changed(self.graph_mut().insert(edge.clone(), ctxt));
+            }
+            BorrowPcgActionKind::Lend { place, edge } => {
+                self.graph_mut().insert(edge.clone(), ctxt);
+                changes.set(*place, None);
             }
             BorrowPcgActionKind::LabelLifetimeProjection(label) => {
                 let predicate = map_label_predicate(label.predicate());

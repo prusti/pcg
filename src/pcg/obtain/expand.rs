@@ -25,6 +25,7 @@ use crate::{
             RenderDebugGraph,
         },
         place_capabilities::BlockType,
+        unpacking_places,
     },
     rustc_interface::middle::mir,
     utils::{
@@ -62,10 +63,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, obtain_type, ctxt))]
+    /// Expands down to `place`. Where `template` unpacks the same base with
+    /// the same guide, its guide is used: `place` itself does not carry the
+    /// label of an index guide.
+    #[tracing::instrument(skip(self, template, obtain_type, ctxt))]
     fn expand_to(
         &mut self,
         place: Place<'tcx>,
+        template: Option<&BorrowsGraph<'tcx>>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
@@ -73,7 +78,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
-            if self.expand_place_one_level(base, &expansion, None, obtain_type, ctxt)? {
+            let guide = expansion.guide().and_then(|guide| {
+                template?.edges().find_map(|edge| {
+                    let (expanded, _, stored) = unpacking_places(edge.kind())?;
+                    stored.filter(|stored| expanded == base && *stored == guide)
+                })
+            });
+            if self.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
                 tracing::debug!(
                     "expand region projections for {} one level",
                     base.display_string(ctxt.ctxt())
