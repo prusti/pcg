@@ -184,6 +184,12 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             .outlives_generalized(sup, sub, self.location())
     }
 
+    /// Connects `source_proj` to each lifetime projection of `target` that its
+    /// region outlives. The future edges of `source_proj` move to the one of
+    /// these projections whose region equals the source's, or else to the
+    /// first. For `w = Wrap { inner: s }` with `s: &'a mut &'b T`, the future
+    /// edges of `s|'b` go to `w|'b`, not to `w|'a`: `w|'a` holds the outer
+    /// borrow, and its end must not wait for them.
     fn connect_outliving_projections(
         &mut self,
         source_proj: LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
@@ -191,18 +197,24 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         kind: impl Fn(GeneralizedLifetime<'tcx>) -> BorrowFlowEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
+        let source_region = source_proj.region(ctxt.ctxt());
+        let mut first_outlived = None;
+        let mut same_region = None;
         for target_proj in target.lifetime_projections(self.ctxt) {
-            if self.outlives_generalized(
-                source_proj.region(ctxt.ctxt()),
-                target_proj.region(ctxt.ctxt()),
-            ) {
+            let target_region = target_proj.region(ctxt.ctxt());
+            if self.outlives_generalized(source_region, target_region) {
+                first_outlived.get_or_insert(target_proj);
+                if same_region.is_none() && self.outlives_generalized(target_region, source_region)
+                {
+                    same_region = Some(target_proj);
+                }
                 self.record_and_apply_action(
                     BorrowPcgAction::add_edge(
                         BorrowPcgEdge::new(
                             BorrowFlowEdge::new(
                                 source_proj.to_pcg_lifetime_projection(),
                                 target_proj.into(),
-                                kind(target_proj.region(self.ctxt.ctxt())),
+                                kind(target_region),
                             )
                             .into(),
                             self.pcg.borrow.validity_conditions.clone(),
@@ -212,14 +224,15 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                     .into(),
                 )?;
             }
-            if let PlaceOrConst::Place(base) = source_proj.base {
-                let local_source_proj = source_proj.with_base(base);
-                self.place_obtainer().redirect_source_of_future_edges(
-                    local_source_proj,
-                    target_proj.into(),
-                    ctxt,
-                )?;
-            }
+        }
+        if let PlaceOrConst::Place(base) = source_proj.base
+            && let Some(target_proj) = same_region.or(first_outlived)
+        {
+            self.place_obtainer().redirect_source_of_future_edges(
+                source_proj.with_base(base),
+                target_proj.into(),
+                ctxt,
+            )?;
         }
         Ok(())
     }

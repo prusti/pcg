@@ -176,9 +176,11 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     /// also keeps alive the borrows leading to it. The borrow checker doesn't
     /// see this: for `let r = &mut x; let p = r as *mut i32; x = 1; *p = 2;` it
     /// accepts the access to `x`, since `r` is dead. Such an access invalidates
-    /// the raw pointers derived from the loan, so the delegations are removed
-    /// and the raw pointers lose their capability. A delegation of `place`
-    /// itself is unaffected, since `place` is not lent out to the raw pointer.
+    /// the raw pointers derived from the loan, so the delegations are removed:
+    /// the raw pointers no longer give access to the loaned place. The raw
+    /// pointers keep their own capability, since their values stay valid (`p`
+    /// can still be copied). A delegation of `place` itself is unaffected, since
+    /// `place` is not lent out to the raw pointer.
     pub(crate) fn cut_delegations_through_loans_of(
         &mut self,
         place: Place<'tcx>,
@@ -201,29 +203,9 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             place.display_string(self.ctxt)
         );
         for edge in delegations {
-            let BorrowPcgEdgeKind::Delegation(delegation) = edge.kind() else {
-                unreachable!()
-            };
-            let rawptr = delegation
-                .rawptr_place
-                .as_current_place()
-                .and_then(Place::parent_place);
             self.record_and_apply_action(
-                BorrowPcgAction::remove_edge(edge.clone(), context.clone()).into(),
+                BorrowPcgAction::remove_edge(edge, context.clone()).into(),
             )?;
-            if let Some(rawptr) = rawptr
-                && self.pcg.capability_of(rawptr, self.ctxt) == Some(CapabilityKind::Exclusive)
-            {
-                self.record_and_apply_action(
-                    BorrowPcgAction::weaken(
-                        rawptr,
-                        CapabilityKind::Exclusive,
-                        Some(CapabilityKind::Write),
-                        context.clone(),
-                    )
-                    .into(),
-                )?;
-            }
         }
         self.pack_old_and_dead_borrow_leaves(None)
     }
