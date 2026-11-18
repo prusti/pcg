@@ -21,6 +21,7 @@ use crate::{
     },
     utils::{
         DataflowCtxt, DebugCtxt, Place, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -149,7 +150,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                                     e.expansion()
                                         .iter()
                                         .flat_map(|e| e.try_into_lifetime_projection())
-                                        .filter(|e| e.base.is_current())
+                                        // Use each part's current version,
+                                        // also for a part whose place was
+                                        // labelled (e.g. by the write being
+                                        // obtained for).
+                                        .map(|e| {
+                                            e.with_base(MaybeLabelledPlace::Current(e.base.place()))
+                                        })
                                         .collect::<Vec<_>>(),
                                 )
                             } else {

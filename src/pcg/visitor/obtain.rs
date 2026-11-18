@@ -989,6 +989,26 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
             .update_for_deref(ref_place, capability, self.ctxt)
     }
 
+    fn update_capabilities_for_exclusive_deref_of_expanded(
+        &mut self,
+        ref_place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        if self
+            .pcg
+            .place_capabilities
+            .get(ref_place, self.ctxt)
+            .is_none()
+        {
+            self.record_and_apply_action(PcgAction::restore_capability(
+                ref_place,
+                CapabilityKind::ShallowExclusive,
+                "snapshot the projections of an expanded dereference",
+                self.ctxt,
+            ))?;
+        }
+        Ok(())
+    }
+
     fn capability_for_expand(
         &self,
         base_place: Place<'tcx>,

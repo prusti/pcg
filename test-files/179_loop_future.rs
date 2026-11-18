@@ -133,3 +133,14 @@ fn write_sibling_in_loop_one_entry_holds<'a>(
         p.n = 1;
     }
 }
+
+// The loop writes through both variants of `*r`, and the join at the loop head
+// must stay valid.
+fn push_into_variants<'a>(r: &mut Result<Vec<&'a u32>, Vec<&'a u32>>, xs: &'a [u32]) {
+    for x in xs {
+        match r {
+            Ok(v) => v.push(x),
+            Err(w) => w.push(x),
+        }
+    }
+}

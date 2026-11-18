@@ -9,9 +9,10 @@ use crate::{
         GeneralizedLifetime,
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
-            kind::BorrowPcgEdgeType,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
         edge_data::LabelNodePredicate,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
@@ -22,7 +23,7 @@ use crate::{
     r#loop::PlaceUsageType,
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
-        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
+        CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgNode, PcgRefLike,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
@@ -293,6 +294,9 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                     Some(context.clone().into()),
                 )))?;
                 for rp in place.lifetime_projections(ctxt) {
+                    if !capability.is_exclusive() {
+                        continue;
+                    }
                     let rp_expansion: Vec<LocalLifetimeProjection<'tcx>> = place
                         .expansion_places(&pe.expansion, ctxt)
                         .unwrap()
@@ -308,8 +312,45 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                                 .collect::<Vec<_>>()
                         })
                         .collect();
-                    if capability.is_exclusive() {
-                        self.create_aggregate_lifetime_projections(rp.into(), &rp_expansion, ctxt)?;
+                    // A projection that is still the unlabelled base of its
+                    // expansion, and whose parts get nothing but what the
+                    // expansion gives them, was not changed through the
+                    // expansion, so the parts need not be aggregated into it.
+                    // If a part was changed on another path to here, the
+                    // projection's unchanged version is snapshotted, and the
+                    // parts make up the current one.
+                    let rp: LocalLifetimeProjection<'tcx> = rp.into();
+                    let graph = &self.borrows_state().graph;
+                    let is_expansion_of_rp = |kind: &BorrowPcgEdgeKind<'tcx>| {
+                        matches!(
+                            kind,
+                            BorrowPcgEdgeKind::BorrowPcgExpansion(
+                                BorrowPcgExpansion::LifetimeProjection(expansion)
+                            ) if expansion.base == rp
+                        )
+                    };
+                    let still_expanded = graph.edges().any(|edge| is_expansion_of_rp(edge.kind));
+                    let changed_elsewhere = still_expanded
+                        && rp_expansion.iter().any(|part| {
+                            graph
+                                .edges_blocked_by(
+                                    PcgNode::LifetimeProjection(*part),
+                                    ctxt.bc_ctxt(),
+                                )
+                                .any(|edge| !is_expansion_of_rp(edge.kind))
+                        });
+                    if changed_elsewhere {
+                        self.apply_action(
+                            BorrowPcgAction::label_lifetime_projection(
+                                LabelNodePredicate::equals_lifetime_projection(rp),
+                                Some(self.prev_snapshot_location().into()),
+                                "collapse: snapshot the projection unchanged on some paths",
+                            )
+                            .into(),
+                        )?;
+                    }
+                    if !still_expanded || changed_elsewhere {
+                        self.create_aggregate_lifetime_projections(rp, &rp_expansion, ctxt)?;
                     }
                 }
             }
