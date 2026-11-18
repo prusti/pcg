@@ -156,6 +156,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
             .get_places_used_in_loop_with_head(self_block)
         {
             self.join_loop(used_places, validity_conditions, args.reborrow(), ctxt);
+            // As at other joins, relabel the current version of every
+            // projection that also has a placeholder as that placeholder. At a
+            // loop head, such current versions can come from the loop
+            // abstraction or from the places that `join_loop` obtains.
+            self.apply_placeholder_labels(args.capabilities, ctxt);
             #[cfg(feature = "visualization")]
             if borrows_imgcat_debug(self_block, Some(DebugImgcat::JoinLoop))
                 && let Ok(dot_graph) =
@@ -459,21 +464,30 @@ impl<'tcx> BorrowsGraph<'tcx> {
             ctxt.ctxt,
         );
 
+        let loop_head_label = LifetimeProjectionLabel::Location(SnapshotLocation::Loop(loop_head));
         for rp in &to_label {
-            self.filter_mut_edges(
-                |edge| {
-                    edge.value
-                        .label_lifetime_projections(
-                            rp,
-                            Some(LifetimeProjectionLabel::Location(SnapshotLocation::Loop(
-                                loop_head,
-                            ))),
-                            ctxt,
-                        )
-                        .to_filter_mut_result()
-                },
-                ctxt,
-            );
+            self.label_lifetime_projections(rp, Some(loop_head_label), ctxt);
+        }
+
+        // The abstraction has a placeholder for a projection of a current
+        // place only after snapshotting that projection at the loop head. The
+        // incoming graph's current version of such a projection is therefore
+        // its value at the loop head, so it is labelled as that snapshot.
+        for node in abstraction_graph.nodes(ctxt.bc_ctxt()) {
+            if let PcgNode::LifetimeProjection(rp) = node
+                && rp.is_future()
+                && let Some(PcgNode::LifetimeProjection(local_rp)) =
+                    rp.try_to_local_node(ctxt.bc_ctxt())
+                && local_rp.base.is_current()
+            {
+                self.label_lifetime_projections(
+                    &LabelNodePredicate::equals_lifetime_projection(
+                        local_rp.with_label(None, ctxt.bc_ctxt()),
+                    ),
+                    Some(loop_head_label),
+                    ctxt,
+                );
+            }
         }
 
         for (place, cap_option) in capability_updates {
