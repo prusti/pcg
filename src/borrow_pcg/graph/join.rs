@@ -476,7 +476,14 @@ impl<'tcx> BorrowsGraph<'tcx> {
             );
         }
 
+        // The places that the loop abstraction blocks are lent to it, or
+        // frozen if it only reads them.
         for (place, cap_option) in capability_updates {
+            if let Some(held) = capabilities.get(place, ctxt.ctxt)
+                && !held.is_read()
+            {
+                capabilities.suspend(place, held);
+            }
             if let Some(cap) = cap_option {
                 capabilities.insert(place, cap, ctxt);
             } else {

@@ -107,6 +107,7 @@ pub fn borrow_of_element_ends_while_type_regions_flow<T>(x: &mut [Inner<T>], i: 
 /// As above through a raw pointer: the borrow checker does not track the
 /// borrow of `*p`, so the PCG keeps it while its result lives.
 pub unsafe fn untracked_borrow_kept<T>(p: *mut Inner<T>) -> Option<T> {
+    // PCG: bb0[7] pre_operands: *p: suspended E
     // ~PCG: bb0[7] pre_operands: Remove Edge borrow: _7 = &mut  *p returning E to *p
     unsafe {
         let v = std::pin::Pin::new(&mut *p).0.take();

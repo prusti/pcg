@@ -46,6 +46,7 @@ mod pcg;
 
 pub use dataflow_stmt_phase::*;
 pub use eval_stmt_phase::*;
+pub(crate) use join::meet;
 pub use pcg::*;
 
 use super::PcgEngine;
@@ -388,6 +389,20 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
                     &target.place_capabilities,
                     &target,
                     incoming.ctxt.block,
+                    SnapshotLocation::After(incoming.ctxt.block),
+                    ctxt,
+                )?;
+            }
+
+            // The joined state gets back what every predecessor suspends, at
+            // the meet.
+            let mut joined = first.data.pcg.states.0.post_main.place_capabilities.clone();
+            for other in &rest {
+                joined.meet_suspended(&other.data.pcg.states.0.post_main.place_capabilities);
+            }
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                Rc::make_mut(&mut incoming.data.pcg.states.0.post_main).weaken_suspended_to(
+                    &joined,
                     SnapshotLocation::After(incoming.ctxt.block),
                     ctxt,
                 )?;

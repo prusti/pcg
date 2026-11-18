@@ -85,3 +85,15 @@ fn join_two_constant_index_read_expansions(a: [String; 2], c: bool) -> usize {
     // PCG: bb4[0] pre_operands: Collapse(RepackCollapse { to: _1, capability: R, guide: Some(ConstantIndex(ConstantIndex { offset: 1, min_length: 2, from_end: false })), _marker: PhantomData<&()> })
     // PCG: bb4[0] post_operands: a: E
 }
+
+// `d` is read-unpacked at two indices while frozen: each collapse packs its
+// own index at R, and `d` gets its E back only from its unfreeze.
+fn read_at_two_indices(i: usize, j: usize) -> u32 {
+    // PCG: bb2[8] pre_operands: Unfreeze d
+    let mut d = [0u32; 4];
+    let a = &d[i];
+    let b = &d[j];
+    let s = *a + *b;
+    d[0] = s;
+    d[0]
+}

@@ -73,4 +73,14 @@ unsafe fn raw_deref_read_or_frozen(mut s: RawCell, c: bool) -> i32 {
     s.n
 }
 
+// Writing a part of the referent of a raw pointer leaves the other part
+// initialised: as for a reference, the dereference gives the referent E,
+// not the W the write obtains.
+unsafe fn raw_referent_part_written_sibling_read(p: *mut (u32, u32)) -> u32 {
+    // PCG: bb0[0] pre_main: Add Edge {p} -> {*p} setting *p: E
+    // PCG: bb0[1] pre_operands: (*p).1: R
+    (*p).0 = 3;
+    (*p).1
+}
+
 fn main() {}

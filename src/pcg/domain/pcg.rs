@@ -263,6 +263,37 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        for (place, suspended) in self.place_capabilities.iter_suspended() {
+            if let Some(cap) = self.place_capabilities.get(place, ctxt)
+                && !cap.is_read()
+            {
+                return Err(format!(
+                    "Place {} suspends {:?} but holds {:?}",
+                    place.display_string(ctxt.bc_ctxt()),
+                    suspended,
+                    cap
+                ));
+            }
+        }
+
+        // A frozen place, which holds R below no place holding R, records what
+        // its freeze suspends.
+        for (place, cap) in self.place_capabilities.iter() {
+            if cap.is_read()
+                && !place.projects_shared_ref(ctxt)
+                && !place.contains_unsafe_deref(ctxt)
+                && self.place_capabilities.suspended(place).is_none()
+                && place
+                    .parent_place()
+                    .is_none_or(|parent| self.place_capabilities.get(parent, ctxt) != Some(cap))
+            {
+                return Err(format!(
+                    "Frozen place {} suspends no capability",
+                    place.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
         for edge in self.borrow.graph.edges() {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
@@ -413,14 +444,28 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             SnapshotLocation::After(self_block)
         };
         let mut reached = self.clone();
-        // Most edges lead to a state that holds the same as this one, with
-        // the same layout: there is nothing to reach.
+        // Most edges lead to a state that holds and records the same as this
+        // one, with the same layout: there is nothing to reach.
         let mut actions =
             if self.place_capabilities == other.place_capabilities && self.owned == other.owned {
                 vec![]
             } else {
-                reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?
+                let mut actions =
+                    reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
+                actions.extend(reached.weaken_suspended_to(
+                    &other.place_capabilities,
+                    snapshot,
+                    ctxt,
+                )?);
+                actions
             };
+        pcg_validity_assert!(
+            reached.place_capabilities.suspended == other.place_capabilities.suspended,
+            [ctxt],
+            "the edge into {other_block:?} reaches the suspended capabilities {:?} instead of {:?}",
+            reached.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
+        );
         // The edges of the loop abstraction of `other` are introduced on the
         // edge into the loop, after the unpackings in the borrow PCG down to
         // the places they block that this state lacks (an element at another
