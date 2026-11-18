@@ -123,13 +123,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> Result<bool, PcgError> {
-        if self.contains_owned_expansion_to(expansion.target_place) {
-            tracing::debug!(
-                "Already contains owned expansion from {}",
-                base.place().display_string(ctxt.ctxt())
-            );
-            return Ok(false);
-        }
         tracing::debug!(
             "New owned expansion from {}",
             base.display_string(ctxt.ctxt())
@@ -163,6 +156,37 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         Ok(true)
     }
 
+    /// Whether the PCG already contains `expansion` of `base`, in which case
+    /// [`Self::expand_place_one_level`] leaves the PCG unchanged.
+    fn contains_expansion(
+        &self,
+        base: Place<'tcx>,
+        expansion: &ShallowExpansion<'tcx>,
+        guide: Option<RepackGuide>,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<bool, PcgError> {
+        match expansion.kind {
+            ProjectionKind::DerefRef(_) => Ok(self
+                .borrows_graph()
+                .contains_deref_edge_to(base.project_deref(ctxt))),
+            ProjectionKind::DerefRawPtr(_) => Ok(false),
+            _ if base.as_owned_place(ctxt).is_some() => {
+                Ok(self.contains_owned_expansion_to(expansion.target_place))
+            }
+            _ => self
+                .borrows_graph()
+                .contains_borrow_pcg_expansion(
+                    &ExpandedPlace {
+                        place: base,
+                        expansion: PlaceExpansion::from_places(expansion.expansion(), ctxt)
+                            .with_guide(guide),
+                    },
+                    ctxt.bc_ctxt(),
+                )
+                .map_err(Into::into),
+        }
+    }
+
     fn expand_place_one_level(
         &mut self,
         base: Place<'tcx>,
@@ -171,15 +195,12 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<bool, PcgError> {
+        if self.contains_expansion(base, expansion, guide, ctxt)? {
+            return Ok(false);
+        }
         let place_expansion =
             PlaceExpansion::from_places(expansion.expansion(), ctxt).with_guide(guide);
         if matches!(expansion.kind, ProjectionKind::DerefRef(_)) {
-            if self
-                .borrows_graph()
-                .contains_deref_edge_to(base.project_deref(ctxt))
-            {
-                return Ok(false);
-            }
             let blocked_lifetime_projection_label =
                 if base.is_mut_ref(ctxt) && obtain_type.should_label_rp(base, ctxt) {
                     Some(self.prev_snapshot_location())
@@ -260,12 +281,6 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             place: base,
             expansion: place_expansion,
         };
-        if self
-            .borrows_graph()
-            .contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())?
-        {
-            return Ok(false);
-        }
         tracing::debug!(
             "Create expansion from {}",
             base.display_string(ctxt.bc_ctxt())
