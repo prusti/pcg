@@ -839,3 +839,20 @@ fn variant_field_read_same_variant_borrowed_through_ref(x: &mut AC) -> u32 {
     }
     *a
 }
+
+// The discriminant of `o` is read while `v` borrows into its referent: the
+// read is shallow (rustc allows it) and `o` comes back whole once `v` ends.
+pub fn variant_referent_part_lent_discriminant_read(
+    mut o: Option<&mut (u32, u32)>,
+) -> Option<&mut (u32, u32)> {
+    // PCG: bb5[6] pre_operands: o: R
+    // PCG: bb9[2] pre_operands: Unfreeze o
+    let mut z = 0;
+    let v: &mut u32 = match o {
+        Some(&mut (_, ref mut v)) => v,
+        None => &mut z,
+    };
+    let s = matches!(o, Some(_));
+    *v = 1;
+    if s { o } else { None }
+}
