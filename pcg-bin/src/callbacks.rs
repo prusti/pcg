@@ -74,6 +74,10 @@ impl driver::Callbacks for PcgAsRustcCallbacks {
         tracing::debug!("Setting mir_borrowck");
         assert!(config.override_queries.is_none());
         config.override_queries = Some(set_mir_borrowck);
+        // With incremental compilation, rustc reuses the borrowck results of unchanged
+        // bodies without running the `mir_borrowck` provider, so `set_mir_borrowck` would
+        // never store their bodies.
+        config.opts.incremental = None;
         let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
         init_rustc_env_logger(&early_dcx);
     }
