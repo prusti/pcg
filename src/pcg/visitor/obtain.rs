@@ -6,7 +6,7 @@ use crate::{
     borrow_pcg::{
         self,
         action::{ApplyActionResult, BorrowPcgActionKind, LabelPlaceReason},
-        borrow_pcg_edge::BorrowPcgEdge,
+        borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike},
         borrow_pcg_expansion::{BorrowPcgExpansion, PlaceExpansion},
         edge::{
             borrow_flow::private::FutureEdgeKind,
@@ -27,6 +27,7 @@ use crate::{
         place_capabilities::{
             BlockType, PlaceCapabilities, PlaceCapabilitiesInterface, PlaceCapabilitiesReader,
         },
+        unpacking_places,
         visitor::upgrade::AdjustCapabilityReason,
     },
     pcg_validity_assert,
@@ -137,6 +138,15 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         } else {
             CapabilityKind::Exclusive
         };
+        // A place in the read unpacking of a frozen ancestor comes back as a
+        // read copy.
+        let restore_cap = if restore_cap == CapabilityKind::Exclusive
+            && self.frozen_ancestor(place.place()) != place.place()
+        {
+            CapabilityKind::Read
+        } else {
+            restore_cap
+        };
 
         // The blocked capability would be None if the place was mutably
         // borrowed. The capability would be ShallowExclusive if the place is
@@ -153,6 +163,19 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                 context.to_owned(),
                 self.ctxt,
             ))?;
+        } else if blocked_cap == Some(CapabilityKind::Read)
+            && restore_cap == CapabilityKind::Exclusive
+            && self.frozen_ancestor(place) == place
+            && self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_none()
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::unfreeze(place, context.to_owned()).into(),
+            )?;
         }
         for rp in place.lifetime_projections(self.ctxt) {
             self.record_and_apply_action(
@@ -496,25 +519,143 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ok(())
     }
 
-    pub(crate) fn remove_read_permission_downwards(
-        &mut self,
-        upgraded_place: Place<'tcx>,
-    ) -> Result<(), PcgError> {
-        let to_remove = self
+    /// Returns the read copies in the unpacking of `place` to it, for an
+    /// unpacking that cannot be packed (because places in it are borrowed).
+    /// Borrowed copies cannot be returned and are kept.
+    pub(crate) fn drop_read_copies(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        let copies = self
             .pcg
             .place_capabilities
-            .iter()
-            .filter(|(p, _)| {
-                p.projection.len() > upgraded_place.projection.len()
-                    && upgraded_place.is_prefix_of(*p)
-            })
+            .capabilities_for_strict_postfixes_of(place)
             .collect::<Vec<_>>();
-        for (p, cap) in to_remove {
+        let borrowed = copies
+            .iter()
+            .map(|(p, _)| *p)
+            .filter(|p| self.holds_freeze(*p))
+            .collect::<Vec<_>>();
+        let ctxt = self.ctxt;
+        for (p, cap) in copies {
+            if borrowed.iter().any(|b| b.is_prefix_of(p)) {
+                continue;
+            }
+            pcg_validity_assert!(
+                cap.is_read(),
+                [ctxt],
+                "{} in the read unpacking of {} has capability {:?}",
+                p.display_string(self.ctxt),
+                place.display_string(self.ctxt),
+                cap
+            );
             self.record_and_apply_action(
-                BorrowPcgAction::weaken(p, cap, None, "Remove read permission downwards").into(),
+                BorrowPcgAction::weaken(p, cap, None, "return read copy").into(),
             )?;
         }
         Ok(())
+    }
+
+    /// Detaches the borrowed referents of shared references below `place`:
+    /// the referent is labelled, so that its borrows keep the labelled
+    /// referent, and the dereference edge is removed. The referent of a shared
+    /// reference does not depend on the place holding the reference.
+    pub(crate) fn detach_borrowed_shared_referents(
+        &mut self,
+        place: Place<'tcx>,
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let graph = &self.pcg.borrow.graph;
+        let is_borrowed = |referent: Place<'tcx>| {
+            graph.edges().any(|edge| {
+                !matches!(
+                    edge.kind(),
+                    BorrowPcgEdgeKind::Deref(_)
+                        | BorrowPcgEdgeKind::RawPtrDeref(_)
+                        | BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                ) && edge.kind().blocked_nodes(ctxt.bc_ctxt()).any(|node| {
+                    node.related_maybe_labelled_place()
+                        .and_then(MaybeLabelledPlace::as_current_place)
+                        .is_some_and(|p| referent.is_prefix_of(p))
+                })
+            })
+        };
+        let mut referents = graph
+            .edges()
+            .filter_map(|edge| {
+                let BorrowPcgEdgeKind::Deref(deref) = edge.kind() else {
+                    return None;
+                };
+                let reference = deref.blocked_place().as_current_place()?;
+                let referent = deref.deref_place().as_current_place()?;
+                (place.is_prefix_of(reference)
+                    && reference.is_shared_ref(ctxt)
+                    && is_borrowed(referent))
+                .then_some(referent)
+            })
+            .collect::<Vec<_>>();
+        referents.sort_by_key(|referent| referent.projection.len());
+        let mut detached: Vec<Place<'tcx>> = vec![];
+        for referent in referents {
+            if detached.iter().any(|d| d.is_prefix_of(referent)) {
+                continue;
+            }
+            detached.push(referent);
+            self.record_and_apply_action(
+                BorrowPcgAction::label_place_and_update_related_capabilities(
+                    referent,
+                    self.prev_snapshot_location(),
+                    LabelPlaceReason::DetachSharedReferent,
+                )
+                .into(),
+            )?;
+            let reference = referent.parent_place().unwrap();
+            let derefs = self
+                .pcg
+                .borrow
+                .graph
+                .edges()
+                .filter_map(|edge| match edge.kind() {
+                    BorrowPcgEdgeKind::Deref(deref)
+                        if deref.blocked_place().as_current_place() == Some(reference) =>
+                    {
+                        Some(Conditioned::new(*deref, edge.conditions.clone()))
+                    }
+                    _ => None,
+                })
+                .collect::<HashSet<_>>();
+            let Some(deref) = derefs.iter().next() else {
+                continue;
+            };
+            let deref_place = deref.value.deref_place();
+            self.remove_deref_edges_to(deref_place, derefs, "detach shared referent")?;
+        }
+        Ok(())
+    }
+
+    /// Packs the read unpacking below `place`, deepest first, except where
+    /// places in it are borrowed.
+    pub(crate) fn pack_read_unpacking(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
+        loop {
+            let fg = self.pcg.borrow.graph.frozen_graph();
+            let packable = fg
+                .leaf_edges(self.ctxt)
+                .into_iter()
+                .map(BorrowPcgEdgeLike::to_owned_edge)
+                .find(|edge| {
+                    unpacking_places(edge.kind()).is_some_and(|(base, _, _)| {
+                        place.is_prefix_of(base)
+                            && self.pcg.capability_of(base, self.ctxt) == Some(CapabilityKind::Read)
+                            && edge.kind().blocked_by_nodes(self.ctxt).all(|node| {
+                                node.as_current_place().is_some_and(|p| {
+                                    self.pcg.capability_of(p, self.ctxt)
+                                        == Some(CapabilityKind::Read)
+                                })
+                            })
+                    })
+                });
+            let Some(edge) = packable else {
+                return Ok(());
+            };
+            self.remove_edge_and_perform_associated_state_updates(&edge, "pack read unpacking")?;
+        }
     }
 
     pub(crate) fn upgrade_read_to_exclusive(&mut self, place: Place<'tcx>) -> Result<(), PcgError> {
@@ -522,18 +663,21 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             "upgrade_read_to_exclusive: {}",
             place.display_string(self.ctxt.bc_ctxt())
         );
-        self.record_and_apply_action(
-            BorrowPcgAction::restore_capability(
-                place,
-                CapabilityKind::Exclusive,
-                "upgrade_read_to_exclusive",
-            )
-            .into(),
-        )?;
-        self.remove_read_permission_downwards(place)?;
-        if let Some(parent) = place.parent_place() {
-            self.remove_read_permission_upwards_and_label_rps(
-                parent,
+        self.detach_borrowed_shared_referents(place)?;
+        self.pack_read_unpacking(place)?;
+        self.drop_read_copies(place)?;
+        let frozen = self.frozen_ancestor(place);
+        // Packing the whole read unpacking already unfreezes the frozen place.
+        if self
+            .pcg
+            .place_capability_equals(frozen, CapabilityKind::Read, self.ctxt)
+        {
+            self.end_freeze(frozen, AdjustCapabilityReason::UpgradeReadToExclusive)?;
+        }
+        if frozen != place {
+            self.label_rps_up_to(
+                place.parent_place().unwrap(),
+                frozen,
                 AdjustCapabilityReason::UpgradeReadToExclusive,
             )?;
         }
@@ -870,6 +1014,23 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             );
         }
 
+        // An unpacked borrowed place is read by freezing its unpacking (owned
+        // places are frozen by the collapse above).
+        if obtain_cap.is_read()
+            && place.as_owned_place(self.ctxt).is_none()
+            && self.pcg.capability_of(place, self.ctxt).is_none()
+            && self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
+        {
+            self.record_and_apply_action(
+                BorrowPcgAction::freeze(place, "read an unpacked place").into(),
+            )?;
+        }
+
         // STEP 3
         if !obtain_cap.is_read() {
             tracing::debug!(
@@ -939,6 +1100,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
             .contains_expansion_to(target, self.ctxt)
     }
 
+    fn holds_capability_at_or_below(&self, place: Place<'tcx>) -> bool {
+        self.pcg.capability_of(place, self.ctxt).is_some()
+            || self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
+    }
+
     fn borrows_graph(&self) -> &borrow_pcg::graph::BorrowsGraph<'tcx> {
         self.pcg.borrow.graph
     }
@@ -971,6 +1142,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
         self.pcg
             .place_capabilities
             .update_for_deref(ref_place, capability, self.ctxt)
+    }
+
+    fn freeze_for_read_unpacking(&mut self, base: Place<'tcx>) -> Result<(), PcgError> {
+        if self
+            .pcg
+            .place_capability_equals(base, CapabilityKind::Exclusive, self.ctxt)
+        {
+            self.record_and_apply_action(BorrowPcgAction::freeze(base, "unpack for read").into())?;
+        }
+        Ok(())
     }
 
     fn capability_for_expand(

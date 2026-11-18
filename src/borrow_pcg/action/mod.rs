@@ -10,6 +10,7 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         edge::{
+            borrow::BorrowEdge,
             borrow_flow::private::FutureEdgeKind,
             kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
@@ -117,6 +118,37 @@ impl<'tcx, P: PcgNodeComponent, VC> BorrowPcgAction<'tcx, BorrowPcgEdgeKind<'tcx
         }
     }
 
+    pub(crate) fn freeze(place: P, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::Freeze { place },
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn unfreeze(place: P, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::Unfreeze { place },
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn refreeze(place: P, to: Vec<P>, context: impl Into<DisplayOutput>) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::Refreeze { place, to },
+            debug_info: Some(context.into()),
+        }
+    }
+
+    pub(crate) fn activate_two_phase_borrow(
+        borrow: BorrowEdge<'tcx, P>,
+        context: impl Into<DisplayOutput>,
+    ) -> Self {
+        BorrowPcgAction::<'tcx, BorrowPcgEdgeKind<'tcx, P>, P, VC> {
+            kind: BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow },
+            debug_info: Some(context.into()),
+        }
+    }
+
     pub(crate) fn remove_lifetime_projection_label(
         projection: LifetimeProjection<'tcx, MaybeLabelledPlace<'tcx, P>>,
         context: impl Into<DisplayOutput>,
@@ -171,6 +203,10 @@ pub enum LabelPlaceReason {
     Collapse,
     /// Label lifetime projections of places that are mutated in a loop.
     JoinLoop,
+    /// The referent of a shared reference is detached from the place holding
+    /// the reference, so that the latter can be packed: the borrows of the
+    /// referent keep the labelled referent.
+    DetachSharedReferent,
 }
 
 impl LabelPlaceReason {
@@ -188,9 +224,8 @@ impl LabelPlaceReason {
             ]),
             LabelPlaceReason::StorageDead
             | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
-                LabelNodePredicate::PlaceIsPostfixOf(place)
-            }
+            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities
+            | LabelPlaceReason::DetachSharedReferent => LabelNodePredicate::PlaceIsPostfixOf(place),
             LabelPlaceReason::Write => LabelNodePredicate::And(vec![
                 LabelNodePredicate::PlaceIsPostfixOf(place),
                 // If the place is e.g *x or x.f, don't label it if it
@@ -357,6 +392,44 @@ pub enum BorrowPcgActionKind<
     LabelLifetimeProjection(LabelLifetimeProjectionAction<'tcx, P>),
     Weaken(Weaken<'tcx, P>),
     Restore(RestoreCapability<'tcx, P>),
+    /// The place goes from E to R because it is read or borrowed for read.
+    /// Unlike a [`Weaken`], the E capability is only suspended: it comes back
+    /// through [`BorrowPcgActionKind::Unfreeze`] or
+    /// [`BorrowPcgActionKind::Refreeze`] of the same place, or is lent by
+    /// [`BorrowPcgActionKind::ActivateTwoPhaseBorrow`].
+    ///
+    /// If the place is unpacked, it has no capability and its descendants
+    /// hold the E or are frozen; they all become read copies under the
+    /// frozen place.
+    ///
+    /// A place with R whose parent has R is a read copy of a frozen
+    /// ancestor, not frozen itself.
+    Freeze {
+        place: P,
+    },
+    /// The place goes from R back to the E suspended by
+    /// [`BorrowPcgActionKind::Freeze`], because no borrow of it is left. If
+    /// the place is unpacked, the read unpacking becomes an exclusive one (as
+    /// for [`BorrowPcgActionKind::Refreeze`] with no `to`).
+    Unfreeze {
+        place: P,
+    },
+    /// The freeze of the unpacked `place` ends while its descendants `to` are
+    /// still borrowed: the freeze moves to `to`, which become frozen, and the
+    /// rest of the unpacking of `place` gets its E back. The unpacking becomes
+    /// an exclusive one: `place` and the places between it and `to` keep no
+    /// capability (`e` for a mutable reference), and the other read copies
+    /// get E (R if they are behind a shared reference).
+    Refreeze {
+        place: P,
+        to: Vec<P>,
+    },
+    /// The two-phase borrow is activated: its blocked place goes from R to
+    /// lent, i.e. the E suspended by the reservation's
+    /// [`BorrowPcgActionKind::Freeze`] is lent to the borrow.
+    ActivateTwoPhaseBorrow {
+        borrow: BorrowEdge<'tcx, P>,
+    },
     LabelPlace(LabelPlaceAction<'tcx, P>),
     /// Remove an edge from the PCG. In terms of the PCG itself, the validity
     /// conditions associated with the edge are not relevant (there is no
@@ -419,6 +492,33 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>, EdgeKind: DisplayWithCt
             BorrowPcgActionKind::Restore(restore_capability) => {
                 restore_capability.display_output(ctxt, mode)
             }
+            BorrowPcgActionKind::Freeze { place } => DisplayOutput::join(
+                vec!["Freeze".into(), place.display_output(ctxt, mode)],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::Unfreeze { place } => DisplayOutput::join(
+                vec!["Unfreeze".into(), place.display_output(ctxt, mode)],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::Refreeze { place, to } => DisplayOutput::join(
+                vec![
+                    "Refreeze".into(),
+                    place.display_output(ctxt, mode),
+                    "to".into(),
+                    DisplayOutput::join(
+                        to.iter().map(|p| p.display_output(ctxt, mode)),
+                        &", ".into(),
+                    ),
+                ],
+                &DisplayOutput::SPACE,
+            ),
+            BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => DisplayOutput::join(
+                vec![
+                    "Activate two-phase borrow".into(),
+                    borrow.display_output(ctxt, mode),
+                ],
+                &DisplayOutput::SPACE,
+            ),
             BorrowPcgActionKind::LabelPlace(action) => action.display_output(ctxt, mode),
             BorrowPcgActionKind::RemoveEdge(edge) => DisplayOutput::join(
                 vec!["Remove Edge".into(), edge.display_output(ctxt, mode)],

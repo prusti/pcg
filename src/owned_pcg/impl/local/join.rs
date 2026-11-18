@@ -13,7 +13,10 @@ use crate::{
     },
     pcg::{
         CapabilityKind,
-        obtain::{ActionApplier, HasSnapshotLocation, PlaceCollapser},
+        obtain::{
+            ActionApplier, HasSnapshotLocation, PlaceCollapser, end_freeze_action, frozen_ancestor,
+            holds_freeze,
+        },
         place_capabilities::{PlaceCapabilitiesInterface, PlaceCapabilitiesReader},
     },
     pcg_validity_assert,
@@ -469,6 +472,33 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                     CapabilityKind::Write,
                 ));
                 Ok(actions)
+            }
+            (CapabilityKind::Read, CapabilityKind::ShallowExclusive)
+                if !holds_freeze(
+                    self.borrows.graph(),
+                    frozen_ancestor(self.capabilities, place, ctxt),
+                    ctxt,
+                ) =>
+            {
+                // A reference or raw pointer that is frozen, or a read copy of
+                // a frozen ancestor, on this side (e.g. after a read through a
+                // raw pointer, whose unpacking stays) but unpacked exclusively
+                // on the other: as for an exclusive access, the freeze of its
+                // frozen ancestor ends.
+                let action = end_freeze_action(
+                    self.borrows.graph(),
+                    self.capabilities,
+                    frozen_ancestor(self.capabilities, place, ctxt),
+                    "join with an exclusive unpacking".to_owned(),
+                    ctxt,
+                );
+                let mut join_obtainer = JoinObtainer {
+                    ctxt,
+                    data: self,
+                    actions: vec![],
+                };
+                join_obtainer.apply_action(action.into())?;
+                Ok(join_obtainer.actions)
             }
             (
                 CapabilityKind::Read

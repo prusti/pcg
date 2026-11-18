@@ -11,7 +11,7 @@ use crate::{
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
-        obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
+        obtain::{PlaceCollapser, PlaceObtainer, end_freeze_action, expand::PlaceExpander},
         owned_state::OwnedPcg,
         place_capabilities::PlaceCapabilitiesInterface,
         triple::TripleWalker,
@@ -107,21 +107,41 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             })
             .collect::<HashSet<_>>();
         for place in leaf_future_node_places {
-            // If the place is a leaf, and it's not borrowed, then we remove the future label
+            // If the place is a leaf, and it's not borrowed, then we remove the
+            // future label: a lent place gets E back, and the freeze of a
+            // frozen place ends. The latter ends a two-phase reservation of a
+            // place behind a raw pointer, which the borrow checker does not
+            // track and therefore never activates.
             if self.pcg.is_expansion_leaf(place, self.ctxt)
                 && !self
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
-                && self.pcg.capability_of(place, self.ctxt).is_none()
             {
-                let action = PcgAction::restore_capability(
-                    place,
-                    CapabilityKind::Exclusive,
-                    "Leaf future node restore cap",
-                    self.ctxt,
-                );
-                self.record_and_apply_action(action)?;
+                match self.pcg.capability_of(place, self.ctxt) {
+                    None => {
+                        let action = PcgAction::restore_capability(
+                            place,
+                            CapabilityKind::Exclusive,
+                            "Leaf future node restore cap",
+                            self.ctxt,
+                        );
+                        self.record_and_apply_action(action)?;
+                    }
+                    Some(CapabilityKind::Read)
+                        if self.place_obtainer().frozen_ancestor(place) == place =>
+                    {
+                        let action = end_freeze_action(
+                            &self.pcg.borrow.graph,
+                            &self.pcg.place_capabilities,
+                            place,
+                            "Leaf future node unfreeze".to_owned(),
+                            self.ctxt,
+                        );
+                        self.record_and_apply_action(action.into())?;
+                    }
+                    Some(_) => {}
+                }
             }
         }
         Ok(())
@@ -372,10 +392,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .ctxt
                     .body_analysis()
                     .is_read_only_in_loop(self.location().block, place)
+                && !self
+                    .blocked_owned_places(self.ctxt.bc_ctxt())
+                    .contains(&place)
             {
-                self.pcg
-                    .place_capabilities
-                    .insert(place, CapabilityKind::Exclusive, self.ctxt);
+                self.record_and_apply_action(
+                    BorrowPcgAction::unfreeze(place, "unfreeze collapsed local").into(),
+                )?;
             }
         }
         Ok(true)
@@ -421,11 +444,44 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             borrow.display_string(self.ctxt)
         );
         let blocked_place = borrow.blocked_place.place();
+        if !self
+            .pcg
+            .place_capability_equals(blocked_place, CapabilityKind::Read, self.ctxt)
+        {
+            return Ok(());
+        }
+        let borrow = borrow.clone();
+        // If the place is a read copy of a frozen ancestor (the ancestor was
+        // read during the reservation, or the reservation was made under a
+        // shared borrow of it), the freeze moves to the place first.
+        let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
+        if frozen != blocked_place {
+            self.place_obtainer()
+                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+        }
         self.place_obtainer()
-            .remove_read_permission_upwards_and_label_rps(
-                blocked_place,
-                AdjustCapabilityReason::TwoPhaseBorrowActivation,
-            )?;
+            .detach_borrowed_shared_referents(blocked_place)?;
+        self.place_obtainer().pack_read_unpacking(blocked_place)?;
+        // Reads during the reservation may have unpacked the place at R.
+        if blocked_place.as_owned_place(self.ctxt).is_some() {
+            let ctxt = self.ctxt;
+            self.place_obtainer()
+                .collapse_owned_places_and_lifetime_projections_to(
+                    blocked_place,
+                    CapabilityKind::Read,
+                    "pack the reads of a two-phase borrowed place".to_owned(),
+                    ctxt,
+                )?;
+        }
+        self.place_obtainer().drop_read_copies(blocked_place)?;
+        self.record_and_apply_action(
+            BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
+        )?;
+        self.place_obtainer().label_rps_up_to(
+            blocked_place,
+            frozen,
+            AdjustCapabilityReason::TwoPhaseBorrowActivation,
+        )?;
         Ok(())
     }
 }
