@@ -258,16 +258,38 @@ jobs:
         TOP_CRATES_GROUPS: ${{ strategy.job-total }}
         TEST_CRATES_PARALLELISM: 1
       run: cargo test --test top_crates -- --ignored --nocapture
+    # Shows the sweep's summary on the run's page, with an error annotation
+    # for each crate that needs action and, folded, all crates that did not
+    # pass.
     - name: Summarize results
       if: always()
       working-directory: pcg-tests
       run: |
         if [ -f tmp/top-crates-results.tsv ]; then
+          awk -F '\t' '
+            function escape(s) { gsub(/%/, "%25", s); return s }
+            $4 == "fail" {
+              print "::error title=New top-crates failure: " $2 "::" escape("in " $7 ": " $8)
+            }
+            $4 == "fixed" {
+              print "::error title=Known top-crates failure now passes: " $2 "::Remove " $2 " from the known failures; see the summary at the end of the sweep output"
+            }
+          ' tmp/top-crates-results.tsv
+        fi
+        if [ -f tmp/top-crates-summary.txt ]; then
           {
             echo "### Crate group ${{ matrix.group }}"
             echo '```'
+            cat tmp/top-crates-summary.txt
+            echo '```'
+            echo "The logs of the crates are in the \`top-crates-${{ matrix.group }}\` artifact."
+            echo
+            echo '<details><summary>Crates that did not pass</summary>'
+            echo
+            echo '```'
             awk -F '\t' '$4 != "pass"' tmp/top-crates-results.tsv
             echo '```'
+            echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
         fi
     - name: Upload logs

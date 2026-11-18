@@ -8,7 +8,7 @@ use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::{
     cmp::Reverse,
-    collections::BTreeSet,
+    collections::BTreeMap,
     io::{ErrorKind, Write},
     ops::Range,
     os::unix::process::CommandExt,
@@ -36,6 +36,8 @@ const RESULTS_FILE: &str = "tmp/top-crates-results.tsv";
 
 const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\tfunction\tmessage";
 
+const SUMMARY_FILE: &str = "tmp/top-crates-summary.txt";
+
 /// Runs the PCG with validity checks on every function of the most downloaded
 /// crates of `DATE`, and fails if a crate fails that is not a known failure or
 /// a known failure passes.
@@ -61,7 +63,9 @@ const RESULTS_HEADER: &str = "index\tcrate\tversion\tresult\tseconds\tpeak_mib\t
 ///   machine, and it leaves room for the system on a 16 GB CI runner.
 ///
 /// Each crate's result is appended to `RESULTS_FILE` as soon as the crate is
-/// done, and the output of its check is written to `LOG_DIR`.
+/// done, and the output of its check is written to `LOG_DIR`. At the end, the
+/// test prints a summary of what failed and what to do about it (see
+/// `summary`) and writes it to `SUMMARY_FILE`.
 #[test]
 #[ignore]
 pub fn top_crates() {
@@ -111,7 +115,7 @@ pub fn top_crates() {
                 outcome,
                 time: began.elapsed(),
                 peak_mib,
-                known_failure: known_failures.contains(&krate.name),
+                known_failure: known_failures.contains_key(&krate.name),
             };
             println!(
                 "Finished: {index} ({} {version}): {} in {}s",
@@ -129,45 +133,92 @@ pub fn top_crates() {
         println!("{}", result.row());
     }
 
-    let failures: Vec<String> = results
+    let (summary, as_expected) = summary(&results, &known_failures);
+    std::fs::write(SUMMARY_FILE, format!("{summary}\n")).unwrap();
+    // The summary of a failed sweep is the panic message, so that it ends the
+    // test's output.
+    assert!(as_expected, "{summary}");
+    println!("{summary}");
+}
+
+/// A summary of `results` and whether every crate passed or failed as
+/// expected. Before the counts of each result, it lists the crates that
+/// failed without being known failures and the known failures that passed,
+/// each with what to do about it.
+fn summary(results: &[CrateResult], known_failures: &BTreeMap<String, String>) -> (String, bool) {
+    // The paths are relative to `pcg-tests`, where the sweep runs.
+    let list = format!("pcg-tests/{}", known_failures_file(DATE).display());
+    let new_failures = results
         .iter()
         .filter(|result| !result.known_failure)
         .filter_map(|result| match &result.outcome {
-            Outcome::Failed(failure) => Some(format!(
-                "{} {} in {}: {} (log: {})",
-                result.krate.name,
-                result.krate.version(),
-                failure.function.as_deref().unwrap_or("unknown function"),
-                failure.message,
-                crate_log_file(&result.krate).display()
-            )),
+            Outcome::Failed(failure) => Some((result, failure)),
             Outcome::Passed | Outcome::Unsupported(_) => None,
         })
-        .collect();
-    // A known failure that passes must be removed from the list, so that the
-    // sweep catches it if it fails again.
-    let fixed: Vec<&str> = results
+        .collect_vec();
+    let fixed = results
         .iter()
         .filter(|result| result.known_failure && matches!(result.outcome, Outcome::Passed))
-        .map(|result| result.krate.name.as_str())
-        .collect();
-    let mut problems = Vec::new();
-    if !failures.is_empty() {
-        problems.push(format!(
-            "{} crates failed, see {RESULTS_FILE}:\n{}",
-            failures.len(),
-            failures.join("\n")
-        ));
+        .collect_vec();
+    let mut text = String::new();
+    if !new_failures.is_empty() {
+        text += &format!(
+            "NEW FAILURES ({}): these crates failed and are not known failures.\n\
+             Fix the PCG, or, to accept a failure for now, add a line `<crate> <reason>`\n\
+             for the crate to {list}.\n",
+            new_failures.len()
+        );
+        for (result, failure) in &new_failures {
+            text += &format!(
+                "\n  {} {} (index {}), in `{}`:\n    {}\n    log: pcg-tests/{}\n    \
+                 reproduce in pcg-tests: TOP_CRATES_START={} TOP_CRATES_END={} \
+                 cargo test --test top_crates -- --ignored --nocapture\n",
+                result.krate.name,
+                result.krate.version(),
+                result.index,
+                failure.function.as_deref().unwrap_or("unknown function"),
+                failure.message,
+                crate_log_file(&result.krate).display(),
+                result.index,
+                result.index + 1,
+            );
+        }
+        text += "\n";
     }
     if !fixed.is_empty() {
-        problems.push(format!(
-            "{} known failures now pass; remove them from {}:\n{}",
-            fixed.len(),
-            known_failures_file(DATE).display(),
-            fixed.join("\n")
-        ));
+        text += &format!(
+            "FIXED ({}): these known failures now pass.\n\
+             Remove their lines from {list}, so that the sweep catches them if they fail again.\n\n",
+            fixed.len()
+        );
+        for result in &fixed {
+            text += &format!(
+                "  {} {} (index {}), listed as: {}\n",
+                result.krate.name,
+                result.krate.version(),
+                result.index,
+                known_failures[&result.krate.name],
+            );
+        }
+        text += "\n";
     }
-    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    let count = |status: &str| {
+        results
+            .iter()
+            .filter(|result| result.status() == status)
+            .count()
+    };
+    text += &format!(
+        "Top-crates sweep: {} crates, {} pass, {} known failures, {} unsupported, \
+         {} new failures, {} fixed.",
+        results.len(),
+        count("pass"),
+        count("known-fail"),
+        count("unsupported"),
+        new_failures.len(),
+        fixed.len(),
+    );
+    (text, new_failures.is_empty() && fixed.is_empty())
 }
 
 fn env_var<T: FromStr>(name: &str, default: T) -> T {
@@ -182,14 +233,14 @@ fn known_failures_file(date: &str) -> PathBuf {
     PathBuf::from("tests/top-crates").join(format!("{date}-known-failures.txt"))
 }
 
-/// The crates of the list for `date` that are known to fail. Each line of the
-/// file that is neither empty nor a `#` comment is a crate name followed by
-/// the reason it fails.
-fn known_failures(date: &str, crates: &[Crate]) -> BTreeSet<String> {
+/// The crates of the list for `date` that are known to fail, with the reason
+/// each fails. Each line of the file that is neither empty nor a `#` comment
+/// is a crate name followed by the reason.
+fn known_failures(date: &str, crates: &[Crate]) -> BTreeMap<String, String> {
     let path = known_failures_file(date);
     let content = match std::fs::read_to_string(&path) {
         Ok(content) => content,
-        Err(e) if e.kind() == ErrorKind::NotFound => return BTreeSet::new(),
+        Err(e) if e.kind() == ErrorKind::NotFound => return BTreeMap::new(),
         Err(e) => panic!("Failed to read {}: {e}", path.display()),
     };
     content
@@ -197,16 +248,15 @@ fn known_failures(date: &str, crates: &[Crate]) -> BTreeSet<String> {
         .map(str::trim)
         .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| {
-            let name = line
+            let (name, reason) = line
                 .split_once(char::is_whitespace)
-                .unwrap_or_else(|| panic!("{}: `{line}` gives no reason", path.display()))
-                .0;
+                .unwrap_or_else(|| panic!("{}: `{line}` gives no reason", path.display()));
             assert!(
                 crates.iter().any(|krate| krate.name == name),
                 "{}: {name} is not in the crate list",
                 path.display()
             );
-            name.to_string()
+            (name.to_string(), reason.trim().to_string())
         })
         .collect()
 }
