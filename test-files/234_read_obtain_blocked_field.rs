@@ -93,6 +93,68 @@ unsafe fn raw_part_borrowed(p: *mut Pair) -> u32 {
     }
 }
 
+/// Reading through the raw pointer `p` freezes `p`, whose unpacking stays
+/// after the read, while the other path unpacks `p` exclusively. The join
+/// ends the freeze, so that `p` keeps a capability.
+unsafe fn raw_read_or_write(p: *mut u32, b: bool) -> *mut u32 {
+    unsafe {
+        if b {
+            let _x = *p;
+        } else {
+            *p = 1;
+        }
+        // PCG: bb3[0] post_main: p: e
+        // PCG: bb3[0] post_main: *p: E
+        p
+    }
+}
+
+struct Buf {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl Buf {
+    /// The same join, for a raw pointer reached through a mutable reference.
+    unsafe fn read_or_write(&mut self, b: bool) -> usize {
+        unsafe {
+            if b {
+                let _x = *self.ptr;
+            } else {
+                *self.ptr = 0;
+            }
+            // PCG: bb3[0] post_main: self: e
+            // PCG: bb3[0] post_main: (*self).ptr: e
+            // PCG: bb3[0] post_main: *(*self).ptr: E
+            self.len
+        }
+    }
+}
+
+/// Reading `(*s).q` does not unpack `s` again: the existing exclusive
+/// unpacking of `s` already holds `(*s).q`.
+unsafe fn raw_read_after_write(s: *mut Raw) -> u32 {
+    unsafe {
+        *(*s).p = 1;
+        // PCG: bb0[1] post_main: s: e
+        // PCG: bb0[1] post_main: (*s).q: E
+        // ~PCG: bb0[1] post_main: *s: R
+        (*s).q
+    }
+}
+
+/// The join keeps the unpacking of `p` from the first path, but `*p` holds
+/// nothing after it: reading `*p` unpacks `p` again.
+unsafe fn raw_read_after_conditional_write(p: *mut u32, b: bool) -> u32 {
+    unsafe {
+        if b {
+            *p = 1;
+        }
+        // PCG: bb3[2] pre_operands: *p: R
+        *p
+    }
+}
+
 struct Inner {
     f: u32,
     g: u32,

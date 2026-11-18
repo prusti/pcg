@@ -16,8 +16,9 @@ use crate::{
     error::PcgError,
     pcg::{
         PcgNode,
-        obtain::{HasSnapshotLocation, PlaceObtainer, frozen_ancestor},
-        place_capabilities::PlaceCapabilitiesReader,
+        obtain::{
+            HasSnapshotLocation, PlaceObtainer, end_freeze_action, frozen_ancestor, holds_freeze,
+        },
     },
     rustc_interface::index::IndexVec,
     utils::{
@@ -34,50 +35,24 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         frozen_ancestor(self.pcg.place_capabilities, place, self.ctxt)
     }
 
-    /// Whether `place` is borrowed by an edge other than its own unpacking.
-    /// Borrows behind a shared reference do not hold a freeze.
+    /// Whether `place` holds a freeze (see [`holds_freeze`]).
     pub(crate) fn holds_freeze(&self, place: Place<'tcx>) -> bool {
-        !place.projects_shared_ref(self.ctxt)
-            && self
-                .pcg
-                .borrow
-                .graph
-                .edges_blocking(place.into(), self.ctxt.bc_ctxt())
-                .any(|e| {
-                    !matches!(
-                        e.kind(),
-                        BorrowPcgEdgeKind::BorrowPcgExpansion(_)
-                            | BorrowPcgEdgeKind::Deref(_)
-                            | BorrowPcgEdgeKind::RawPtrDeref(_)
-                    )
-                })
+        holds_freeze(self.pcg.borrow.graph, place, self.ctxt)
     }
 
-    /// Ends the freeze of `frozen`: if parts of its read unpacking are still
-    /// borrowed, the freeze moves to them and the rest gets E back.
+    /// Ends the freeze of `frozen` (see [`end_freeze_action`]).
     pub(crate) fn end_freeze(
         &mut self,
         frozen: Place<'tcx>,
         reason: AdjustCapabilityReason,
     ) -> Result<(), PcgError> {
-        let borrowed = self
-            .pcg
-            .place_capabilities
-            .capabilities_for_strict_postfixes_of(frozen)
-            .map(|(p, _)| p)
-            .filter(|p| self.holds_freeze(*p))
-            .collect::<Vec<_>>();
-        let to = borrowed
-            .iter()
-            .copied()
-            .filter(|p| !borrowed.iter().any(|q| q.is_strict_prefix_of(*p)))
-            .sorted()
-            .collect::<Vec<_>>();
-        let action = if to.is_empty() {
-            BorrowPcgAction::unfreeze(frozen, format!("{reason:?}"))
-        } else {
-            BorrowPcgAction::refreeze(frozen, to, format!("{reason:?}"))
-        };
+        let action = end_freeze_action(
+            self.pcg.borrow.graph,
+            self.pcg.place_capabilities,
+            frozen,
+            format!("{reason:?}"),
+            self.ctxt,
+        );
         self.record_and_apply_action(action.into())
     }
 

@@ -118,6 +118,31 @@ unsafe fn behind_shared_ref(s: &P, x: usize) {
     unsafe { (*s.p).set(x) }
 }
 
+struct Node<T> {
+    entry: T,
+    next: u32,
+}
+
+impl<T> Node<T> {
+    fn entry_mut(&mut self) -> &mut T {
+        &mut self.entry
+    }
+}
+
+// The borrow checker does not track borrows of places behind a raw pointer: it
+// never activates the two-phase borrow of `*node` and does not consider `*node`
+// borrowed, so the freeze of the reservation ends at the next statement, as a
+// mutable borrow of `*node` would.
+unsafe fn behind_raw_ptr<'a, T>(node: *mut Node<T>) -> &'a mut T {
+    unsafe {
+        let entry = (*node).entry_mut();
+        let _next = (*node).next;
+        // PCG: bb0[4] post_operands: Freeze *node
+        // PCG: bb0[5] pre_operands: Unfreeze *node
+        entry
+    }
+}
+
 struct Bytes {
     pos: usize,
 }

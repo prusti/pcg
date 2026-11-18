@@ -1100,6 +1100,16 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PlaceExpander<'a, '
             .contains_expansion_to(target, self.ctxt)
     }
 
+    fn holds_capability_at_or_below(&self, place: Place<'tcx>) -> bool {
+        self.pcg.capability_of(place, self.ctxt).is_some()
+            || self
+                .pcg
+                .place_capabilities
+                .capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
+    }
+
     fn borrows_graph(&self) -> &borrow_pcg::graph::BorrowsGraph<'tcx> {
         self.pcg.borrow.graph
     }

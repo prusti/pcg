@@ -11,7 +11,7 @@ use crate::{
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
-        obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
+        obtain::{PlaceCollapser, PlaceObtainer, end_freeze_action, expand::PlaceExpander},
         owned_state::OwnedPcg,
         place_capabilities::PlaceCapabilitiesInterface,
         triple::TripleWalker,
@@ -107,21 +107,41 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             })
             .collect::<HashSet<_>>();
         for place in leaf_future_node_places {
-            // If the place is a leaf, and it's not borrowed, then we remove the future label
+            // If the place is a leaf, and it's not borrowed, then we remove the
+            // future label: a lent place gets E back, and the freeze of a
+            // frozen place ends. The latter ends a two-phase reservation of a
+            // place behind a raw pointer, which the borrow checker does not
+            // track and therefore never activates.
             if self.pcg.is_expansion_leaf(place, self.ctxt)
                 && !self
                     .ctxt
                     .bc()
                     .is_directly_blocked(place, self.location(), self.ctxt.bc_ctxt())
-                && self.pcg.capability_of(place, self.ctxt).is_none()
             {
-                let action = PcgAction::restore_capability(
-                    place,
-                    CapabilityKind::Exclusive,
-                    "Leaf future node restore cap",
-                    self.ctxt,
-                );
-                self.record_and_apply_action(action)?;
+                match self.pcg.capability_of(place, self.ctxt) {
+                    None => {
+                        let action = PcgAction::restore_capability(
+                            place,
+                            CapabilityKind::Exclusive,
+                            "Leaf future node restore cap",
+                            self.ctxt,
+                        );
+                        self.record_and_apply_action(action)?;
+                    }
+                    Some(CapabilityKind::Read)
+                        if self.place_obtainer().frozen_ancestor(place) == place =>
+                    {
+                        let action = end_freeze_action(
+                            &self.pcg.borrow.graph,
+                            &self.pcg.place_capabilities,
+                            place,
+                            "Leaf future node unfreeze".to_owned(),
+                            self.ctxt,
+                        );
+                        self.record_and_apply_action(action.into())?;
+                    }
+                    Some(_) => {}
+                }
             }
         }
         Ok(())

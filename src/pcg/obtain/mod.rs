@@ -11,9 +11,10 @@ use crate::{
         borrow_pcg_edge::BorrowPcgEdge,
         edge::{
             borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
-            kind::BorrowPcgEdgeType,
+            kind::{BorrowPcgEdgeKind, BorrowPcgEdgeType},
         },
         edge_data::LabelNodePredicate,
+        graph::BorrowsGraph,
         has_pcs_elem::{LabelNodeContext, SetLabel, SourceOrTarget},
         region_projection::LocalLifetimeProjection,
         state::BorrowStateMutRef,
@@ -33,6 +34,7 @@ use crate::{
         display::DisplayWithCompilerCtxt,
     },
 };
+use itertools::Itertools;
 
 /// The frozen place of whose read unpacking `place` is part: the topmost of
 /// `place` and its ancestors that hold R, where the places of the unpacking
@@ -53,6 +55,52 @@ pub(crate) fn frozen_ancestor<'a, 'tcx: 'a>(
         current = parent;
     }
     frozen
+}
+
+/// Whether `place` is borrowed by an edge other than its own unpacking.
+/// Borrows behind a shared reference do not hold a freeze.
+pub(crate) fn holds_freeze<'a, 'tcx: 'a>(
+    graph: &BorrowsGraph<'tcx>,
+    place: Place<'tcx>,
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+) -> bool {
+    !place.projects_shared_ref(ctxt)
+        && graph.edges_blocking(place.into(), ctxt.bc_ctxt()).any(|e| {
+            !matches!(
+                e.kind(),
+                BorrowPcgEdgeKind::BorrowPcgExpansion(_)
+                    | BorrowPcgEdgeKind::Deref(_)
+                    | BorrowPcgEdgeKind::RawPtrDeref(_)
+            )
+        })
+}
+
+/// The action that ends the freeze of `frozen`: if parts of its read
+/// unpacking are still borrowed, the freeze moves to them and the rest gets E
+/// back.
+pub(crate) fn end_freeze_action<'a, 'tcx: 'a>(
+    graph: &BorrowsGraph<'tcx>,
+    capabilities: &PlaceCapabilities<'tcx>,
+    frozen: Place<'tcx>,
+    context: String,
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+) -> BorrowPcgAction<'tcx> {
+    let borrowed = capabilities
+        .capabilities_for_strict_postfixes_of(frozen)
+        .map(|(p, _)| p)
+        .filter(|p| holds_freeze(graph, *p, ctxt))
+        .collect::<Vec<_>>();
+    let to = borrowed
+        .iter()
+        .copied()
+        .filter(|p| !borrowed.iter().any(|q| q.is_strict_prefix_of(*p)))
+        .sorted()
+        .collect::<Vec<_>>();
+    if to.is_empty() {
+        BorrowPcgAction::unfreeze(frozen, context)
+    } else {
+        BorrowPcgAction::refreeze(frozen, to, context)
+    }
 }
 
 pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {

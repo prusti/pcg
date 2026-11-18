@@ -38,6 +38,9 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 {
     fn contains_owned_expansion_to(&self, target: Place<'tcx>) -> bool;
 
+    /// Whether `place` or a place below it has a capability.
+    fn holds_capability_at_or_below(&self, place: Place<'tcx>) -> bool;
+
     fn update_capabilities_for_borrow_expansion(
         &mut self,
         expansion: &BorrowPcgExpansion<'tcx>,
@@ -224,6 +227,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             }
             Ok(true)
         } else if matches!(expansion.kind, ProjectionKind::DerefRawPtr(_)) {
+            // Unpacking the raw pointer again would overwrite the capabilities
+            // of its existing unpacking, unless nothing in it holds one.
+            let target = base.project_deref(ctxt);
+            if self.borrows_graph().contains_deref_edge_to(target)
+                && self.holds_capability_at_or_below(target)
+            {
+                return Ok(false);
+            }
             let deref = RawPtrDerefEdge::new(base, ctxt);
             let action = BorrowPcgAction::add_edge(
                 BorrowPcgEdge::new(deref.into(), self.path_conditions()),

@@ -723,6 +723,11 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         true
     }
 
+    fn holds_capability_at_or_below(&self, _place: Place<'tcx>) -> bool {
+        // The abstraction graph has no capabilities to keep.
+        false
+    }
+
     fn update_capabilities_for_borrow_expansion(
         &mut self,
         _expansion: &borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
