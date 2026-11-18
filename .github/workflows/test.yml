@@ -209,8 +209,7 @@ jobs:
   # balances the groups by the check times of the crates in CI, listed in
   # `pcg-tests/tests/top-crates/<date>-seconds.tsv`. A group cannot be shorter
   # than its slowest crate, which may take up to the sweep's 8-minute
-  # timeout. There are enough groups that the others stay well below that,
-  # because the check time of a crate varies by up to 1.8x between runs.
+  # timeout, so there are as many groups as keep each at about that time.
   # Crates are checked one at a time because the PCG needs up to the sweep's
   # memory limit of 12 GiB on some of them.
   top_crates:
@@ -220,7 +219,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2, 3, 4, 5, 6, 7]
+        group: [0, 1, 2, 3, 4, 5]
     steps:
     - uses: actions/checkout@v4
     # The cache is saved right after the build, before the sweep fills the
@@ -258,16 +257,38 @@ jobs:
         TOP_CRATES_GROUPS: ${{ strategy.job-total }}
         TEST_CRATES_PARALLELISM: 1
       run: cargo test --test top_crates -- --ignored --nocapture
+    # Shows the sweep's summary on the run's page, with an error annotation
+    # for each crate that needs action and, folded, all crates that did not
+    # pass.
     - name: Summarize results
       if: always()
       working-directory: pcg-tests
       run: |
         if [ -f tmp/top-crates-results.tsv ]; then
+          awk -F '\t' '
+            function escape(s) { gsub(/%/, "%25", s); return s }
+            $4 == "fail" {
+              print "::error title=New top-crates failure: " $2 "::" escape("in " $7 ": " $8)
+            }
+            $4 == "fixed" {
+              print "::error title=Known top-crates failure now passes: " $2 "::Remove " $2 " from the known failures; see the summary at the end of the sweep output"
+            }
+          ' tmp/top-crates-results.tsv
+        fi
+        if [ -f tmp/top-crates-summary.txt ]; then
           {
             echo "### Crate group ${{ matrix.group }}"
             echo '```'
+            cat tmp/top-crates-summary.txt
+            echo '```'
+            echo "The logs of the crates are in the \`top-crates-${{ matrix.group }}\` artifact."
+            echo
+            echo '<details><summary>Crates that did not pass</summary>'
+            echo
+            echo '```'
             awk -F '\t' '$4 != "pass"' tmp/top-crates-results.tsv
             echo '```'
+            echo '</details>'
           } >> "$GITHUB_STEP_SUMMARY"
         fi
     - name: Upload logs
