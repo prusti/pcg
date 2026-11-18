@@ -16,4 +16,23 @@ fn f(x: &mut &i32) {
     }
 }
 
+struct S<'a> {
+    f: &'a u32,
+    g: &'a u32,
+}
+
+fn repeated_reads(r: &S<'_>) -> u32 {
+    // PCG_LIFETIME_DISPLAY: r 1 'a
+    // Collapsing `*r` into `r` between the reads also packs the expansion of
+    // `*r↓'a`, so the second read expands it afresh and no labelled snapshot
+    // of `*r` from the first read stays behind.
+    // PCG: bb0[4] pre_main: {*r↓'a} -> {(*r).f↓'a, (*r).g↓'a}
+    // ~PCG: bb0[5] pre_main: {*r before bb0[2]:PreOperands↓'a} -> {(*r).f↓'a, (*r).g↓'a}
+    // ~PCG: bb0[5] pre_main: {r↓'a} -> {*r before bb0[2]:PreOperands↓'a}
+    let a = *r.f;
+    let b = *r.f;
+    let c = *r.g;
+    a + b + c
+}
+
 fn main() {}

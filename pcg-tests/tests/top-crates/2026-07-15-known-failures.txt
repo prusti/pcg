@@ -112,6 +112,6 @@ ansi_term                owned update: no capability for a local after a closure
 nu-ansi-term             owned update: no capability for a local after a closure borrowed it mutably
 libc                     visitor: unsupported MIR statement (todo!)
 nom                      timeout: PCG takes over 8 minutes
-rustls                   memory: PCG needs over 12 GiB
+rustls                   owned update: no capability for `data` in `ConnectionCore::for_client`
 bincode                  does not compile: deliberate compile_error!
 windows                  does not compile outside Windows
