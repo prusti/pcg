@@ -67,15 +67,19 @@ pub struct LocalExpansions<'tcx> {
 }
 
 impl<'tcx> LocalExpansions<'tcx> {
-    /// Labels the `Index` guides of `index`; see [`RepackGuide::label_index`].
-    pub(crate) fn label_index(&mut self, index: Local, label: SnapshotLocation) {
-        if !self.expansions.iter().any(|expanded| {
+    /// Whether an expansion has an unlabelled `Index` guide of `index`.
+    pub(crate) fn has_unlabelled_index_guide(&self, index: Local) -> bool {
+        self.expansions.iter().any(|expanded| {
             expanded
                 .guide()
                 .is_some_and(|guide| guide.is_unlabelled_index_of(index))
-        }) {
-            return;
-        }
+        })
+    }
+
+    /// Labels the `Index` guides of `index`; see [`RepackGuide::label_index`].
+    /// It rebuilds the expansion set, so callers first check
+    /// [`Self::has_unlabelled_index_guide`].
+    pub(crate) fn label_index(&mut self, index: Local, label: SnapshotLocation) {
         self.expansions = std::mem::take(&mut self.expansions)
             .into_iter()
             .map(|mut expanded| {

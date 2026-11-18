@@ -9,7 +9,10 @@
 //! 2. A [`LocalExpansions`] tracking the owned-PCG expansion
 //!    structure for this local.
 
-use std::fmt::{Debug, Formatter};
+use std::{
+    fmt::{Debug, Formatter},
+    rc::Rc,
+};
 
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
@@ -31,13 +34,16 @@ use crate::{
 
 /// Initialisation state for a single local. Either the local is
 /// unallocated, or it is allocated and carries both an initialisation
-/// tree and the owned-PCG expansion forest rooted at the local.
+/// tree and the owned-PCG expansion forest rooted at the local. Both are
+/// behind `Rc`, so copies of a state share them until one copy first takes
+/// mutable access to them. This keeps copying a state cheap and every
+/// element, unallocated ones included, two pointers wide.
 #[derive(Clone, PartialEq, Eq)]
 pub enum LocalInitState<'tcx> {
     Unallocated,
     Allocated {
-        tree: InitialisationTree<'tcx>,
-        expansions: LocalExpansions<'tcx>,
+        tree: Rc<InitialisationTree<'tcx>>,
+        expansions: Rc<LocalExpansions<'tcx>>,
     },
 }
 
@@ -53,8 +59,8 @@ impl Debug for LocalInitState<'_> {
 impl<'tcx> LocalInitState<'tcx> {
     pub(crate) fn new_allocated(local: Local, cap: OwnedCapability) -> Self {
         Self::Allocated {
-            tree: InitialisationTree::Leaf(cap),
-            expansions: LocalExpansions::new(local),
+            tree: Rc::new(InitialisationTree::Leaf(cap)),
+            expansions: Rc::new(LocalExpansions::new(local)),
         }
     }
 
@@ -73,9 +79,10 @@ impl<'tcx> LocalInitState<'tcx> {
         }
     }
 
+    /// Copies the expansions first if another state shares them.
     pub fn expansions_mut(&mut self) -> &mut LocalExpansions<'tcx> {
         match self {
-            Self::Allocated { expansions, .. } => expansions,
+            Self::Allocated { expansions, .. } => Rc::make_mut(expansions),
             Self::Unallocated => panic!("Expected allocated local"),
         }
     }
@@ -89,7 +96,7 @@ impl<'tcx> LocalInitState<'tcx> {
 
     fn tree_mut(&mut self) -> Option<&mut InitialisationTree<'tcx>> {
         match self {
-            Self::Allocated { tree, .. } => Some(tree),
+            Self::Allocated { tree, .. } => Some(Rc::make_mut(tree)),
             Self::Unallocated => None,
         }
     }
@@ -140,8 +147,10 @@ impl<'tcx> OwnedPcg<'tcx> {
     /// [`RepackGuide::label_index`].
     pub(crate) fn label_index(&mut self, index: Local, label: SnapshotLocation) {
         for state in &mut self.state {
-            if let LocalInitState::Allocated { expansions, .. } = state {
-                expansions.label_index(index, label);
+            if let LocalInitState::Allocated { expansions, .. } = state
+                && expansions.has_unlabelled_index_guide(index)
+            {
+                Rc::make_mut(expansions).label_index(index, label);
             }
         }
     }
@@ -341,7 +350,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                 ) => {
                     let outcome = self_tree.join(&other_tree);
                     if outcome.changed {
-                        *self_tree = outcome.tree;
+                        *self_tree = Rc::new(outcome.tree);
                         changed = true;
                     }
                 }
