@@ -71,9 +71,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     // and its permission should be Exclusive.
                     if self.pcg.capability_of(target, self.ctxt) == Some(CapabilityKind::Read) {
                         self.record_and_apply_action(
-                            BorrowPcgAction::restore_capability(
+                            BorrowPcgAction::unfreeze(
                                 target,
-                                CapabilityKind::Exclusive,
                                 "Assign: restore capability to exclusive",
                             )
                             .into(),
@@ -92,7 +91,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                             BorrowPcgAction::weaken(
                                 target,
                                 target_cap,
-                                Some(CapabilityKind::Write),
+                                CapabilityKind::Write,
                                 "pre_main",
                             )
                             .into(),

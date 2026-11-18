@@ -75,7 +75,7 @@ impl<'tcx> OwnedPcg<'tcx> {
                     [ctxt]
                 );
             }
-            PlaceCondition::RemoveCapability(_) | PlaceCondition::Freeze(_) => unreachable!(),
+            PlaceCondition::Freeze(_) => unreachable!(),
         }
     }
 
@@ -134,9 +134,6 @@ impl<'tcx> OwnedPcg<'tcx> {
                 {
                     place_capabilities.insert(place, CapabilityKind::Read, ctxt);
                 }
-            }
-            PlaceCondition::RemoveCapability(place) => {
-                place_capabilities.remove(place, ctxt);
             }
         }
     }

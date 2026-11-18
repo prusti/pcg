@@ -1,10 +1,11 @@
 use crate::{
-    action::{AppliedActions, BorrowPcgAction, PcgAction},
+    action::{AppliedActions, BorrowPcgAction, CapabilityChanges},
     borrow_pcg::{
         GeneralizedLifetime,
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
+        edge_data::LabelNodePredicate,
         region_projection::{LifetimeProjection, PcgLifetimeProjectionLike, PlaceOrConst},
     },
     owned_pcg::RepackExpand,
@@ -120,13 +121,18 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             {
                 match self.pcg.capability_of(place, self.ctxt) {
                     None => {
-                        let action = PcgAction::restore_capability(
-                            place,
-                            CapabilityKind::Exclusive,
-                            "Leaf future node restore cap",
-                            self.ctxt,
-                        );
-                        self.record_and_apply_action(action)?;
+                        // The place is accessed exclusively again.
+                        self.record_and_apply_action(
+                            BorrowPcgAction::label_lifetime_projection(
+                                LabelNodePredicate::all_future_postfixes(place),
+                                None,
+                                "Leaf future node restore cap",
+                            )
+                            .with_capabilities(
+                                vec![(place, Some(CapabilityKind::Exclusive))].into(),
+                            )
+                            .into(),
+                        )?;
                     }
                     Some(CapabilityKind::Read)
                         if self.place_obtainer().frozen_ancestor(place) == place =>
@@ -456,8 +462,11 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         // shared borrow of it), the freeze moves to the place first.
         let frozen = self.place_obtainer().frozen_ancestor(blocked_place);
         if frozen != blocked_place {
-            self.place_obtainer()
-                .end_freeze(frozen, AdjustCapabilityReason::TwoPhaseBorrowActivation)?;
+            self.place_obtainer().end_freeze(
+                frozen,
+                &[],
+                AdjustCapabilityReason::TwoPhaseBorrowActivation,
+            )?;
         }
         self.place_obtainer()
             .detach_borrowed_shared_referents(blocked_place)?;
@@ -473,9 +482,17 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     ctxt,
                 )?;
         }
-        self.place_obtainer().drop_read_copies(blocked_place)?;
+        // The read copies that are left go with the place.
+        let dropped = self
+            .place_obtainer()
+            .read_copies_to_drop(blocked_place)
+            .into_iter()
+            .map(|p| (p, None))
+            .collect::<Vec<_>>();
         self.record_and_apply_action(
-            BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow").into(),
+            BorrowPcgAction::activate_two_phase_borrow(borrow, "activate two-phase borrow")
+                .with_capabilities(dropped.into())
+                .into(),
         )?;
         self.place_obtainer().label_rps_up_to(
             blocked_place,
@@ -492,10 +509,11 @@ impl<'tcx> OwnedPcg<'tcx> {
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let expansions = self[expand.local()].expansions_mut();
-        expansions.perform_expand_action(expand, capabilities, ctxt);
+        expansions.perform_expand_action(expand, capabilities, ctxt)
     }
 }

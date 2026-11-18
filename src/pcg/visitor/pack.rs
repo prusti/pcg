@@ -218,7 +218,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     BorrowPcgAction::weaken(
                         rawptr,
                         CapabilityKind::Exclusive,
-                        Some(CapabilityKind::Write),
+                        CapabilityKind::Write,
                         context.clone(),
                     )
                     .into(),

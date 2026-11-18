@@ -6,9 +6,9 @@
 
 use crate::{
     HasSettings,
+    action::{BorrowPcgAction, CapabilityChanges, PcgAction},
     borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, has_pcs_elem::SetLabel,
-        state::BorrowsStateLike,
+        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, state::BorrowsStateLike,
     },
     error::PcgError,
     owned_pcg::{
@@ -35,7 +35,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         match (&mut *self.owned, &mut other.owned) {
             (LocalInitState::Unallocated, LocalInitState::Unallocated) => Ok(vec![]),
             (
@@ -64,10 +64,12 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                 self_allocated.join(other_allocated, ctxt)
             }
             (LocalInitState::Allocated { expansions, .. }, LocalInitState::Unallocated) => {
-                self.borrows.label_place_and_update_related_capabilities(
-                    expansions.local.into(),
-                    LabelPlaceReason::StorageDead,
-                    &SetLabel(self.snapshot_location),
+                self.borrows.apply_action(
+                    &mut BorrowPcgAction::label_place_and_update_related_capabilities(
+                        expansions.local.into(),
+                        self.snapshot_location,
+                        LabelPlaceReason::StorageDead,
+                    ),
                     self.capabilities,
                     ctxt,
                 );
@@ -76,11 +78,16 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                     if *k > CapabilityKind::Write {
                         // Temporary: mark as for_storage_dead until
                         // https://github.com/prusti/pcg/issues/137 is resolved.
-                        repacks.push(RepackOp::weaken_for_storage_dead(
-                            place,
-                            *k,
-                            CapabilityKind::Write,
-                        ));
+                        repacks.push(
+                            BorrowPcgAction::weaken_for_storage_dead(
+                                place,
+                                *k,
+                                CapabilityKind::Write,
+                                "join with a dead local",
+                            )
+                            .with_capabilities(vec![(place, Some(CapabilityKind::Write))].into())
+                            .into(),
+                        );
                         *k = CapabilityKind::Write;
                     }
                 }
@@ -90,15 +97,17 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx
                     self.capabilities,
                     ctxt,
                 ));
-                repacks.push(RepackOp::StorageDead(expansions.local));
+                repacks.push(RepackOp::StorageDead(expansions.local).into());
                 *self.owned = LocalInitState::Unallocated;
                 Ok(repacks)
             }
             (LocalInitState::Unallocated, LocalInitState::Allocated { expansions, .. }) => {
-                other.borrows.label_place_and_update_related_capabilities(
-                    expansions.local.into(),
-                    LabelPlaceReason::StorageDead,
-                    &SetLabel(other.snapshot_location),
+                other.borrows.apply_action(
+                    &mut BorrowPcgAction::label_place_and_update_related_capabilities(
+                        expansions.local.into(),
+                        other.snapshot_location,
+                        LabelPlaceReason::StorageDead,
+                    ),
                     other.capabilities,
                     ctxt,
                 );
@@ -114,7 +123,7 @@ impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
         ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
         let mut actions = vec![];
         for local in 0..self.owned.num_locals() {
             let local: mir::Local = local.into();
@@ -133,12 +142,14 @@ impl<'tcx> LocalExpansions<'tcx> {
             .sorted_by_key(|ep| ep.place.projection().len())
     }
 
+    /// Performs `expand` and returns its capability changes.
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &mut self,
         expand: RepackExpand<'tcx>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         let target_places = expand.target_places(ctxt);
@@ -160,14 +171,16 @@ impl<'tcx> LocalExpansions<'tcx> {
                 CapabilityKind::Exclusive
             })
         };
+        let mut changes = CapabilityChanges::default();
         for target_place in target_places {
-            capabilities.insert(target_place, source_cap, ctxt);
+            changes.set(target_place, Some(source_cap));
         }
-        if expand.capability.is_read() {
-            capabilities.insert(expand.from, CapabilityKind::Read, ctxt);
-        } else {
-            capabilities.remove(expand.from, ctxt);
-        }
+        changes.set(
+            expand.from,
+            expand.capability.is_read().then_some(CapabilityKind::Read),
+        );
+        changes.apply(capabilities, ctxt);
+        changes
     }
 
     pub(crate) fn all_descendants_of<'a>(
@@ -223,6 +236,7 @@ impl<'tcx> LocalExpansions<'tcx> {
             .collect()
     }
 
+    /// Performs `collapse` and returns its capability changes.
     pub(crate) fn perform_collapse_action<
         'a,
         Ctxt: HasCompilerCtxt<'a, 'tcx> + DebugCtxt + HasSettings<'a>,
@@ -231,7 +245,8 @@ impl<'tcx> LocalExpansions<'tcx> {
         collapse: RepackCollapse<'tcx>,
         place_capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) where
+    ) -> CapabilityChanges<Place<'tcx>>
+    where
         'tcx: 'a,
     {
         // A place has one expansion per guide (e.g. one per index local), and
@@ -247,7 +262,7 @@ impl<'tcx> LocalExpansions<'tcx> {
                 collapse,
                 collapse.to.display_string(ctxt.ctxt())
             );
-            return;
+            return CapabilityChanges::default();
         };
         let expansion_places = expanded.expansion_places(ctxt).unwrap();
         self.remove_expansion(collapse.to, collapse.guide, ctxt);
@@ -255,15 +270,15 @@ impl<'tcx> LocalExpansions<'tcx> {
         // expansions for different offsets). A child of an expansion that
         // remains keeps its capability.
         let children_of_remaining_expansions = self.all_children_of(collapse.to, ctxt);
+        let mut changes = CapabilityChanges::default();
         let retained_cap: CapabilityKind =
             expansion_places
                 .iter()
                 .fold(CapabilityKind::Exclusive, |acc, place| {
-                    let removed_cap = if children_of_remaining_expansions.contains(place) {
-                        place_capabilities.get(*place, ctxt)
-                    } else {
-                        place_capabilities.remove(*place, ctxt)
-                    };
+                    let removed_cap = place_capabilities.get(*place, ctxt);
+                    if !children_of_remaining_expansions.contains(place) {
+                        changes.set(*place, None);
+                    }
                     let removed_cap = pcg_validity_expect_some!(
                         removed_cap,
                         fallback: CapabilityKind::Exclusive,
@@ -285,7 +300,9 @@ impl<'tcx> LocalExpansions<'tcx> {
         // `collapse.to` stays as it is; the collapse of its last expansion
         // sets it from that expansion's children.
         if !self.contains_expansion_from(collapse.to) {
-            place_capabilities.insert(collapse.to, retained_cap, ctxt);
+            changes.set(collapse.to, Some(retained_cap));
         }
+        changes.apply(place_capabilities, ctxt);
+        changes
     }
 }

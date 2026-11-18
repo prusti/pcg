@@ -22,6 +22,7 @@ use crate::{
 use itertools::Itertools;
 
 use crate::{
+    action::{OwnedPcgAction, PcgAction},
     owned_pcg::RepackOp,
     pcg::CapabilityKind,
     utils::{CompilerCtxt, OwnedPlace, Place, display::DisplayWithCompilerCtxt},
@@ -254,7 +255,7 @@ impl<'tcx> LocalExpansions<'tcx> {
         _for_cap: Option<CapabilityKind>,
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx>,
         ctxt: Ctxt,
-    ) -> Vec<RepackOp<'tcx>>
+    ) -> Vec<PcgAction<'tcx>>
     where
         'tcx: 'a,
     {
@@ -262,15 +263,17 @@ impl<'tcx> LocalExpansions<'tcx> {
             return vec![];
         }
         let places_to_collapse = self.places_to_collapse_for_obtain_of(to, ctxt);
-        let ops: Vec<RepackOp<'tcx>> = places_to_collapse
+        let ops: Vec<PcgAction<'tcx>> = places_to_collapse
             .into_iter()
             .flat_map(|place| {
                 let actions = self.collapse_actions_for(place, capabilities, ctxt);
                 actions
                     .into_iter()
                     .map(|action| {
-                        self.perform_collapse_action(action, capabilities, ctxt);
-                        RepackOp::Collapse(action)
+                        let changes = self.perform_collapse_action(action, capabilities, ctxt);
+                        OwnedPcgAction::new(RepackOp::Collapse(action), None)
+                            .with_capabilities(changes)
+                            .into()
                     })
                     .collect::<Vec<_>>()
             })

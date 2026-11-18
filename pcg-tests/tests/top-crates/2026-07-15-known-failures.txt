@@ -99,7 +99,6 @@ linked-hash-map          placeholder projection has edges to its current version
 bit-vec                  exclusive place missing from owned PCG and borrow graph
 multimap                 exclusive place missing from owned PCG and borrow graph
 once_cell                restored capability is not above the current one
-windows-core             restored capability is not above the current one
 lock_api                 expanded base keeps write capability
 opentelemetry            expanded base keeps write capability
 crossbeam-epoch          deref edge: read base, dereference without capability

@@ -728,21 +728,21 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         false
     }
 
-    fn update_capabilities_for_borrow_expansion(
-        &mut self,
+    fn borrow_expansion_capabilities(
+        &self,
         _expansion: &borrow_pcg::borrow_pcg_expansion::BorrowPcgExpansion<'tcx>,
         _block_type: pcg::place_capabilities::BlockType,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        true
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        vec![]
     }
-    fn update_capabilities_for_deref(
-        &mut self,
+    fn deref_capabilities(
+        &self,
         _ref_place: Place<'tcx>,
         _capability: CapabilityKind,
         _ctxt: CompilerCtxt<'_, 'tcx>,
-    ) -> bool {
-        true
+    ) -> Vec<(Place<'tcx>, Option<CapabilityKind>)> {
+        vec![]
     }
 
     fn location(&self) -> mir::Location {
