@@ -5,6 +5,7 @@ use crate::{
     action::BorrowPcgAction,
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
+        borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
         edge_data::EdgeData,
         graph::{Conditioned, frozen::FrozenGraphRef},
@@ -461,6 +462,23 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     ShouldPackEdge::Yes {
                         reason: format!(
                             "Expansion {} is packable",
+                            expansion.display_string(self.ctxt)
+                        )
+                        .into(),
+                    }
+                } else if let BorrowPcgExpansion::LifetimeProjection(lp_expansion) = expansion
+                    && let base = lp_expansion.base.base()
+                    && base.place().as_borrowed_place(self.ctxt).is_some()
+                    && !fg.nodes(self.ctxt).contains(&PcgNode::Place(base))
+                {
+                    // Lifetime projection expansions are never packable, and
+                    // their nodes stay live as long as the region. Once the
+                    // borrowed place this one expands has left the graph, it
+                    // is packed here; otherwise it would stay as a labelled
+                    // snapshot of that place.
+                    ShouldPackEdge::Yes {
+                        reason: format!(
+                            "Base place of {} is no longer in the graph",
                             expansion.display_string(self.ctxt)
                         )
                         .into(),
