@@ -239,7 +239,7 @@ fn emit_and_check_annotations(
             if let Ok(Some(state)) = output.get_all_for_bb(block) {
                 if let Some(loop_id) = output.analysis().loop_analysis().loop_head_of(block) {
                     for (place, capability) in state.loop_invariant_place_capabilities(
-                        output.analysis().loop_place_usages(loop_id),
+                        output.analysis().loop_invariant_place_usages(loop_id),
                         ctxt,
                     ) {
                         debug_lines.push(
