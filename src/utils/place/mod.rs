@@ -28,7 +28,6 @@ use crate::{
         VariantIdx,
         ast::Mutability,
         data_structures::fx::FxHasher,
-        field_ty,
         index::IndexVec,
         middle::{
             mir::{Local, Place as MirPlace, PlaceElem, PlaceRef, ProjectionElem},
@@ -40,6 +39,7 @@ use crate::{
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
+        normalize::normalized_field_ty,
     },
 };
 
@@ -372,9 +372,10 @@ impl<'tcx> Place<'tcx> {
     /// we want the type of `x.0` to be 'x mut i32 and NOT 'y mut i32. However, in the
     /// MIR the `ProjectionElem::Field` for `.0` may have the type `'y mut i32`.
     ///
-    /// To correct this, when projecting, we detect when the LHS is an ADT, and
-    /// extract from the ADT type the expected type of the projection and
-    /// replace the type.
+    /// To correct this, when projecting a field, we take its type from the type
+    /// of the place it is a field of: from an ADT's field definition (with its
+    /// associated types normalized), a tuple's element types, or the types of
+    /// the places a closure or coroutine captures.
     ///
     /// Returns an error if the projection would be illegal
     ///
@@ -402,9 +403,18 @@ impl<'tcx> Place<'tcx> {
                         Some(v) => def.variant(v),
                         None => def.non_enum_variant(),
                     };
-                    field_ty(&variant.fields[field_idx], ctxt.tcx(), substs)
+                    normalized_field_ty(&variant.fields[field_idx], substs, ctxt)
                 }
                 TyKind::Tuple(tys) => tys[field_idx.as_usize()],
+                TyKind::Closure(_, args) => args.as_closure().upvar_tys()[field_idx.as_usize()],
+                TyKind::CoroutineClosure(_, args) => {
+                    args.as_coroutine_closure().upvar_tys()[field_idx.as_usize()]
+                }
+                // Without a variant, the fields of a coroutine are the places
+                // it captures.
+                TyKind::Coroutine(_, args) if base_ty.variant_index.is_none() => {
+                    args.as_coroutine().upvar_tys()[field_idx.as_usize()]
+                }
                 _ => proj_ty,
             };
             ProjectionElem::Field(field_idx, expected_ty)
@@ -518,7 +528,7 @@ impl<'tcx> Place<'tcx> {
                             .fields
                             .iter()
                             .enumerate()
-                            .map(|(i, field)| (i.into(), field_ty(field, ctxt.tcx(), substs)))
+                            .map(|(i, field)| (i.into(), normalized_field_ty(field, substs, ctxt)))
                             .collect(),
                     )
                 }

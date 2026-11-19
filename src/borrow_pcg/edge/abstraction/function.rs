@@ -22,7 +22,7 @@ use crate::{
     rustc_interface::{
         BoundVariableKind, fn_def_args,
         hir::def_id::DefId,
-        infer::{infer::TyCtxtInferExt, traits::ObligationCause},
+        infer::infer::TyCtxtInferExt,
         middle::{
             mir::{self, Location},
             ty::{self, GenericArgsRef},
@@ -32,25 +32,18 @@ use crate::{
             DUMMY_SP, Span,
             def_id::{CRATE_DEF_ID, LocalDefId},
         },
-        trait_selection::{
-            infer::{RegionVariableOrigin, outlives::env::OutlivesEnvironment},
-            traits::{NormalizeExt, ScrubbedTraitError},
-        },
+        trait_selection::infer::{RegionVariableOrigin, outlives::env::OutlivesEnvironment},
     },
     utils::{
         DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasTyCtxt, PcgPlace, Place,
         data_structures::HashSet,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
+        normalize::deeply_normalize,
         validity::{HasValidityCheck, has_validity_check_node_wrapper},
     },
 };
 
 use crate::coupling::HyperEdge;
-
-#[rustversion::since(2026-08-04)]
-use crate::rustc_interface::trait_selection::traits::FulfillmentEngine;
-#[rustversion::before(2026-08-04)]
-use crate::rustc_interface::trait_selection::traits::{TraitEngine, TraitEngineExt};
 
 #[derive(Clone)]
 pub struct DefinedFnSigShapeDataSource<'tcx> {
@@ -1152,21 +1145,7 @@ impl<'tcx> DefinedFnCall<'tcx> {
         for _ in ctxt.bc_ctxt().borrow_checker().iter_region_vids() {
             infcx.next_region_var(RegionVariableOrigin::Misc(DUMMY_SP));
         }
-        let cause = ObligationCause::dummy();
-        let at = infcx.at(&cause, param_env);
-        #[rustversion::since(2026-08-04)]
-        let normalized = {
-            let mut fulfill_cx = FulfillmentEngine::<ScrubbedTraitError>::new(&infcx);
-            at.deeply_normalize(ty::Unnormalized::new(subst_sig), &mut fulfill_cx)
-        };
-        #[rustversion::before(2026-08-04)]
-        let normalized = {
-            let mut fulfill_cx = <dyn TraitEngine<ScrubbedTraitError> as TraitEngineExt<
-                ScrubbedTraitError,
-            >>::new(&infcx);
-            at.deeply_normalize(subst_sig, &mut *fulfill_cx)
-        };
-        normalized.unwrap()
+        deeply_normalize(&infcx, param_env, subst_sig).unwrap()
     }
 }
 
