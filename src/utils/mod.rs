@@ -20,6 +20,7 @@ pub(crate) mod liveness;
 pub(crate) mod logging;
 pub mod mir;
 mod mutable;
+pub(crate) mod normalize;
 pub mod place;
 pub mod place_snapshot;
 mod root_place;

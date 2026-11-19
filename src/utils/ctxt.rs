@@ -16,7 +16,6 @@ use crate::{
     rustc_interface::{
         FieldIdx, PlaceTy, RustBitSet,
         borrowck::{BorrowSet, LocationTable},
-        field_ty,
         index::IndexVec,
         middle::{
             mir::{
@@ -31,6 +30,7 @@ use crate::{
     utils::{
         PlaceLike,
         display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
+        normalize::normalized_field_ty,
         place::Place,
         validity::HasValidityCheck,
     },
@@ -622,7 +622,7 @@ impl<'tcx> Place<'tcx> {
                         let field_place = ctxt.tcx().mk_place_field(
                             self.to_rust_place(ctxt),
                             field,
-                            field_ty(field_def, ctxt.tcx(), substs),
+                            normalized_field_ty(field_def, substs, ctxt),
                         );
                         places.push(field_place.into());
                     }
