@@ -13,7 +13,7 @@ use crate::{
     borrows_imgcat_debug,
     error::PcgError,
     r#loop::PlaceUsageType,
-    owned_pcg::{RepackOp, join::data::JoinOwnedData},
+    owned_pcg::{RepackGuide, RepackOp, join::data::JoinOwnedData},
     pcg::{
         CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
@@ -612,4 +612,21 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             owned,
         }
     }
+}
+
+/// The base and the first expanded place of a place unpacking edge.
+pub(crate) fn unpacking_places<'tcx>(
+    kind: &BorrowPcgEdgeKind<'tcx>,
+) -> Option<(Place<'tcx>, Place<'tcx>, Option<RepackGuide>)> {
+    let (base, target, guide) = match kind {
+        BorrowPcgEdgeKind::Deref(deref) => (deref.blocked_place(), deref.deref_place(), None),
+        BorrowPcgEdgeKind::RawPtrDeref(deref) => (deref.blocked_place(), deref.deref_place(), None),
+        BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => (
+            expansion.base(),
+            *expansion.expansion().first()?,
+            expansion.guide,
+        ),
+        _ => return None,
+    };
+    Some((base.as_current_place()?, target.as_current_place()?, guide))
 }

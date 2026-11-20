@@ -45,11 +45,14 @@ impl<'tcx> Triple<'tcx> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum PlaceCondition<'tcx> {
-    /// Similar to read capability, but indicates that the place is expanded as part of a two-phase borrow.
+    /// The place is reserved by a two-phase borrow: it is obtained as for a mutable borrow, or for
+    /// read if it lies behind a shared reference or a place overlapping it holds R.
     /// For example, if `let y = &mut *x` is a two-phase borrow, then we have `ExpandTwoPhase(*x)` as condition.
-    /// This distinction is relevant for expanding lifetime projections: the lifetime projection base of *x will
-    /// be labelled, similarly to the situation where the borrow was exclusive.
+    /// When lifetime projections are expanded, the lifetime projection base of *x is labelled, as for an
+    /// exclusive borrow.
     ExpandTwoPhase(Place<'tcx>),
+    /// The place is shared or two-phase borrowed: it is frozen at R.
+    Freeze(Place<'tcx>),
     Capability(Place<'tcx>, CapabilityKind),
     RemoveCapability(Place<'tcx>),
     AllocateOrDeallocate(Local),
@@ -150,13 +153,13 @@ impl<'tcx> FallableVisitor<'tcx> for TripleWalker<'_, 'tcx> {
             &Ref(_, kind, place) => match kind {
                 BorrowKind::Shared => Triple::new(
                     PlaceCondition::read(place),
-                    Some(PlaceCondition::read(place)),
+                    Some(PlaceCondition::Freeze(place.into())),
                 ),
                 BorrowKind::Mut {
                     kind: MutBorrowKind::TwoPhaseBorrow,
                 } => Triple::new(
                     PlaceCondition::ExpandTwoPhase(place.into()),
-                    Some(PlaceCondition::read(place)),
+                    Some(PlaceCondition::Freeze(place.into())),
                 ),
                 BorrowKind::Fake(..) => return Ok(()),
                 BorrowKind::Mut { .. } => Triple::new(

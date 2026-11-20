@@ -50,6 +50,11 @@ impl<'i, 'c> Lazy<'i, 'c> {
     }
 
     fn set_all_transitions(&mut self, from: LazyStateID, to: LazyStateID) {
+        // The loop borrows `*self` mutably while the iterator borrows the
+        // classes behind the shared reference `self.dfa`.
+        // The loop head detaches the referent and packs `*self`.
+        // PCG: bb3[0] pre_operands: borrow: _6 before bb0[6]:PostOperands <before bb0[6]:PostMain> = & (*(*self).dfa).classes loop bb3
+        // ~PCG: bb3[0] pre_operands: {*self} -> {(*self).dfa, (*self).cache}
         for unit in self.dfa.classes.representatives(..) {
             self.set_transition(from, unit, to);
         }

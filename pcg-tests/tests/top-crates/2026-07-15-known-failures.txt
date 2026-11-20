@@ -43,8 +43,6 @@ serde_with               collapse: child place has no capability (unwrap on None
 strsim                   placeholder projection has edges to its current version
 libm                     placeholder projection has edges to its current version
 linked-hash-map          placeholder projection has edges to its current version
-unicode-segmentation     read place has an exclusive child
-flume                    read place has an exclusive child
 bit-vec                  exclusive place missing from owned PCG and borrow graph
 multimap                 exclusive place missing from owned PCG and borrow graph
 once_cell                restored capability is not above the current one
