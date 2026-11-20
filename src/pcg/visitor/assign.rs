@@ -92,7 +92,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             ) => {
                 let target: Place<'tcx> = (*target).into();
                 let mut sources = Vec::new();
-                for field in fields {
+                for (operand_index, field) in fields.iter().enumerate() {
                     let operand_place: Place<'tcx> = if let Some(place) = field.place() {
                         place.into()
                     } else {
@@ -100,7 +100,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                     };
                     let maybe_labelled = self.maybe_labelled_operand(field);
                     for source_proj in operand_place.lifetime_projections(self.ctxt) {
-                        sources.push(source_proj.with_base(maybe_labelled));
+                        sources.push((source_proj.with_base(maybe_labelled), operand_index));
                     }
                 }
                 self.connect_aggregate(&sources, target)?;

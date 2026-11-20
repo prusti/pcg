@@ -39,20 +39,49 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct AggregateEdge<'tcx, P = Place<'tcx>> {
     sources: Vec<LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>>,
+    /// For each source, the index of the operand of the assigned aggregate
+    /// it is a lifetime projection of (case 1), or `None` for a part of a
+    /// collapsed place (case 2), whose place says which part it is.
+    operand_indices: Vec<Option<usize>>,
     pub(crate) target: LocalLifetimeProjection<'tcx, P>,
 }
 
 impl<'tcx, P: Copy> AggregateEdge<'tcx, P> {
     pub(crate) fn new(
-        sources: Vec<LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>>,
+        sources: Vec<(
+            LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>,
+            Option<usize>,
+        )>,
         target: LocalLifetimeProjection<'tcx, P>,
     ) -> Self {
-        Self { sources, target }
+        let (sources, operand_indices) = sources.into_iter().unzip();
+        Self {
+            sources,
+            operand_indices,
+            target,
+        }
     }
 
     /// The lifetime projections of the parts.
     pub fn sources(&self) -> &[LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>] {
         &self.sources
+    }
+
+    /// The lifetime projections of the parts, each with the index of the
+    /// aggregate's operand it is a lifetime projection of, if the edge is for
+    /// an assigned aggregate.
+    pub fn sources_with_operand_indices(
+        &self,
+    ) -> impl Iterator<
+        Item = (
+            LifetimeProjection<'tcx, PcgLifetimeProjectionBase<'tcx, P>>,
+            Option<usize>,
+        ),
+    > + '_ {
+        self.sources
+            .iter()
+            .copied()
+            .zip(self.operand_indices.iter().copied())
     }
 
     /// The lifetime projection of the value.

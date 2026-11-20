@@ -448,7 +448,7 @@ pub(crate) trait PlaceCollapser<'a, 'tcx: 'a>:
                     LabelNodeContext::new(SourceOrTarget::Source, BorrowPcgEdgeType::Aggregate),
                     ctxt.bc_ctxt(),
                 );
-                sources.push(node.into());
+                sources.push((node.into(), None));
             }
         }
         if !sources.is_empty() {

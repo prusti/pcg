@@ -264,22 +264,32 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
     /// [`AggregateEdge`] per lifetime projection of `target` from all
     /// projections in `sources` that outlive it. The future edges of each source
     /// move as in [`Self::connect_outliving_projections`].
+    /// Each source comes with the index of the aggregate's operand it is a
+    /// lifetime projection of.
     fn connect_aggregate(
         &mut self,
-        sources: &[LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>],
+        sources: &[(
+            LifetimeProjection<'tcx, PlaceOrConst<'tcx, MaybeLabelledPlace<'tcx>>>,
+            usize,
+        )],
         target: Place<'tcx>,
     ) -> Result<(), PcgError> {
         let ctxt = self.ctxt;
         for target_proj in target.lifetime_projections(self.ctxt) {
             let outliving = sources
                 .iter()
-                .filter(|source_proj| {
+                .filter(|(source_proj, _)| {
                     self.outlives_generalized(
                         source_proj.region(ctxt.ctxt()),
                         target_proj.region(ctxt.ctxt()),
                     )
                 })
-                .map(|source_proj| source_proj.to_pcg_lifetime_projection())
+                .map(|(source_proj, operand_index)| {
+                    (
+                        source_proj.to_pcg_lifetime_projection(),
+                        Some(*operand_index),
+                    )
+                })
                 .collect::<Vec<_>>();
             if !outliving.is_empty() {
                 self.record_and_apply_action(
@@ -294,7 +304,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                 )?;
             }
         }
-        for source_proj in sources {
+        for (source_proj, _) in sources {
             if let PlaceOrConst::Place(base) = source_proj.base
                 && let Some(target_proj) =
                     self.future_edges_target(source_proj.region(ctxt.ctxt()), target)
