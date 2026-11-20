@@ -6,9 +6,14 @@ use crate::{
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeLike, LocalNode},
         borrow_pcg_expansion::BorrowPcgExpansion,
-        edge::{deref::DerefEdge, kind::BorrowPcgEdgeKind},
+        edge::{
+            borrow_flow::{BorrowFlowEdgeKind, private::FutureEdgeKind},
+            deref::DerefEdge,
+            kind::BorrowPcgEdgeKind,
+        },
         edge_data::EdgeData,
         graph::{Conditioned, frozen::FrozenGraphRef},
+        region_projection::{LifetimeProjectionLabel, LocalLifetimeProjection, PlaceOrConst},
     },
     pcg::{
         CapabilityKind, PcgNode, PcgRefLike,
@@ -19,6 +24,7 @@ use crate::{
         data_structures::{HashMap, HashSet},
         display::DisplayWithCompilerCtxt,
         maybe_old::MaybeLabelledPlace,
+        place::maybe_remote::MaybeRemotePlace,
     },
 };
 
@@ -141,6 +147,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             iteration += 1;
             let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
             if edges_to_remove.is_empty() {
+                self.merge_settled_snapshots()?;
                 break self.finish_weakening_places_with_dead_lifetime_projections(&removed_edges);
             }
             for action in edges_to_remove.removal_actions() {
@@ -323,6 +330,79 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     && expansion.is_packable(self.pcg.place_capabilities, self.ctxt)
             })
             .collect()
+    }
+
+    /// Mutable borrows, expansions of lifetime projections, assignments and
+    /// loops can label a lifetime projection `rp` as a snapshot and add an edge
+    /// from the snapshot to the future `rp`. The snapshot is *settled* once `rp`
+    /// is current again and that edge is the snapshot's only use. A settled
+    /// snapshot is merged into `rp`, so that repeated borrows of a place do not
+    /// build up a chain of snapshots. The edges into the snapshot must hold
+    /// under the same conditions as its edge into `rp`, so that they keep their
+    /// conditions when they point to `rp`.
+    fn merge_settled_snapshots(&mut self) -> Result<(), PcgError> {
+        for (edge, snapshot) in self.settled_snapshots() {
+            self.record_and_apply_action(
+                BorrowPcgAction::remove_edge(edge, "Snapshot is settled").into(),
+            )?;
+            self.record_and_apply_action(
+                BorrowPcgAction::remove_lifetime_projection_label(snapshot, "Snapshot is settled")
+                    .into(),
+            )?;
+        }
+        Ok(())
+    }
+
+    /// The settled snapshots, each with its edge into the current projection.
+    /// Each such edge ends at an unlabelled projection, so merging one snapshot
+    /// does not change another one's edge, and all of them can be merged in one
+    /// pass. Merging a snapshot can settle a snapshot whose edge led into it;
+    /// the next packing merges that one.
+    fn settled_snapshots(&self) -> Vec<(BorrowPcgEdge<'tcx>, LocalLifetimeProjection<'tcx>)> {
+        let ctxt = self.ctxt.bc_ctxt();
+        let graph = &self.pcg.borrow.graph;
+        let mut candidates: HashMap<
+            PcgNode<'tcx>,
+            (BorrowPcgEdge<'tcx>, LocalLifetimeProjection<'tcx>),
+        > = graph
+            .edges()
+            .filter_map(|edge| {
+                let BorrowPcgEdgeKind::BorrowFlow(flow) = edge.kind else {
+                    return None;
+                };
+                let PlaceOrConst::Place(MaybeRemotePlace::Local(base)) = flow.long().base else {
+                    return None;
+                };
+                let snapshot = flow.long().with_base(base);
+                (flow.kind == BorrowFlowEdgeKind::Future(FutureEdgeKind::ToFutureSelf)
+                    && matches!(snapshot.label(), Some(LifetimeProjectionLabel::Location(_)))
+                    && snapshot.with_label(None, ctxt) == flow.short())
+                .then(|| (snapshot.into(), (edge.to_owned_edge(), snapshot)))
+            })
+            .collect();
+        if candidates.is_empty() {
+            return Vec::new();
+        }
+        for edge in graph.edges() {
+            for node in edge.kind.blocked_nodes(ctxt) {
+                if candidates
+                    .get(&node)
+                    .is_some_and(|(own, _)| own.kind() != edge.kind)
+                {
+                    candidates.remove(&node);
+                }
+            }
+            for node in edge.kind.blocked_by_nodes(ctxt) {
+                let node = node.into();
+                if candidates
+                    .get(&node)
+                    .is_some_and(|(own, _)| own.conditions() != edge.conditions)
+                {
+                    candidates.remove(&node);
+                }
+            }
+        }
+        candidates.into_values().collect()
     }
 
     /// Identifies the set of edges that should be removed from the graph
