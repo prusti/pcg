@@ -22,7 +22,7 @@ use crate::{
     },
     rustc_interface::{
         data_structures::fx::FxHashSet,
-        dataflow::AnalysisEngine,
+        dataflow::{Analysis, AnalysisEngine},
         index::IndexVec,
         middle::{
             mir::{self, BasicBlock, Body, Location},
@@ -100,15 +100,24 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
 
     /// Returns the free pcs for the location `exp_loc` and iterates the cursor
     /// to the *end* of that location.
-    ///
-    /// This function may return `None` if the PCG did not analyze this block.
-    /// This could happen, for example, if the block would only be reached when unwinding from a panic.
     fn next(&mut self, exp_loc: Location) -> Result<Option<PcgLocation<'a, 'tcx>>, PcgError> {
         let location = self.curr_stmt.unwrap();
         assert_eq!(location, exp_loc);
         assert!(location < self.end_stmt.unwrap());
 
         self.cursor.seek_after_primary_effect(location);
+        // The results at a call that returns include its return effect (its
+        // `PostMain` phase); see `PcgSuccessor` for its unwind edge.
+        let terminator = self.body()[location.block].terminator();
+        if location.statement_index == self.body()[location.block].statements.len()
+            && let mir::TerminatorKind::Call {
+                target: Some(_), ..
+            } = terminator.kind
+        {
+            self.cursor.apply_custom_effect(|analysis, state| {
+                analysis.0.apply_call_return_effect(state, location.block);
+            });
+        }
 
         let state = self.cursor.get().expect_results_or_error()?;
 
@@ -132,14 +141,23 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         let from_pcg = &state.data.pcg;
         let from_post_main = from_pcg.states[EvalStmtPhase::PostMain].clone();
         let states = state.data.pcg.states.to_owned();
-        let self_abstraction_edges = from_post_main
-            .borrow
-            .graph()
-            .abstraction_edges()
-            .collect::<FxHashSet<_>>();
 
         let ctxt: ResultsCtxt<'a, 'tcx> = self.results_ctxt();
         let block = &self.body()[location.block];
+        // A call that unwinds does not assign its destination, so its unwind
+        // edge starts from the state before its main effect, followed by the
+        // effect of the unwinding call.
+        let call_cleanup = match block.terminator().kind {
+            mir::TerminatorKind::Call {
+                unwind: mir::UnwindAction::Cleanup(cleanup),
+                ..
+            } => {
+                let mut unwound = (*from_pcg.states[EvalStmtPhase::PreMain]).clone();
+                let actions = unwound.unwind_call_into(location.block, cleanup, ctxt)?;
+                Some((cleanup, unwound, actions))
+            }
+            _ => None,
+        };
 
         let succ_blocks = successor_blocks(block.terminator())
             .into_iter()
@@ -164,12 +182,26 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
                     .pcg
                     .clone();
 
-                let mut actions =
-                    from_post_main.bridge(&to.entry_state, location.block, succ, ctxt)?;
+                let (from, mut actions) = match &call_cleanup {
+                    Some((cleanup, unwound, call_actions)) if *cleanup == succ => {
+                        (unwound, call_actions.clone())
+                    }
+                    _ => (&*from_post_main, PcgActions::new(Vec::new())),
+                };
+                // Compared without their conditions, which entering `succ`
+                // changes without an action: it adds the edge's branch choice
+                // to them, and the join there may weaken them.
+                let self_abstraction_edges = from
+                    .borrow
+                    .graph()
+                    .abstraction_edges()
+                    .map(|abstraction| abstraction.value)
+                    .collect::<FxHashSet<_>>();
+                actions.extend(from.bridge(&to.entry_state, location.block, succ, ctxt)?);
 
                 let mut borrow_actions = BorrowPcgActions::new();
                 for abstraction in to.entry_state.borrow.graph().abstraction_edges() {
-                    if !self_abstraction_edges.contains(&abstraction) {
+                    if !self_abstraction_edges.contains(&abstraction.value) {
                         borrow_actions.push(
                             BorrowPcgAction::add_edge(
                                 BorrowPcgEdge::new(
@@ -221,7 +253,9 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
     /// Recommended interface.
     /// Does *not* require that one calls `analysis_for_bb` first
     /// This function may return `None` if the PCG did not analyze this block.
-    /// This could happen, for example, if the block would only be reached when unwinding from a panic.
+    /// This happens if the analysis does not reach the block, e.g. a cleanup
+    /// block entered only by the unwind edge of a `FalseUnwind`, which the
+    /// analysis does not follow.
     pub fn get_all_for_bb<'slf>(
         &'slf mut self,
         block: BasicBlock,

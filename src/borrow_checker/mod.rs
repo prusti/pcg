@@ -404,8 +404,8 @@ pub trait RustBorrowCheckerInterface<'tcx> {
     /// However, as referenced in the above link, there are some subtleties
     /// related to places that will be dropped. Follow the link for more details.
     ///
-    /// Note that the return place and its lifetime projections will always be
-    /// live.
+    /// Note that the return place and its lifetime projections are dead in
+    /// cleanup blocks, from which the function cannot return.
     fn is_live(&self, node: PcgNode<'tcx>, location: Location) -> bool;
 
     fn borrow_set(&self) -> &BorrowSet<'tcx>;

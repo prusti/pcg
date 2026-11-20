@@ -10,7 +10,7 @@ fn basic_user() {
     let y = basic(&mut x);
     // PCG: bb0[8] post_main: call basic at bb0[8]: _3 before bb0[8]:PostOperands↓'?7 before bb0[8]:PostMain -> y↓'?6
     *y = 72;
-    // PCG: bb1[4] pre_operands: Remove Edge call basic at bb0[8]: _3 before bb0[8]:PostOperands↓'?7 before bb0[8]:PostMain -> y↓'?6
+    // PCG: bb1[4] pre_operands: Remove Edge call basic at bb0[8]: _3 before bb0[8]:PostOperands↓'?7 before bb0[8]:PostMain -> y↓'?6 under conditions bb0 -> bb1
     drop(x);
 }
 

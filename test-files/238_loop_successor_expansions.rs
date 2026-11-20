@@ -90,4 +90,22 @@ fn reference_field(pair: &RefPair<'_>, run: bool) {
     }
 }
 
+enum List {
+    Nil,
+    Cons(u32, Box<List>),
+}
+
+// The edges inside the loop do not add its abstraction again: every state in
+// the loop has it, and entering a block only adds the branch choice taken to
+// its conditions.
+fn loop_abstraction_kept(mut l: &mut List) {
+    // PCG: bb3[0] pre_operands: Loop(bb1): Remote(_1)↓'?6 -> l↓'?6 under conditions bb2 -> bb3
+    // ~PCG: bb2 -> bb3: Add Edge Loop(bb1): Remote(_1)↓'?6 -> l↓'?6
+    // ~PCG: bb2 -> bb3: Add Edge Loop(bb1): Remote(_1)↓'?6 -> l↓'?6 under conditions bb2 -> bb3
+    while let List::Cons(el, tl) = l {
+        *el = 0;
+        l = tl
+    }
+}
+
 fn main() {}

@@ -129,13 +129,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     ) -> Result<(), PcgError> {
         let debug_iteration_limit = 10000;
         let mut iteration = 0;
-        let ctxt = self.ctxt;
-        let block = self.location().block;
-        self.restore_capability_to_leaf_places(
-            for_place,
-            |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
-            ctxt,
-        )?;
+        self.restore_capability_to_unblocked_leaf_places(for_place)?;
         let mut removed_edges = Vec::new();
         loop {
             iteration += 1;
@@ -168,6 +162,25 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 "Packing old and dead borrow leaves took more than {debug_iteration_limit} iterations"
             );
         }
+    }
+
+    /// Restores exclusive capability to the leaf places (below `for_place`,
+    /// if given) that have read capability although no borrow blocks them any
+    /// more, e.g. after a shared borrow of them expired, unless a loop around
+    /// the current location only reads them (see
+    /// [`PlaceCollapser::restore_capability_to_leaf_places`] for the other
+    /// exceptions). [`Self::pack_old_and_dead_borrow_leaves`] begins with this.
+    pub(crate) fn restore_capability_to_unblocked_leaf_places(
+        &mut self,
+        for_place: Option<Place<'tcx>>,
+    ) -> Result<(), PcgError> {
+        let ctxt = self.ctxt;
+        let block = self.location().block;
+        self.restore_capability_to_leaf_places(
+            for_place,
+            |place| !ctxt.body_analysis().is_read_only_in_loop(block, place),
+            ctxt,
+        )
     }
 
     /// Cuts the delegations that keep a loan of `place` alive.

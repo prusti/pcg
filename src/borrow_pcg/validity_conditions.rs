@@ -229,10 +229,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt> for Va
 pub(crate) fn effective_successors(from: BasicBlock, body: &mir::Body<'_>) -> Vec<BasicBlock> {
     let terminator = body.basic_blocks[from].terminator();
     match terminator.kind {
-        mir::TerminatorKind::Call { target, .. } => target.into_iter().collect(),
-        mir::TerminatorKind::Drop { target, .. } | mir::TerminatorKind::Assert { target, .. } => {
-            vec![target]
-        }
         mir::TerminatorKind::FalseUnwind { real_target, .. }
         | mir::TerminatorKind::FalseEdge { real_target, .. } => {
             vec![real_target]

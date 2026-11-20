@@ -6,6 +6,6 @@ fn main() {
     }
     // PCGTODO: bb7[0] post_main: Loop(bb7): (*_10) -> iter↓'?18
     // PCGTODO: bb7[0] post_main: Loop(bb7): (*_10) -> x↓'?12
-    // PCG: bb7[0] post_main: Loop(bb7): _5 -> x↓'?12
+    // PCG: bb7[0] post_main: Loop(bb7): _5 -> x↓'?12 under conditions bb0 -> bb1, bb1 -> bb2, bb2 -> bb3, bb3 -> bb4, bb4 -> bb5, bb5 -> bb6
     let y = *x;
 }

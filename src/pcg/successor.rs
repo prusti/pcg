@@ -8,6 +8,17 @@ use crate::{
     utils::{DebugCtxt, HasBorrowCheckerCtxt},
 };
 
+/// The CFG edge from a terminator to `block`. Its `actions` apply to the
+/// terminator's state after its main effect (`PostMain`), or, on the unwind
+/// edge of a call, to the state before it (`PreMain`). In order, they are: on
+/// the unwind edge of a call, the effect of the unwinding call, which uses its
+/// arguments but does not assign its destination; on an edge into a cleanup
+/// block, the expiry of the borrows that end on the edge, with the
+/// restorations and collapses it allows; the repacks to the owned places of
+/// `block`'s entry state; at a loop head, the place expansions of its entry
+/// state; and the additions of the entry state's abstraction edges that the
+/// source state (after the effect of an unwinding call) lacks, compared
+/// without their conditions. The entry state's borrow graph is `entry_graph`.
 #[derive(Debug)]
 pub struct PcgSuccessor<'a, 'tcx> {
     block: BasicBlock,

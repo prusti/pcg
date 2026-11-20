@@ -368,6 +368,23 @@ impl<'a, 'tcx> PendingDataflowState<'a, 'tcx, AnalysisCtxt<'a, 'tcx>> {
         let (mut first, mut rest) = self.take_first();
         rest.retain(|other| ctxt.should_join_from(other.ctxt.block));
 
+        // The actions on the edges are reported by the results (see
+        // `PcgSuccessor`), so they are applied here without debug graphs.
+        if ctxt.body()[ctxt.block].is_cleanup {
+            for incoming in std::iter::once(&mut first).chain(rest.iter_mut()) {
+                let pcg = Rc::make_mut(&mut incoming.data.pcg.states.0.post_main);
+                pcg.unwind_call_into(
+                    incoming.ctxt.block,
+                    ctxt.block,
+                    incoming.ctxt.without_debug_graphs(),
+                )?;
+                pcg.expire_and_collapse_on_edge_to_cleanup(
+                    ctxt.block,
+                    ctxt.without_debug_graphs(),
+                )?;
+            }
+        }
+
         if !rest.is_empty() {
             // Determine the common owned state before merging borrow graphs
             // or applying the loop abstraction.

@@ -156,6 +156,11 @@ pub trait Analysis<'tcx> {
     ) -> TerminatorEdges<'mir, 'tcx> {
         terminator.edges()
     }
+
+    /// The effect of a call returning normally. A forward analysis applies it
+    /// to the state after the call terminator's effect, only on the edges to
+    /// the call's return target (not on its unwind edge).
+    fn apply_call_return_effect(&self, _state: &mut Self::Domain, _block: BasicBlock) {}
 }
 
 // --- compute_fixpoint ---
@@ -287,10 +292,11 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 
     fn apply_call_return_effect(
         &self,
-        _state: &mut Self::Domain,
-        _block: BasicBlock,
+        state: &mut Self::Domain,
+        block: BasicBlock,
         _return_places: CallReturnPlaces<'_, 'tcx>,
     ) {
+        self.0.apply_call_return_effect(state, block);
     }
 }
 
@@ -352,10 +358,11 @@ impl<'tcx, T: Analysis<'tcx>> mir_dataflow::Analysis<'tcx> for AnalysisEngine<T>
 
     fn apply_call_return_effect(
         &mut self,
-        _state: &mut Self::Domain,
-        _block: BasicBlock,
+        state: &mut Self::Domain,
+        block: BasicBlock,
         _return_places: CallReturnPlaces<'_, 'tcx>,
     ) {
+        self.0.apply_call_return_effect(state, block);
     }
 }
 
