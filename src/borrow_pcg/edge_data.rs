@@ -187,6 +187,9 @@ pub enum LabelNodePredicate<'tcx, P = Place<'tcx>> {
     PlaceEquals(P),
     /// The place associated with the node is a postfix of this place.
     PlaceIsPostfixOf(P),
+    /// The place associated with the node is a prefix or a postfix of this
+    /// place, i.e. the values of the two places overlap.
+    PlaceOverlaps(P),
     NodeType(PcgNodeType),
     And(Vec<Self>),
     Or(Vec<Self>),
@@ -259,6 +262,10 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
                 "postfixes of ".into(),
                 place.display_output(ctxt, mode),
             ]),
+            LabelNodePredicate::PlaceOverlaps(place) => DisplayOutput::Seq(vec![
+                "prefixes and postfixes of ".into(),
+                place.display_output(ctxt, mode),
+            ]),
             LabelNodePredicate::PlaceEquals(place) => {
                 DisplayOutput::Seq(vec!["exact ".into(), place.display_output(ctxt, mode)])
             }
@@ -313,6 +320,9 @@ impl<'tcx, P: PcgNodeComponent + PrefixRelation> LabelNodePredicate<'tcx, P> {
             LabelNodePredicate::PlaceEquals(place) => related_place.is_some_and(|p| p == *place),
             LabelNodePredicate::PlaceIsPostfixOf(place) => {
                 related_place.is_some_and(|p| place.is_prefix_of(p))
+            }
+            LabelNodePredicate::PlaceOverlaps(place) => {
+                related_place.is_some_and(|p| place.is_prefix_of(p) || p.is_prefix_of(*place))
             }
             LabelNodePredicate::NodeType(pcg_node_type) => match candidate {
                 PcgNode::Place(_) => *pcg_node_type == PcgNodeType::Place,
