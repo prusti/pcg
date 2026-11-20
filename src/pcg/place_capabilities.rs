@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cmp, collections::HashMap, marker::PhantomData};
+use std::{borrow::Cow, collections::HashMap, marker::PhantomData};
 
 use itertools::Itertools;
 
@@ -26,6 +26,12 @@ mod private {
 
         fn iter(&self) -> impl Iterator<Item = (P, C)> + '_;
 
+        /// The capability `place` gets back when the loan or freeze that
+        /// suspended it ends.
+        fn suspended(&self, place: P) -> Option<C>;
+
+        fn iter_suspended(&self) -> impl Iterator<Item = (P, C)> + '_;
+
         fn capabilities_for_strict_postfixes_of<'slf>(
             &'slf self,
             place: P,
@@ -37,6 +43,16 @@ mod private {
         {
             self.iter()
                 .filter(move |&(p, _)| place.is_strict_prefix_of(p))
+        }
+
+        /// Whether a place below `place` has a capability.
+        fn unpacks(&self, place: P) -> bool
+        where
+            P: PrefixRelation,
+        {
+            self.capabilities_for_strict_postfixes_of(place)
+                .next()
+                .is_some()
         }
     }
 
@@ -50,6 +66,15 @@ mod private {
         fn remove<Ctxt>(&mut self, place: P, ctxt: Ctxt) -> Option<C>;
 
         fn retain(&mut self, predicate: impl Fn(P, C) -> bool);
+
+        /// Records that `place` gets `capability` back when the loan or
+        /// freeze that takes its capability ends.
+        fn suspend(&mut self, place: P, capability: C);
+
+        /// Removes the record of `place`, returning the suspended capability.
+        fn resume(&mut self, place: P) -> Option<C>;
+
+        fn retain_suspended(&mut self, predicate: impl Fn(P, C) -> bool);
 
         fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
         where
@@ -94,6 +119,14 @@ where
     fn iter(&self) -> impl Iterator<Item = (P, C)> + '_ {
         self.map.iter().map(|(k, v)| (*k, *v))
     }
+
+    fn suspended(&self, place: P) -> Option<C> {
+        self.suspended.get(&place).copied()
+    }
+
+    fn iter_suspended(&self) -> impl Iterator<Item = (P, C)> + '_ {
+        self.suspended.iter().map(|(k, v)| (*k, *v))
+    }
 }
 
 impl<'tcx, C, P> PlaceCapabilitiesInterface<'tcx, C, P> for PlaceCapabilities<'tcx, C, P>
@@ -113,6 +146,18 @@ where
         self.map.retain(|place, cap| predicate(*place, *cap));
     }
 
+    fn suspend(&mut self, place: P, capability: C) {
+        self.suspended.insert(place, capability);
+    }
+
+    fn resume(&mut self, place: P) -> Option<C> {
+        self.suspended.remove(&place)
+    }
+
+    fn retain_suspended(&mut self, predicate: impl Fn(P, C) -> bool) {
+        self.suspended.retain(|place, cap| predicate(*place, *cap));
+    }
+
     fn iter_mut<'slf>(&'slf mut self) -> impl Iterator<Item = (&'slf P, &'slf mut C)> + 'slf
     where
         C: 'slf,
@@ -129,6 +174,9 @@ where
     P: Eq + std::hash::Hash,
 {
     pub(crate) map: HashMap<P, C>,
+    /// The capabilities of the lent and frozen places, which they get back
+    /// when the loan or freeze ends.
+    pub(crate) suspended: HashMap<P, C>,
     pub(crate) _marker: PhantomData<&'tcx ()>,
 }
 
@@ -139,6 +187,7 @@ where
     fn default() -> Self {
         Self {
             map: HashMap::default(),
+            suspended: HashMap::default(),
             _marker: PhantomData,
         }
     }
@@ -272,6 +321,13 @@ impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx> + HasSettings<'a> + DebugCtxt
             .map(|(node, capability)| {
                 Cow::Owned(format!("{}: {:?}", node.display_string(ctxt), capability))
             })
+            .chain(self.iter_suspended().map(|(node, capability)| {
+                Cow::Owned(format!(
+                    "{}: suspended {:?}",
+                    node.display_string(ctxt),
+                    capability
+                ))
+            }))
             .sorted()
             .collect()
     }
@@ -326,37 +382,6 @@ where
         _ctxt: impl HasCompilerCtxt<'_, 'tcx>,
     ) {
         self.map.retain(|place, _| place.place().local != local);
-    }
-}
-
-impl<C: Copy + PartialEq, P> PlaceCapabilities<'_, C, P>
-where
-    P: Copy + Eq + std::hash::Hash,
-{
-    pub(crate) fn join<Ctxt: Copy>(&mut self, other: &Self, _ctxt: Ctxt) -> bool
-    where
-        C: PartialOrd,
-    {
-        let mut changed = false;
-        self.map.retain(|place, _| other.map.contains_key(place));
-        for (place, other_capability) in &other.map {
-            let place = *place;
-            let other_capability = *other_capability;
-            if let Some(self_capability) = self.map.get(&place) {
-                if self_capability.partial_cmp(&other_capability) == Some(cmp::Ordering::Greater) {
-                    changed |= self.map.insert(place, other_capability) != Some(other_capability);
-                } else if let Some(cmp::Ordering::Less | cmp::Ordering::Equal) =
-                    self_capability.partial_cmp(&other_capability)
-                {
-                    // self is already minimum, no change needed
-                } else {
-                    // incomparable - remove
-                    self.map.remove(&place);
-                    changed = true;
-                }
-            }
-        }
-        changed
     }
 }
 

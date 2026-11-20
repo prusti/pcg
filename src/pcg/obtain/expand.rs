@@ -25,6 +25,7 @@ use crate::{
             RenderDebugGraph,
         },
         place_capabilities::BlockType,
+        unpacking_places,
     },
     rustc_interface::middle::mir,
     utils::{
@@ -40,6 +41,19 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
 
     /// Whether `place` or a place below it has a capability.
     fn holds_capability_at_or_below(&self, place: Place<'tcx>) -> bool;
+
+    /// Whether the borrow PCG already unpacks `expanded.place` as `expanded`.
+    /// An implementation may not count an unpacking that is only layout, so
+    /// that unpacking it again gives its parts capabilities.
+    fn contains_borrow_pcg_expansion(
+        &self,
+        expanded: &ExpandedPlace<'tcx>,
+        ctxt: CompilerCtxt<'_, 'tcx>,
+    ) -> Result<bool, PcgError> {
+        self.borrows_graph()
+            .contains_borrow_pcg_expansion(expanded, ctxt)
+            .map_err(PcgError::from)
+    }
 
     /// The capabilities that adding the borrow-PCG expansion `expansion` sets.
     fn borrow_expansion_capabilities(
@@ -62,10 +76,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, obtain_type, ctxt))]
+    /// Expands down to `place`. Where `template` unpacks the same base with
+    /// the same guide, its guide is used: `place` itself does not carry the
+    /// label of an index guide.
+    #[tracing::instrument(skip(self, template, obtain_type, ctxt))]
     fn expand_to(
         &mut self,
         place: Place<'tcx>,
+        template: Option<&BorrowsGraph<'tcx>>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
@@ -73,7 +91,13 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
             let expansion = base.expand_one_level(place, ctxt)?;
-            if self.expand_place_one_level(base, &expansion, None, obtain_type, ctxt)? {
+            let guide = expansion.guide().and_then(|guide| {
+                template?.edges().find_map(|edge| {
+                    let (expanded, _, stored) = unpacking_places(edge.kind())?;
+                    stored.filter(|stored| expanded == base && *stored == guide)
+                })
+            });
+            if self.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
                 tracing::debug!(
                     "expand region projections for {} one level",
                     base.display_string(ctxt.ctxt())
@@ -238,9 +262,18 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             if capability.is_read() {
                 self.freeze_for_read_unpacking(base)?;
             }
+            // Dereferencing a raw pointer only reads its value: the pointer
+            // keeps its capability. As for a reference, the referent is
+            // either read or fully accessible: obtaining W for a part of it
+            // leaves the other parts initialised.
+            let referent_capability = if capability.is_read() {
+                CapabilityKind::Read
+            } else {
+                CapabilityKind::Exclusive
+            };
             let action = BorrowPcgAction::add_edge_setting(
                 BorrowPcgEdge::new(deref.into(), self.path_conditions()),
-                self.deref_capabilities(base, capability, ctxt.bc_ctxt()),
+                vec![(base.project_deref(ctxt), Some(referent_capability))],
                 "expand_place_one_level: add rawptr deref edge",
             );
             self.apply_action(action.into())?;
@@ -273,10 +306,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             place: base,
             expansion: place_expansion,
         };
-        if self
-            .borrows_graph()
-            .contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())?
-        {
+        if self.contains_borrow_pcg_expansion(&expanded_place, ctxt.bc_ctxt())? {
             return Ok(false);
         }
         tracing::debug!(

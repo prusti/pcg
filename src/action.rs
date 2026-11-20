@@ -116,10 +116,6 @@ impl<'tcx> From<Vec<OwnedPcgAction<'tcx>>> for PcgActions<'tcx> {
 }
 
 impl<'tcx> PcgActions<'tcx> {
-    pub(crate) fn extend(&mut self, actions: PcgActions<'tcx>) {
-        self.actions.extend(actions.actions);
-    }
-
     /// The subset of actions applied to the Borrow PCG.
     #[must_use]
     pub fn borrow_pcg_actions(&self) -> BorrowPcgActions<'tcx> {

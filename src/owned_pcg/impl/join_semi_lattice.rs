@@ -6,15 +6,9 @@
 
 use crate::{
     HasSettings,
-    action::{BorrowPcgAction, CapabilityChanges, PcgAction},
-    borrow_pcg::{
-        action::LabelPlaceReason, borrow_pcg_expansion::PlaceExpansion, state::BorrowsStateLike,
-    },
-    error::PcgError,
-    owned_pcg::{
-        ExpandedPlace, RepackCollapse, RepackExpand, RepackOp,
-        join::{data::JoinOwnedData, obtain::JoinCtxt},
-    },
+    action::CapabilityChanges,
+    borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
+    owned_pcg::{RepackCollapse, RepackExpand},
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilitiesInterface},
     pcg_validity_assert, pcg_validity_expect_some,
     utils::{
@@ -22,126 +16,10 @@ use crate::{
         display::DisplayWithCompilerCtxt,
     },
 };
-use itertools::Itertools;
 
-use crate::{
-    owned_pcg::LocalExpansions,
-    pcg::owned_state::{LocalInitState, OwnedPcg},
-    rustc_interface::middle::mir,
-};
-
-impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalInitState<'tcx>> {
-    pub(crate) fn join(
-        &mut self,
-        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg LocalInitState<'tcx>>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
-        match (&mut *self.owned, &mut other.owned) {
-            (LocalInitState::Unallocated, LocalInitState::Unallocated) => Ok(vec![]),
-            (
-                LocalInitState::Allocated {
-                    expansions: to_places,
-                    ..
-                },
-                LocalInitState::Allocated {
-                    expansions: from_places,
-                    ..
-                },
-            ) => {
-                let self_allocated = JoinOwnedData {
-                    owned: to_places,
-                    borrows: self.borrows,
-                    capabilities: self.capabilities,
-                    snapshot_location: self.snapshot_location,
-                };
-                let mut from_places = from_places.clone();
-                let other_allocated = JoinOwnedData {
-                    owned: &mut from_places,
-                    borrows: other.borrows,
-                    capabilities: other.capabilities,
-                    snapshot_location: other.snapshot_location,
-                };
-                self_allocated.join(other_allocated, ctxt)
-            }
-            (LocalInitState::Allocated { expansions, .. }, LocalInitState::Unallocated) => {
-                self.borrows.apply_action(
-                    &mut BorrowPcgAction::label_place_and_update_related_capabilities(
-                        expansions.local.into(),
-                        self.snapshot_location,
-                        LabelPlaceReason::StorageDead,
-                    ),
-                    self.capabilities,
-                    ctxt,
-                );
-                let mut repacks = vec![];
-                for (place, k) in self.capabilities.owned_capabilities(expansions.local, ctxt) {
-                    if *k > CapabilityKind::Write {
-                        // Temporary: mark as for_storage_dead until
-                        // https://github.com/prusti/pcg/issues/137 is resolved.
-                        repacks.push(
-                            BorrowPcgAction::weaken_for_storage_dead(
-                                place,
-                                *k,
-                                CapabilityKind::Write,
-                                "join with a dead local",
-                            )
-                            .with_capabilities(vec![(place, Some(CapabilityKind::Write))].into())
-                            .into(),
-                        );
-                        *k = CapabilityKind::Write;
-                    }
-                }
-                repacks.extend(expansions.collapse(
-                    expansions.local.into(),
-                    None,
-                    self.capabilities,
-                    ctxt,
-                ));
-                repacks.push(RepackOp::StorageDead(expansions.local).into());
-                *self.owned = LocalInitState::Unallocated;
-                Ok(repacks)
-            }
-            (LocalInitState::Unallocated, LocalInitState::Allocated { expansions, .. }) => {
-                other.borrows.apply_action(
-                    &mut BorrowPcgAction::label_place_and_update_related_capabilities(
-                        expansions.local.into(),
-                        other.snapshot_location,
-                        LabelPlaceReason::StorageDead,
-                    ),
-                    other.capabilities,
-                    ctxt,
-                );
-                Ok(vec![])
-            }
-        }
-    }
-}
-
-impl<'a, 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut OwnedPcg<'tcx>> {
-    #[tracing::instrument(skip(self, other, ctxt), fields(self.snapshot_location = ?self.snapshot_location, other.snapshot_location = ?other.snapshot_location), level = "warn")]
-    pub(crate) fn join(
-        &mut self,
-        mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg OwnedPcg<'tcx>>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
-        let mut actions = vec![];
-        for local in 0..self.owned.num_locals() {
-            let local: mir::Local = local.into();
-            let mut owned_local_data = self.map_owned(|owned| &mut owned[local]);
-            let other_owned_local_data = other.map_owned(|owned| &owned[local]);
-            actions.extend(owned_local_data.join(other_owned_local_data, ctxt)?);
-        }
-        Ok(actions)
-    }
-}
+use crate::owned_pcg::LocalExpansions;
 
 impl<'tcx> LocalExpansions<'tcx> {
-    pub(crate) fn expansions_shortest_first(&self) -> impl Iterator<Item = &ExpandedPlace<'tcx>> {
-        self.expansions
-            .iter()
-            .sorted_by_key(|ep| ep.place.projection().len())
-    }
-
     /// Performs `expand` and returns its capability changes.
     pub(crate) fn perform_expand_action<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
         &mut self,
@@ -210,29 +88,6 @@ impl<'tcx> LocalExpansions<'tcx> {
             .iter()
             .filter(|ep| ep.place == place)
             .flat_map(|ep| ep.expansion_places(ctxt).unwrap())
-            .collect()
-    }
-
-    pub(crate) fn collapse_actions_for<'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
-        &self,
-        place: Place<'tcx>,
-        capabilities: &impl PlaceCapabilitiesInterface<'tcx>,
-        ctxt: Ctxt,
-    ) -> Vec<RepackCollapse<'tcx>>
-    where
-        'tcx: 'a,
-    {
-        self.expansions_from(place)
-            .map(|expanded| {
-                let cap = expanded
-                    .expansion_places(ctxt)
-                    .unwrap()
-                    .into_iter()
-                    .fold(CapabilityKind::Exclusive, |acc, child| {
-                        acc.minimum(capabilities.get(child, ctxt).unwrap()).unwrap()
-                    });
-                RepackCollapse::new(place, cap, expanded.guide())
-            })
             .collect()
     }
 
