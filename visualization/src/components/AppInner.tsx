@@ -29,6 +29,7 @@ import SourceCodeViewer from "./SourceCodeViewer";
 import Settings from "./Settings";
 import MirGraph from "./MirGraph";
 import PcgGraph from "./PcgGraph";
+import { PcgRenderer } from "../load_pcg_graph";
 
 interface AppInnerProps {
   apiFunctionData: ApiFunctionData;
@@ -92,6 +93,14 @@ export const AppInner: React.FC<AppInnerProps> = ({
 }) => {
   const [showUnwindEdges] = useState(false);
   const [showPCG, setShowPCG] = useLocalStorageBool("showPCG", true);
+  const [renderer, setRenderer] = useState<PcgRenderer>(() =>
+    new URLSearchParams(window.location.search).get("renderer") === "dot" ? "dot" : "svg"
+  );
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("renderer", renderer);
+    window.history.replaceState(null, "", url);
+  }, [renderer]);
   const [showPCGNavigator, setShowPCGNavigator] = useLocalStorageBool(
     "showPCGNavigator",
     true
@@ -417,6 +426,8 @@ export const AppInner: React.FC<AppInnerProps> = ({
           setShowActionsInCode={setShowActionsInCode}
           showPCG={showPCG}
           setShowPCG={setShowPCG}
+          renderer={renderer}
+          setRenderer={setRenderer}
           showPCGNavigator={showPCGNavigator}
           setShowPCGNavigator={setShowPCGNavigator}
           currentPoint={currentPoint}
@@ -559,6 +570,7 @@ export const AppInner: React.FC<AppInnerProps> = ({
       </div>
       {currentBlockData && (
         <PcgGraph
+          renderer={renderer}
           pcgData={currentBlockData}
           showPCG={showPCG}
           navigatorReservedWidth={navigatorReservedWidth}

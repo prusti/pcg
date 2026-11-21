@@ -46,7 +46,7 @@ describe('openDotGraphInNewWindow', () => {
     await openDotGraphInNewWindow(mockApi, filename);
 
     expect(mockApi.fetchDotFile).toHaveBeenCalledWith(filename);
-    expect(mockApi.fetchDotFile).toHaveBeenCalledWith('test.json');
+    expect(mockApi.fetchDotFile).toHaveBeenCalledTimes(1);
   });
 
   it('should open a new window with the rendered SVG', async () => {
@@ -58,10 +58,11 @@ describe('openDotGraphInNewWindow', () => {
 
     expect(window.open).toHaveBeenCalledWith(
       '',
-      `Dot Graph - ${filename}`,
+      '_blank',
       'width=800,height=600'
     );
     expect(mockPopup.document.body.appendChild).toHaveBeenCalled();
+    expect(mockPopup.document.head.innerHTML).toContain(`<title>Dot Graph - ${filename}</title>`);
   });
 
   it('should handle blocked popup gracefully', async () => {

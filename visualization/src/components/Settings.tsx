@@ -3,6 +3,7 @@ import { Api } from "../api";
 import { CurrentPoint, FunctionSlug } from "../types";
 import BorrowCheckerGraphs from "./BorrowCheckerGraphs";
 import LoopResults from "./LoopResults";
+import { PcgRenderer } from "../load_pcg_graph";
 
 interface SettingsProps {
   showSettings: boolean;
@@ -11,6 +12,8 @@ interface SettingsProps {
   setShowActionsInCode: (value: boolean) => void;
   showPCG: boolean;
   setShowPCG: (value: boolean) => void;
+  renderer: PcgRenderer;
+  setRenderer: (value: PcgRenderer) => void;
   showPCGNavigator: boolean;
   setShowPCGNavigator: (value: boolean) => void;
   currentPoint: CurrentPoint;
@@ -25,6 +28,8 @@ export default function Settings({
   setShowActionsInCode,
   showPCG,
   setShowPCG,
+  renderer,
+  setRenderer,
   showPCGNavigator,
   setShowPCGNavigator,
   currentPoint,
@@ -86,6 +91,13 @@ export default function Settings({
             onChange={(e) => setShowPCG(e.target.checked)}
           />{" "}
           Show PCG
+        </label>
+        <label style={{ display: "block", marginBottom: "10px" }}>
+          PCG renderer{" "}
+          <select value={renderer} onChange={(e) => setRenderer(e.target.value as PcgRenderer)}>
+            <option value="svg">Rust SVG</option>
+            <option value="dot">Graphviz (legacy)</option>
+          </select>
         </label>
         <label style={{ display: "block", marginBottom: "10px" }}>
           <input

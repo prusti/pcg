@@ -119,6 +119,7 @@ pub struct PcgSettings {
     pub polonius: bool,
     pub dump_mir_dataflow: bool,
     pub visualization: bool,
+    pub legacy_graph_renderer: bool,
     pub visualization_data_dir: PathBuf,
     pub check_annotations: bool,
     pub emit_annotations: bool,
@@ -178,6 +179,8 @@ impl PcgSettings {
             Self::process_bool_var(&mut processed_vars, "PCG_DUMP_MIR_DATAFLOW", false);
 
         let visualization = Self::process_bool_var(&mut processed_vars, "PCG_VISUALIZATION", false);
+        let legacy_graph_renderer =
+            Self::process_bool_var(&mut processed_vars, "PCG_LEGACY_GRAPH_RENDERER", false);
         let visualization_data_dir = Self::process_path_with_default(
             &mut processed_vars,
             "PCG_VISUALIZATION_DATA_DIR",
@@ -206,6 +209,7 @@ impl PcgSettings {
             polonius,
             dump_mir_dataflow,
             visualization,
+            legacy_graph_renderer,
             visualization_data_dir,
             check_annotations,
             emit_annotations,

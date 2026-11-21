@@ -103,6 +103,18 @@ jobs:
       working-directory: ${{ matrix.crate }}
       run: cargo fmt --all -- --check
 
+  hypergraph_svg:
+    runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
+    container: ${{ fromJSON(vars.CONTAINER || 'null') }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check hypergraph renderer formatting
+      run: cargo fmt --manifest-path pcg-svg/Cargo.toml -- --check
+    - name: Test hypergraph layout and SVG output
+      run: cargo test --manifest-path pcg-svg/Cargo.toml --locked
+    - name: Lint hypergraph renderer
+      run: cargo clippy --manifest-path pcg-svg/Cargo.toml --all-targets --locked -- -D warnings
+
   rust_lints:
     runs-on: ${{ vars.RUNNER || 'ubuntu-latest' }}
     container: ${{ fromJSON(vars.CONTAINER || 'null') }}
@@ -454,6 +466,10 @@ jobs:
     - name: Build web visualization
       working-directory: visualization
       run: npm run build
+
+    - name: Test renderer switching and legacy archives
+      working-directory: visualization
+      run: npm test -- --runInBand
 
   build_docker:
     if: github.repository_owner == 'prusti'
