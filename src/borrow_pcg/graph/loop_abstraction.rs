@@ -727,6 +727,14 @@ impl<'mir, 'tcx> PlaceExpander<'mir, 'tcx> for AbsExpander<'_, 'mir, 'tcx> {
         true
     }
 
+    // A loop abstraction tracks no capabilities, so there is nothing to update.
+    fn update_capabilities_for_exclusive_deref_of_expanded(
+        &mut self,
+        _ref_place: Place<'tcx>,
+    ) -> Result<(), crate::error::PcgError> {
+        Ok(())
+    }
+
     fn location(&self) -> mir::Location {
         self.loop_head_location()
     }

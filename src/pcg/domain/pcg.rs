@@ -550,9 +550,12 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 }
             }
             if obtainer.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
+                // The bridge replays the loop head's expansions, which stand
+                // for the whole loop body, so every projection may change.
                 obtainer.expand_lifetime_projections_one_level(
                     base,
                     &expansion,
+                    None,
                     obtain_type,
                     ctxt,
                 )?;

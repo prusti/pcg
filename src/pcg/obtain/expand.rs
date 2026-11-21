@@ -15,6 +15,7 @@ use crate::{
         graph::BorrowsGraph,
         region_projection::{LifetimeProjection, LocalLifetimeProjection},
         validity_conditions::ValidityConditions,
+        visitor::GeneralizedLifetime,
     },
     error::PcgError,
     owned_pcg::{ExpandedPlace, RepackGuide, RepackOp},
@@ -30,6 +31,7 @@ use crate::{
     utils::{
         CompilerCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, OwnedPlace, Place, ProjectionKind,
         ShallowExpansion, SnapshotLocation, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace,
     },
 };
 
@@ -52,6 +54,15 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         ctxt: CompilerCtxt<'_, 'tcx>,
     ) -> bool;
 
+    /// Gives `ref_place`, a mutable reference whose dereference is already
+    /// expanded, the capability that an exclusive dereference leaves it, if
+    /// it has no capability (a reference that kept a capability, e.g. for a
+    /// two-phase reservation, keeps it).
+    fn update_capabilities_for_exclusive_deref_of_expanded(
+        &mut self,
+        ref_place: Place<'tcx>,
+    ) -> Result<(), PcgError>;
+
     #[tracing::instrument(skip(self, obtain_type, ctxt))]
     fn expand_to(
         &mut self,
@@ -59,6 +70,14 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
+        // Obtains at a loop head stand for the whole loop body, which may also
+        // change projections through borrows held in other locals.
+        let changed = if matches!(obtain_type, ObtainType::LoopInvariant { .. }) {
+            None
+        } else {
+            lifetimes_changed_through(place, ctxt)
+        };
+        let changed = changed.as_deref();
         for (base, _) in place.iter_projections() {
             let base: Place = base.into();
             let base = base.with_inherent_region(ctxt);
@@ -68,15 +87,108 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     "expand region projections for {} one level",
                     base.display_string(ctxt.ctxt())
                 );
-                self.expand_lifetime_projections_one_level(base, &expansion, obtain_type, ctxt)?;
+                self.expand_lifetime_projections_one_level(
+                    base,
+                    &expansion,
+                    changed,
+                    obtain_type,
+                    ctxt,
+                )?;
+            } else {
+                self.snapshot_unlabelled_expanded_lifetime_projections(
+                    base,
+                    changed,
+                    obtain_type,
+                    ctxt,
+                )?;
             }
         }
         Ok(())
     }
 
+    /// `base` is already expanded. Snapshots each of its projections that this
+    /// obtain may change and that is still the unlabelled base of its
+    /// expansion (an earlier obtain that could not change it left it
+    /// unlabelled). The snapshot's future is made of the expansion's parts.
+    fn snapshot_unlabelled_expanded_lifetime_projections(
+        &mut self,
+        base: Place<'tcx>,
+        changed: Option<&[GeneralizedLifetime<'tcx>]>,
+        obtain_type: ObtainType,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<(), PcgError> {
+        let mut to_snapshot = base
+            .lifetime_projections(ctxt)
+            .into_iter()
+            .filter(|rp| {
+                obtain_type.should_label_rp(rp.base, ctxt)
+                    && may_change(rp.region(ctxt.ctxt()), changed)
+            })
+            .map(|rp| (rp, vec![]))
+            .collect::<Vec<_>>();
+        if to_snapshot.is_empty() {
+            return Ok(());
+        }
+        let graph = self.borrows_graph();
+        for edge in graph.edges() {
+            if let BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::LifetimeProjection(
+                expansion,
+            )) = edge.kind
+            {
+                for (rp, parts) in &mut to_snapshot {
+                    if expansion.base == (*rp).into() {
+                        // The expansion may hold earlier versions of the parts
+                        // (e.g. one labelled by a write). The snapshot's
+                        // future is made of each part's placeholder if the
+                        // graph has one, and otherwise of its current version.
+                        parts.extend(expansion.expansion().iter().map(|node| {
+                            let current = node
+                                .with_base(MaybeLabelledPlace::Current(node.base.place()))
+                                .with_label(None, ctxt);
+                            let future = current.with_placeholder_label(ctxt);
+                            if graph.contains(future, ctxt) {
+                                future
+                            } else {
+                                current
+                            }
+                            .to_pcg_node(ctxt.bc_ctxt())
+                            .expect_lifetime_projection()
+                        }));
+                    }
+                }
+            }
+        }
+        to_snapshot.retain(|(_, parts)| !parts.is_empty());
+        // Snapshotting a projection of `*base` acts like an exclusive
+        // dereference of `base`: when the snapshot's future expires, `base` gets
+        // its capability back, so it needs the capability such a dereference
+        // leaves it.
+        if base.is_mut_ref(ctxt) && !to_snapshot.is_empty() {
+            self.update_capabilities_for_exclusive_deref_of_expanded(base)?;
+        }
+        for (rp, parts) in to_snapshot {
+            self.snapshot_expanded_lifetime_projection(
+                base,
+                rp,
+                self.prev_snapshot_location(),
+                &parts,
+                ctxt,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// `rp` is a lifetime projection of a place that is expanded on the way to
+    /// the place being obtained, and `changed` are the lifetimes that the
+    /// obtained capability may change (see [`lifetimes_changed_through`];
+    /// `None` for all of them). If `obtain_type` labels `rp` at all, `rp` gets
+    /// a new label only if the obtain may change it, or if the graph holds its
+    /// placeholder: then `rp` has no current version, and expanding it
+    /// unlabelled would bring one back.
     fn label_for_rp(
         &self,
         rp: LifetimeProjection<'tcx, Place<'tcx>>,
+        changed: Option<&[GeneralizedLifetime<'tcx>]>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     ) -> LabelForLifetimeProjection {
@@ -84,7 +196,16 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
             ExistingLabelOfTwoPhaseReservation, NewLabelAtCurrentLocation, NoLabel,
         };
         if obtain_type.should_label_rp(rp.base, ctxt) {
-            NewLabelAtCurrentLocation(self.prev_snapshot_location())
+            let rp_node: LocalLifetimeProjection<'tcx> = rp.into();
+            if may_change(rp.region(ctxt.ctxt()), changed)
+                || self
+                    .borrows_graph()
+                    .contains(rp_node.with_placeholder_label(ctxt), ctxt)
+            {
+                NewLabelAtCurrentLocation(self.prev_snapshot_location())
+            } else {
+                NoLabel
+            }
         } else {
             match self.label_for_shared_expansion_of_rp(rp, ctxt) {
                 Some(label) => ExistingLabelOfTwoPhaseReservation(label),
@@ -325,6 +446,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         &mut self,
         base: Place<'tcx>,
         expansion: &ShallowExpansion<'tcx>,
+        changed: Option<&[GeneralizedLifetime<'tcx>]>,
         obtain_type: ObtainType,
         ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     ) -> Result<(), PcgError> {
@@ -338,7 +460,7 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                     &place_expansion,
                     ctxt,
                 )?;
-                let expansion_label = self.label_for_rp(base_rp, obtain_type, ctxt);
+                let expansion_label = self.label_for_rp(base_rp, changed, obtain_type, ctxt);
                 if let Some(label) = expansion_label.label() {
                     expansion.label_lifetime_projections(
                         &LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
@@ -359,35 +481,56 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
                 if let LabelForLifetimeProjection::NewLabelAtCurrentLocation(label) =
                     expansion_label
                 {
-                    self.apply_action(
-                        BorrowPcgAction::label_lifetime_projection(
-                            LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
-                            Some(label.into()),
-                            "expand_region_projections_one_level: create new RP label",
-                        )
-                        .into(),
+                    let expansion_rps = expansion
+                        .expansion()
+                        .iter()
+                        .map(|node| {
+                            node.to_pcg_node(ctxt.bc_ctxt())
+                                .expect_lifetime_projection()
+                        })
+                        .collect::<Vec<_>>();
+                    self.snapshot_expanded_lifetime_projection(
+                        base,
+                        base_rp,
+                        label,
+                        &expansion_rps,
+                        ctxt,
                     )?;
-
-                    // Don't add placeholder edges for owned expansions, unless it's a deref
-                    if base.as_borrowed_place(ctxt).is_some() || base.is_mut_ref(ctxt) {
-                        let old_rp_base = base_rp.with_label(Some(label.into()), ctxt);
-                        let expansion_rps = expansion
-                            .expansion()
-                            .iter()
-                            .map(|node| {
-                                node.to_pcg_node(ctxt.bc_ctxt())
-                                    .expect_lifetime_projection()
-                            })
-                            .collect::<Vec<_>>();
-                        self.add_and_update_placeholder_edges(
-                            old_rp_base.into(),
-                            &expansion_rps,
-                            "obtain",
-                            ctxt,
-                        )?;
-                    }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Labels `base_rp`, which is expanded into `expansion_rps`, as a snapshot
+    /// at `label`, and, for a borrowed place or a mutable reference, connects
+    /// the snapshot to the parts through placeholder edges.
+    fn snapshot_expanded_lifetime_projection(
+        &mut self,
+        base: Place<'tcx>,
+        base_rp: LifetimeProjection<'tcx, Place<'tcx>>,
+        label: SnapshotLocation,
+        expansion_rps: &[LifetimeProjection<'tcx>],
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
+    ) -> Result<(), PcgError> {
+        self.apply_action(
+            BorrowPcgAction::label_lifetime_projection(
+                LabelNodePredicate::equals_lifetime_projection(base_rp.into()),
+                Some(label.into()),
+                "snapshot an expanded lifetime projection",
+            )
+            .into(),
+        )?;
+
+        // Don't add placeholder edges for owned expansions, unless it's a deref
+        if base.as_borrowed_place(ctxt).is_some() || base.is_mut_ref(ctxt) {
+            let old_rp_base = base_rp.with_label(Some(label.into()), ctxt);
+            self.add_and_update_placeholder_edges(
+                old_rp_base.into(),
+                expansion_rps,
+                "obtain",
+                ctxt,
+            )?;
         }
         Ok(())
     }
@@ -499,4 +642,64 @@ pub(crate) trait PlaceExpander<'a, 'tcx: 'a>:
         }
         Ok(())
     }
+}
+
+/// The lifetimes whose projections a capability to `place` may change: those
+/// in `place`'s type, and those of the references that `place` is reached
+/// through, since writing through a dereference changes what the reference's
+/// lifetime stands for. The other parts of the places that contain `place`
+/// cannot change through it, except in a union, whose fields share storage.
+///
+/// This compares lifetimes by region, which identifies a lifetime of `place`
+/// with that of a place containing it only if each place on the path has only
+/// lifetimes of the place it is a part of. That is not so for a field whose
+/// type contains an associated type that does not normalize to the
+/// container's regions, e.g. `I::Item` for a type parameter `I`. If a place on
+/// the path has another lifetime, or `place` is reached through a union, it
+/// returns `None`: every lifetime may change.
+fn lifetimes_changed_through<'a, 'tcx: 'a>(
+    place: Place<'tcx>,
+    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+) -> Option<Vec<GeneralizedLifetime<'tcx>>> {
+    let bases = place
+        .iter_projections()
+        .map(|(base, _)| Place::from(base))
+        .collect::<Vec<_>>();
+    if bases.iter().any(|base| base.ty(ctxt).ty.is_union()) {
+        return None;
+    }
+    let mut lifetimes = bases
+        .iter()
+        .chain([&place])
+        .map(|place| {
+            place
+                .lifetime_projections(ctxt)
+                .into_iter()
+                .map(|rp| rp.region(ctxt.ctxt()))
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    if lifetimes
+        .windows(2)
+        .any(|pair| !pair[1].iter().all(|lifetime| pair[0].contains(lifetime)))
+    {
+        return None;
+    }
+    let mut changed = lifetimes.pop().unwrap();
+    let of_dereferenced = place
+        .iter_projections()
+        .filter(|(_, elem)| matches!(elem, mir::ProjectionElem::Deref))
+        .filter_map(|(base, _)| Place::from(base).with_inherent_region(ctxt).ty_region(ctxt))
+        .map(GeneralizedLifetime::Region);
+    changed.extend(of_dereferenced);
+    Some(changed)
+}
+
+/// Whether an obtain that may change the lifetimes in `changed` (all of them
+/// if `None`) may change the projections with `lifetime`.
+fn may_change<'tcx>(
+    lifetime: GeneralizedLifetime<'tcx>,
+    changed: Option<&[GeneralizedLifetime<'tcx>]>,
+) -> bool {
+    changed.is_none_or(|changed| changed.contains(&lifetime))
 }
