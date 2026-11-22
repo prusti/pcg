@@ -672,19 +672,12 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
     }
 
     if validity_checks_enabled() {
-        for (block, _data) in body.basic_blocks.iter_enumerated() {
-            let Ok(Some(pcg_block)) = analysis_results.get_all_for_bb(block) else {
-                continue;
-            };
-            for (statement_index, statement) in pcg_block.statements.iter().enumerate() {
-                statement.assert_validity_at_location(
-                    mir::Location {
-                        block,
-                        statement_index,
-                    },
-                    pcg_ctxt,
-                );
-            }
+        for block in body.basic_blocks.indices() {
+            // An error is already recorded as the analysis's first error; the
+            // statements before it are still checked.
+            let _ = analysis_results.for_each_statement_in_bb(block, |statement| {
+                statement.assert_validity_at_location(statement.location, pcg_ctxt);
+            });
         }
     }
 

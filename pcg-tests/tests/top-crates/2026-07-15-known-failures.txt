@@ -11,7 +11,6 @@ gimli                    write place has an exclusive child
 petgraph                 collapse: child place has no capability
 icu_normalizer           loop join: no unique delegation edge for a raw pointer place
 bindgen                  loop join: no unique delegation edge for a raw pointer place
-brotli-decompressor      memory: PCG needs over 12 GiB
 combine                  timeout: PCG takes over 8 minutes
 pyo3                     collapse: joins read and write field capabilities
 syn                      loop join: no unique delegation edge for a raw pointer place
