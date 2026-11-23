@@ -906,6 +906,22 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
+    /// If `self` is behind a mutable reference that is `outer` or a part of
+    /// it, the dereference of the first such reference on the path from
+    /// `outer` to `self`.
+    pub(crate) fn first_mut_deref_after<'a>(
+        self,
+        outer: Self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<Self>
+    where
+        'tcx: 'a,
+    {
+        self.iter_projections_after(outer, ctxt)?
+            .find(|(base, elem)| matches!(elem, PlaceElem::Deref) && base.is_mut_ref(ctxt))
+            .map(|(base, _)| base.project_deref(ctxt))
+    }
+
     pub(crate) fn iter_projections_after<'a>(
         self,
         other: Self,
