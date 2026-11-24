@@ -915,20 +915,60 @@ impl<'tcx> Place<'tcx> {
         }
     }
 
-    /// If `self` is behind a mutable reference that is `outer` or a part of
-    /// it, the dereference of the first such reference on the path from
-    /// `outer` to `self`.
-    pub(crate) fn first_mut_deref_after<'a>(
+    /// The lifetime projections of `outer` for the lifetimes in the type of
+    /// `self`, which hold what the references in `self` refer to. Lifetimes
+    /// that are not `outer`'s (e.g. `'static`) are left out: no lifetime
+    /// projection of `outer` holds the referents of their references.
+    pub(crate) fn outer_lifetime_projections<'a>(
         self,
         outer: Self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
-    ) -> Option<Self>
+    ) -> Vec<LifetimeProjection<'tcx, Self>>
     where
         'tcx: 'a,
     {
-        self.iter_projections_after(outer, ctxt)?
-            .find(|(base, elem)| matches!(elem, PlaceElem::Deref) && base.is_mut_ref(ctxt))
-            .map(|(base, _)| base.project_deref(ctxt))
+        let projection_base = outer.with_inherent_region(ctxt);
+        self.with_inherent_region(ctxt)
+            .generalized_lifetimes(ctxt)
+            .iter()
+            .filter_map(|&lifetime| {
+                LifetimeProjection::new(projection_base, lifetime, None, ctxt.ctxt())
+            })
+            .collect()
+    }
+
+    /// The lifetime projections of `outer` whose referents hold the places
+    /// behind the mutable references that the path from `outer` to `self`
+    /// dereferences, in the order of the path (empty if it dereferences
+    /// none). References whose lifetime is not one of `outer`'s are left out,
+    /// as in `outer_lifetime_projections`. `None` if `self` does not extend
+    /// `outer`.
+    pub(crate) fn mut_deref_projections_after<'a>(
+        self,
+        outer: Self,
+        ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+    ) -> Option<Vec<LifetimeProjection<'tcx, Self>>>
+    where
+        'tcx: 'a,
+    {
+        let projection_base = outer.with_inherent_region(ctxt);
+        let projections = self
+            .iter_projections_after(outer, ctxt)?
+            .filter_map(|(base, _)| {
+                let TyKind::Ref(region, _, Mutability::Mut) =
+                    base.with_inherent_region(ctxt).rust_ty(ctxt).kind()
+                else {
+                    return None;
+                };
+                LifetimeProjection::new(
+                    projection_base,
+                    GeneralizedLifetime::Region(PcgRegion::from(*region)),
+                    None,
+                    ctxt.ctxt(),
+                )
+            })
+            .collect();
+        Some(projections)
     }
 
     pub(crate) fn iter_projections_after<'a>(

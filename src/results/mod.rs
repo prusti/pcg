@@ -15,7 +15,7 @@ use crate::{
     action::{AppliedActions, BorrowPcgAction, PcgActions},
     borrow_pcg::{
         borrow_pcg_edge::{BorrowPcgEdge, BorrowPcgEdgeRef},
-        region_projection::PlaceOrConst,
+        region_projection::{LifetimeProjection, PlaceOrConst},
     },
     error::PcgError,
     r#loop::{PlaceUsageType, PlaceUsages},
@@ -34,8 +34,10 @@ use crate::{
         mir_dataflow::ResultsCursor,
     },
     utils::{
-        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place, display::DebugLines,
-        domain_data::DomainDataStates, validity::HasValidityCheck,
+        DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, Place,
+        display::{DebugLines, DisplayWithCtxt},
+        domain_data::DomainDataStates,
+        validity::HasValidityCheck,
     },
 };
 
@@ -310,6 +312,39 @@ impl<'tcx> PcgBasicBlocks<'_, 'tcx> {
     }
 }
 
+/// The capabilities a loop requires at its head, as reported by
+/// [`PcgBasicBlock::loop_invariant_place_capabilities`].
+pub struct LoopInvariantCapabilities<'tcx> {
+    /// The capabilities of places.
+    pub places: BTreeMap<Place<'tcx>, CapabilityKind>,
+    /// The capabilities of the referents of a place's references of one
+    /// lifetime, keyed by the lifetime projection that holds them; reported
+    /// only for places in `places` whose own value the loop does not write.
+    pub lifetime_projections: BTreeMap<LifetimeProjection<'tcx, Place<'tcx>>, CapabilityKind>,
+}
+
+impl<'tcx> LoopInvariantCapabilities<'tcx> {
+    /// The places and then the lifetime projections, displayed as strings.
+    pub fn display_entries<'a, Ctxt: Copy + 'a>(
+        &'a self,
+        ctxt: Ctxt,
+    ) -> impl Iterator<Item = (String, CapabilityKind)> + 'a
+    where
+        Place<'tcx>: DisplayWithCtxt<Ctxt>,
+        LifetimeProjection<'tcx, Place<'tcx>>: DisplayWithCtxt<Ctxt>,
+    {
+        let places = self
+            .places
+            .iter()
+            .map(move |(place, &capability)| (place.display_string(ctxt), capability));
+        let lifetime_projections = self
+            .lifetime_projections
+            .iter()
+            .map(move |(projection, &capability)| (projection.display_string(ctxt), capability));
+        places.chain(lifetime_projections)
+    }
+}
+
 /// The results of the PCG analysis for a basic block.
 pub struct PcgBasicBlock<'a, 'tcx> {
     pub statements: Vec<PcgLocation<'a, 'tcx>>,
@@ -337,15 +372,21 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     /// unpacked (`ShallowExclusive`) and whose own value the loop only reads
     /// is reported at `R`.
     ///
-    /// A usage behind a mutable reference in its holder uses the place behind
-    /// the reference rather than the holder's own value. If the loop does not
-    /// write the holder's own value, the holder is reported at `R` and the
-    /// place behind the first such reference on the usage's path (e.g. `*x`
-    /// for a holder `x`, or `*s.r` for a holder `s`) is reported separately,
-    /// with the capability of its usages limited by the holder's, although
-    /// the holder is not unpacked to it at the head. If the loop writes the
-    /// holder's own value, the holder's capability also covers the places
-    /// behind it.
+    /// A usage behind a mutable reference in its holder uses the referents of
+    /// the holder's lifetime projections rather than the holder's own value:
+    /// that of the last mutable reference the usage's path dereferences with
+    /// the usage, and those of the references before it only by reading them.
+    /// A usage also uses, with its kind, the lifetime projections of the
+    /// lifetimes in the type of the used place, whose referents it may read or
+    /// change; a read of the holder's own value reads all of them. Lifetimes
+    /// that are not the holder's (e.g. `'static`) are left out, since none of
+    /// its lifetime projections holds what their references refer to.
+    /// If the loop does not write the holder's own value, the holder is
+    /// reported at `R` and each of its lifetime projections separately, with
+    /// the capability of its usages limited by the holder's, or at `R` if the
+    /// loop does not use its referents. If the loop writes the holder's own
+    /// value, the holder's capability also covers its referents, and its
+    /// lifetime projections are not reported.
     ///
     /// Each reference with a capability at the head on the path to a reported
     /// place is reported as well, separately from the places behind it: at
@@ -358,18 +399,19 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         &self,
         place_usages: &PlaceUsages<'tcx>,
         ctxt: impl HasCompilerCtxt<'c, 'tcx>,
-    ) -> BTreeMap<Place<'tcx>, CapabilityKind>
+    ) -> LoopInvariantCapabilities<'tcx>
     where
         'tcx: 'c,
     {
         /// The loop's usages held by one place: of the place's own value, and
-        /// of the places behind the mutable references in it. Multiple usages
-        /// can resolve to the same place; their requirements are joined before
-        /// limiting the capability to what is available at the head.
+        /// of the referents of its lifetime projections. Multiple usages can
+        /// resolve to the same place or lifetime projection; their
+        /// requirements are joined before limiting the capability to what is
+        /// available at the head.
         #[derive(Default)]
         struct HolderUsages<'tcx> {
             own: Option<PlaceUsageType>,
-            behind: HashMap<Place<'tcx>, PlaceUsageType>,
+            behind: HashMap<LifetimeProjection<'tcx, Place<'tcx>>, PlaceUsageType>,
         }
 
         let initial_capabilities =
@@ -389,13 +431,38 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
             let usage = place_usage.usage;
             for holder in holders {
                 let holder_usages = usages.entry(holder).or_default();
-                match place_usage.place.first_mut_deref_after(holder, ctxt) {
+                // A usage of a place behind the holder's mutable references
+                // uses the referents of the last of them on its path, and reads
+                // those before it. It may also use what the references in the
+                // used place refer to (e.g. through a shared borrow of it, or by
+                // assigning it). A usage of a place the holder extends, or of a
+                // place behind no mutable reference of one of the holder's
+                // lifetimes, counts as a usage of the holder's own value.
+                let behind = place_usage
+                    .place
+                    .mut_deref_projections_after(holder, ctxt)
+                    .and_then(|projections| {
+                        let (last, through) = projections.split_last()?;
+                        let reads = through
+                            .iter()
+                            .map(|&projection| (projection, PlaceUsageType::Read));
+                        let uses = place_usage
+                            .place
+                            .outer_lifetime_projections(holder, ctxt)
+                            .into_iter()
+                            .chain([*last])
+                            .map(|projection| (projection, usage));
+                        Some(reads.chain(uses).collect::<Vec<_>>())
+                    });
+                match behind {
                     Some(behind) => {
-                        holder_usages
-                            .behind
-                            .entry(behind)
-                            .and_modify(|existing| *existing = existing.joined(usage))
-                            .or_insert(usage);
+                        for (projection, usage) in behind {
+                            holder_usages
+                                .behind
+                                .entry(projection)
+                                .and_modify(|existing| *existing = existing.joined(usage))
+                                .or_insert(usage);
+                        }
                     }
                     None => {
                         holder_usages.own =
@@ -417,11 +484,20 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                 .unwrap_or(usage_capability)
         };
         let mut capabilities: BTreeMap<Place<'tcx>, CapabilityKind> = BTreeMap::new();
+        let mut lifetime_projections = BTreeMap::new();
         for (holder, HolderUsages { own, behind }) in usages {
-            if own.is_none_or(PlaceUsageType::is_read) && !behind.is_empty() {
+            if own.is_none_or(PlaceUsageType::is_read) {
                 capabilities.insert(holder, capability_of(holder, PlaceUsageType::Read));
-                for (place, usage) in behind {
-                    capabilities.insert(place, capability_of(holder, usage));
+                // A read of the holder's own value may read its referents too.
+                for projection in holder.lifetime_projections(ctxt) {
+                    let usage = behind
+                        .get(&projection)
+                        .copied()
+                        .into_iter()
+                        .chain(own)
+                        .reduce(PlaceUsageType::joined)
+                        .unwrap_or(PlaceUsageType::Read);
+                    lifetime_projections.insert(projection, capability_of(holder, usage));
                 }
             } else {
                 let usage = behind
@@ -444,7 +520,10 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         for reference in references_on_paths {
             capabilities.insert(reference, CapabilityKind::Read);
         }
-        capabilities
+        LoopInvariantCapabilities {
+            places: capabilities,
+            lifetime_projections,
+        }
     }
 
     #[must_use]

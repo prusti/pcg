@@ -553,10 +553,7 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                     (
                         loop_analysis[loop_id].into(),
                         capabilities
-                            .into_iter()
-                            .map(|(place, capability)| {
-                                (place.display_string(pcg_ctxt.compiler_ctxt), capability)
-                            })
+                            .display_entries(pcg_ctxt.compiler_ctxt)
                             .collect(),
                     )
                 })
