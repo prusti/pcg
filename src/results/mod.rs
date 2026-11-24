@@ -310,48 +310,127 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         self.terminator.succs.iter()
     }
 
-    pub fn loop_invariant_place_capabilities(
+    /// The capabilities that the loop with this block as its head requires of
+    /// the places that hold its `place_usages` at the head.
+    ///
+    /// A usage is held by the place itself or its nearest ancestor with a
+    /// capability at the head; if the place is unpacked at the head, by the
+    /// places it is unpacked into. The capability of a holder is the minimum
+    /// of its capability at the head and the loop's usage of it, or the usage
+    /// if the two are incomparable: e.g. a mutable reference whose target is
+    /// unpacked (`ShallowExclusive`) and whose own value the loop only reads
+    /// is reported at `R`.
+    ///
+    /// A usage behind a mutable reference in its holder uses the place behind
+    /// the reference rather than the holder's own value. If the loop does not
+    /// write the holder's own value, the holder is reported at `R` and the
+    /// place behind the first such reference on the usage's path (e.g. `*x`
+    /// for a holder `x`, or `*s.r` for a holder `s`) is reported separately,
+    /// with the capability of its usages limited by the holder's, although
+    /// the holder is not unpacked to it at the head. If the loop writes the
+    /// holder's own value, the holder's capability also covers the places
+    /// behind it.
+    ///
+    /// Each reference with a capability at the head on the path to a reported
+    /// place is reported as well, separately from the places behind it: at
+    /// `R` if the loop does not use the reference itself, since the loop then
+    /// only reads it to reach the places behind it.
+    ///
+    /// A place is listed after the places it extends, through which it is
+    /// reached.
+    pub fn loop_invariant_place_capabilities<'c>(
         &self,
         place_usages: &PlaceUsages<'tcx>,
-        ctxt: impl HasCompilerCtxt<'_, 'tcx>,
-    ) -> HashMap<Place<'tcx>, CapabilityKind> {
+        ctxt: impl HasCompilerCtxt<'c, 'tcx>,
+    ) -> Vec<(Place<'tcx>, CapabilityKind)>
+    where
+        'tcx: 'c,
+    {
+        /// The loop's usages held by one place: of the place's own value, and
+        /// of the places behind the mutable references in it. Multiple usages
+        /// can resolve to the same place; their requirements are joined before
+        /// limiting the capability to what is available at the head.
+        #[derive(Default)]
+        struct HolderUsages<'tcx> {
+            own: Option<PlaceUsageType>,
+            behind: HashMap<Place<'tcx>, PlaceUsageType>,
+        }
+
         let initial_capabilities =
             self.statements[0].states[EvalStmtPhase::PreOperands].capabilities();
-        let mut required_usages: HashMap<Place<'tcx>, PlaceUsageType> = HashMap::default();
+        let mut usages: HashMap<Place<'tcx>, HolderUsages<'tcx>> = HashMap::default();
         for place_usage in place_usages.iter() {
-            let mut pl = place_usage.place;
-            loop {
-                if initial_capabilities.get(pl, ctxt).is_some() {
-                    // Multiple usages can resolve to the same packed ancestor.
-                    // Combine their requirements before limiting the capability
-                    // to what is available at this block's entry.
-                    required_usages
-                        .entry(pl)
-                        .and_modify(|usage| *usage = usage.joined(place_usage.usage))
-                        .or_insert(place_usage.usage);
-                    break;
+            let holder = std::iter::successors(Some(place_usage.place), |p| p.parent_place())
+                .find(|place| initial_capabilities.get(*place, ctxt).is_some());
+            let holders = match holder {
+                Some(holder) => vec![holder],
+                None => initial_capabilities
+                    .iter()
+                    .map(|(place, _)| place)
+                    .filter(|place| place_usage.place.is_strict_prefix_of(*place))
+                    .collect(),
+            };
+            let usage = place_usage.usage;
+            for holder in holders {
+                let holder_usages = usages.entry(holder).or_default();
+                match place_usage.place.first_mut_deref_after(holder, ctxt) {
+                    Some(behind) => {
+                        holder_usages
+                            .behind
+                            .entry(behind)
+                            .and_modify(|existing| *existing = existing.joined(usage))
+                            .or_insert(usage);
+                    }
+                    None => {
+                        holder_usages.own =
+                            Some(holder_usages.own.map_or(usage, |own| own.joined(usage)));
+                    }
                 }
-                let parent = pl.parent_place();
-                if parent.is_none() {
-                    break;
-                }
-                pl = parent.unwrap();
             }
         }
-        required_usages
-            .into_iter()
-            .filter_map(|(place, usage)| {
-                let usage_capability = match usage {
-                    PlaceUsageType::Read => CapabilityKind::Read,
-                    PlaceUsageType::Write => CapabilityKind::Write,
-                    PlaceUsageType::Exclusive => CapabilityKind::Exclusive,
-                };
-                initial_capabilities
-                    .get(place, ctxt)?
-                    .minimum(usage_capability)
-                    .map(|capability| (place, capability))
+        let capability_of = |holder: Place<'tcx>, usage: PlaceUsageType| {
+            let usage_capability = match usage {
+                PlaceUsageType::Read => CapabilityKind::Read,
+                PlaceUsageType::Write => CapabilityKind::Write,
+                PlaceUsageType::Exclusive => CapabilityKind::Exclusive,
+            };
+            initial_capabilities
+                .get(holder, ctxt)
+                .expect("a holder has a capability at the head")
+                .minimum(usage_capability)
+                .unwrap_or(usage_capability)
+        };
+        let mut capabilities: HashMap<Place<'tcx>, CapabilityKind> = HashMap::default();
+        for (holder, HolderUsages { own, behind }) in usages {
+            if own.is_none_or(PlaceUsageType::is_read) && !behind.is_empty() {
+                capabilities.insert(holder, capability_of(holder, PlaceUsageType::Read));
+                for (place, usage) in behind {
+                    capabilities.insert(place, capability_of(holder, usage));
+                }
+            } else {
+                let usage = behind
+                    .into_values()
+                    .chain(own)
+                    .reduce(PlaceUsageType::joined)
+                    .expect("a holder holds a usage");
+                capabilities.insert(holder, capability_of(holder, usage));
+            }
+        }
+        let references_on_paths = capabilities
+            .keys()
+            .flat_map(|place| std::iter::successors(place.parent_place(), |p| p.parent_place()))
+            .filter(|place| {
+                place.is_ref(ctxt)
+                    && initial_capabilities.get(*place, ctxt).is_some()
+                    && !capabilities.contains_key(place)
             })
-            .collect()
+            .collect::<Vec<_>>();
+        for reference in references_on_paths {
+            capabilities.insert(reference, CapabilityKind::Read);
+        }
+        let mut capabilities = capabilities.into_iter().collect::<Vec<_>>();
+        capabilities.sort_by_key(|(place, _)| place.projection.len());
+        capabilities
     }
 
     #[must_use]
