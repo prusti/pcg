@@ -4,7 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::{borrow::Cow, collections::HashMap};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+};
 
 use derive_more::Deref;
 
@@ -349,13 +352,13 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
     /// `R` if the loop does not use the reference itself, since the loop then
     /// only reads it to reach the places behind it.
     ///
-    /// A place is listed after the places it extends, through which it is
-    /// reached.
+    /// The places are ordered by `Place`'s `Ord`, so a place comes after the
+    /// places it extends, through which it is reached.
     pub fn loop_invariant_place_capabilities<'c>(
         &self,
         place_usages: &PlaceUsages<'tcx>,
         ctxt: impl HasCompilerCtxt<'c, 'tcx>,
-    ) -> Vec<(Place<'tcx>, CapabilityKind)>
+    ) -> BTreeMap<Place<'tcx>, CapabilityKind>
     where
         'tcx: 'c,
     {
@@ -413,7 +416,7 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
                 .minimum(usage_capability)
                 .unwrap_or(usage_capability)
         };
-        let mut capabilities: HashMap<Place<'tcx>, CapabilityKind> = HashMap::default();
+        let mut capabilities: BTreeMap<Place<'tcx>, CapabilityKind> = BTreeMap::new();
         for (holder, HolderUsages { own, behind }) in usages {
             if own.is_none_or(PlaceUsageType::is_read) && !behind.is_empty() {
                 capabilities.insert(holder, capability_of(holder, PlaceUsageType::Read));
@@ -441,8 +444,6 @@ impl<'a, 'tcx: 'a> PcgBasicBlock<'a, 'tcx> {
         for reference in references_on_paths {
             capabilities.insert(reference, CapabilityKind::Read);
         }
-        let mut capabilities = capabilities.into_iter().collect::<Vec<_>>();
-        capabilities.sort_by_key(|(place, _)| place.projection.len());
         capabilities
     }
 
