@@ -242,16 +242,13 @@ fn emit_and_check_annotations(
         for block in ctxt.body().basic_blocks.indices() {
             if let Ok(Some(state)) = output.get_all_for_bb(block) {
                 if let Some(loop_id) = output.analysis().loop_analysis().loop_head_of(block) {
-                    for (place, capability) in state.loop_invariant_place_capabilities(
+                    let capabilities = state.loop_invariant_place_capabilities(
                         output.analysis().loop_place_usages(loop_id),
                         ctxt,
-                    ) {
+                    );
+                    for (node, capability) in capabilities.display_entries(ctxt) {
                         debug_lines.push(
-                            format!(
-                                "{block:?} loop invariant: {}: {capability:?}",
-                                place.display_string(ctxt)
-                            )
-                            .into(),
+                            format!("{block:?} loop invariant: {node}: {capability:?}").into(),
                         );
                     }
                 }
