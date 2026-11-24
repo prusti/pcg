@@ -547,7 +547,9 @@ pub fn run_pcg<'a, 'tcx>(pcg_ctxt: &'a PcgCtxt<'_, 'tcx>) -> PcgOutput<'a, 'tcx>
                 .loops(block)
                 .map(|loop_id| {
                     let capabilities = pcg_block.loop_invariant_place_capabilities(
-                        analysis_results.analysis().loop_place_usages(loop_id),
+                        analysis_results
+                            .analysis()
+                            .loop_invariant_place_usages(loop_id),
                         pcg_ctxt.compiler_ctxt,
                     );
                     (
