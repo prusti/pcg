@@ -226,24 +226,9 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
         &'slf mut self,
         block: BasicBlock,
     ) -> Result<Option<PcgBasicBlock<'a, 'tcx>>, PcgError> {
-        if !self
-            .analysis()
-            .reachable_blocks
-            .borrow()
-            .contains(block.index())
-        {
-            return Ok(None);
-        }
-        self.analysis_for_bb(block);
         let mut statements: Vec<PcgLocation<'a, 'tcx>> = Vec::new();
-        let end_stmt = self.end_stmt.unwrap();
-        while self.curr_stmt.unwrap() != end_stmt {
-            let stmt = self.next(self.curr_stmt.unwrap())?;
-            if let Some(stmt) = stmt {
-                statements.push(stmt);
-            } else {
-                return Ok(None);
-            }
+        if !self.for_each_statement_in_bb(block, |stmt| statements.push(stmt))? {
+            return Ok(None);
         }
         let terminator = self.terminator()?;
         Ok(Some(PcgBasicBlock {
@@ -251,6 +236,34 @@ impl<'a, 'tcx: 'a> PcgAnalysisResults<'a, 'tcx> {
             terminator,
             block,
         }))
+    }
+
+    /// Passes the results of each statement of `block` (not its terminator),
+    /// in order, to `f`, so that the caller need not hold the results of the
+    /// whole block at once. Returns `false` if the PCG did not analyze `block`.
+    /// On an error, `f` has seen the statements before the failing one.
+    pub(crate) fn for_each_statement_in_bb(
+        &mut self,
+        block: BasicBlock,
+        mut f: impl FnMut(PcgLocation<'a, 'tcx>),
+    ) -> Result<bool, PcgError> {
+        if !self
+            .analysis()
+            .reachable_blocks
+            .borrow()
+            .contains(block.index())
+        {
+            return Ok(false);
+        }
+        self.analysis_for_bb(block);
+        let end_stmt = self.end_stmt.unwrap();
+        while self.curr_stmt.unwrap() != end_stmt {
+            let Some(stmt) = self.next(self.curr_stmt.unwrap())? else {
+                return Ok(false);
+            };
+            f(stmt);
+        }
+        Ok(true)
     }
 }
 
