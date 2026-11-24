@@ -203,21 +203,30 @@ impl PartialOrd for Place<'_> {
     }
 }
 
+/// Places are ordered by their local and the length of their projection, so
+/// that a place comes before the places that extend it, and otherwise by their
+/// hashes. The hash leaves out the types of fields, so the order is the same in
+/// every run unless the projections carry types of their own (e.g. opaque
+/// casts).
 impl Ord for Place<'_> {
     fn cmp(&self, other: &Self) -> Ordering {
         if self == other {
             Ordering::Equal
         } else {
-            let mut h1 = FxHasher::default();
-            let mut h2 = FxHasher::default();
-            self.hash(&mut h1);
-            other.hash(&mut h2);
-            match h1.finish().cmp(&h2.finish()) {
-                Ordering::Equal => {
-                    panic!("Places have same hash, but they aren't equal!")
-                }
-                other => other,
-            }
+            (self.local, self.projection.len())
+                .cmp(&(other.local, other.projection.len()))
+                .then_with(|| {
+                    let mut h1 = FxHasher::default();
+                    let mut h2 = FxHasher::default();
+                    self.hash(&mut h1);
+                    other.hash(&mut h2);
+                    match h1.finish().cmp(&h2.finish()) {
+                        Ordering::Equal => {
+                            panic!("Places have same hash, but they aren't equal!")
+                        }
+                        other => other,
+                    }
+                })
         }
     }
 }
