@@ -170,4 +170,98 @@ fn reservation_reads_reference(bytes: &mut Bytes) {
     bytes.advance(*bytes.as_ref());
 }
 
+pub struct Header<'a> {
+    pub name: &'a str,
+}
+
+pub struct Request<'h, 'b> {
+    pub method: Option<&'b str>,
+    pub headers: &'h mut [Header<'b>],
+}
+
+impl<'h, 'b> Request<'h, 'b> {
+    fn parse_uninit(
+        &mut self,
+        buf: &'b [u8],
+        headers: &'h mut [std::mem::MaybeUninit<Header<'b>>],
+    ) -> Result<usize, ()> {
+        let _ = (buf, headers);
+        Err(())
+    }
+
+    // The loan of `(*self).headers` taken by `mem::take` ends although the raw
+    // pointer `headers` aliases its result, so activating the two-phase
+    // borrow of `*self` detaches nothing.
+    pub fn parse(&mut self, buf: &'b [u8]) -> Result<usize, ()> {
+        // PCG: bb1[0] pre_operands: Remove Edge borrow: _5 <before bb0[4]:PreOperands> = &mut  (*self).headers returning E to (*self).headers
+        // ~PCG: bb1[26] pre_operands: Label place (*self).method (Detach)
+        // PCG: bb1[26] pre_operands: Activate two-phase borrow borrow: _11 = &mut  *self
+        let headers = std::mem::take(&mut self.headers);
+        unsafe {
+            let headers: *mut [Header<'_>] = headers;
+            let headers = headers as *mut [std::mem::MaybeUninit<Header<'_>>];
+            match self.parse_uninit(buf, &mut *headers) {
+                Ok(idx) => Ok(idx),
+                other => {
+                    self.headers = &mut *(headers as *mut [Header<'_>]);
+                    other
+                }
+            }
+        }
+    }
+}
+
+struct Tree<'u> {
+    unit: &'u u32,
+    depth: u32,
+}
+
+impl Tree<'_> {
+    fn set(&mut self, depth: u32) {
+        self.depth = depth;
+    }
+
+    // `*self` is unpacked when the reservation freezes it: it suspends what
+    // its fields hold (E), not the R of the referent of `(*self).unit`, which
+    // is behind a shared reference. The activation lends that E.
+    fn reset(&mut self) {
+        // PCG: bb0[6] pre_operands: Freeze *self
+        // PCG: bb0[6] post_operands: *self: suspended E
+        // PCG: bb0[9] pre_operands: Activate two-phase borrow borrow: _4 = &mut  *self
+        let unit = &*self.unit;
+        self.depth = 0;
+        self.set(*unit);
+    }
+}
+
+// The argument of the reserved `v.push` runs a loop, and `v` is dead at the
+// loop head: the reservation keeps it frozen there for the activation.
+fn reserved_dead_across_loop(mut v: Vec<Vec<&u32>>, n: u32) {
+    // PCG: bb1[0] pre_operands: v: R
+    // PCG: bb6[1] pre_operands: Activate two-phase borrow borrow: _4 = &mut  v
+    v.push({
+        let mut i = 0;
+        while i < n {
+            i += 1
+        }
+        Vec::new()
+    });
+}
+
+// As above, with `v` a mutable reference: the loop head weakens the dead
+// `v` and labels its value, so the reservation is of the labelled referent,
+// and its activation takes no capability.
+fn reservation_across_loop(v: &mut Vec<u32>, n: u32) {
+    // PCG: bb1[0] pre_operands: borrow: _4 = &mut  *v loop bb1
+    // PCG: bb1[0] pre_operands: v: W
+    // PCG: bb5[9] pre_operands: Activate two-phase borrow borrow: _4 = &mut  *v loop bb1
+    v.push({
+        let mut i = 0;
+        while i < n {
+            i += 1;
+        }
+        i
+    });
+}
+
 fn main() {}

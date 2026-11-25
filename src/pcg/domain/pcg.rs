@@ -2,30 +2,33 @@ use std::borrow::Cow;
 
 use crate::{
     DebugLines,
-    action::{AppliedActions, BorrowPcgAction, PcgAction, PcgActions},
+    action::{BorrowPcgAction, PcgAction, PcgActions},
     borrow_pcg::{
+        action::BorrowPcgActionKind,
+        borrow_pcg_edge::BorrowPcgEdgeLike,
         borrow_pcg_expansion::BorrowPcgExpansion,
         edge::{borrow::BorrowEdge, kind::BorrowPcgEdgeKind},
+        edge_data::EdgeData,
         graph::{BorrowsGraph, join::JoinBorrowsArgs},
         state::{BorrowStateMutRef, BorrowStateRef, BorrowsState, BorrowsStateLike},
     },
     borrows_imgcat_debug,
     error::PcgError,
-    r#loop::PlaceUsageType,
-    owned_pcg::{RepackGuide, join::data::JoinOwnedData},
+    owned_pcg::RepackGuide,
     pcg::{
         CapabilityKind,
         ctxt::{AnalysisCtxt, HasSettings},
-        obtain::{ObtainType, PlaceObtainer, expand::PlaceExpander},
+        obtain::PlaceObtainer,
         owned_state::OwnedPcg,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
         triple::Triple,
     },
+    pcg_validity_assert,
     rustc_interface::middle::mir,
     utils::{
-        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, SnapshotLocation,
-        data_structures::HashSet, display::DisplayWithCompilerCtxt, maybe_old::MaybeLabelledPlace,
-        validity::HasValidityCheck,
+        CompilerCtxt, DataflowCtxt, DebugImgcat, HasBorrowCheckerCtxt, Place, PlaceLike,
+        SnapshotLocation, data_structures::HashSet, display::DisplayWithCompilerCtxt,
+        maybe_old::MaybeLabelledPlace, selects_element, validity::HasValidityCheck,
     },
 };
 
@@ -260,6 +263,102 @@ impl<'a, 'tcx: 'a, Ctxt: HasSettings<'a> + HasBorrowCheckerCtxt<'a, 'tcx>> HasVa
             }
         }
 
+        for (place, suspended) in self.place_capabilities.iter_suspended() {
+            if let Some(cap) = self.place_capabilities.get(place, ctxt)
+                && !cap.is_read()
+            {
+                return Err(format!(
+                    "Place {} suspends {:?} but holds {:?}",
+                    place.display_string(ctxt.bc_ctxt()),
+                    suspended,
+                    cap
+                ));
+            }
+        }
+
+        // A place holds a capability above R only while no loan conflicts
+        // with it (see `PlaceLike::conflicts_with_loan_of`): a shared loan
+        // keeps what it conflicts with frozen until it ends.
+        let lent = self.borrow.graph.lent_places(ctxt.bc_ctxt());
+        for (place, cap) in self.place_capabilities.iter() {
+            if !cap.is_read()
+                && !place.contains_unsafe_deref(ctxt)
+                && let Some(lent) = lent
+                    .iter()
+                    .find(|lent| place.conflicts_with_loan_of(cap, **lent, ctxt))
+            {
+                return Err(format!(
+                    "Place {} holds {:?} while {} is lent",
+                    place.display_string(ctxt.bc_ctxt()),
+                    cap,
+                    lent.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
+        // Places under different indices of one array or slice may be the
+        // same element: of two such places that hold or record a capability,
+        // neither holds more than R or, holding nothing, records more than R
+        // (read copies and frozen places may share an element; a lent or
+        // exclusive one shares it with nothing). Only places at or below an
+        // element can share one.
+        let holders = self
+            .place_capabilities
+            .iter()
+            .map(|(place, _)| place)
+            .chain(
+                self.place_capabilities
+                    .iter_suspended()
+                    .map(|(place, _)| place),
+            )
+            .filter(|place| place.projection.iter().any(|elem| selects_element(*elem)))
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
+        let exclusive = |place: Place<'tcx>| match self.place_capabilities.get(place, ctxt) {
+            Some(cap) => !cap.is_read(),
+            None => self
+                .place_capabilities
+                .suspended(place)
+                .is_some_and(|record| !record.is_read()),
+        };
+        for (i, &place) in holders.iter().enumerate() {
+            for &other in &holders[i + 1..] {
+                if place.local == other.local
+                    && !place.is_prefix_of(other)
+                    && !other.is_prefix_of(place)
+                    && (place.may_be_ancestor_of(other, ctxt).is_some()
+                        || other.may_be_ancestor_of(place, ctxt).is_some())
+                    && (exclusive(place) || exclusive(other))
+                {
+                    return Err(format!(
+                        "{} and {}, which may be the same element, both hold or record a \
+                         capability",
+                        place.display_string(ctxt.bc_ctxt()),
+                        other.display_string(ctxt.bc_ctxt())
+                    ));
+                }
+            }
+        }
+
+        // A frozen place, which holds R below no place holding R, records what
+        // its freeze suspends.
+        for (place, cap) in self.place_capabilities.iter() {
+            if cap.is_read()
+                && !place.projects_shared_ref(ctxt)
+                && !place.contains_unsafe_deref(ctxt)
+                && self.place_capabilities.suspended(place).is_none()
+                && place
+                    .parent_place()
+                    .is_none_or(|parent| self.place_capabilities.get(parent, ctxt) != Some(cap))
+            {
+                return Err(format!(
+                    "Frozen place {} suspends no capability",
+                    place.display_string(ctxt.bc_ctxt())
+                ));
+            }
+        }
+
         for edge in self.borrow.graph.edges() {
             match edge.kind {
                 BorrowPcgEdgeKind::Deref(deref_edge) => {
@@ -368,7 +467,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     }
 
     /// Compute the [`CapabilityKind`] of the owned place `place` from
-    /// the initialisation tree alone (i.e. ignoring borrowing). See
+    /// the initialisation tree alone (i.e. ignoring borrowing). A place that
+    /// is only partly initialised has `W`, or `e` if it is a box, which keeps
+    /// its allocation. See
     /// <https://prusti.github.io/pcg-docs/computing-place-capabilities.html>.
     #[must_use]
     pub fn computed_owned_capability<'b>(
@@ -392,18 +493,9 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         &self.owned
     }
 
-    pub(crate) fn join_owned_data(
-        &mut self,
-        snapshot_location: SnapshotLocation,
-    ) -> JoinOwnedData<'a, '_, 'tcx, &mut OwnedPcg<'tcx>> {
-        JoinOwnedData {
-            owned: &mut self.owned,
-            borrows: &mut self.borrow,
-            capabilities: &mut self.place_capabilities,
-            snapshot_location,
-        }
-    }
-
+    /// The actions that turn this state, at the end of `self_block`, into the
+    /// entry state `other` of its successor `other_block`. Into a loop head,
+    /// the values this state gives up are labelled with the loop's snapshot.
     pub(crate) fn bridge(
         &self,
         other: &Self,
@@ -411,130 +503,95 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
         other_block: mir::BasicBlock,
         ctxt: impl DataflowCtxt<'a, 'tcx>,
     ) -> Result<PcgActions<'tcx>, PcgError> {
-        let target = other;
-        let mut slf = self.clone();
-        let repacks = slf.join_owned(
-            target,
-            SnapshotLocation::After(self_block),
-            SnapshotLocation::BeforeJoin(other_block),
-            ctxt,
-        )?;
-        let mut actions = PcgActions::new(repacks);
-        if ctxt.is_loop_head(other_block) {
-            actions.extend(slf.bridge_loop_expansions(target, self_block, other_block, ctxt)?);
-        }
-        Ok(actions)
-    }
-
-    /// Reconcile owned layouts and capabilities. Repacking can update borrow
-    /// edges, but the borrowed graphs remain separate until all predecessors
-    /// have been normalized.
-    pub(crate) fn join_owned(
-        &mut self,
-        target: &Self,
-        self_snapshot: SnapshotLocation,
-        other_snapshot: SnapshotLocation,
-        ctxt: impl DataflowCtxt<'a, 'tcx>,
-    ) -> Result<Vec<PcgAction<'tcx>>, PcgError> {
-        let mut other = target.clone();
-        let mut slf_owned_data = self.join_owned_data(self_snapshot);
-        let other_owned_data = JoinOwnedData {
-            owned: &other.owned,
-            borrows: &mut other.borrow,
-            capabilities: &mut other.place_capabilities,
-            snapshot_location: other_snapshot,
+        let snapshot = if ctxt.is_loop_head(other_block) {
+            SnapshotLocation::Loop(other_block)
+        } else {
+            SnapshotLocation::After(self_block)
         };
-        let mut repacks =
-            slf_owned_data.join(other_owned_data, ctxt.compiler_ctxt_with_settings())?;
-        for (place, cap) in self.place_capabilities.iter() {
-            let Some(_owned) = place.as_owned_place(ctxt) else {
-                continue;
-            };
-            if let Some(other_cap) = other.place_capabilities.get(place, ctxt)
-                && cap > other_cap
+        let mut reached = self.clone();
+        // Most edges lead to a state that holds and records the same as this
+        // one, with the same layout: there is nothing to reach.
+        let mut actions = if self.place_capabilities == other.place_capabilities
+            && self.owned == other.owned
+        {
+            vec![]
+        } else {
+            let mut actions =
+                reached.reach(&other.place_capabilities, other, self_block, snapshot, ctxt)?;
+            actions.extend(reached.reach_suspended(&other.place_capabilities, snapshot, ctxt)?);
+            actions
+        };
+        pcg_validity_assert!(
+            reached.place_capabilities.suspended == other.place_capabilities.suspended,
+            [ctxt],
+            "the edge into {other_block:?} reaches the suspended capabilities {:?} instead of {:?}",
+            reached.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
+        );
+        // The edges of the loop abstraction of `other` are introduced on the
+        // edge into the loop, after the unpackings in the borrow PCG down to
+        // the places they block that this state lacks (an element at another
+        // index, which holds nothing).
+        let added = other
+            .borrow
+            .graph()
+            .edges()
+            .filter(|edge| !reached.borrow.graph().edges.contains_key(edge.kind()))
+            .collect::<Vec<_>>();
+        let loop_blocked = added
+            .iter()
+            .filter(|edge| matches!(edge.kind(), BorrowPcgEdgeKind::Abstraction(_)))
+            .flat_map(|edge| edge.kind().blocked_nodes(ctxt.bc_ctxt()))
+            .filter_map(|node| node.as_current_place())
+            .collect::<Vec<_>>();
+        let unpacks = |graph: &BorrowsGraph<'tcx>, kind: &BorrowPcgEdgeKind<'tcx>| {
+            graph
+                .edges()
+                .any(|edge| unpacking_places(edge.kind()) == unpacking_places(kind))
+        };
+        let mut unpackings = added
+            .iter()
+            .filter(|edge| {
+                unpacking_places(edge.kind()).is_some()
+                    && !unpacks(reached.borrow.graph(), edge.kind())
+                    && edge.kind().blocked_by_nodes(ctxt.bc_ctxt()).any(|node| {
+                        node.as_current_place().is_some_and(|unpacked| {
+                            loop_blocked
+                                .iter()
+                                .any(|blocked| unpacked.is_prefix_of(*blocked))
+                        })
+                    })
+            })
+            .collect::<Vec<_>>();
+        unpackings.sort_by_key(|edge| {
+            unpacking_places(edge.kind()).map(|(base, _, _)| base.projection.len())
+        });
+        actions.extend(
+            unpackings
+                .into_iter()
+                .chain(
+                    added
+                        .iter()
+                        .filter(|edge| matches!(edge.kind(), BorrowPcgEdgeKind::Abstraction(_))),
+                )
+                .map(|edge| BorrowPcgAction::add_edge(edge.to_owned_edge(), "loop").into()),
+        );
+        // An added edge is the edge of `other`, under its conditions. The
+        // branch choice being taken is implied.
+        for action in &mut actions {
+            if let PcgAction::Borrow(action) = action
+                && let BorrowPcgActionKind::AddEdge { edge, .. } = &mut action.kind
             {
-                repacks.push(
-                    BorrowPcgAction::weaken(place, cap, other_cap, "join")
-                        .with_capabilities(vec![(place, Some(other_cap))].into())
-                        .into(),
-                );
+                let conditions = other
+                    .borrow
+                    .graph()
+                    .edges
+                    .get(edge.kind())
+                    .unwrap_or(&edge.conditions);
+                edge.conditions = conditions.without_branch_choice(self_block);
             }
         }
-        self.place_capabilities
-            .join(&other.place_capabilities, ctxt);
-        self.owned.join_capabilities(&other.owned);
-        Ok(repacks)
-    }
-
-    fn bridge_loop_expansions(
-        &mut self,
-        other: &Self,
-        self_block: mir::BasicBlock,
-        loop_head: mir::BasicBlock,
-        ctxt: impl DataflowCtxt<'a, 'tcx>,
-    ) -> Result<PcgActions<'tcx>, PcgError> {
-        let mut expansions = Vec::new();
-        for edge in other.borrow.graph().edges() {
-            let conditions = edge.conditions.without_branch_choice(self_block);
-            // The guide is kept: the target place does not carry the label of
-            // an index guide.
-            let (base, target, guide) = match edge.kind() {
-                BorrowPcgEdgeKind::Deref(deref) => {
-                    (deref.blocked_place(), deref.deref_place(), None)
-                }
-                BorrowPcgEdgeKind::BorrowPcgExpansion(BorrowPcgExpansion::Place(expansion)) => {
-                    let Some(target) = expansion.expansion().first() else {
-                        continue;
-                    };
-                    (expansion.base(), *target, expansion.guide)
-                }
-                _ => continue,
-            };
-            if let (Some(base), Some(target)) = (base.as_current_place(), target.as_current_place())
-            {
-                expansions.push((base, target, guide, conditions));
-            }
-        }
-        expansions.sort_by_key(|(base, _, _, _)| base.projection.len());
-        let mut applied = AppliedActions::default();
-        for (base, target, guide, conditions) in expansions {
-            let usage_type =
-                if other.place_capabilities.get(base, ctxt) == Some(CapabilityKind::Read) {
-                    PlaceUsageType::Read
-                } else {
-                    PlaceUsageType::Exclusive
-                };
-            let obtain_type = ObtainType::LoopInvariant {
-                is_blocked: false,
-                usage_type,
-            };
-            let expansion = base.expand_one_level(target, ctxt)?;
-            let mut pcg = PcgMutRef::from(&mut *self);
-            // The current CFG edge's branch choice has already been removed.
-            // Keep guards from earlier branches.
-            pcg.borrow.validity_conditions = &conditions;
-            let mut obtainer = PlaceObtainer::new(
-                pcg,
-                Some(&mut applied),
-                ctxt,
-                mir::Location {
-                    block: loop_head,
-                    statement_index: 0,
-                },
-                SnapshotLocation::Loop(loop_head),
-            );
-            if obtainer.expand_place_one_level(base, &expansion, guide, obtain_type, ctxt)? {
-                obtainer.expand_lifetime_projections_one_level(
-                    base,
-                    &expansion,
-                    obtain_type,
-                    ctxt,
-                )?;
-            }
-        }
-        Ok(PcgActions::new(
-            applied.actions.into_iter().map(|a| a.action).collect(),
-        ))
+        Ok(PcgActions::new(actions))
     }
 
     #[tracing::instrument(skip(self, other, ctxt))]
@@ -546,13 +603,18 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
     ) {
         let mut other_borrows = other.borrow.clone();
         other_borrows.add_cfg_edge(other_block, ctxt.block, ctxt);
-        self.place_capabilities
-            .join(&other.place_capabilities, ctxt);
+        pcg_validity_assert!(
+            self.place_capabilities == other.place_capabilities,
+            [ctxt],
+            "predecessors reach different capabilities at the join: {:?} and {:?}",
+            self.place_capabilities.debug_lines(ctxt),
+            other.place_capabilities.debug_lines(ctxt)
+        );
         self.owned.join_capabilities(&other.owned);
         self.borrow.merge(&other_borrows, ctxt);
     }
 
-    pub(crate) fn finish_join(&mut self, ctxt: AnalysisCtxt<'a, 'tcx>) {
+    pub(crate) fn finish_join(&mut self, ctxt: AnalysisCtxt<'a, 'tcx>) -> Result<(), PcgError> {
         let borrow_args = JoinBorrowsArgs {
             self_block: ctxt.block,
             body_analysis: ctxt.body_analysis,
@@ -560,6 +622,23 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
             owned: &mut self.owned,
         };
         self.borrow.finish_join(borrow_args, ctxt);
+        if ctxt.body_analysis.is_loop_head(ctxt.block) {
+            // A back edge may arrive with the places that are not definitely
+            // initialized at the loop head moved out, and with the references
+            // that are dead there weakened.
+            PlaceObtainer::new(
+                PcgMutRef::from(&mut *self),
+                None,
+                ctxt,
+                mir::Location {
+                    block: ctxt.block,
+                    statement_index: 0,
+                },
+                SnapshotLocation::Loop(ctxt.block),
+            )
+            .weaken_maybe_uninitialized()?;
+        }
+        Ok(())
     }
 
     pub(crate) fn debug_lines<Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>>(
@@ -603,4 +682,14 @@ pub(crate) fn unpacking_places<'tcx>(
         _ => return None,
     };
     Some((base.as_current_place()?, target.as_current_place()?, guide))
+}
+
+/// Whether the edge unpacks an enum to one of its variants, which is known
+/// only on the paths that took the corresponding branch.
+pub(super) fn is_variant_unpacking(kind: &BorrowPcgEdgeKind<'_>) -> bool {
+    matches!(
+        kind,
+        BorrowPcgEdgeKind::BorrowPcgExpansion(expansion)
+            if matches!(expansion.guide(), Some(RepackGuide::Downcast(..)))
+    )
 }

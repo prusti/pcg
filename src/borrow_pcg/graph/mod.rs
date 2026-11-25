@@ -18,7 +18,7 @@ use crate::{
     coupling::PcgCoupledEdgeKind,
     error::PcgUnsupportedError,
     owned_pcg::ExpandedPlace,
-    pcg::{PcgNode, PcgNodeLike, PcgNodeWithPlace},
+    pcg::{CapabilityKind, PcgNode, PcgNodeLike, PcgNodeWithPlace},
     rustc_interface::{data_structures::fx::FxHashSet, middle::mir},
     utils::{
         CompilerCtxt, DEBUG_BLOCK, DEBUG_IMGCAT, DebugCtxt, DebugImgcat, HasBorrowCheckerCtxt,
@@ -27,7 +27,6 @@ use crate::{
         display::{
             DebugLines, DisplayOutput, DisplayWithCompilerCtxt, DisplayWithCtxt, OutputMode,
         },
-        maybe_old::MaybeLabelledPlace,
         validity::HasValidityCheck,
     },
 };
@@ -35,12 +34,15 @@ use frozen::{CachedLeafEdges, FrozenGraphRef};
 use itertools::Itertools;
 
 use super::{
-    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeLike, BorrowPcgEdgeRef, LocalNode},
+    borrow_pcg_edge::{BlockedNode, BorrowPcgEdge, BorrowPcgEdgeRef, LocalNode},
     edge::borrow::BorrowEdge,
     edge_data::EdgeData,
     validity_conditions::ValidityConditions,
 };
-use crate::borrow_pcg::edge::{abstraction::AbstractionEdge, kind::BorrowPcgEdgeKind};
+use crate::borrow_pcg::edge::{
+    abstraction::AbstractionEdge, deref::DerefEdge, kind::BorrowPcgEdgeKind,
+    rawptr_deref::RawPtrDerefEdge,
+};
 
 use crate::coupling::{MaybeCoupledEdgeKind, MaybeCoupledEdges, PcgCoupledEdges};
 
@@ -174,6 +176,22 @@ impl<'tcx, EdgeKind, VC> BorrowsGraph<'tcx, EdgeKind, VC> {
 }
 
 impl<'tcx, P: PcgNodeComponent, VC> BorrowsGraph<'tcx, BorrowPcgEdgeKind<'tcx, P>, VC> {
+    /// The current places that loans block.
+    pub(crate) fn lent_places<Ctxt: Copy + DebugCtxt>(&self, ctxt: Ctxt) -> HashSet<P>
+    where
+        BorrowPcgEdgeKind<'tcx, P>: EdgeData<'tcx, Ctxt, P>,
+    {
+        self.edges
+            .keys()
+            .filter(|kind| kind.is_loan())
+            .flat_map(|kind| {
+                kind.blocked_nodes(ctxt)
+                    .filter_map(|node| node.as_current_place())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     pub(crate) fn abstraction_edge_kinds<'slf>(
         &'slf self,
     ) -> impl Iterator<Item = &'slf AbstractionEdge<'tcx, P>> + 'slf {
@@ -338,28 +356,49 @@ impl<'tcx> BorrowsGraph<'tcx> {
         })
     }
 
+    /// The owned places that an edge blocks: the references and raw pointers
+    /// a dereference unpacks and the places a loan (a borrow, a call, a loop)
+    /// blocks.
     pub(crate) fn owned_places(&self, ctxt: CompilerCtxt<'_, 'tcx>) -> HashSet<Place<'tcx>> {
         let mut result = HashSet::default();
         for edge in self.edges() {
             match edge.kind {
-                BorrowPcgEdgeKind::Deref(e) => {
-                    if let Some(base) = e.blocked_place.as_current_place()
+                BorrowPcgEdgeKind::Deref(DerefEdge { blocked_place, .. })
+                | BorrowPcgEdgeKind::RawPtrDeref(RawPtrDerefEdge { blocked_place, .. }) => {
+                    if let Some(base) = blocked_place.as_current_place()
                         && base.is_owned(ctxt)
                     {
                         result.insert(base);
                     }
                 }
-                BorrowPcgEdgeKind::Borrow(borrow) => {
-                    if let MaybeLabelledPlace::Current(place) = borrow.blocked_place
-                        && place.is_owned(ctxt)
-                    {
-                        result.insert(place);
-                    }
+                kind if kind.is_loan() => {
+                    result.extend(
+                        kind.blocked_nodes(ctxt)
+                            .filter_map(|node| node.as_current_place())
+                            .filter(|place| place.is_owned(ctxt)),
+                    );
                 }
                 _ => {}
             }
         }
         result
+    }
+
+    /// The loans (borrows, calls, loops) that conflict with `place` holding
+    /// or recording `capability`; see [`PlaceLike::conflicts_with_loan_of`].
+    pub(crate) fn loans_blocking<'slf>(
+        &'slf self,
+        place: Place<'tcx>,
+        capability: CapabilityKind,
+        ctxt: CompilerCtxt<'slf, 'tcx>,
+    ) -> impl Iterator<Item = &'slf BorrowPcgEdgeKind<'tcx>> + 'slf {
+        self.edges.keys().filter(move |kind| {
+            kind.is_loan()
+                && kind
+                    .blocked_nodes(ctxt)
+                    .filter_map(|node| node.as_current_place())
+                    .any(|blocked| place.conflicts_with_loan_of(capability, blocked, ctxt))
+        })
     }
 
     pub(crate) fn borrow_created_at(&self, location: mir::Location) -> Option<&BorrowEdge<'tcx>> {
@@ -377,18 +416,6 @@ impl<'tcx> BorrowsGraph<'tcx> {
         self.edges
             .into_iter()
             .map(|(kind, conditions)| BorrowPcgEdge::new(kind, conditions))
-    }
-
-    pub(crate) fn abstraction_edges<'slf>(
-        &'slf self,
-    ) -> impl Iterator<Item = Conditioned<&'slf AbstractionEdge<'tcx>>> + 'slf {
-        self.edges().filter_map(|edge| match edge.kind {
-            BorrowPcgEdgeKind::Abstraction(abstraction) => Some(Conditioned {
-                conditions: edge.conditions().clone(),
-                value: abstraction,
-            }),
-            _ => None,
-        })
     }
 
     /// All edges that are not blocked by any other edge. The argument

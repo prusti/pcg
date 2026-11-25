@@ -133,6 +133,11 @@ where
         if short_matches {
             changed |= self.target.label_lifetime_projection(label);
         }
+        // Labelling one end can make it the other end: a flow from a node to
+        // itself says nothing.
+        if self.source == self.target.rebase() {
+            return LabelLifetimeProjectionResult::ShouldCollapse;
+        }
         self.assert_validity(ctxt);
         changed
     }

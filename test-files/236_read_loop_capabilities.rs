@@ -51,4 +51,40 @@ fn nested(mut value: i32, outer: bool, inner: bool) -> i32 {
     value
 }
 
+struct Stack {
+    entries: Vec<u32>,
+    depth: usize,
+}
+
+fn same(a: &u32, b: &u32) -> Result<bool, ()> {
+    Ok(a == b)
+}
+
+impl Stack {
+    // Lending the referent `*self` to the loop leaves what `self` itself
+    // suspends unchanged.
+    fn check(&self, child: u32) -> Result<(), usize> {
+        // PCG: bb4 -> bb5: Lend *self to Loop(bb5): self -> (*self).depth
+        // PCG: bb5[0] pre_operands: self: suspended E
+        for entry in self.entries.iter().rev() {
+            if same(entry, &child).map_err(|_| self.depth)? {
+                return Err(self.depth);
+            }
+        }
+        Ok(())
+    }
+}
+
+// The loop reads through the reference field `(*s).0`, which is unpacked on
+// entry: its freeze records e and the referent's E, which the edge into the
+// loop packs into the E the loop head records.
+fn read_through_reference_field_in_loop(s: &mut (&mut u32, u32)) {
+    // PCG: bb0 -> bb1: Pack suspended (*s).0
+    // PCG: bb1[0] pre_operands: (*s).0: suspended E
+    while s.1 != *s.0 {
+        s.1 = 0;
+    }
+    *s.0 = 1;
+}
+
 fn main() {}

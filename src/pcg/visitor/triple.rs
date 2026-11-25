@@ -8,7 +8,8 @@ use crate::{
         place_capabilities::PlaceCapabilitiesReader,
         triple::{PlaceCondition, Triple},
     },
-    utils::{DataflowCtxt, Place},
+    pcg_validity_assert,
+    utils::{DataflowCtxt, Place, display::DisplayWithCompilerCtxt},
 };
 
 use super::PcgVisitor;
@@ -40,6 +41,25 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
             PlaceCondition::Capability(place, capability) => {
                 self.place_obtainer()
                     .obtain(place, ObtainType::Capability(capability))?;
+                // The operation can be performed only with the capability it
+                // needs or a stronger one. A read of a reference whose
+                // referent is unpacked (e) reads the reference itself; what
+                // it reads through it is obtained at the referent.
+                let ctxt = self.ctxt;
+                let location = self.location();
+                pcg_validity_assert!(
+                    place.contains_unsafe_deref(ctxt)
+                        || self.pcg.capability_of(place, ctxt).is_some_and(|held| {
+                            held >= capability
+                                || held == CapabilityKind::ShallowExclusive
+                                    && capability == CapabilityKind::Read
+                        }),
+                    [ctxt at location],
+                    "{} holds {:?} after obtaining {:?} for its use",
+                    place.display_string(ctxt),
+                    self.pcg.capability_of(place, ctxt),
+                    capability
+                );
             }
             PlaceCondition::AllocateOrDeallocate(local) => {
                 if self.pcg.owned[local].is_unallocated() {
@@ -91,13 +111,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
         self.pcg.ensure_triple(triple, self.ctxt);
         if let Some(PlaceCondition::Freeze(place)) = triple.post() {
             let cap = self.pcg.capability_of(place, self.ctxt);
-            let unpacked = cap.is_none()
-                && self
-                    .pcg
-                    .place_capabilities
-                    .capabilities_for_strict_postfixes_of(place)
-                    .next()
-                    .is_some();
+            let unpacked = cap.is_none() && self.pcg.place_capabilities.unpacks(place);
             if matches!(
                 cap,
                 Some(CapabilityKind::Exclusive | CapabilityKind::ShallowExclusive)
