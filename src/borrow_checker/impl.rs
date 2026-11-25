@@ -25,6 +25,7 @@ use crate::{
     },
     utils::{
         CompilerCtxt,
+        data_structures::HashSet,
         display::{DisplayCtxtFor, DisplayOutput, OutputMode},
         liveness::PlaceLiveness,
     },
@@ -232,10 +233,14 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                             .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
                     })
             }
-            // `RegionsIn` has no region of its own, so it is live while its place is.
-            GeneralizedLifetime::RegionsIn(_) => node
-                .related_maybe_labelled_place()
-                .is_none_or(|p| self.place_liveness.is_live(p.place(), location)),
+            // `RegionsIn` has no region of its own, so it is live while its
+            // place may be used or dropped, as Polonius' origins are.
+            GeneralizedLifetime::RegionsIn(_) => {
+                node.related_maybe_labelled_place().is_none_or(|p| {
+                    self.place_liveness
+                        .is_live_or_dropped_later(p.place(), location)
+                })
+            }
             _ => todo!(),
         })
     }
@@ -286,6 +291,9 @@ pub type BorrowCheckerImpl<'mir, 'tcx> = NllBorrowCheckerImpl<'mir, 'tcx>;
 #[derive(Clone)]
 pub struct NllBorrowCheckerImpl<'mir, 'tcx: 'mir> {
     place_liveness: PlaceLiveness<'mir, 'tcx>,
+    /// The regions that the destructor of each local may use, as rustc's
+    /// `dropck_outlives` determines them.
+    drop_regions: HashSet<(mir::Local, RegionVid)>,
     pub(crate) borrow_checker_data: RustBorrowCheckerData<'mir, 'tcx>,
 }
 
@@ -293,9 +301,42 @@ impl<'mir, 'tcx: 'mir> NllBorrowCheckerImpl<'mir, 'tcx> {
     pub fn new<T: BodyAndBorrows<'tcx>>(tcx: ty::TyCtxt<'tcx>, body: &'mir T) -> Self {
         let borrow_checker_data = RustBorrowCheckerData::new(tcx, body);
         let place_liveness = PlaceLiveness::new(CompilerCtxt::new(body.body(), tcx, ()));
+        let drop_regions = body
+            .input_facts()
+            .drop_of_var_derefs_origin
+            .iter()
+            .map(|(local, region)| (*local, (*region).into()))
+            .collect();
         Self {
             place_liveness,
+            drop_regions,
             borrow_checker_data,
+        }
+    }
+
+    fn ctxt(&self) -> CompilerCtxt<'mir, 'tcx, &Self> {
+        CompilerCtxt::new(
+            self.borrow_checker_data.body,
+            self.borrow_checker_data.tcx,
+            self,
+        )
+    }
+
+    /// Whether the destructor of `local` may use the lifetime `lifetime` of
+    /// its type. rustc's facts list the regions that `dropck_outlives`
+    /// requires to be live at the drop. The regions inside a type parameter
+    /// or alias have no region of their own here (`RegionsIn`), so the
+    /// destructor is assumed to use them, as `dropck_outlives` requires when
+    /// the value owns the parameter or alias. When it does not (e.g. it only
+    /// holds a reference to it), this keeps their loans until the drop,
+    /// longer than rustc.
+    fn drop_may_use(&self, local: mir::Local, lifetime: GeneralizedLifetime<'tcx>) -> bool {
+        match lifetime {
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(region)) => {
+                self.drop_regions.contains(&(local, region))
+            }
+            GeneralizedLifetime::Region(_) => false,
+            GeneralizedLifetime::RegionsIn(_) => true,
         }
     }
 }
@@ -339,7 +380,21 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
         if local == RETURN_PLACE {
             return true;
         }
-        self.place_liveness.is_live(local.into(), location)
+        if self.place_liveness.is_live(local.into(), location) {
+            return true;
+        }
+        // As in rustc's borrow checker, a later drop of the local keeps the
+        // regions that its destructor may use live. Unlike rustc, this
+        // counts the drop also where the local is moved out; the move has
+        // labelled the local's lifetime projections, so no current one is
+        // kept.
+        let PcgNode::LifetimeProjection(projection) = node else {
+            return false;
+        };
+        self.drop_may_use(local, projection.region(self.ctxt()))
+            && self
+                .place_liveness
+                .is_live_or_dropped_later(local.into(), location)
     }
 
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx> {

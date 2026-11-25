@@ -740,6 +740,18 @@ impl<'tcx> Place<'tcx> {
         self.0.ty(ctxt.body(), ctxt.tcx()).ty.is_ref()
     }
 
+    /// Whether a value of this place's type has drop glue, i.e. dropping it
+    /// runs a destructor.
+    pub fn needs_drop<'a>(self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    where
+        'tcx: 'a,
+    {
+        self.0
+            .ty(ctxt.body(), ctxt.tcx())
+            .ty
+            .needs_drop(ctxt.tcx(), ctxt.body().typing_env(ctxt.tcx()))
+    }
+
     pub fn ref_mutability<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Option<Mutability>
     where
         'tcx: 'a,

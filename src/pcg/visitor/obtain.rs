@@ -381,12 +381,18 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
     /// place's value to apply those removals. Such a place is not weakened
     /// while it is in use, see
     /// [`Self::finish_weakening_places_with_dead_lifetime_projections`].
+    ///
+    /// A value with drop glue, or a part of one, is not weakened either: the
+    /// value is still to be dropped, and its destructor needs all of it. Its
+    /// drop weakens it.
     fn weaken_places_with_dead_lifetime_projections(
         &mut self,
         edge: &BorrowPcgEdgeKind<'tcx>,
     ) -> Result<(), PcgError> {
         for place in self.places_with_dead_lifetime_projections(edge) {
-            if !self.reference_in_use(place) {
+            let in_value_with_drop_glue = std::iter::successors(Some(place), |p| p.parent_place())
+                .any(|p| p.needs_drop(self.ctxt));
+            if !self.reference_in_use(place) && !in_value_with_drop_glue {
                 self.weaken_place_with_dead_lifetime_projection(place)?;
             }
         }

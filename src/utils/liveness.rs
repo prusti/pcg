@@ -26,7 +26,20 @@ impl<'tcx> PlaceLivenessDomain<'tcx> {
     }
 }
 
-struct TransferFunction<'a, 'tcx>(pub &'a mut PlaceLivenessDomain<'tcx>);
+/// Which uses keep a place live.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Uses {
+    /// All uses except the drop of a whole local. As for rustc's "regular
+    /// uses" (`rustc_borrowck::def_use`), all the regions in the type of a
+    /// local used in this sense must be live, and a drop of a part of a local
+    /// is one. A drop of a whole local is different because the destructor
+    /// may not use some of the regions (`#[may_dangle]`).
+    Regular,
+    /// All uses including drops, as in rustc's `MaybeLiveLocals`.
+    RegularAndDrops,
+}
+
+struct TransferFunction<'a, 'tcx>(pub &'a mut PlaceLivenessDomain<'tcx>, Uses);
 
 impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
     fn visit_place(
@@ -41,7 +54,7 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
             return;
         }
 
-        match DefUse::for_place(*place, context) {
+        match DefUse::for_place(*place, context, self.1) {
             Some(DefUse::Def) => {
                 if let PlaceContext::MutatingUse(
                     MutatingUseContext::Call | MutatingUseContext::AsmOutput,
@@ -63,7 +76,7 @@ impl<'tcx> Visitor<'tcx> for TransferFunction<'_, 'tcx> {
     }
 
     fn visit_local(&mut self, local: mir::Local, context: PlaceContext, _: mir::Location) {
-        DefUse::apply(self.0, local.into(), context);
+        DefUse::apply(self.0, local.into(), context, self.1);
     }
 }
 
@@ -88,7 +101,7 @@ impl JoinSemiLattice for PlaceLivenessDomain<'_> {
     }
 }
 
-struct PlaceLivenessAnalysis;
+struct PlaceLivenessAnalysis(Uses);
 
 impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
     type Domain = PlaceLivenessDomain<'tcx>;
@@ -110,7 +123,7 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
         statement: &mir::Statement<'tcx>,
         location: mir::Location,
     ) {
-        TransferFunction(state).visit_statement(statement, location);
+        TransferFunction(state, self.0).visit_statement(statement, location);
     }
 
     fn apply_terminator_effect(
@@ -119,36 +132,64 @@ impl<'tcx> Analysis<'tcx> for PlaceLivenessAnalysis {
         terminator: &mir::Terminator<'tcx>,
         location: mir::Location,
     ) {
-        TransferFunction(state).visit_terminator(terminator, location);
+        TransferFunction(state, self.0).visit_terminator(terminator, location);
     }
 }
 
-/// Place liveness analysis based on what currently exists in the compiler.
-/// However ours is specialized for information relevant to borrows. In particular,
-/// we currently give the drops special treatment.
+type PlaceLivenessCursor<'mir, 'tcx> =
+    Rc<RefCell<ResultsCursor<'mir, 'tcx, AnalysisEngine<PlaceLivenessAnalysis>>>>;
+
+/// Place liveness analysis based on what currently exists in the compiler,
+/// but field-sensitive. It distinguishes regular uses from drops in the same
+/// way as rustc's borrow checker, so that the liveness of regions can follow
+/// rustc's (see [`Uses`]).
 #[derive(Clone)]
 pub(crate) struct PlaceLiveness<'mir, 'tcx> {
-    cursor: Rc<RefCell<ResultsCursor<'mir, 'tcx, AnalysisEngine<PlaceLivenessAnalysis>>>>,
+    regular_uses: PlaceLivenessCursor<'mir, 'tcx>,
+    regular_uses_and_drops: PlaceLivenessCursor<'mir, 'tcx>,
 }
 
 impl DebugWithContext<AnalysisEngine<PlaceLivenessAnalysis>> for PlaceLivenessDomain<'_> {}
 
 impl<'mir, 'tcx> PlaceLiveness<'mir, 'tcx> {
     pub(crate) fn new<BC: Copy>(ctxt: CompilerCtxt<'mir, 'tcx, BC>) -> Self {
-        Self {
-            cursor: Rc::new(RefCell::new(
+        let cursor = |uses| {
+            Rc::new(RefCell::new(
                 compute_fixpoint(
-                    AnalysisEngine(PlaceLivenessAnalysis),
+                    AnalysisEngine(PlaceLivenessAnalysis(uses)),
                     ctxt.tcx(),
                     ctxt.body(),
                 )
                 .into_results_cursor(ctxt.body()),
-            )),
+            ))
+        };
+        Self {
+            regular_uses: cursor(Uses::Regular),
+            regular_uses_and_drops: cursor(Uses::RegularAndDrops),
         }
     }
 
+    /// Whether `place` may be used at `location` or later, other than by the
+    /// drop of a whole local (see [`Uses::Regular`]).
     pub(crate) fn is_live(&self, place: Place<'tcx>, location: mir::Location) -> bool {
-        let mut cursor = self.cursor.as_ref().borrow_mut();
+        Self::is_live_in(&self.regular_uses, place, location)
+    }
+
+    /// Whether `place` may be used or dropped at `location` or later.
+    pub(crate) fn is_live_or_dropped_later(
+        &self,
+        place: Place<'tcx>,
+        location: mir::Location,
+    ) -> bool {
+        Self::is_live_in(&self.regular_uses_and_drops, place, location)
+    }
+
+    fn is_live_in(
+        cursor: &PlaceLivenessCursor<'mir, 'tcx>,
+        place: Place<'tcx>,
+        location: mir::Location,
+    ) -> bool {
+        let mut cursor = cursor.as_ref().borrow_mut();
         // Because this is a backwards analysis, seeking *after* the primary effect considers
         // the state *before* the statment at the location
         cursor.seek_after_primary_effect(location);
@@ -167,8 +208,9 @@ impl DefUse {
         state: &mut PlaceLivenessDomain<'tcx>,
         place: mir::Place<'tcx>,
         context: PlaceContext,
+        uses: Uses,
     ) {
-        match DefUse::for_place(place, context) {
+        match DefUse::for_place(place, context, uses) {
             Some(DefUse::Def) => state.kill(place.into()),
             Some(DefUse::Use) => state.gen_(place.into()),
             None => {}
@@ -176,7 +218,7 @@ impl DefUse {
     }
 
     #[allow(clippy::match_same_arms)]
-    fn for_place(place: mir::Place<'_>, context: PlaceContext) -> Option<DefUse> {
+    fn for_place(place: mir::Place<'_>, context: PlaceContext, uses: Uses) -> Option<DefUse> {
         #[rustversion::before(2026-08-12)]
         if matches!(
             context,
@@ -186,24 +228,12 @@ impl DefUse {
         }
         match context {
             PlaceContext::NonUse(NonUseContext::StorageDead) => Some(DefUse::Def),
-            // We don't count drops as use in our analysis because drop
-            // implementations can sometimes require that the lifetimes of
-            // references within a place to still be active and sometimes not.
-            //
-            // In the case where the lifetime are allowed to expire, if we treat
-            // the drop as a use, the PCG would over-approximate the extent of
-            // the lifetime, leading to incorrect graphs. This
-            // over-approximation can prevent the construction of the PCG (when
-            // the compiler wants to e.g. access a place that the PCG still
-            // thinks is borrowed)
-            //
-            // Instead, by not treating the drop as a use, we under-approximate
-            // the extents. However because this only occurs in drops, the PCG construction
-            // itself will not fail (we don't currently require lifetimes to be live for drops)
-            // However, this is still probably incorrect technically.
-            // TODO: We should also identify whether the drop requires lifetimes to be live and count
-            // usages accordingly.
-            PlaceContext::NonUse(_) | PlaceContext::MutatingUse(MutatingUseContext::Drop) => None,
+            PlaceContext::NonUse(_) => None,
+            // Like rustc, a drop of a part of a local is a regular use of it.
+            PlaceContext::MutatingUse(MutatingUseContext::Drop) => {
+                let is_use = uses == Uses::RegularAndDrops || !place.projection.is_empty();
+                is_use.then_some(DefUse::Use)
+            }
 
             PlaceContext::MutatingUse(
                 MutatingUseContext::Call
