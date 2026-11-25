@@ -140,6 +140,18 @@ impl<'mir, 'tcx> Facts<'mir, 'tcx> {
         }
     }
 
+    /// The loans of the body.
+    #[rustversion::since(2026-07-28)]
+    fn borrows(&self) -> impl Iterator<Item = &'mir BorrowData<'tcx>> + 'mir {
+        self.borrow_set.iter_enumerated().map(|(_, borrow)| borrow)
+    }
+
+    /// The loans of the body.
+    #[rustversion::before(2026-07-28)]
+    fn borrows(&self) -> impl Iterator<Item = &'mir BorrowData<'tcx>> + 'mir {
+        self.borrow_set.location_map().values()
+    }
+
     /// Whether rustc tracks loans of `borrowed` in its conflict checks. It
     /// ignores loans through a shared reference or a raw pointer
     /// (`ignore_borrow`); its conflict check cannot handle such a loan, which
@@ -477,8 +489,7 @@ pub fn over_restriction<'a, 'tcx: 'a>(
     let body = facts.body;
     let tcx = facts.tcx;
     let two_phase_temps: HashSet<mir::Local> = facts
-        .borrow_set
-        .iter()
+        .borrows()
         .filter(|b| !matches!(b.activation_location(), TwoPhaseActivation::NotTwoPhase))
         .map(|b| b.assigned_place().local)
         .collect();

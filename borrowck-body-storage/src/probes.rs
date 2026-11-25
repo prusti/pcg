@@ -14,23 +14,21 @@
 
 use std::cell::RefCell;
 
-use pcg::{
-    rustc_interface::{
-        abi::{FieldIdx, VariantIdx},
-        data_structures::{fx::FxHashMap, steal::Steal},
-        hir::def_id::LocalDefId,
-        index::IndexVec,
-        middle::{
-            mir::{
-                self, BorrowKind, LocalDecl, MutBorrowKind, Promoted, Rvalue, SourceInfo,
-                Statement, StatementKind,
-            },
-            ty::{self, Ty, TyCtxt},
-            util::Providers,
+use pcg::rustc_interface::{
+    abi::{FieldIdx, VariantIdx},
+    data_structures::{fx::FxHashMap, steal::Steal},
+    hir::def_id::LocalDefId,
+    index::IndexVec,
+    middle::{
+        mir::{
+            self, BorrowKind, LocalDecl, MutBorrowKind, Promoted, Rvalue, SourceInfo, Statement,
+            StatementKind,
         },
-        session::Session,
-        span::BytePos,
+        ty::{self, Ty, TyCtxt},
+        util::Providers,
     },
+    session::Session,
+    span::BytePos,
 };
 
 /// One access to insert.
@@ -62,14 +60,17 @@ fn load_probes() -> FxHashMap<String, Vec<Probe>> {
         if columns.len() < 8 || columns[0] != "PROBE" {
             continue;
         }
-        probes.entry(columns[2].to_owned()).or_default().push(Probe {
-            id: columns[1].to_owned(),
-            block: columns[3].parse().unwrap(),
-            index: columns[4].parse().unwrap(),
-            mutable: columns[5] == "mut",
-            local: columns[6].parse().unwrap(),
-            projection: columns[7].to_owned(),
-        });
+        probes
+            .entry(columns[2].to_owned())
+            .or_default()
+            .push(Probe {
+                id: columns[1].to_owned(),
+                block: columns[3].parse().unwrap(),
+                index: columns[4].parse().unwrap(),
+                mutable: columns[5] == "mut",
+                local: columns[6].parse().unwrap(),
+                projection: columns[7].to_owned(),
+            });
     }
     probes
 }
@@ -114,14 +115,17 @@ fn mir_promoted_with_probes<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> MirP
         };
         let lo = body.span.lo() + BytePos(u32::try_from(ordinal).unwrap());
         let span = body.span.with_lo(lo).with_hi(lo + BytePos(1));
-        let fresh = body
-            .local_decls
-            .push(LocalDecl::new(Ty::new_ref(tcx, erased, ty, mutability), span));
+        let fresh = body.local_decls.push(LocalDecl::new(
+            Ty::new_ref(tcx, erased, ty, mutability),
+            span,
+        ));
         let block = &mut body.basic_blocks_mut()[mir::BasicBlock::from_usize(probe.block)];
         let scope = block
             .statements
             .get(probe.index)
-            .map_or(block.terminator().source_info.scope, |s| s.source_info.scope);
+            .map_or(block.terminator().source_info.scope, |s| {
+                s.source_info.scope
+            });
         block.statements.insert(
             probe.index,
             Statement::new(
