@@ -119,24 +119,21 @@ pub(crate) fn statement_effect<'a, 'tcx: 'a>(
     after: &PlaceCapabilities<'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> CapabilityChanges<Place<'tcx>> {
-    use crate::pcg::place_capabilities::PlaceCapabilitiesReader;
     let mut changes = CapabilityChanges::default();
     let mut violations = vec![];
-    let places = before
-        .map
-        .keys()
-        .chain(before.suspended.keys())
-        .chain(after.map.keys())
-        .chain(after.suspended.keys())
-        .copied()
-        .collect::<std::collections::HashSet<_>>();
-    for place in places {
-        let (old, new) = (before.get(place, ctxt), after.get(place, ctxt));
-        let (old_record, new_record) = (before.suspended(place), after.suspended(place));
+    let changed = action::changes(before, after);
+    for &action::Change {
+        place,
+        old,
+        new,
+        old_record,
+        new_record,
+    } in &changed
+    {
         if old != new {
             changes.set(place, new);
         }
-        if place.contains_unsafe_deref(ctxt) || (old == new && old_record == new_record) {
+        if place.contains_unsafe_deref(ctxt) {
             continue;
         }
         let allowed = match post {
@@ -176,6 +173,7 @@ pub(crate) fn statement_effect<'a, 'tcx: 'a>(
     for violation in conservation::check(
         before,
         after,
+        &changed,
         conservation::Allowed::post_condition(post),
         ctxt,
     ) {

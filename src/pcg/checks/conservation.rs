@@ -26,7 +26,10 @@
 //! A capability above R that comes from a record consumes it: afterwards no
 //! record of the place or of an ancestor covers it.
 
-use super::{action::Violation, rises, show};
+use super::{
+    action::{Change, Violation},
+    rises, show,
+};
 use crate::{
     action::PcgAction,
     borrow_pcg::{action::BorrowPcgActionKind, state::packed},
@@ -157,16 +160,23 @@ pub(crate) fn allowed_for_action<'tcx>(action: &PcgAction<'tcx>) -> Allowed<'tcx
     }
 }
 
-/// The rises from `before` to `after` that `allowed` gives no source for.
+/// The rises among `changes` from `before` to `after` that `allowed` gives no
+/// source for.
 pub(crate) fn check<'a, 'tcx: 'a>(
     before: &PlaceCapabilities<'tcx>,
     after: &PlaceCapabilities<'tcx>,
+    changes: &[Change<'tcx>],
     allowed: Allowed<'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<Violation> {
     let mut violations = vec![];
-    for (place, new) in after.iter() {
-        let old = before.get(place, ctxt);
+    for &Change {
+        place, old, new, ..
+    } in changes
+    {
+        let Some(new) = new else {
+            continue;
+        };
         if place.contains_unsafe_deref(ctxt) || !rises(old, new) {
             continue;
         }
@@ -205,8 +215,16 @@ pub(crate) fn check<'a, 'tcx: 'a>(
             Some(_) => {}
         }
     }
-    for (place, new) in after.iter_suspended() {
-        let old = before.suspended(place);
+    for &Change {
+        place,
+        old_record: old,
+        new_record: new,
+        ..
+    } in changes
+    {
+        let Some(new) = new else {
+            continue;
+        };
         if place.contains_unsafe_deref(ctxt) || !rises(old, new) {
             continue;
         }

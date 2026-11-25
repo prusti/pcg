@@ -34,6 +34,9 @@ pub(crate) fn check<'s, 'a, 'tcx: 'a + 's>(
             };
         }
     }
+    if replayed == after.map {
+        return;
+    }
     let mut differences = replayed
         .keys()
         .chain(after.map.keys())
