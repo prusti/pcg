@@ -383,6 +383,35 @@ pub fn run_on_crate(
     }
 }
 
+/// As [`run_on_crate`], and returns the standard error of the check too
+/// (which it also prints).
+#[allow(dead_code)]
+#[must_use]
+pub fn run_on_crate_with_stderr(
+    name: &str,
+    version: &str,
+    date: Option<&str>,
+    options: RunOnCrateOptions,
+) -> (RunOnCrateResult, String) {
+    if let Err(e) = is_supported_crate(name, version) {
+        eprintln!("{e}");
+        return (RunOnCrateResult::Skipped, String::new());
+    }
+    let output = with_downloaded_crate(name, version, date, |dir| {
+        pcg_check_command(dir, &options)
+            .output()
+            .unwrap_or_else(|_| panic!("Failed to execute cargo check on {}", dir.display()))
+    });
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    eprint!("{stderr}");
+    let result = if output.status.success() {
+        RunOnCrateResult::Success
+    } else {
+        RunOnCrateResult::Failed
+    };
+    (result, stderr)
+}
+
 /// Runs `f` on a fresh extraction of the crate and removes the extraction
 /// afterwards. With a `date`, the lock file cached for that date is used, and
 /// the lock file `f` resolved is cached if there was none.

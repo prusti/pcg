@@ -1,6 +1,38 @@
 #![allow(dead_code)]
 use itertools::Itertools;
 use rayon::prelude::*;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
+
+/// The known failures of the checks of `pcg::checks` in the test cases: lines
+/// `case<TAB>check<TAB>function`, where `case` is the test case's crate,
+/// version, date and function as in `check_failures_key`. A case's run
+/// reports these failures without panicking (`PCG_EXPECTED_CHECK_FAILURES`),
+/// and one that no longer fails makes the case fail.
+/// `SELECTED_CRATES_BLESS_CHECKS=1` runs the cases with all check failures
+/// reported (`PCG_CHECKS_WARN_ONLY`) and writes each case's failures to
+/// `tmp/selected-crates-check-failures/`, in the format of the file.
+const KNOWN_CHECK_FAILURES: &str = "tests/selected-crates-check-failures.tsv";
+
+fn known_check_failures() -> BTreeMap<String, BTreeSet<(String, String)>> {
+    let content = std::fs::read_to_string(KNOWN_CHECK_FAILURES).unwrap_or_default();
+    let mut failures: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
+    for line in content
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+    {
+        let [case, check, function] = line.splitn(3, '\t').collect::<Vec<_>>()[..] else {
+            panic!("{KNOWN_CHECK_FAILURES}: `{line}` is not `case<TAB>check<TAB>function`");
+        };
+        failures
+            .entry(case.to_owned())
+            .or_default()
+            .insert((check.to_owned(), function.to_owned()));
+    }
+    failures
+}
 
 mod common;
 
@@ -166,6 +198,18 @@ impl SelectedCrateTestCase {
         );
     }
 
+    /// The test case in the file of known check failures: its crate, version,
+    /// date and function, as in `to_semicolon_format`.
+    fn check_failures_key(&self) -> String {
+        format!(
+            "{};{};{};{}",
+            self.crate_name,
+            self.crate_version,
+            self.crate_download_date.as_deref().unwrap_or(""),
+            self.function_name().unwrap_or("")
+        )
+    }
+
     fn run(&self) {
         if let TestCrateType::Function(function) = &self.test_type
             && function.debug_failure
@@ -173,7 +217,20 @@ impl SelectedCrateTestCase {
             self.debug_failure();
             panic!("Stop for failure debugging");
         }
-        let result = common::run_on_crate(
+        let key = self.check_failures_key();
+        let expected = known_check_failures().remove(&key).unwrap_or_default();
+        let bless = std::env::var_os("SELECTED_CRATES_BLESS_CHECKS").is_some();
+        let mut extra_env_vars = vec![(
+            "PCG_EXPECTED_CHECK_FAILURES".to_string(),
+            expected
+                .iter()
+                .map(|(check, function)| format!("{check} {function}\n"))
+                .collect::<String>(),
+        )];
+        if bless {
+            extra_env_vars.push(("PCG_CHECKS_WARN_ONLY".to_string(), "true".to_string()));
+        }
+        let (result, stderr) = common::run_on_crate_with_stderr(
             &self.crate_name,
             &self.crate_version,
             self.crate_download_date.as_deref(),
@@ -181,9 +238,34 @@ impl SelectedCrateTestCase {
                 target: common::Target::Release,
                 validity_checks: true,
                 function: self.function_name().map(|s| s.to_string()),
-                extra_env_vars: vec![],
+                extra_env_vars,
             },
         );
+        let check_failure = regex::Regex::new(r"PCG Check Failed: \[(.*?)\] ([a-z-]+): ").unwrap();
+        let reported = stderr
+            .lines()
+            .filter_map(|line| check_failure.captures(line))
+            .map(|captures| (captures[2].to_string(), captures[1].to_string()))
+            .collect::<BTreeSet<_>>();
+        if bless {
+            let dir = PathBuf::from("tmp/selected-crates-check-failures");
+            std::fs::create_dir_all(&dir).unwrap();
+            let file_name = key.replace(|c: char| !c.is_ascii_alphanumeric(), "_");
+            std::fs::write(
+                dir.join(format!("{file_name}.tsv")),
+                reported
+                    .iter()
+                    .map(|(check, function)| format!("{key}\t{check}\t{function}\n"))
+                    .collect::<String>(),
+            )
+            .unwrap();
+        } else if matches!(result, common::RunOnCrateResult::Success) {
+            let passing = expected.difference(&reported).collect::<Vec<_>>();
+            assert!(
+                passing.is_empty(),
+                "Known check failures of {key} now pass; remove them from {KNOWN_CHECK_FAILURES}: {passing:?}"
+            );
+        }
         if matches!(result, common::RunOnCrateResult::Failed) {
             tracing::error!("Test case failed: {self:?}");
             if self.function_name().is_some() {
