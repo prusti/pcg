@@ -31,3 +31,39 @@ fn check_test_files() {
         common::run_pcg_on_file(test_file);
     });
 }
+
+/// `PCG_ALLOW_BORROWCK_ERRORS` discards borrow check errors only: the files in
+/// `test-files/errors` whose names start with `allowed_` must succeed, and the
+/// others, which also have an error that borrow checking does not report,
+/// must fail.
+#[test]
+fn only_borrowck_errors_are_allowed() {
+    common::build_pcg_bin(common::Target::Debug);
+    let workspace_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let error_dir = workspace_dir
+        .parent()
+        .unwrap()
+        .join("test-files")
+        .join("errors");
+    let mut files = std::fs::read_dir(&error_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    files.sort();
+    assert!(!files.is_empty());
+    for file in files {
+        let allowed = file
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("allowed_");
+        assert_eq!(
+            common::pcg_on_file_succeeds(&file),
+            allowed,
+            "{} should {}",
+            file.display(),
+            if allowed { "succeed" } else { "fail" }
+        );
+    }
+}

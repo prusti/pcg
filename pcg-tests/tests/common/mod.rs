@@ -120,8 +120,12 @@ fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Runs the PCG on a test file with the options the file states, and returns
+/// whether it succeeded. A test file must compile; one that is meant to have
+/// borrow check errors says so with `// option PCG_ALLOW_BORROWCK_ERRORS: true`.
 #[allow(dead_code)]
-pub fn run_pcg_on_file(file: &Path) {
+#[must_use]
+pub fn pcg_on_file_succeeds(file: &Path) -> bool {
     let base_dir = find_workspace_base_dir();
     let pcg_bin_dir = base_dir.join("pcg-bin");
     let pcg_exe = find_pcg_bin(&pcg_bin_dir, Target::Debug);
@@ -130,10 +134,12 @@ pub fn run_pcg_on_file(file: &Path) {
     let env_vars = parse_env_vars_from_file(file);
 
     let mut command = Command::new(&pcg_exe);
+    // rustc writes the files it reports long type names in to the current
+    // directory.
     command
         .arg(file)
-        .env("PCG_CHECK_ANNOTATIONS", "true")
-        .env("PCG_ALLOW_BORROWCK_ERRORS", "true");
+        .current_dir(env!("CARGO_TARGET_TMPDIR"))
+        .env("PCG_CHECK_ANNOTATIONS", "true");
 
     for (key, value) in env_vars {
         command.env(key, value);
@@ -142,12 +148,16 @@ pub fn run_pcg_on_file(file: &Path) {
     let status = command
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute test {}: {e}", file.display()));
+    println!("{}: {status}", file.display());
+    status.success()
+}
 
+#[allow(dead_code)]
+pub fn run_pcg_on_file(file: &Path) {
     assert!(
-        status.success(),
-        "Test {} failed with status: {}",
-        file.display(),
-        status
+        pcg_on_file_succeeds(file),
+        "Test {} failed",
+        file.display()
     );
 }
 

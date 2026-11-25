@@ -80,6 +80,21 @@ fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> MirBorrowck<'tcx
         "Start mir_borrowck for {}",
         tcx.def_path_str(def_id.to_def_id())
     );
+    // Only borrow check errors may be discarded, so the error count is reset
+    // only if no error was reported before this body's borrow check. The
+    // errors that rustc's `mir_borrowck` reports before borrow checking come
+    // from building the MIR of the body and its nested bodies (e.g.
+    // non-exhaustive patterns) and from the coroutine obligations that type
+    // checking deferred (e.g. a future that must be `Send`), so both are
+    // done first. rustc builds the MIR before its borrow checking pass, but a
+    // body that defines an opaque type is borrow checked earlier, when the
+    // opaque type is checked.
+    let _ = tcx.mir_promoted(def_id);
+    for nested in tcx.nested_bodies_within(def_id) {
+        let _ = tcx.mir_promoted(nested);
+    }
+    let _ = tcx.check_coroutine_obligations(def_id);
+    let errors_before_borrowck = tcx.dcx().has_errors().is_some();
     let body_with_facts = borrowck::get_bodies_with_borrowck_facts(tcx, def_id, consumer_opts);
     tracing::debug!(
         "End mir_borrowck for {}",
@@ -90,7 +105,7 @@ fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> MirBorrowck<'tcx
         save_body(tcx, def_id, body.into());
     }
     let result = original_mir_borrowck(tcx, def_id);
-    if ALLOW_BORROWCK_ERRORS.get() {
+    if ALLOW_BORROWCK_ERRORS.get() && !errors_before_borrowck {
         tcx.dcx().reset_err_count();
     }
     result
