@@ -154,11 +154,7 @@ pub fn pcg_on_file_succeeds(file: &Path) -> bool {
 
 #[allow(dead_code)]
 pub fn run_pcg_on_file(file: &Path) {
-    assert!(
-        pcg_on_file_succeeds(file),
-        "Test {} failed",
-        file.display()
-    );
+    assert!(pcg_on_file_succeeds(file), "Test {} failed", file.display());
 }
 
 pub fn crate_download_dirname(name: &str, version: &str) -> String {
