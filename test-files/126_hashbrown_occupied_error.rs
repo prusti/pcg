@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <OccupiedError<'_, K, V, S, A> as std::fmt::Display>::fmt
+// PCG_EXPECTED_FAILURE: label <OccupiedError<'_, K, V, S, A> as std::fmt::Display>::fmt
 #![feature(allocator_api)]
 
 pub type DefaultHashBuilder = ();

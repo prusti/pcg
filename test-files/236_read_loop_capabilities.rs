@@ -1,3 +1,8 @@
+// PCG_EXPECTED_FAILURE: frame Stack::check
+// PCG_EXPECTED_FAILURE: frame Stack::check::{closure#0}
+// PCG_EXPECTED_FAILURE: frame read_through_reference_field_in_loop
+// PCG_EXPECTED_FAILURE: freeze read_through_reference_field_in_loop
+// PCG_EXPECTED_FAILURE: label Stack::check
 struct Pair {
     first: i32,
     second: i32,

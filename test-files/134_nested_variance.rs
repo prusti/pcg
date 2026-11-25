@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame main
+// PCG_EXPECTED_FAILURE: frame reborrow_inner
 fn reborrow_inner<'a, 'b, 'c: 'b>(x: &'a mut &'b mut i32, y: &'c mut i32) {
     *x = y;
 }

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label Buffer::format
 use std::mem::MaybeUninit;
 
 pub trait Integer {

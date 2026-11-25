@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame f
 struct MutWrapper<'a> { val: &'a mut String }
 fn g<'a, 'b>(bp1: &'a mut MutWrapper<'b>, bp2: &'a mut MutWrapper<'b>, s: &'a mut String) { }
 fn f(mut x: String, mut y: String, mut z: String) {

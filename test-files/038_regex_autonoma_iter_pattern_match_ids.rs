@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label Repr::<'a>::iter_match_pattern_ids
 struct Repr<'a>(&'a [u8]);
 
 impl<'a> Repr<'a> {

@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <WrapperIterator<'a, T> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: frame test2
 fn main(){}
 
 struct WrapperIterator<'a, T>{

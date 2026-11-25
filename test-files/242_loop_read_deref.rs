@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame repeated_reads
 fn f(x: &mut &i32) {
     // PCG_LIFETIME_DISPLAY: x 0 'outer
     // PCG_LIFETIME_DISPLAY: x 1 'inner

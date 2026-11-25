@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <A<'a> as Foo<'a>>::get
+// PCG_EXPECTED_FAILURE: label main
 trait Foo<'a> {
     fn get<'b, T: FromMutref<'b>>(&'b mut self) -> T;
 }

@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame CallbackOut::<'_>::new_output_buffer
+// PCG_EXPECTED_FAILURE: label CallbackOut::<'_>::new_output_buffer
+// PCG_EXPECTED_FAILURE: replay CallbackOut::<'_>::new_output_buffer
 pub struct CallbackFunc<'a> {
     pub put_buf_func: &'a mut dyn FnMut(&[u8]) -> bool,
 }

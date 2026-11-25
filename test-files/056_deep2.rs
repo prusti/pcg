@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame foo
 fn foo() {
     let mut a = 1;
     let mut b  = &mut a;

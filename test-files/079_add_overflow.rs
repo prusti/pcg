@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label main
 fn main() {
     let a = 1;
     let b = 2;

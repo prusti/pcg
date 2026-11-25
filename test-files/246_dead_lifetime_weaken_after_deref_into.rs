@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame through_struct
+// PCG_EXPECTED_FAILURE: frame triple
 // A place whose lifetime projections are dead is not weakened while an edge
 // into it is still in the graph: removing `{x} -> {*x}` packs `*x` back into
 // `x`, so `*x` is not weakened before it, and `x` is weakened once afterwards.

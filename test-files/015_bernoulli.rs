@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame <BernoulliError as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <BernoulliError as std::fmt::Display>::fmt
+// PCG_EXPECTED_FAILURE: label <BernoulliError as std::fmt::Display>::fmt
 use std::fmt;
 
 /// Error type returned from `Bernoulli::new`.

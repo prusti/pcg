@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame HeaderMap::<T>::remove_found
+// PCG_EXPECTED_FAILURE: label HeaderMap::<T>::remove_found
 use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use std::convert::TryFrom;

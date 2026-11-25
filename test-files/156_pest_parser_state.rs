@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <Position<'i> as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame ParserState::<'i>::skip_until
 pub type ParseResult<S> = Result<S, S>;
 
 #[derive(Debug, Clone, Copy)]

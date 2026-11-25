@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label cycle
 fn use_of_moved_value<T>(x: T) {
     let y = x;
     // x;

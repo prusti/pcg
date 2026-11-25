@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame punct
+// PCG_EXPECTED_FAILURE: label punct
 type Span = ();
 
 struct TokenStream {

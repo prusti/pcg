@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <Iter<'a, T> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: label <NoDrop<T> as std::ops::Deref>::deref
 use std::{option, slice};
 use std::mem::ManuallyDrop;
 use std::iter::Iterator;

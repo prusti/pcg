@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label all_zero
 enum List {
 	Nil,
 	Cons(u32, Box<List>),

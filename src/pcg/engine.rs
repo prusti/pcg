@@ -414,6 +414,7 @@ impl<'a, 'tcx: 'a> PcgEngine<'a, 'tcx> {
         reachable_blocks.insert(START_BLOCK.index());
         let mut analyzed_blocks = BitSet::default();
         analyzed_blocks.reserve_len(ctxt.body().basic_blocks.len());
+        super::checks::ledger::reset();
         Self {
             first_error: RefCell::new(ErrorState::default()),
             reachable_blocks: RefCell::new(reachable_blocks),

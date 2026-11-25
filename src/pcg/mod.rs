@@ -12,6 +12,7 @@ mod node;
 mod successor;
 
 pub(crate) mod capabilities;
+pub(crate) mod checks;
 pub(crate) mod ctxt;
 pub(crate) mod obtain;
 pub(crate) mod owned_state;

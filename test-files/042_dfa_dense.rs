@@ -1,3 +1,11 @@
+// PCG_EXPECTED_FAILURE: frame <ErrorKind as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <SerializeError as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <StartKind as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <StateID as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame StartTable::<T>::write_to
+// PCG_EXPECTED_FAILURE: frame StartTable::<T>::write_to_len
+// PCG_EXPECTED_FAILURE: label <StartKind as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: label StartTable::<T>::table
 use std::convert::TryFrom;
 use std::mem::size_of;
 

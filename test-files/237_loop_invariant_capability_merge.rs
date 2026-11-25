@@ -1,3 +1,16 @@
+// PCG_EXPECTED_FAILURE: cycle dead_lent_on_entry
+// PCG_EXPECTED_FAILURE: frame dead_borrowed_on_entry
+// PCG_EXPECTED_FAILURE: frame dead_lent_on_entry
+// PCG_EXPECTED_FAILURE: frame moved_in_loop_lent_on_entry
+// PCG_EXPECTED_FAILURE: frame written_in_loop_lent_on_entry
+// PCG_EXPECTED_FAILURE: label dead_borrowed_on_entry
+// PCG_EXPECTED_FAILURE: label dead_frozen_on_entry
+// PCG_EXPECTED_FAILURE: label dead_unpacked_on_entry
+// PCG_EXPECTED_FAILURE: label moved_in_loop_frozen_on_entry
+// PCG_EXPECTED_FAILURE: label written_in_loop_lent_on_entry
+// PCG_EXPECTED_FAILURE: lend moved_in_loop_lent_on_entry
+// PCG_EXPECTED_FAILURE: remove-edge written_in_loop_lent_on_entry
+// PCG_EXPECTED_FAILURE: unfreeze written_in_loop_frozen_on_entry
 struct T {
     f: u32,
 }

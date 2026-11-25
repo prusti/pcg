@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label bad
 static UNIT: &'static &'static () = &&();
 
 fn foo<'a, 'b, T>(_: &'a &'b (), v: &'b T, _: &()) -> &'a T { v }

@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: label raw_field_referent_read_on_one_path
+// PCG_EXPECTED_FAILURE: label raw_referent_part_read_on_one_path
+// PCG_EXPECTED_FAILURE: label raw_referent_part_read_on_one_path_frozen
+// PCG_EXPECTED_FAILURE: replay guard_failed_or_field_lent
 #![feature(box_patterns)]
 
 struct Node {

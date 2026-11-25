@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame ByteReadHandle::<'a, 'b>::read
 struct ByteSource<'a> {
     slice: &'a [u8],
     pos: usize,

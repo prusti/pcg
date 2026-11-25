@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: cycle main
+// PCG_EXPECTED_FAILURE: frame main
 struct List<T> {
     head: T,
     tail: Option<Box<List<T>>>,

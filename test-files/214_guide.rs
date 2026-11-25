@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: label join_two_constant_index_read_expansions
+// PCG_EXPECTED_FAILURE: replay join_collapses_constant_index_expansion_once
 fn test() {
     let mut x = [13, 37, 72];
     let y: &mut [i32] = &mut x;

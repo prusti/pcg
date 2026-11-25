@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Error as std::fmt::Debug>::fmt
 use std::fmt::{self, Debug};
 
 type ErrorImpl = Box<str>;

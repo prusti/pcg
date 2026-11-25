@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame Lazy::<'i, 'c>::set_all_transitions
+// PCG_EXPECTED_FAILURE: label Lazy::<'i, 'c>::set_all_transitions
 struct Cache;
 pub struct ByteClasses([u8; 256]);
 pub struct Unit;

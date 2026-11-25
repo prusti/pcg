@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: label mixed_blockers
+// PCG_EXPECTED_FAILURE: label reassigned_remote
 fn remote_shared(x: &i32) {
     // PCG_LIFETIME_DISPLAY: x 0 'x
     // PCG: bb1[0] pre_operands: Remote(_1)↓'x -> x↓'x

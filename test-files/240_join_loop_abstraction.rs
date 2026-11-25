@@ -1,3 +1,68 @@
+// PCG_EXPECTED_FAILURE: cycle <TrimmedFieldsWith<'a, F> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: cycle referent_of_array_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: cycle referent_of_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: cycle referent_of_element_borrowed_in_for_loop
+// PCG_EXPECTED_FAILURE: cycle rename_variants
+// PCG_EXPECTED_FAILURE: frame <CharIndices<'a> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: frame <FieldsWith<'a, F> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: frame <TrimmedFieldsWith<'a, F> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: frame Node::at
+// PCG_EXPECTED_FAILURE: frame element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: frame element_field_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: frame element_read_across_loop_beside_frozen_elements
+// PCG_EXPECTED_FAILURE: frame part_or_whole_lent_through_ref
+// PCG_EXPECTED_FAILURE: frame referent_of_array_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: frame referent_of_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: frame referent_of_element_borrowed_in_for_loop
+// PCG_EXPECTED_FAILURE: frame rename_variants
+// PCG_EXPECTED_FAILURE: frame shared_or_mutable
+// PCG_EXPECTED_FAILURE: frame variant_blocker_lifetime
+// PCG_EXPECTED_FAILURE: frame variant_field_lent
+// PCG_EXPECTED_FAILURE: frame variant_field_shared_across_loop
+// PCG_EXPECTED_FAILURE: frame variant_field_shared_across_loop_in_array
+// PCG_EXPECTED_FAILURE: frame variant_field_shared_across_loop_in_array_then_written
+// PCG_EXPECTED_FAILURE: frame variant_field_shared_across_loop_then_loop_mut_other
+// PCG_EXPECTED_FAILURE: frame variant_field_shared_then_overwritten
+// PCG_EXPECTED_FAILURE: freeze element_read_across_loop_beside_frozen_elements
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_across_loop
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_across_loop_in_array
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_across_loop_in_array_then_written
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_across_loop_then_loop_mut_other
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_across_loop_through_ref
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_before_loop_through_ref
+// PCG_EXPECTED_FAILURE: freeze variant_field_shared_then_overwritten
+// PCG_EXPECTED_FAILURE: label <FieldsWith<'a, F> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: label <TrimmedFieldsWith<'a, F> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: label Node::at
+// PCG_EXPECTED_FAILURE: label element_read_across_loop_beside_frozen_elements
+// PCG_EXPECTED_FAILURE: label frozen_before_loop
+// PCG_EXPECTED_FAILURE: label part_or_whole_lent
+// PCG_EXPECTED_FAILURE: label part_or_whole_lent_through_ref
+// PCG_EXPECTED_FAILURE: label shared_loan_ends_in_loop
+// PCG_EXPECTED_FAILURE: label shared_or_mutable
+// PCG_EXPECTED_FAILURE: label variant_blocker_lifetime
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_in_array
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_in_array_then_written
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_other_variant_read
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_then_loop_mut_other
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_then_moved
+// PCG_EXPECTED_FAILURE: label variant_field_shared_across_loop_through_ref
+// PCG_EXPECTED_FAILURE: label variant_field_shared_before_loop_through_ref
+// PCG_EXPECTED_FAILURE: label variant_field_shared_then_overwritten
+// PCG_EXPECTED_FAILURE: label variant_fields_shared_across_loop_end_apart
+// PCG_EXPECTED_FAILURE: lend part_or_whole_lent_through_ref
+// PCG_EXPECTED_FAILURE: remove-edge element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: remove-edge element_field_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: remove-edge referent_of_array_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: remove-edge referent_of_element_borrowed_across_loop
+// PCG_EXPECTED_FAILURE: remove-edge referent_of_element_borrowed_in_for_loop
+// PCG_EXPECTED_FAILURE: remove-edge shared_or_mutable
+// PCG_EXPECTED_FAILURE: remove-edge variant_field_lent
+// PCG_EXPECTED_FAILURE: unfreeze frozen_before_loop
+// PCG_EXPECTED_FAILURE: unfreeze shared_loan_ends_in_loop
+// PCG_EXPECTED_FAILURE: unfreeze variant_field_shared_across_loop_then_loop_mut_other
+// PCG_EXPECTED_FAILURE: unfreeze variant_field_shared_before_loop_through_ref
 struct List<'a> {
     head: &'a mut i32,
     tail: Option<Box<List<'a>>>,

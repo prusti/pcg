@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame main
 fn main() {
     let mut vec = vec![1, 2, 3];
     let mut x = &mut 0;

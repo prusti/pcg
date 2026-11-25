@@ -2,6 +2,7 @@ pub use pcg_bin_utils::Target;
 use pcg_bin_utils::{build_pcg_bin_in_dir, find_pcg_bin};
 use serde_derive::Deserialize;
 use std::{
+    collections::BTreeSet,
     io::Write,
     path::{Path, PathBuf},
     process::Command,
@@ -129,26 +130,94 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let env_vars = parse_env_vars_from_file(file);
 
+    // The checks report their failures instead of panicking, so that every
+    // failure of the file is compared with the failures it expects.
     let mut command = Command::new(&pcg_exe);
     command
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
-        .env("PCG_ALLOW_BORROWCK_ERRORS", "true");
+        .env("PCG_ALLOW_BORROWCK_ERRORS", "true")
+        .env("PCG_VALIDITY_CHECKS", "true")
+        .env("PCG_VALIDITY_CHECKS_WARN_ONLY", "true");
 
     for (key, value) in env_vars {
         command.env(key, value);
     }
 
-    let status = command
-        .status()
+    let output = command
+        .output()
         .unwrap_or_else(|e| panic!("Failed to execute test {}: {e}", file.display()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let show_output = || {
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+        eprint!("{stderr}");
+    };
+    if !output.status.success() {
+        show_output();
+        panic!(
+            "Test {} failed with status: {}",
+            file.display(),
+            output.status
+        );
+    }
+    let failed = reported_check_failures(&stderr);
+    let expected = expected_check_failures(file);
+    let unexpected = failed.difference(&expected).collect::<Vec<_>>();
+    let passing = expected.difference(&failed).collect::<Vec<_>>();
+    if !unexpected.is_empty() || !passing.is_empty() {
+        show_output();
+        let show = |failures: &[&CheckFailure]| {
+            failures
+                .iter()
+                .map(|(check, function)| format!("  // PCG_EXPECTED_FAILURE: {check} {function}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        panic!(
+            "Test {} fails checks it does not expect:\n{}\nand passes checks it expects to fail \
+             (remove these markers):\n{}",
+            file.display(),
+            show(&unexpected),
+            show(&passing)
+        );
+    }
+}
 
-    assert!(
-        status.success(),
-        "Test {} failed with status: {}",
-        file.display(),
-        status
-    );
+/// A check that fails in a function: the check's name and the function's
+/// path.
+type CheckFailure = (String, String);
+
+/// The checks that failed in each function, as `pcg_bin` reports them: the
+/// checks of `pcg::checks` by name, the other validity assertions as
+/// `assert`.
+fn reported_check_failures(stderr: &str) -> BTreeSet<CheckFailure> {
+    let check = regex::Regex::new(r"PCG Check Failed: \[(.*?)\] ([a-z-]+): ").unwrap();
+    let assertion = regex::Regex::new(r"PCG Assertion Failed[^\[]*: \[(.*?)(?: at [^\]]*)?\] ").unwrap();
+    stderr
+        .lines()
+        .filter_map(|line| {
+            if let Some(cap) = check.captures(line) {
+                Some((cap[2].to_owned(), cap[1].to_owned()))
+            } else {
+                assertion
+                    .captures(line)
+                    .map(|cap| ("assert".to_owned(), cap[1].to_owned()))
+            }
+        })
+        .collect()
+}
+
+/// The check failures a test file expects, one per line
+/// `// PCG_EXPECTED_FAILURE: <check> <function>`. A test file lists every
+/// check failure of its functions: a known violation of a Rust rule, kept
+/// until the PCG is fixed. See `pcg::checks` for the checks.
+fn expected_check_failures(file: &Path) -> BTreeSet<CheckFailure> {
+    let content = std::fs::read_to_string(file)
+        .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
+    let re = regex::Regex::new(r"(?m)^// PCG_EXPECTED_FAILURE: ([a-z-]+) (.+)$").unwrap();
+    re.captures_iter(&content)
+        .map(|cap| (cap[1].to_owned(), cap[2].trim().to_owned()))
+        .collect()
 }
 
 pub fn crate_download_dirname(name: &str, version: &str) -> String {

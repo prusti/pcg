@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame write_inner
 // A reference whose lifetime projections are dead is weakened only once it is
 // no longer dereferenced: `x` must not be weakened while `{x} -> {*x}` is still
 // in the graph, but once after it has been removed.

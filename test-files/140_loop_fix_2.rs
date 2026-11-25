@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame f
 struct List<T> {
     head: T,
     tail: Option<Box<List<T>>>,

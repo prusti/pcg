@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: frame assign_pair
+// PCG_EXPECTED_FAILURE: frame borrow_coerced_to_dyn
+// PCG_EXPECTED_FAILURE: frame borrow_moved_into_tuple
+// PCG_EXPECTED_FAILURE: frame borrow_pair
 // Edges between `RegionsIn` projections when a value is moved, borrowed or
 // assigned. An edge exists only between projections of the same type parameter
 // or the same alias type.

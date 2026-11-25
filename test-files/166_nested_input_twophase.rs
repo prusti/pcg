@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame f
 struct S<'a> {
     x: &'a mut i32,
 }

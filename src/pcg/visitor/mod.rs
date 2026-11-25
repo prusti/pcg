@@ -14,7 +14,7 @@ use crate::{
     },
     owned_pcg::RepackExpand,
     pcg::{
-        CapabilityKind,
+        CapabilityKind, checks,
         ctxt::AnalysisCtxt,
         obtain::{PlaceCollapser, PlaceObtainer, expand::PlaceExpander},
         owned_state::OwnedPcg,
@@ -49,6 +49,9 @@ pub(crate) struct PcgVisitor<'pcg, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>> {
     actions: AppliedActions<'tcx>,
     analysis_location: AnalysisLocation,
     tw: &'pcg TripleWalker<'a, 'tcx>,
+    /// For the replay check: the capability changes of the statement's
+    /// post-conditions, each with the number of actions recorded before it.
+    statement_effects: Vec<(usize, CapabilityChanges<Place<'tcx>>)>,
 }
 
 impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx, Ctxt> {
@@ -76,6 +79,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             actions: AppliedActions::default(),
             analysis_location,
             tw,
+            statement_effects: vec![],
         }
     }
 
@@ -212,6 +216,31 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         mut self,
         object: AnalysisObject<'_, 'tcx>,
     ) -> Result<AppliedActions<'tcx>, PcgError> {
+        let before = checks::enabled().then(|| self.pcg.place_capabilities.clone());
+        self.apply_phase(object)?;
+        if let Some(before) = before {
+            let mut steps = vec![];
+            let mut effects = self.statement_effects.iter().peekable();
+            for (index, applied) in self.actions.iter().enumerate() {
+                while let Some((_, effect)) = effects.next_if(|(at, _)| *at <= index) {
+                    steps.push(effect);
+                }
+                steps.push(checks::listed_changes(&applied.action));
+            }
+            steps.extend(effects.map(|(_, effect)| effect));
+            checks::replay::check(
+                &format!("{:?} {:?}", self.location(), self.phase()),
+                &before,
+                steps,
+                &self.pcg.place_capabilities,
+                self.ctxt.bc_ctxt(),
+            );
+            checks::state::check(self.pcg, self.location(), self.ctxt.bc_ctxt());
+        }
+        Ok(self.actions)
+    }
+
+    fn apply_phase(&mut self, object: AnalysisObject<'_, 'tcx>) -> Result<(), PcgError> {
         match self.phase() {
             EvalStmtPhase::PreOperands => {
                 self.perform_borrow_initial_pre_operand_actions()?;
@@ -252,7 +281,7 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
                 }
             }
         }
-        Ok(self.actions)
+        Ok(())
     }
 
     fn outlives_generalized(

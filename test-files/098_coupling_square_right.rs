@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: label test
+// PCG_EXPECTED_FAILURE: ledger test
 struct T {}
 fn test(cond: bool) {
     let mut x = T {};

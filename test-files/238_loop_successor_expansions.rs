@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame Iter::<'data, 'file>::next
+// PCG_EXPECTED_FAILURE: label Iter::<'data, 'file>::next
+// PCG_EXPECTED_FAILURE: label parse
 // Successor actions must prepare borrowed-place expansions on initial loop
 // entry and on backedges, while reusing expansions that already exist.
 

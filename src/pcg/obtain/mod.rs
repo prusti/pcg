@@ -24,6 +24,7 @@ use crate::{
     owned_pcg::{LocalExpansions, RepackCollapse, RepackOp},
     pcg::{
         CapabilityKind, LabelPlaceConditionally, PcgMutRef, PcgRefLike,
+        checks::action::OpenActions,
         ctxt::AnalysisCtxt,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
@@ -80,6 +81,8 @@ pub(crate) struct PlaceObtainer<'state, 'a, 'tcx, Ctxt = AnalysisCtxt<'a, 'tcx>>
     pub(crate) actions: Option<&'state mut AppliedActions<'tcx>>,
     pub(crate) location: mir::Location,
     pub(crate) prev_snapshot_location: SnapshotLocation,
+    /// The actions being applied, for the per-action checks.
+    pub(crate) open_actions: OpenActions<'tcx>,
     pub(crate) _marker: PhantomData<&'a ()>,
 }
 
@@ -121,6 +124,7 @@ impl<'state, 'tcx, Ctxt> PlaceObtainer<'state, '_, 'tcx, Ctxt> {
             actions,
             location,
             prev_snapshot_location,
+            open_actions: OpenActions::default(),
             _marker: PhantomData,
         }
     }

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame main
 fn main() {
     let mut x: i32 = 1;
     let mut y = &mut x;

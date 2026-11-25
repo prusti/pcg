@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame foo
+// PCG_EXPECTED_FAILURE: label foo
 struct A(i32);
 struct B<'a>(&'a A);
 struct C<'a, 'b>(&'b B<'a>);

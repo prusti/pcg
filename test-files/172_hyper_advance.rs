@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame ReadBufCursor::<'_>::advance
 use std::mem::MaybeUninit;
 
 pub struct ReadBuf<'a> {

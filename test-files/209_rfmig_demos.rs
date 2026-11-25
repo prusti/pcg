@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame ex8_nested
+// PCG_EXPECTED_FAILURE: label ex2_borrow
+// PCG_EXPECTED_FAILURE: label ex6_loop_2
 struct Pair { fst: String, snd: String }
 
 fn rand_bool() -> bool {

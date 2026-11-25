@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame HashTable::<T, A>::shrink_to_fit
+// PCG_EXPECTED_FAILURE: freeze HashTable::<T, A>::shrink_to_fit
 #![feature(allocator_api)]
 use std::{alloc::{Allocator, Global}, marker::PhantomData, ptr::NonNull};
 

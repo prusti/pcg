@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: frame <TDEFLStatus as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <TDEFLStatus as std::hash::Hash>::hash
+// PCG_EXPECTED_FAILURE: frame CallbackFunc::<'_>::flush_output
+// PCG_EXPECTED_FAILURE: label <TDEFLStatus as std::fmt::Debug>::fmt
 #[repr(i32)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TDEFLStatus {

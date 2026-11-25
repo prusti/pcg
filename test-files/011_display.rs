@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Base64Display<'a, 'e, E> as std::fmt::Display>::fmt
 use std::fmt::{Display, Formatter, self};
 trait Engine {}
 struct FormatterSink<'a, 'b: 'a> {

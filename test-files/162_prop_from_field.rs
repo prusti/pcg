@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame from_field
+// PCG_EXPECTED_FAILURE: label from_field
 pub struct From<'a> {
     pub original: &'a (),
     pub span: (),

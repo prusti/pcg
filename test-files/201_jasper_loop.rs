@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: frame haha
+// PCG_EXPECTED_FAILURE: frame src_dst
+// PCG_EXPECTED_FAILURE: label haha
+// PCG_EXPECTED_FAILURE: label src_dst
 
 use std::convert::TryInto;
 

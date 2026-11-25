@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label List::<T>::get_nth
 struct List<T> {
     head: T,
     tail: Option<Box<List<T>>>,

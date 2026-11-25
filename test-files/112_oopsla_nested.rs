@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame client
+// PCG_EXPECTED_FAILURE: frame swap
 struct U32Pair<'a>{f: &'a mut u32, g: &'a mut u32}
 fn swap<'a, 'b>(x: &'a mut U32Pair<'b>, y: &'a mut U32Pair<'b>){ std::mem::swap(x.f,y.f) }
 

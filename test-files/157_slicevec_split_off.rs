@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: cycle SliceVec::<'s, T>::split_off
+// PCG_EXPECTED_FAILURE: frame SliceVec::<'s, T>::split_off
 pub struct SliceVec<'s, T> {
     data: &'s mut [T],
     len: usize,

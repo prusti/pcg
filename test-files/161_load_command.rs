@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame LoadCommandData::<'data, E>::segment_32
+// PCG_EXPECTED_FAILURE: label LoadCommandData::<'data, E>::segment_32
 use std::marker::PhantomData;
 pub trait Endian:  'static {
 }
