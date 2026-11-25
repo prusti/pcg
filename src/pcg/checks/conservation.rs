@@ -26,7 +26,7 @@
 //! A capability above R that comes from a record consumes it: afterwards no
 //! record of the place or of an ancestor covers it.
 
-use super::{action::Violation, show};
+use super::{action::Violation, rises, show};
 use crate::{
     action::PcgAction,
     borrow_pcg::{action::BorrowPcgActionKind, state::packed},
@@ -165,8 +165,6 @@ pub(crate) fn check<'a, 'tcx: 'a>(
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<Violation> {
     let mut violations = vec![];
-    let rises =
-        |old: Option<CapabilityKind>, new: CapabilityKind| old.is_none_or(|old| !(new <= old));
     for (place, new) in after.iter() {
         let old = before.get(place, ctxt);
         if place.contains_unsafe_deref(ctxt) || !rises(old, new) {
@@ -286,7 +284,7 @@ fn source<'a, 'tcx: 'a>(
         }
     }
     if sources.has(Sources::DESC_REC)
-        && covers(packed(place, &outermost(below(covered(before)), ctxt), ctxt).0)
+        && covers(packed(place, &outermost(&below(covered(before)), ctxt), ctxt).0)
     {
         return Some(Sources::DESC_REC);
     }
@@ -306,7 +304,7 @@ fn covered<'tcx>(capabilities: &PlaceCapabilities<'tcx>) -> Vec<(Place<'tcx>, Ca
 /// The entries not stored in another entry: a read copy counts through the
 /// frozen place it is a copy of.
 fn outermost<'a, 'tcx: 'a>(
-    entries: Vec<(Place<'tcx>, CapabilityKind)>,
+    entries: &[(Place<'tcx>, CapabilityKind)],
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<(Place<'tcx>, CapabilityKind)> {
     entries

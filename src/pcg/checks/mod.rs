@@ -45,9 +45,18 @@ pub(crate) fn fail(ctxt: impl DebugCtxt, check: &str, message: &str) {
         ctxt.func_name()
     );
     tracing::error!("{message}");
-    if !validity_checks_warn_only() {
-        panic!("{message}");
-    }
+    assert!(validity_checks_warn_only(), "{message}");
+}
+
+/// Whether a place that had `old` rises when it gets `new`: it had nothing,
+/// or `new` is not at most `old`.
+pub(crate) fn rises(old: Option<CapabilityKind>, new: CapabilityKind) -> bool {
+    old.is_none_or(|old| {
+        !matches!(
+            new.partial_cmp(&old),
+            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+        )
+    })
 }
 
 /// Checks the effect of a statement's post-condition `post`, which turned

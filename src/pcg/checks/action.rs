@@ -32,8 +32,8 @@ use super::{conservation, fail, ledger, show, show_state};
 use crate::{
     action::PcgAction,
     borrow_pcg::{
-        action::BorrowPcgActionKind, edge::kind::BorrowPcgEdgeKind, edge_data::EdgeData,
-        graph::BorrowsGraph,
+        action::BorrowPcgActionKind, borrow_pcg_edge::LocalNode, edge::kind::BorrowPcgEdgeKind,
+        edge_data::EdgeData, graph::BorrowsGraph,
     },
     owned_pcg::RepackOp,
     pcg::{
@@ -227,7 +227,7 @@ fn edge_places<'a, 'tcx: 'a>(
             .filter_map(|node| node.as_current_place())
             .collect(),
         edge.blocked_by_nodes(ctxt)
-            .filter_map(|node| node.as_current_place())
+            .filter_map(LocalNode::as_current_place)
             .collect(),
     )
 }
@@ -243,8 +243,8 @@ fn named<'a, 'tcx: 'a>(action: &PcgAction<'tcx>, ctxt: CompilerCtxt<'a, 'tcx>) -
         PcgAction::Borrow(action) => match &action.kind {
             BorrowPcgActionKind::LabelLifetimeProjection(_) => vec![],
             BorrowPcgActionKind::Weaken(weaken) => vec![only(weaken.place)],
-            BorrowPcgActionKind::WeakenSuspended { place, .. } => vec![only(*place)],
-            BorrowPcgActionKind::Freeze { place } => vec![only(*place)],
+            BorrowPcgActionKind::WeakenSuspended { place, .. }
+            | BorrowPcgActionKind::Freeze { place } => vec![only(*place)],
             BorrowPcgActionKind::Unfreeze { place }
             | BorrowPcgActionKind::Refreeze { place, .. }
             | BorrowPcgActionKind::UnpackSuspended { place, .. }
@@ -589,8 +589,7 @@ fn kind_rules<'a, 'tcx: 'a>(
                     .into_iter()
                     .filter(|&p| {
                         !p.contains_unsafe_deref(ctxt)
-                            && a.get(p)
-                                .is_some_and(|new| b.get(p).is_none_or(|old| !(new <= old)))
+                            && a.get(p).is_some_and(|new| super::rises(b.get(p), new))
                             && !blocked.iter().any(|q| q.is_prefix_of(p))
                     })
                     .collect::<Vec<_>>();
