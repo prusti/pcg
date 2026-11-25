@@ -129,11 +129,10 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let env_vars = parse_env_vars_from_file(file);
 
+    // A test file must compile; one that is meant to run the PCG on a program
+    // rustc rejects says so with `// option PCG_ALLOW_BORROWCK_ERRORS: true`.
     let mut command = Command::new(&pcg_exe);
-    command
-        .arg(file)
-        .env("PCG_CHECK_ANNOTATIONS", "true")
-        .env("PCG_ALLOW_BORROWCK_ERRORS", "true");
+    command.arg(file).env("PCG_CHECK_ANNOTATIONS", "true");
 
     for (key, value) in env_vars {
         command.env(key, value);
