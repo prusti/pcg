@@ -2,9 +2,10 @@
 //! snapshots of the state before and after it.
 //!
 //! Every action is single-purpose (the README's principle 5): it changes the
-//! capabilities and records of the places it names and of their parts only,
-//! lists every capability change it makes, and makes exactly the change its
-//! kind defines:
+//! capabilities and records of the places it names and of their parts only
+//! (the end of a loan and a label also those of the record holders above
+//! them, which get back what they recorded), lists every capability change it
+//! makes, and makes exactly the change its kind defines:
 //! - Freeze: E to R on a place that holds E itself, recording the E;
 //! - Weaken: to `to` on a place that records nothing (applying it asserts
 //!   that the place holds `from` and that `to` is lower);

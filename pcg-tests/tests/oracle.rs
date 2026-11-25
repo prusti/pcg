@@ -5,7 +5,8 @@
 //! - `borrowck_probes` inserts accesses into the MIR and lets rustc's borrow
 //!   checker decide them: an E or R the PCG claims that borrowck rejects
 //!   (also rerun with Polonius), and an over-restriction candidate of tier 2
-//!   that borrowck rejects (a bug of tier 2's oracle).
+//!   that borrowck rejects (a bug of tier 2's oracle). A test file with
+//!   `PCG_POLONIUS` is borrow checked with Polonius in both runs.
 //!
 //! Their findings are compared with the checked-in baselines in
 //! `tests/oracle/`, one line `file<TAB>function<TAB>class<TAB>place` each:
@@ -13,7 +14,7 @@
 //! is no longer found. `ORACLE_BLESS=1` writes the current findings instead.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -178,19 +179,31 @@ struct Probe {
     line: String,
     id: String,
     function: String,
+    /// The local of the probed place.
+    local: String,
     class: String,
     place: String,
 }
+
+/// How a crash of a run starts in [`BorrowCheck::other`].
+const CRASH: &str = "crash";
 
 /// The verdict of rustc's borrow checker on one run.
 struct BorrowCheck {
     /// The error codes of each probe.
     errors: HashMap<String, Vec<String>>,
-    /// The errors that belong to no probe, and panics.
+    /// The errors that belong to no probe, and crashes.
     other: Vec<String>,
     /// Whether two probes got the same span, so that errors cannot be
     /// attributed.
     ambiguous: bool,
+}
+
+impl BorrowCheck {
+    /// Whether the run crashed, or failed without an error.
+    fn crashed(&self) -> bool {
+        self.other.iter().any(|other| other.starts_with(CRASH))
+    }
 }
 
 fn borrow_check(file: &Path, probes: &[&Probe], polonius: bool, tag: &str) -> Option<BorrowCheck> {
@@ -217,7 +230,7 @@ fn borrow_check(file: &Path, probes: &[&Probe], polonius: bool, tag: &str) -> Op
         tag,
     );
     let _ = std::fs::remove_file(&probes_path);
-    let (_, stderr) = result?;
+    let (success, stderr) = result?;
     let mut spans = HashMap::new();
     let mut ambiguous = false;
     let mut errors: HashMap<String, Vec<String>> = HashMap::new();
@@ -231,16 +244,24 @@ fn borrow_check(file: &Path, probes: &[&Probe], polonius: bool, tag: &str) -> Op
             continue;
         }
         if line.contains("panicked") {
-            other.push(line.to_owned());
+            other.push(format!("{CRASH}: {line}"));
             continue;
         }
         let Ok(diagnostic) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
         };
-        if diagnostic["level"] != "error" || diagnostic["code"].is_null() {
+        // The summary of the errors ("aborting due to ...") has no span.
+        if diagnostic["level"] != "error"
+            || diagnostic["spans"]
+                .as_array()
+                .is_none_or(|spans| spans.is_empty())
+        {
             continue;
         }
-        let code = diagnostic["code"]["code"].as_str().unwrap_or("").to_owned();
+        let code = diagnostic["code"]["code"]
+            .as_str()
+            .unwrap_or("no code")
+            .to_owned();
         let probe = diagnostic["spans"]
             .as_array()
             .into_iter()
@@ -251,6 +272,9 @@ fn borrow_check(file: &Path, probes: &[&Probe], polonius: bool, tag: &str) -> Op
             Some(id) => errors.entry(id.clone()).or_default().push(code),
             None => other.push(format!("{code} {}", diagnostic["message"])),
         }
+    }
+    if !success && errors.is_empty() && other.is_empty() {
+        other.push(format!("{CRASH}: the run failed without an error"));
     }
     Some(BorrowCheck {
         errors,
@@ -294,6 +318,7 @@ fn probe_file(file: &Path) -> Vec<String> {
                 id: columns[1].clone(),
                 function: columns[2].clone(),
                 class: columns[8].clone(),
+                local: columns[6].clone(),
                 place: columns[9].clone(),
                 line: columns.join("\t"),
             }
@@ -301,26 +326,25 @@ fn probe_file(file: &Path) -> Vec<String> {
         .collect::<Vec<_>>();
     let _ = std::fs::remove_file(&probes_path);
 
-    // Batches with up to `BATCH` probes of each function. A batch whose
-    // errors cannot all be attributed to its probes is split in halves.
-    let mut by_function: Vec<(&str, Vec<&Probe>)> = vec![];
+    // Batches with up to `BATCH` probes of each function, and at most one of
+    // each of its locals: rustc reports one use of a maybe-uninitialised
+    // local and drops repeated errors of a move, so a second probe of the
+    // same local could be rejected without an error of its own. A batch
+    // whose errors cannot all be attributed to its probes is split in halves.
+    let mut rounds: HashMap<(&str, &str), usize> = HashMap::new();
+    let mut counts: HashMap<(&str, usize), usize> = HashMap::new();
+    let mut batches: BTreeMap<(usize, usize), Vec<&Probe>> = BTreeMap::new();
     for probe in &probes {
-        match by_function.iter_mut().find(|(f, _)| *f == probe.function) {
-            Some((_, list)) => list.push(probe),
-            None => by_function.push((&probe.function, vec![probe])),
-        }
+        let round = rounds.entry((&probe.function, &probe.local)).or_default();
+        let count = counts.entry((&probe.function, *round)).or_default();
+        batches
+            .entry((*round, *count / BATCH))
+            .or_default()
+            .push(probe);
+        *round += 1;
+        *count += 1;
     }
-    let mut batches = vec![];
-    let mut start = 0;
-    while by_function.iter().any(|(_, list)| list.len() > start) {
-        batches.push(
-            by_function
-                .iter()
-                .flat_map(|(_, list)| list.iter().skip(start).take(BATCH).copied())
-                .collect::<Vec<_>>(),
-        );
-        start += BATCH;
-    }
+    let mut batches = batches.into_values().collect::<Vec<_>>();
     let mut rejected: Vec<&Probe> = vec![];
     let mut findings = vec![];
     let mut runs = 0;
@@ -354,7 +378,9 @@ fn probe_file(file: &Path) -> Vec<String> {
             continue;
         };
         if !check.errors.contains_key(&probe.id) {
-            if !check.other.is_empty() {
+            if check.crashed() {
+                findings.push(finding(&probe.function, "probe-crashed", &probe.place));
+            } else if !check.other.is_empty() {
                 findings.push(finding(&probe.function, "probe-perturbed", &probe.place));
             }
             continue;
@@ -362,7 +388,8 @@ fn probe_file(file: &Path) -> Vec<String> {
         let class = if probe.class == "claim" {
             match borrow_check(file, &[probe], true, &format!("polonius{n}")) {
                 Some(check) if check.errors.contains_key(&probe.id) => "claim-rejected",
-                Some(_) => "claim-rejected-by-nll-only",
+                Some(check) if check.other.is_empty() => "claim-rejected-by-nll-only",
+                Some(_) => "claim-rejected-polonius-unclear",
                 None => "claim-rejected-polonius-timeout",
             }
         } else {
@@ -385,7 +412,7 @@ fn borrowck_probes() {
         "Probes that rustc's borrow checker rejects (see `pcg::oracle`): an E or R the PCG claims\n\
          (`claim-rejected`; `claim-rejected-by-nll-only` if Polonius accepts it), or an access\n\
          rustc allows by tier 2's facts (`under-rejected`, a bug of tier 2), and probes without a\n\
-         verdict: file, function, class, place.",
+         verdict (`probe-crashed`, `probe-perturbed`, ...): file, function, class, place.",
         &found,
     );
 }

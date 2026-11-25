@@ -244,7 +244,7 @@ fn report_oracle<'a, 'tcx: 'a>(
     }
     let (mut disagreements, probes) = oracle::over_restriction(output, bc);
     if settings.oracle {
-        disagreements.extend(oracle::over_permission(output, bc));
+        disagreements.extend(oracle::over_permission(output, bc, settings.polonius));
         for d in disagreements {
             eprintln!(
                 "PCG Oracle: [{item_name}] {}: {} at {}: {}",

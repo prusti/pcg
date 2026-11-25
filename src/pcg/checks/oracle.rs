@@ -37,9 +37,7 @@ use crate::{
     borrow_checker::{InScopeBorrows, RustBorrowCheckerInterface},
     pcg::{CapabilityKind, EvalStmtPhase, Pcg, place_capabilities::PlaceCapabilitiesReader},
     rustc_interface::{
-        borrowck::{
-            BorrowData, BorrowSet, PlaceConflictBias, PlaceExt, TwoPhaseActivation, places_conflict,
-        },
+        borrowck::{BorrowData, BorrowSet, PlaceConflictBias, TwoPhaseActivation, places_conflict},
         dataflow::compute_fixpoint,
         index::bit_set::MixedBitSet,
         middle::{
@@ -152,19 +150,12 @@ impl<'mir, 'tcx> Facts<'mir, 'tcx> {
         self.borrow_set.location_map().values()
     }
 
-    /// Whether rustc tracks loans of `borrowed` in its conflict checks. It
-    /// ignores loans through a shared reference or a raw pointer
-    /// (`ignore_borrow`); its conflict check cannot handle such a loan, which
-    /// it keeps only for a reference to a thread-local.
+    /// Whether rustc's conflict check can check a loan of `borrowed`: not one
+    /// through a shared reference or a raw pointer. rustc does not track
+    /// those (`ignore_borrow`), except through a reference to a
+    /// thread-local, which its conflict check cannot handle.
     fn tracks(&self, borrowed: mir::Place<'tcx>) -> bool {
-        !borrowed.ignore_borrow(self.tcx, self.body, self.borrow_set.locals_state_at_exit())
-            && !borrowed.iter_projections().any(|(base, elem)| {
-                matches!(elem, mir::ProjectionElem::Deref)
-                    && matches!(
-                        base.ty(self.body, self.tcx).ty.kind(),
-                        ty::TyKind::RawPtr(..) | ty::TyKind::Ref(_, _, ty::Mutability::Not)
-                    )
-            })
+        !behind_raw_or_shared(self.body, self.tcx, borrowed)
     }
 
     /// The loans in `in_scope` that conflict with accessing `place`: a write
@@ -205,8 +196,7 @@ impl<'mir, 'tcx> Facts<'mir, 'tcx> {
             .collect()
     }
 
-    /// The locals used after `location` (`after`) or from it on whose type
-    /// carries the region of `borrow`.
+    /// The locals of `live` whose type carries the region of `borrow`.
     fn carriers(
         &self,
         bc: &dyn RustBorrowCheckerInterface<'tcx>,
@@ -300,10 +290,13 @@ fn capabilities<'a, 'tcx: 'a>(
 }
 
 /// The over-permission disagreements (and `w-live`) of every state of
-/// `output`.
+/// `output`. The loans in scope are NLL's, which over-approximate Polonius':
+/// for a PCG that follows Polonius (`polonius`), a conflict with one is no
+/// violation, and `loan` is not checked.
 pub fn over_permission<'a, 'tcx: 'a>(
     output: &mut PcgOutput<'a, 'tcx>,
     bc: &'a dyn RustBorrowCheckerInterface<'tcx>,
+    polonius: bool,
 ) -> Vec<Disagreement> {
     let ctxt = output.ctxt();
     let facts = Facts::new(ctxt, bc);
@@ -401,7 +394,8 @@ pub fn over_permission<'a, 'tcx: 'a>(
                     for borrow in
                         facts.conflicting_loans(&in_scope, rp, write, shallow, activation_point)
                     {
-                        if matches!(borrow.kind(), BorrowKind::Fake(_))
+                        if polonius
+                            || matches!(borrow.kind(), BorrowKind::Fake(_))
                             || facts.carriers(bc, borrow, &live).is_empty()
                         {
                             continue;
@@ -543,10 +537,9 @@ pub fn over_restriction<'a, 'tcx: 'a>(
                 Some(location) => uninit_cursor.seek_after_primary_effect(location),
             }
             let uninit = uninit_cursor.get().clone();
-            let in_scope = match after {
-                None => bc.borrows_in_scope_at(next, true),
-                Some(location) => bc.borrows_in_scope_at(location, false),
-            };
+            // The loans in scope where the probe is inserted: before `next`,
+            // once the loans that end there are killed.
+            let in_scope = bc.borrows_in_scope_at(next, true);
             let live = facts.liveness.live(body, next, false);
             let mut places: HashSet<Place<'tcx>> = pcg
                 .owned()
@@ -580,8 +573,10 @@ pub fn over_restriction<'a, 'tcx: 'a>(
                 // extend a reference's lifetime (every reference the place
                 // holds or goes through is used later), a two-phase borrow's
                 // temporary may be used only once, and an index local must be
-                // initialised.
+                // initialised. rustc's conflict check cannot handle a borrow
+                // of a reference to a thread-local.
                 if two_phase_temps.contains(&rp.local)
+                    || body.local_decls[rp.local].is_ref_to_thread_local()
                     || !refs_live(bc, &live, body, tcx, rp)
                     || !rp.projection.iter().all(|e| match e {
                         mir::ProjectionElem::Index(l) => {
@@ -690,9 +685,10 @@ fn behind_raw_or_shared<'tcx>(
 }
 
 /// Whether a borrow of `place` inserted where the locals `live` are used
-/// later extends no reference's lifetime: a place that holds or goes through
-/// a reference with a region that does not outlive the function's regions
-/// must belong to a local used later.
+/// later extends no reference's lifetime. The borrow uses `place`'s local,
+/// which makes every region in the local's type live there (rustc's
+/// liveness): if one of them does not outlive the function's regions, the
+/// local must be used later anyway.
 fn refs_live<'tcx>(
     bc: &dyn RustBorrowCheckerInterface<'tcx>,
     live: &HashSet<mir::Local>,
@@ -719,25 +715,18 @@ fn refs_live<'tcx>(
         });
         any
     };
-    let through_ref = place.iter_projections().any(|(base, elem)| {
-        let base_ty = base.ty(body, tcx).ty;
-        matches!(elem, mir::ProjectionElem::Deref) && base_ty.is_ref() && local_regions(base_ty)
-    });
-    if through_ref || local_regions(place.ty(body, tcx).ty) {
-        return live.contains(&place.local);
-    }
-    true
+    !local_regions(body.local_decls[place.local].ty) || live.contains(&place.local)
 }
 
-/// Liveness of locals by real uses only: drops, `StorageDead` and cleanup
-/// blocks do not count, so a local that is only dropped later is dead.
+/// Liveness of locals by the uses of rustc's liveness (`def_use.rs`), but
+/// not drops or cleanup blocks: a local that is only dropped later is dead.
 struct UseLiveness {
     live_out: Vec<HashSet<mir::Local>>,
 }
 
 fn use_effect(body: &mir::Body<'_>, location: Location, live: &mut HashSet<mir::Local>) {
     use crate::rustc_interface::middle::mir::visit::{
-        MutatingUseContext, NonMutatingUseContext, PlaceContext, Visitor,
+        MutatingUseContext, NonUseContext, PlaceContext, Visitor,
     };
     struct Uses {
         defs: Vec<mir::Local>,
@@ -746,13 +735,18 @@ fn use_effect(body: &mir::Body<'_>, location: Location, live: &mut HashSet<mir::
     impl<'tcx> Visitor<'tcx> for Uses {
         fn visit_place(&mut self, place: &mir::Place<'tcx>, context: PlaceContext, _: Location) {
             match context {
-                PlaceContext::NonUse(_)
-                | PlaceContext::MutatingUse(MutatingUseContext::Drop)
-                | PlaceContext::NonMutatingUse(NonMutatingUseContext::Inspect) => {}
+                PlaceContext::NonUse(
+                    NonUseContext::VarDebugInfo | NonUseContext::BackwardIncompatibleDropHint,
+                )
+                | PlaceContext::MutatingUse(MutatingUseContext::Drop) => {}
+                PlaceContext::NonUse(NonUseContext::StorageLive | NonUseContext::StorageDead) => {
+                    self.defs.push(place.local);
+                }
                 PlaceContext::MutatingUse(
                     MutatingUseContext::Store
                     | MutatingUseContext::Call
-                    | MutatingUseContext::AsmOutput,
+                    | MutatingUseContext::AsmOutput
+                    | MutatingUseContext::Yield,
                 ) if place.projection.is_empty() => self.defs.push(place.local),
                 _ => {
                     self.uses.push(place.local);

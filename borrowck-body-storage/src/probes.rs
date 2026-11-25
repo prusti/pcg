@@ -7,10 +7,12 @@
 //! of the file (as `pcg_bin` writes it with `PCG_ORACLE_PROBES`) inserts
 //! `_fresh = &p` or `_fresh = &mut p` before statement `index` of `block` of
 //! the function whose def path is `<function>`. `_fresh` is never used, so
-//! the probe's loan ends at once and does not change any other fact. Each
-//! probe gets its own one-byte span inside the body, printed as
-//! `PROBE-SPAN\t<id>\t<byte offset>`, so that an error reported with
-//! `--error-format=json` names the probe it belongs to.
+//! the probe's loan ends at once; the probe still uses `p`'s local, which
+//! keeps the regions of its type live there. Each probe gets its own one-byte
+//! span inside the body, printed as `PROBE-SPAN\t<id>\t<byte offset>`, so
+//! that an error reported with `--error-format=json` names the probe it
+//! belongs to, if the ids are unique in the file (`pcg_bin` numbers the
+//! probes of each function from 0).
 
 use std::cell::RefCell;
 
