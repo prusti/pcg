@@ -159,13 +159,16 @@ pub type MakePlaceOldReason = LabelPlaceReason;
 pub enum LabelPlaceReason {
     StorageDead,
     MoveOut,
-    /// When joining an owned place where one place has capability Read and the
-    /// other has capability Write, all borrowed expansions of the place with
-    /// Read capability should be labelled.
+    /// A join ends this path's lending of a place that it holds with Read
+    /// (or ShallowExclusive): the other path holds the place with Write, and
+    /// the join drops its value on this path, or the other path has unpacked
+    /// it. Nodes whose place is a prefix or a postfix of the place refer to a
+    /// value that contains, or is part of, the value of the place on this
+    /// path, so they are labelled with the predecessor's snapshot.
     ///
-    /// In particular, the Read capability place could be a shared reference that is dereferenced.
-    /// The place will not have any capability after the join, but reborrows derived from the dereference
-    /// may still have capability.
+    /// In particular, the place could be a shared reference that is
+    /// dereferenced: reborrows derived from the dereference may still have
+    /// capability after the join.
     JoinOwnedReadAndWriteCapabilities,
     Write,
     Collapse,
@@ -186,10 +189,11 @@ impl LabelPlaceReason {
                 LabelNodePredicate::PlaceIsPostfixOf(place),
                 LabelNodePredicate::NodeType(PcgNodeType::LifetimeProjection),
             ]),
-            LabelPlaceReason::StorageDead
-            | LabelPlaceReason::MoveOut
-            | LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
+            LabelPlaceReason::StorageDead | LabelPlaceReason::MoveOut => {
                 LabelNodePredicate::PlaceIsPostfixOf(place)
+            }
+            LabelPlaceReason::JoinOwnedReadAndWriteCapabilities => {
+                LabelNodePredicate::PlaceOverlaps(place)
             }
             LabelPlaceReason::Write => LabelNodePredicate::And(vec![
                 LabelNodePredicate::PlaceIsPostfixOf(place),

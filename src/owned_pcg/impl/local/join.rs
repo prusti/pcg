@@ -160,7 +160,16 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         let place = expansion.place;
         let guide = expansion.guide();
         pcg_validity_assert!(!self.owned.contains_expansion_from(place));
-        if let Some(expand_cap) = self_cap.minimum(other_cap) {
+        // A place with W has no value in any of its parts, so it can be
+        // unpacked with W to the expansion that `other` holds with R. When
+        // `other` is joined with this expansion (see the loop in `join`), each
+        // R leaf there meets a W leaf.
+        let expand_cap = if (self_cap, other_cap) == (CapabilityKind::Write, CapabilityKind::Read) {
+            Some(CapabilityKind::Write)
+        } else {
+            self_cap.minimum(other_cap)
+        };
+        if let Some(expand_cap) = expand_cap {
             tracing::debug!(
                 "Expanding from place {} with cap {:?}",
                 place.display_string(ctxt),
@@ -181,37 +190,9 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             let actions = self.join_leaf_read_and_write_capabilities(other, place, ctxt)?;
             pcg_validity_assert!(!actions.is_empty());
             Ok(actions)
-        } else if self_cap == CapabilityKind::Write && other_cap == CapabilityKind::Read {
-            self.join_write_leaf_with_read_expansion(other, place, ctxt);
-            Ok(vec![])
         } else {
             Ok(vec![])
         }
-    }
-
-    /// Joins `place`, a leaf with [`CapabilityKind::Write`] in `self`, with
-    /// the read-only expansion of `place` in `other`.
-    ///
-    /// Neither capability is available on both paths, so the joined place
-    /// retains the expansion of `other` (whose places may be blocked by
-    /// borrows from that path) without any capability.
-    fn join_write_leaf_with_read_expansion(
-        &mut self,
-        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
-        place: Place<'tcx>,
-        ctxt: JoinCtxt<'a, 'tcx>,
-    ) {
-        tracing::debug!(
-            "Joining write leaf {} with read expansion to no capability",
-            place.display_string(ctxt)
-        );
-        for expansion in other.owned.expansions() {
-            if place.is_prefix_of(expansion.place) {
-                self.owned
-                    .insert_expansion(expansion.place, expansion.expansion.clone());
-            }
-        }
-        self.capabilities.remove_all_postfixes(place, ctxt);
     }
 
     fn join_all_places_in_expansion(
@@ -288,13 +269,24 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 ));
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion(ops))
             } else {
-                // We might as well just expand our place
-                let expand_action = RepackExpand::new(place, other_expansion.guide(), self_cap);
+                // `other` has unpacked `place` and holds no capability for
+                // `place` itself, for example because it moved out or lent a
+                // part of it. A borrow of `place` on this path would, on
+                // expiry, restore capability to `place` over those parts, so
+                // an R leaf ends its lending first and is unpacked with E.
+                let (mut actions, expand_cap) = if self_cap == CapabilityKind::Read {
+                    (
+                        self.end_read_lending(place, ctxt)?,
+                        CapabilityKind::Exclusive,
+                    )
+                } else {
+                    (vec![], self_cap)
+                };
+                let expand_action = RepackExpand::new(place, other_expansion.guide(), expand_cap);
                 self.owned
                     .perform_expand_action(expand_action, self.capabilities, ctxt);
-                Ok(JoinExpandedPlaceResult::CreatedExpansion(vec![
-                    RepackOp::Expand(expand_action),
-                ]))
+                actions.push(RepackOp::Expand(expand_action));
+                Ok(JoinExpandedPlaceResult::CreatedExpansion(actions))
             }
         } else {
             Ok(JoinExpandedPlaceResult::JoinedWithOtherExpansions(
@@ -368,16 +360,14 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         );
     }
 
-    fn join_leaf_read_and_write_capabilities(
+    /// Labels the prefixes and postfixes of `place` in the borrow graph with
+    /// the predecessor's snapshot, so that outstanding borrows of them refer
+    /// to the values they held before the join rather than the joined places.
+    fn label_with_predecessor_snapshot(
         &mut self,
-        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         place: Place<'tcx>,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
-        pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
-        pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
-        pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
-        pcg_validity_assert!(other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write));
         let mut join_obtainer = JoinObtainer {
             ctxt,
             data: self,
@@ -389,19 +379,43 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             LabelPlaceReason::JoinOwnedReadAndWriteCapabilities,
         );
         join_obtainer.apply_action(PcgAction::Borrow(action))?;
-        join_obtainer
-            .data
-            .capabilities
-            .insert(place, CapabilityKind::Write, ctxt);
-        let mut actions = join_obtainer.actions;
-        // This side's read-lending has ended and the value it still holds is
-        // dropped by the join (the other side moved it out): restore the
-        // place to exclusive and then weaken it, so consumers see a
-        // capability restoration followed by an ordinary value drop.
+        Ok(join_obtainer.actions)
+    }
+
+    /// Ends this side's lending of `place`, a leaf with
+    /// [`CapabilityKind::Read`], at the join: the borrows keep the
+    /// predecessor's value of `place` and `place` regains
+    /// [`CapabilityKind::Exclusive`].
+    fn end_read_lending(
+        &mut self,
+        place: Place<'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        let mut actions = self.label_with_predecessor_snapshot(place, ctxt)?;
+        self.capabilities
+            .insert(place, CapabilityKind::Exclusive, ctxt);
         actions.push(RepackOp::RegainLoanedCapability(RegainedCapability::new(
             place,
             CapabilityKind::Exclusive,
         )));
+        Ok(actions)
+    }
+
+    fn join_leaf_read_and_write_capabilities(
+        &mut self,
+        other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        place: Place<'tcx>,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
+        pcg_validity_assert!(self.owned.is_leaf_place(place, ctxt));
+        pcg_validity_assert!(other.owned.is_leaf_place(place, ctxt));
+        pcg_validity_assert!(self.capabilities.get(place, ctxt) == Some(CapabilityKind::Read));
+        pcg_validity_assert!(other.capabilities.get(place, ctxt) == Some(CapabilityKind::Write));
+        // The join drops this side's value of `place`: end its lending
+        // (Restore E) and then weaken it to W, so that consumers see an
+        // ordinary value drop.
+        let mut actions = self.end_read_lending(place, ctxt)?;
+        self.capabilities.insert(place, CapabilityKind::Write, ctxt);
         actions.push(RepackOp::weaken(
             place,
             CapabilityKind::Exclusive,
@@ -447,22 +461,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                 // other: the joined state can only be Write. Preserve the
                 // predecessor's value with a label before emitting the
                 // weaken; outstanding borrows still refer to that value.
-                let mut join_obtainer = JoinObtainer {
-                    ctxt,
-                    data: self,
-                    actions: vec![],
-                };
-                let action = BorrowPcgAction::label_place_and_update_related_capabilities(
-                    place,
-                    join_obtainer.prev_snapshot_location(),
-                    LabelPlaceReason::JoinOwnedReadAndWriteCapabilities,
-                );
-                join_obtainer.apply_action(PcgAction::Borrow(action))?;
-                join_obtainer
-                    .data
-                    .capabilities
-                    .insert(place, CapabilityKind::Write, ctxt);
-                let mut actions = join_obtainer.actions;
+                let mut actions = self.label_with_predecessor_snapshot(place, ctxt)?;
+                self.capabilities.insert(place, CapabilityKind::Write, ctxt);
                 actions.push(RepackOp::weaken(
                     place,
                     CapabilityKind::ShallowExclusive,
@@ -487,19 +487,28 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
-            actions.extend(
-                other
+            // The second pass joins the expansions of `other` into `self` and
+            // can unpack W leaves of `self` (see `expand_from_place_with_caps`).
+            // Repeat the first pass so that `other` is joined with the new
+            // expansions.
+            loop {
+                actions.extend(
+                    other
+                        .reborrow()
+                        .visit_each_other_expansion(self.reborrow(), ctxt)?,
+                );
+                self.render_debug_graph("Self After join_expansions (other)", ctxt);
+                other.render_debug_graph("Other After join_expansions (other)", ctxt);
+                let self_actions = self
                     .reborrow()
-                    .visit_each_other_expansion(self.reborrow(), ctxt)?,
-            );
-            self.render_debug_graph("Self After join_expansions (other)", ctxt);
-            other.render_debug_graph("Other After join_expansions (other)", ctxt);
-            actions.extend(
-                self.reborrow()
-                    .visit_each_other_expansion(other.reborrow(), ctxt)?,
-            );
-            self.render_debug_graph("Self After join_expansions (self)", ctxt);
-            other.render_debug_graph("Other After join_expansions (self)", ctxt);
+                    .visit_each_other_expansion(other.reborrow(), ctxt)?;
+                self.render_debug_graph("Self After join_expansions (self)", ctxt);
+                other.render_debug_graph("Other After join_expansions (self)", ctxt);
+                if self_actions.is_empty() {
+                    break;
+                }
+                actions.extend(self_actions);
+            }
         } else {
             let place = Place::from(self.owned.get_local());
             actions.extend(self.reborrow().join_owned_places(&other, place, ctxt)?);
