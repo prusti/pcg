@@ -38,6 +38,7 @@ fn test_aliases() {
         .with_max_level(tracing::Level::INFO)
         .with_writer(std::io::stderr)
         .init();
+    let recorder = pcg::CheckFailureRecorder::start();
 
     // interior_mutability_observable
     let input = r#"
@@ -405,4 +406,12 @@ fn main() {
                 .contains(&x)
         );
     });
+    // The known violations in the functions above (see `pcg::checks`).
+    assert_eq!(
+        recorder.finish(),
+        [("frame", "foo"), ("frame", "main"), ("label", "foo")]
+            .map(|(check, function)| (check.to_owned(), function.to_owned()))
+            .into(),
+        "the checks that fail in the functions above changed"
+    );
 }

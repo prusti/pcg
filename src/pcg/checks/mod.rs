@@ -2,13 +2,15 @@
 //! follow Rust's rules: each action does exactly what its kind says and
 //! changes only what it names ([`action`]), every capability that rises has
 //! a source ([`conservation`]), each loan gives back what it took
-//! ([`ledger`]), and replaying the recorded actions reproduces each state
-//! ([`replay`]).
+//! ([`ledger`]), replaying the recorded capability changes reproduces each
+//! state ([`replay`]), and each state keeps its invariants ([`state`]).
 //!
 //! A failed check reports `PCG Check Failed: [function] check: message`,
 //! where `check` names the rule, and panics unless
-//! `PCG_VALIDITY_CHECKS_WARN_ONLY` is set. The test harness reads these
-//! lines to compare them with the failures a test file expects.
+//! `PCG_VALIDITY_CHECKS_WARN_ONLY` or `PCG_CHECKS_WARN_ONLY` is set or the
+//! failure is one of `PCG_EXPECTED_CHECK_FAILURES`: the test harnesses pass
+//! the failures a test file or crate is known to have, and compare the
+//! reported lines with them.
 
 pub(crate) mod action;
 pub(crate) mod conservation;
@@ -16,16 +18,52 @@ pub(crate) mod ledger;
 pub(crate) mod replay;
 pub(crate) mod state;
 
+use std::{cmp::Ordering, collections::BTreeSet, sync::Mutex};
+
 use crate::{
     action::{CapabilityChanges, PcgAction},
     pcg::{CapabilityKind, place_capabilities::PlaceCapabilities, triple::PlaceCondition},
-    utils::{CompilerCtxt, DebugCtxt, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt},
-    validity_checks_enabled, validity_checks_warn_only,
+    utils::{
+        CompilerCtxt, DebugCtxt, HasCompilerCtxt, PcgSettings, Place, SETTINGS,
+        display::DisplayWithCompilerCtxt,
+    },
+    validity_checks_warn_only,
 };
 
-/// Whether the checks of this module run.
-pub(crate) fn enabled() -> bool {
-    validity_checks_enabled()
+/// The failures a [`CheckFailureRecorder`] records, while one exists.
+static RECORDED: Mutex<Option<BTreeSet<(String, String)>>> = Mutex::new(None);
+
+/// While it exists, the checks that fail are recorded instead of panicking.
+/// This is for tests that run the PCG in-process and list the known
+/// violations of their code, as test files do with `// PCG_EXPECTED_FAILURE`
+/// markers.
+pub struct CheckFailureRecorder(());
+
+impl CheckFailureRecorder {
+    /// Starts recording.
+    #[must_use]
+    pub fn start() -> Self {
+        *RECORDED.lock().unwrap() = Some(BTreeSet::new());
+        Self(())
+    }
+
+    /// Stops recording, and returns each failure as the check's name and the
+    /// function it failed in.
+    #[must_use]
+    pub fn finish(self) -> BTreeSet<(String, String)> {
+        RECORDED.lock().unwrap().take().unwrap_or_default()
+    }
+}
+
+impl Drop for CheckFailureRecorder {
+    fn drop(&mut self) {
+        *RECORDED.lock().unwrap() = None;
+    }
+}
+
+/// Whether the checks of this module run under `settings`.
+pub(crate) fn enabled(settings: &PcgSettings) -> bool {
+    settings.validity_checks
 }
 
 /// The capability changes `action` lists.
@@ -40,12 +78,20 @@ pub(crate) fn listed_changes<'s, 'tcx>(
 
 /// Reports that `check` failed in the function of `ctxt`.
 pub(crate) fn fail(ctxt: impl DebugCtxt, check: &str, message: &str) {
-    let message = format!(
-        "PCG Check Failed: [{}] {check}: {message}",
-        ctxt.func_name()
-    );
+    let function = ctxt.func_name();
+    let message = format!("PCG Check Failed: [{function}] {check}: {message}");
     tracing::error!("{message}");
-    assert!(validity_checks_warn_only(), "{message}");
+    let failure = (check.to_owned(), function);
+    if let Some(recorded) = RECORDED.lock().unwrap().as_mut() {
+        recorded.insert(failure);
+        return;
+    }
+    assert!(
+        validity_checks_warn_only()
+            || SETTINGS.checks_warn_only
+            || SETTINGS.expected_check_failures.contains(&failure),
+        "{message}"
+    );
 }
 
 /// Whether a place that had `old` rises when it gets `new`: it had nothing,
@@ -54,7 +100,7 @@ pub(crate) fn rises(old: Option<CapabilityKind>, new: CapabilityKind) -> bool {
     old.is_none_or(|old| {
         !matches!(
             new.partial_cmp(&old),
-            Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
+            Some(Ordering::Less | Ordering::Equal)
         )
     })
 }

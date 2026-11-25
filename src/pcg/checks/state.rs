@@ -9,6 +9,8 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use itertools::Itertools;
+
 use super::{fail, show};
 use crate::{
     borrow_pcg::{
@@ -50,9 +52,7 @@ pub(crate) fn check<'a, 'tcx: 'a>(
             );
         }
     }
-    if !pcg.borrow.graph.frozen_graph().is_acyclic(ctxt)
-        && let Some(cycle) = cycle_on_one_path(pcg.borrow.graph.edges.iter(), ctxt)
-    {
+    if let Some(cycle) = cycle_on_one_path(pcg.borrow.graph.edges.iter(), ctxt) {
         fail(
             ctxt,
             "cycle",
@@ -61,7 +61,6 @@ pub(crate) fn check<'a, 'tcx: 'a>(
                 cycle
                     .iter()
                     .map(|edge| edge.display_string(ctxt))
-                    .collect::<Vec<_>>()
                     .join(", ")
             ),
         );
@@ -93,6 +92,60 @@ fn conjoin(
     Some(result)
 }
 
+/// For each of `edges`, the edges that block what it is blocked by, in
+/// order.
+fn successors<'a, 'tcx: 'a>(
+    edges: &[(&BorrowPcgEdgeKind<'tcx>, &ValidityConditions)],
+    ctxt: CompilerCtxt<'a, 'tcx>,
+) -> Vec<Vec<usize>> {
+    let mut blocking: HashMap<PcgNode<'tcx>, Vec<usize>> = HashMap::new();
+    for (index, (edge, _)) in edges.iter().enumerate() {
+        for node in edge.blocked_nodes(ctxt) {
+            blocking.entry(node).or_default().push(index);
+        }
+    }
+    edges
+        .iter()
+        .map(|(edge, _)| {
+            edge.blocked_by_nodes(ctxt)
+                .flat_map(|node| blocking.get(&node.into()).cloned().unwrap_or_default())
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect()
+        })
+        .collect()
+}
+
+/// Whether the graph with `successors` has a cycle, ignoring conditions.
+fn has_cycle(successors: &[Vec<usize>]) -> bool {
+    // 0: not visited, 1: on the current path, 2: done.
+    let mut state = vec![0u8; successors.len()];
+    for root in 0..successors.len() {
+        if state[root] != 0 {
+            continue;
+        }
+        state[root] = 1;
+        let mut stack = vec![(root, 0)];
+        while let Some((node, next)) = stack.last_mut() {
+            if let Some(&successor) = successors[*node].get(*next) {
+                *next += 1;
+                match state[successor] {
+                    0 => {
+                        state[successor] = 1;
+                        stack.push((successor, 0));
+                    }
+                    1 => return true,
+                    _ => {}
+                }
+            } else {
+                state[*node] = 2;
+                stack.pop();
+            }
+        }
+    }
+    false
+}
+
 /// A cycle of `edges` whose conditions one path satisfies, if the search
 /// finds one within its budget. The search visits the edges in the order of
 /// their text, so that its result does not depend on the order of the graph.
@@ -100,7 +153,12 @@ fn cycle_on_one_path<'e, 'a, 'tcx: 'a + 'e>(
     edges: impl Iterator<Item = (&'e BorrowPcgEdgeKind<'tcx>, &'e ValidityConditions)>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Option<Vec<&'e BorrowPcgEdgeKind<'tcx>>> {
+    let edges = edges.collect::<Vec<_>>();
+    if !has_cycle(&successors(&edges, ctxt)) {
+        return None;
+    }
     let mut edges = edges
+        .into_iter()
         .map(|(edge, conditions)| (edge.display_string(ctxt), edge, conditions))
         .collect::<Vec<_>>();
     edges.sort_by(|a, b| a.0.cmp(&b.0));
@@ -108,20 +166,7 @@ fn cycle_on_one_path<'e, 'a, 'tcx: 'a + 'e>(
         .into_iter()
         .map(|(_, edge, conditions)| (edge, conditions))
         .collect::<Vec<_>>();
-    let mut blocking: HashMap<PcgNode<'tcx>, Vec<usize>> = HashMap::new();
-    for (index, (edge, _)) in edges.iter().enumerate() {
-        for node in edge.blocked_nodes(ctxt) {
-            blocking.entry(node).or_default().push(index);
-        }
-    }
-    // The edges that block what `edges[index]` is blocked by.
-    let next = |index: usize| {
-        edges[index]
-            .0
-            .blocked_by_nodes(ctxt)
-            .flat_map(|node| blocking.get(&node.into()).cloned().unwrap_or_default())
-            .collect::<BTreeSet<_>>()
-    };
+    let next = successors(&edges, ctxt);
     let mut budget = CYCLE_SEARCH_BUDGET;
     for root in 0..edges.len() {
         let Some(choices) = conjoin(&Choices::new(), edges[root].1, ctxt.body()) else {
@@ -129,7 +174,7 @@ fn cycle_on_one_path<'e, 'a, 'tcx: 'a + 'e>(
         };
         let mut stack = vec![(vec![root], choices)];
         while let Some((path, choices)) = stack.pop() {
-            for successor in next(*path.last().unwrap()) {
+            for &successor in &next[*path.last().unwrap()] {
                 budget = budget.checked_sub(1)?;
                 if successor < root || (successor != root && path.contains(&successor)) {
                     continue;

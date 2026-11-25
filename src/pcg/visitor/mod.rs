@@ -216,7 +216,8 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
         mut self,
         object: AnalysisObject<'_, 'tcx>,
     ) -> Result<AppliedActions<'tcx>, PcgError> {
-        let before = checks::enabled().then(|| self.pcg.place_capabilities.clone());
+        let before =
+            checks::enabled(self.ctxt.settings()).then(|| self.pcg.place_capabilities.clone());
         self.apply_phase(object)?;
         if let Some(before) = before {
             let mut steps = vec![];

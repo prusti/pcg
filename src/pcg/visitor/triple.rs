@@ -108,7 +108,8 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     #[tracing::instrument(skip(self, triple))]
     pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
-        let before = checks::enabled().then(|| self.pcg.place_capabilities.clone());
+        let before =
+            checks::enabled(self.ctxt.settings()).then(|| self.pcg.place_capabilities.clone());
         self.pcg.ensure_triple(triple, self.ctxt);
         if let Some(before) = before {
             let effect = checks::statement_effect(

@@ -6,8 +6,8 @@
 //! a source check lacks: a give-back that is lower than the take loses a
 //! capability without an action that says so.
 //!
-//! Loans are identified by the location that creates them, as in rustc's
-//! borrow set. The ledger is kept per body, across the iterations of the
+//! Loans are identified by their body and the location that creates them, as
+//! in rustc's borrow set. The ledger is kept across the iterations of the
 //! analysis; the takes of the last iteration count.
 
 use std::{cell::RefCell, collections::HashMap};
@@ -20,7 +20,7 @@ use crate::{
         CapabilityKind,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
-    rustc_interface::middle::mir,
+    rustc_interface::{hir::def_id::DefId, middle::mir},
     utils::{CompilerCtxt, PlaceLike, display::DisplayWithCompilerCtxt},
 };
 
@@ -35,7 +35,7 @@ struct Take {
 }
 
 thread_local! {
-    static LEDGER: RefCell<HashMap<mir::Location, Take>> = RefCell::new(HashMap::new());
+    static LEDGER: RefCell<HashMap<(DefId, mir::Location), Take>> = RefCell::new(HashMap::new());
 }
 
 /// Starts the ledger of a new body.
@@ -43,10 +43,10 @@ pub(crate) fn reset() {
     LEDGER.with(|ledger| ledger.borrow_mut().clear());
 }
 
-fn record_take(location: mir::Location, capability: CapabilityKind, lender: mir::Local) {
+fn record_take(loan: (DefId, mir::Location), capability: CapabilityKind, lender: mir::Local) {
     LEDGER.with(|ledger| {
         ledger.borrow_mut().insert(
-            location,
+            loan,
             Take {
                 capability,
                 lender,
@@ -67,6 +67,7 @@ pub(crate) fn observe<'a, 'tcx: 'a>(
     let PcgAction::Borrow(action) = action else {
         return vec![];
     };
+    let body = ctxt.body().source.def_id();
     let mut violations = vec![];
     match &action.kind {
         BorrowPcgActionKind::AddEdge { edge } => {
@@ -80,14 +81,14 @@ pub(crate) fn observe<'a, 'tcx: 'a>(
                 && let Some(lender) = borrow.blocked_place.as_current_place()
                 && let Some(taken) = before.get(lender, ctxt)
             {
-                record_take(borrow.reserve_location(), taken, lender.local);
+                record_take((body, borrow.reserve_location()), taken, lender.local);
             }
         }
         BorrowPcgActionKind::ActivateTwoPhaseBorrow { borrow } => {
             if let Some(lender) = borrow.blocked_place.as_current_place()
                 && let Some(taken) = before.suspended(lender)
             {
-                record_take(borrow.reserve_location(), taken, lender.local);
+                record_take((body, borrow.reserve_location()), taken, lender.local);
             }
         }
         BorrowPcgActionKind::Lend { place, edge } => {
@@ -95,7 +96,7 @@ pub(crate) fn observe<'a, 'tcx: 'a>(
                 && borrow.is_mut()
                 && let Some(taken) = after.suspended(*place)
             {
-                record_take(borrow.reserve_location(), taken, place.local);
+                record_take((body, borrow.reserve_location()), taken, place.local);
             }
         }
         BorrowPcgActionKind::WeakenSuspended { place, .. } => LEDGER.with(|ledger| {
@@ -112,9 +113,12 @@ pub(crate) fn observe<'a, 'tcx: 'a>(
             let Some(lender) = borrow.blocked_place.as_current_place() else {
                 return violations;
             };
-            let Some(take) =
-                LEDGER.with(|ledger| ledger.borrow().get(&borrow.reserve_location()).copied())
-            else {
+            let Some(take) = LEDGER.with(|ledger| {
+                ledger
+                    .borrow()
+                    .get(&(body, borrow.reserve_location()))
+                    .copied()
+            }) else {
                 return violations;
             };
             for (place, returned) in after.iter() {

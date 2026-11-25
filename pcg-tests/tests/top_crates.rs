@@ -8,7 +8,7 @@ use regex::Regex;
 use serde_derive::{Deserialize, Serialize};
 use std::{
     cmp::Reverse,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     io::{ErrorKind, Write},
     ops::Range,
     os::unix::process::CommandExt,
@@ -81,6 +81,8 @@ pub fn top_crates() {
         memory_mib: env_var("TOP_CRATES_MEMORY_LIMIT_MIB", 12 * 1024),
     };
     let known_failures = known_failures(DATE, &all_crates);
+    let known_check_failures = known_check_failures(DATE);
+    let bless_checks = std::env::var_os("TOP_CRATES_BLESS_CHECKS").is_some();
     // A check takes at most the timeout, also if it took longer when it was
     // timed.
     let seconds = check_seconds(DATE, &all_crates)
@@ -104,7 +106,11 @@ pub fn top_crates() {
             let version = krate.version();
             println!("Starting: {index} ({} {version})", krate.name);
             let began = Instant::now();
-            let (outcome, peak_mib) = check_crate(krate, &limits);
+            let expected = known_check_failures
+                .get(&krate.name)
+                .cloned()
+                .unwrap_or_default();
+            let (outcome, peak_mib) = check_crate(krate, &limits, &expected, bless_checks);
             let result = CrateResult {
                 index,
                 krate: krate.clone(),
@@ -210,6 +216,48 @@ fn known_failures(date: &str, crates: &[Crate]) -> BTreeSet<String> {
         })
         .collect()
 }
+
+fn known_check_failures_file(date: &str) -> PathBuf {
+    PathBuf::from("tests/top-crates").join(format!("{date}-check-failures.tsv"))
+}
+
+/// The known failures of the checks of `pcg::checks` in each crate of the
+/// list for `date`, as the check's name and the function's path. Each line of
+/// the file that is neither empty nor a `#` comment is
+/// `crate<TAB>check<TAB>function`. A crate's run reports these failures
+/// without panicking (`PCG_EXPECTED_CHECK_FAILURES`); one that no longer
+/// fails makes the crate fail, so that it is removed from the file.
+/// `TOP_CRATES_BLESS_CHECKS=1` runs every crate with all check failures
+/// reported (`PCG_CHECKS_WARN_ONLY`) and writes each crate's failures to
+/// `LOG_DIR/<crate>-<version>.check-failures.tsv`, in the format of the file.
+fn known_check_failures(date: &str) -> BTreeMap<String, BTreeSet<(String, String)>> {
+    let path = known_check_failures_file(date);
+    let content = match std::fs::read_to_string(&path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return BTreeMap::new(),
+        Err(e) => panic!("Failed to read {}: {e}", path.display()),
+    };
+    let mut failures: BTreeMap<String, BTreeSet<(String, String)>> = BTreeMap::new();
+    for line in content
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
+    {
+        let [name, check, function] = line.splitn(3, '\t').collect::<Vec<_>>()[..] else {
+            panic!(
+                "{}: `{line}` is not `crate<TAB>check<TAB>function`",
+                path.display()
+            );
+        };
+        failures
+            .entry(name.to_owned())
+            .or_default()
+            .insert((check.to_owned(), function.to_owned()));
+    }
+    failures
+}
+
+static CHECK_FAILURE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"PCG Check Failed: \[(.*?)\] ([a-z-]+): ").unwrap());
 
 /// How long the check of a crate is assumed to take if the timing file does
 /// not list the crate: the median time of a crate in CI.
@@ -336,9 +384,15 @@ struct Limits {
     memory_mib: u64,
 }
 
-/// Checks `krate` within `limits`. Returns the outcome and the largest memory
-/// use of the check in MiB.
-fn check_crate(krate: &Crate, limits: &Limits) -> (Outcome, u64) {
+/// Checks `krate` within `limits`, with the known check failures `expected`
+/// (all reported, with `bless_checks`; see `known_check_failures`). Returns
+/// the outcome and the largest memory use of the check in MiB.
+fn check_crate(
+    krate: &Crate,
+    limits: &Limits,
+    expected: &BTreeSet<(String, String)>,
+    bless_checks: bool,
+) -> (Outcome, u64) {
     let (name, version) = (krate.name.as_str(), krate.version());
     if let Err(reason) = is_supported_crate(name, version) {
         return (Outcome::Unsupported(reason), 0);
@@ -346,11 +400,21 @@ fn check_crate(krate: &Crate, limits: &Limits) -> (Outcome, u64) {
     let log = crate_log_file(krate);
     let run = catch_unwind(AssertUnwindSafe(|| {
         with_downloaded_crate(name, version, Some(DATE), |dir| {
+            let mut extra_env_vars = vec![(
+                "PCG_EXPECTED_CHECK_FAILURES".to_string(),
+                expected
+                    .iter()
+                    .map(|(check, function)| format!("{check} {function}\n"))
+                    .collect::<String>(),
+            )];
+            if bless_checks {
+                extra_env_vars.push(("PCG_CHECKS_WARN_ONLY".to_string(), "true".to_string()));
+            }
             let options = RunOnCrateOptions::RunPCG {
                 target: Target::Release,
                 validity_checks: true,
                 function: None,
-                extra_env_vars: vec![],
+                extra_env_vars,
             };
             let mut command = pcg_check_command(dir, &options);
             // Lints that newer compilers deny in older crates are not PCG
@@ -373,8 +437,44 @@ fn check_crate(krate: &Crate, limits: &Limits) -> (Outcome, u64) {
             function: last_analysed_function(&read_log(&log).lines().collect::<Vec<_>>()),
         })
     };
+    let reported = || {
+        read_log(&log)
+            .lines()
+            .filter_map(|line| CHECK_FAILURE.captures(line))
+            .map(|captures| (captures[2].to_string(), captures[1].to_string()))
+            .collect::<BTreeSet<_>>()
+    };
+    if bless_checks {
+        let path = PathBuf::from(LOG_DIR).join(format!("{name}-{version}.check-failures.tsv"));
+        let lines = reported()
+            .into_iter()
+            .map(|(check, function)| format!("{name}\t{check}\t{function}\n"))
+            .collect::<String>();
+        std::fs::write(path, lines).unwrap();
+    }
     match run {
-        Ok((End::Exited(status), peak_mib)) if status.success() => (Outcome::Passed, peak_mib),
+        Ok((End::Exited(status), peak_mib)) if status.success() => {
+            let reported = reported();
+            let passing = expected.difference(&reported).collect_vec();
+            if passing.is_empty() || bless_checks {
+                (Outcome::Passed, peak_mib)
+            } else {
+                (
+                    Outcome::Failed(Failure {
+                        message: format!(
+                            "known check failures now pass; remove them from {}: {}",
+                            known_check_failures_file(DATE).display(),
+                            passing
+                                .iter()
+                                .map(|(check, function)| format!("{check} {function}"))
+                                .join(", ")
+                        ),
+                        function: None,
+                    }),
+                    peak_mib,
+                )
+            }
+        }
         Ok((End::Exited(status), peak_mib)) => {
             (Outcome::Failed(failure_from_log(&log, status)), peak_mib)
         }

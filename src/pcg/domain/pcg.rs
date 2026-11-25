@@ -591,7 +591,7 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                 edge.conditions = conditions.without_branch_choice(self_block);
             }
         }
-        if checks::enabled() {
+        if checks::enabled(ctxt.settings()) {
             checks::replay::check(
                 &format!("edge {self_block:?} -> {other_block:?}"),
                 &self.place_capabilities,

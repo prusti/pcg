@@ -991,9 +991,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
         let mut action = action;
-        let check = self
-            .open_actions
-            .begin(self.pcg.place_capabilities, self.pcg.borrow.graph);
+        let check = self.open_actions.begin(
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.ctxt.settings(),
+        );
         let (result, forgotten) = self.apply_action_without_recording(&mut action)?;
         self.open_actions.end(
             check,
@@ -1058,9 +1060,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             }
         }
         let mut action = BorrowPcgAction::remove_edge(edge, context.to_owned());
-        let check = self
-            .open_actions
-            .begin(self.pcg.place_capabilities, self.pcg.borrow.graph);
+        let check = self.open_actions.begin(
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.ctxt.settings(),
+        );
         let result =
             self.pcg
                 .borrow

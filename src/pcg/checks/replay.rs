@@ -1,8 +1,10 @@
 //! Replay: a client that applies the capability changes the PCG records, in
-//! order, from the state before a phase (or before an edge between blocks),
-//! gets the state after it. The changes are those of the recorded actions
-//! and of the statement's own effects (an assignment gives its place E): the
-//! state changes in no other way.
+//! order, from the capabilities before a phase (or before an edge between
+//! blocks), gets the capabilities after it. The changes are those of the
+//! recorded actions and of the statement's own effects (an assignment gives
+//! its place E): the capabilities change in no other way. Records and the
+//! graph are not replayed: no action lists their changes; the per-action
+//! frame condition limits them to the places and edge an action names.
 
 use super::{fail, show};
 use crate::{

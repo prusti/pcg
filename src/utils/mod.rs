@@ -37,7 +37,7 @@ use crate::rustc_interface::middle::mir::BasicBlock;
 
 use itertools::Itertools;
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     path::{Path, PathBuf},
     sync::LazyLock,
 };
@@ -125,6 +125,15 @@ pub struct PcgSettings {
     pub skip_function: Option<String>,
     pub coupling: bool,
     pub pack_strategy: PackStrategy,
+    /// The check failures that are reported without panicking, each as the
+    /// check's name and the function's path: the known violations of a test
+    /// file (`PCG_EXPECTED_CHECK_FAILURES`, one `<check> <function>` per
+    /// line).
+    pub expected_check_failures: BTreeSet<(String, String)>,
+    /// Whether every failure of the checks of `pcg::checks` is reported
+    /// without panicking (`PCG_CHECKS_WARN_ONLY`), to collect the known
+    /// violations of a crate; the other validity assertions still panic.
+    pub checks_warn_only: bool,
 }
 
 impl Default for PcgSettings {
@@ -191,6 +200,17 @@ impl PcgSettings {
         let skip_function = Self::process_string_var(&mut processed_vars, "PCG_SKIP_FUNCTION");
         let coupling = Self::process_bool_var(&mut processed_vars, "PCG_COUPLING", true);
         let pack_strategy = Self::process_pack_strategy(&mut processed_vars);
+        let expected_check_failures =
+            Self::process_string_var(&mut processed_vars, "PCG_EXPECTED_CHECK_FAILURES")
+                .unwrap_or_default()
+                .lines()
+                .filter_map(|line| {
+                    let (check, function) = line.trim().split_once(' ')?;
+                    Some((check.to_owned(), function.trim().to_owned()))
+                })
+                .collect();
+        let checks_warn_only =
+            Self::process_bool_var(&mut processed_vars, "PCG_CHECKS_WARN_ONLY", false);
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);
@@ -212,6 +232,8 @@ impl PcgSettings {
             skip_function,
             coupling,
             pack_strategy,
+            expected_check_failures,
+            checks_warn_only,
         }
     }
 

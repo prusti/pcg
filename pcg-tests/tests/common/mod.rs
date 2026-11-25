@@ -130,15 +130,23 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let env_vars = parse_env_vars_from_file(file);
 
-    // The checks report their failures instead of panicking, so that every
-    // failure of the file is compared with the failures it expects.
+    // A check failure that the file expects is reported without panicking,
+    // so that it can be compared with the failures the file expects; any
+    // other failure panics as usual.
+    let expected = expected_check_failures(file);
     let mut command = Command::new(&pcg_exe);
     command
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
         .env("PCG_ALLOW_BORROWCK_ERRORS", "true")
         .env("PCG_VALIDITY_CHECKS", "true")
-        .env("PCG_VALIDITY_CHECKS_WARN_ONLY", "true");
+        .env(
+            "PCG_EXPECTED_CHECK_FAILURES",
+            expected
+                .iter()
+                .map(|(check, function)| format!("{check} {function}\n"))
+                .collect::<String>(),
+        );
 
     for (key, value) in env_vars {
         command.env(key, value);
@@ -161,24 +169,17 @@ pub fn run_pcg_on_file(file: &Path) {
         );
     }
     let failed = reported_check_failures(&stderr);
-    let expected = expected_check_failures(file);
-    let unexpected = failed.difference(&expected).collect::<Vec<_>>();
     let passing = expected.difference(&failed).collect::<Vec<_>>();
-    if !unexpected.is_empty() || !passing.is_empty() {
+    if !passing.is_empty() {
         show_output();
-        let show = |failures: &[&CheckFailure]| {
-            failures
+        panic!(
+            "Test {} passes checks it expects to fail; remove these markers:\n{}",
+            file.display(),
+            passing
                 .iter()
                 .map(|(check, function)| format!("  // PCG_EXPECTED_FAILURE: {check} {function}"))
                 .collect::<Vec<_>>()
                 .join("\n")
-        };
-        panic!(
-            "Test {} fails checks it does not expect:\n{}\nand passes checks it expects to fail \
-             (remove these markers):\n{}",
-            file.display(),
-            show(&unexpected),
-            show(&passing)
         );
     }
 }
@@ -187,23 +188,14 @@ pub fn run_pcg_on_file(file: &Path) {
 /// path.
 type CheckFailure = (String, String);
 
-/// The checks that failed in each function, as `pcg_bin` reports them: the
-/// checks of `pcg::checks` by name, the other validity assertions as
-/// `assert`.
+/// The checks of `pcg::checks` that failed in each function, as `pcg_bin`
+/// reports them.
 fn reported_check_failures(stderr: &str) -> BTreeSet<CheckFailure> {
     let check = regex::Regex::new(r"PCG Check Failed: \[(.*?)\] ([a-z-]+): ").unwrap();
-    let assertion = regex::Regex::new(r"PCG Assertion Failed[^\[]*: \[(.*?)(?: at [^\]]*)?\] ").unwrap();
     stderr
         .lines()
-        .filter_map(|line| {
-            if let Some(cap) = check.captures(line) {
-                Some((cap[2].to_owned(), cap[1].to_owned()))
-            } else {
-                assertion
-                    .captures(line)
-                    .map(|cap| ("assert".to_owned(), cap[1].to_owned()))
-            }
-        })
+        .filter_map(|line| check.captures(line))
+        .map(|cap| (cap[2].to_owned(), cap[1].to_owned()))
         .collect()
 }
 

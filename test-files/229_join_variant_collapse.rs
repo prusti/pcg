@@ -1,5 +1,3 @@
-// PCG_EXPECTED_FAILURE: frame lent_variant_field
-// PCG_EXPECTED_FAILURE: remove-edge lent_variant_field
 struct A(u32);
 struct B {
     f: A,

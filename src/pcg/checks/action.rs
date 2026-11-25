@@ -6,8 +6,8 @@
 //! lists every capability change it makes, and makes exactly the change its
 //! kind defines:
 //! - Freeze: E to R on a place that holds E itself, recording the E;
-//! - Weaken: `from` to a lower `to` on a place that holds `from` and records
-//!   nothing;
+//! - Weaken: to `to` on a place that records nothing (applying it asserts
+//!   that the place holds `from` and that `to` is lower);
 //! - an owned expansion gives each part the share of what the base holds; a
 //!   collapse gives the base the meet of what all its parts hold, and nothing
 //!   if a part holds nothing;
@@ -26,11 +26,13 @@
 //! Places behind a raw pointer dereference are exempt: their capabilities do
 //! not come from the pointer (principle 7).
 
-use std::collections::HashSet;
+use std::{borrow::Cow, collections::HashSet};
+
+use itertools::Itertools;
 
 use super::{conservation, fail, ledger, show, show_state};
 use crate::{
-    action::PcgAction,
+    action::{BorrowPcgAction, PcgAction},
     borrow_pcg::{
         action::BorrowPcgActionKind, borrow_pcg_edge::LocalNode, edge::kind::BorrowPcgEdgeKind,
         edge_data::EdgeData, graph::BorrowsGraph,
@@ -41,28 +43,62 @@ use crate::{
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
     rustc_interface::middle::mir,
-    utils::{CompilerCtxt, Place, PlaceLike, display::DisplayWithCompilerCtxt},
+    utils::{CompilerCtxt, PcgSettings, Place, PlaceLike, display::DisplayWithCompilerCtxt},
 };
 
 /// The part of a PCG state that actions change: capabilities, records and
-/// the edges of the borrow graph.
+/// the edges of the borrow graph. A snapshot taken before an action owns a
+/// copy; the state after it is read in place.
 #[derive(Clone)]
-pub(crate) struct Snapshot<'tcx> {
-    pub(crate) capabilities: PlaceCapabilities<'tcx>,
-    pub(crate) edges: HashSet<BorrowPcgEdgeKind<'tcx>>,
+pub(crate) struct Snapshot<'s, 'tcx> {
+    pub(crate) capabilities: Cow<'s, PlaceCapabilities<'tcx>>,
+    pub(crate) edges: Edges<'s, 'tcx>,
 }
 
-impl<'tcx> Snapshot<'tcx> {
-    pub(crate) fn new(capabilities: &PlaceCapabilities<'tcx>, graph: &BorrowsGraph<'tcx>) -> Self {
+/// The edges of a [`Snapshot`]: a copy, or the graph itself.
+#[derive(Clone)]
+pub(crate) enum Edges<'s, 'tcx> {
+    Copy(HashSet<BorrowPcgEdgeKind<'tcx>>),
+    Graph(&'s BorrowsGraph<'tcx>),
+}
+
+impl<'tcx> Edges<'_, 'tcx> {
+    fn contains(&self, edge: &BorrowPcgEdgeKind<'tcx>) -> bool {
+        match self {
+            Edges::Copy(edges) => edges.contains(edge),
+            Edges::Graph(graph) => graph.edges.contains_key(edge),
+        }
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = &BorrowPcgEdgeKind<'tcx>> + '_> {
+        match self {
+            Edges::Copy(edges) => Box::new(edges.iter()),
+            Edges::Graph(graph) => Box::new(graph.edges.keys()),
+        }
+    }
+
+    /// The edges of `self` that `other` lacks.
+    fn difference<'e>(
+        &'e self,
+        other: &'e Edges<'_, 'tcx>,
+    ) -> impl Iterator<Item = &'e BorrowPcgEdgeKind<'tcx>> + 'e {
+        self.iter().filter(move |edge| !other.contains(edge))
+    }
+}
+
+impl<'tcx> Snapshot<'tcx, 'tcx> {
+    /// A copy of the state `capabilities` and `graph`.
+    pub(crate) fn copy(capabilities: &PlaceCapabilities<'tcx>, graph: &BorrowsGraph<'tcx>) -> Self {
         Self {
-            capabilities: capabilities.clone(),
-            edges: graph.edges.keys().cloned().collect(),
+            capabilities: Cow::Owned(capabilities.clone()),
+            edges: Edges::Copy(graph.edges.keys().cloned().collect()),
         }
     }
 
     /// Sets what `from` and `to` differ in to its value in `to`: the effect of
     /// an action applied while this snapshot's action is being applied.
-    fn apply_difference(&mut self, from: &Snapshot<'tcx>, to: &Snapshot<'tcx>) {
+    fn apply_difference(&mut self, from: &Snapshot<'_, 'tcx>, to: &Snapshot<'_, 'tcx>) {
+        let capabilities = self.capabilities.to_mut();
         for place in places(&from.capabilities, &to.capabilities) {
             let (old, new) = (
                 from.capabilities.map.get(&place),
@@ -70,8 +106,8 @@ impl<'tcx> Snapshot<'tcx> {
             );
             if old != new {
                 match new {
-                    Some(&new) => self.capabilities.map.insert(place, new),
-                    None => self.capabilities.map.remove(&place),
+                    Some(&new) => capabilities.map.insert(place, new),
+                    None => capabilities.map.remove(&place),
                 };
             }
             let (old, new) = (
@@ -80,16 +116,32 @@ impl<'tcx> Snapshot<'tcx> {
             );
             if old != new {
                 match new {
-                    Some(&new) => self.capabilities.suspended.insert(place, new),
-                    None => self.capabilities.suspended.remove(&place),
+                    Some(&new) => capabilities.suspended.insert(place, new),
+                    None => capabilities.suspended.remove(&place),
                 };
             }
         }
+        let Edges::Copy(edges) = &mut self.edges else {
+            unreachable!("a copied snapshot copies its edges")
+        };
         for edge in from.edges.difference(&to.edges) {
-            self.edges.remove(edge);
+            edges.remove(edge);
         }
         for edge in to.edges.difference(&from.edges) {
-            self.edges.insert(edge.clone());
+            edges.insert(edge.clone());
+        }
+    }
+}
+
+impl<'s, 'tcx> Snapshot<'s, 'tcx> {
+    /// The state `capabilities` and `graph`, read in place.
+    pub(crate) fn of(
+        capabilities: &'s PlaceCapabilities<'tcx>,
+        graph: &'s BorrowsGraph<'tcx>,
+    ) -> Self {
+        Self {
+            capabilities: Cow::Borrowed(capabilities),
+            edges: Edges::Graph(graph),
         }
     }
 }
@@ -106,25 +158,26 @@ fn places<'tcx>(a: &PlaceCapabilities<'tcx>, b: &PlaceCapabilities<'tcx>) -> Has
 }
 
 /// The actions being applied, innermost last: the state before each, as it
-/// was and with the effects of the actions applied within it.
+/// was and, once an action was applied within it, with that action's effect.
 #[derive(Default)]
 pub(crate) struct OpenActions<'tcx> {
-    open: Vec<(Snapshot<'tcx>, Snapshot<'tcx>)>,
+    open: Vec<(Snapshot<'tcx, 'tcx>, Option<Snapshot<'tcx, 'tcx>>)>,
 }
 
 impl<'tcx> OpenActions<'tcx> {
     /// Starts checking an action applied to the state `capabilities` and
-    /// `graph`. Returns the depth to pass to [`Self::end`].
+    /// `graph`, if `settings` enable the checks. Returns the depth to pass to
+    /// [`Self::end`].
     pub(crate) fn begin(
         &mut self,
         capabilities: &PlaceCapabilities<'tcx>,
         graph: &BorrowsGraph<'tcx>,
+        settings: &PcgSettings,
     ) -> Option<usize> {
-        if !super::enabled() {
+        if !super::enabled(settings) {
             return None;
         }
-        let snapshot = Snapshot::new(capabilities, graph);
-        self.open.push((snapshot.clone(), snapshot));
+        self.open.push((Snapshot::copy(capabilities, graph), None));
         Some(self.open.len() - 1)
     }
 
@@ -148,10 +201,20 @@ impl<'tcx> OpenActions<'tcx> {
         let Some((original, own)) = self.open.pop() else {
             return;
         };
-        let after = Snapshot::new(capabilities, graph);
-        check_action(&own, &after, action, location, ctxt);
-        if let Some((_, parent)) = self.open.last_mut() {
-            parent.apply_difference(&original, &after);
+        let after = Snapshot::of(capabilities, graph);
+        let holders = comeback_holders(&original, action, &named(action, ctxt));
+        check_action(
+            own.as_ref().unwrap_or(&original),
+            &after,
+            action,
+            &holders,
+            location,
+            ctxt,
+        );
+        if let Some((parent, parent_own)) = self.open.last_mut() {
+            parent_own
+                .get_or_insert_with(|| parent.clone())
+                .apply_difference(&original, &after);
         }
     }
 }
@@ -168,16 +231,18 @@ impl Violation {
     }
 }
 
-/// Checks that `action` turned `before` into `after` as its kind defines.
+/// Checks that `action` turned `before` into `after` as its kind defines;
+/// `holders` are its [`comeback_holders`].
 pub(crate) fn check_action<'a, 'tcx: 'a>(
-    before: &Snapshot<'tcx>,
-    after: &Snapshot<'tcx>,
+    before: &Snapshot<'_, 'tcx>,
+    after: &Snapshot<'_, 'tcx>,
     action: &PcgAction<'tcx>,
+    holders: &[Place<'tcx>],
     location: mir::Location,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) {
-    let mut violations = frame(before, after, action, ctxt);
-    violations.extend(kind_rules(before, after, action, ctxt));
+    let mut violations = frame(before, after, action, holders, ctxt);
+    violations.extend(kind_rules(before, after, action, holders, ctxt));
     violations.extend(conservation::check(
         &before.capabilities,
         &after.capabilities,
@@ -282,15 +347,44 @@ fn named<'a, 'tcx: 'a>(action: &PcgAction<'tcx>, ctxt: CompilerCtxt<'a, 'tcx>) -
     }
 }
 
+/// The places that record what a loan or freeze took and get it back when
+/// `action` ends the loan (a `RemoveEdge`) or labels the lent value (a
+/// `LabelPlace`): the record holders in `before` at or above the places the
+/// action names. A record is kept where the capability was lent, which can be
+/// a place the loan's edge only blocks a part of (a `Lend` at a join).
+fn comeback_holders<'tcx>(
+    before: &Snapshot<'_, 'tcx>,
+    action: &PcgAction<'tcx>,
+    names: &[Named<'tcx>],
+) -> Vec<Place<'tcx>> {
+    if !matches!(
+        action,
+        PcgAction::Borrow(BorrowPcgAction {
+            kind: BorrowPcgActionKind::RemoveEdge(_) | BorrowPcgActionKind::LabelPlace(_),
+            ..
+        })
+    ) {
+        return vec![];
+    }
+    before
+        .capabilities
+        .suspended
+        .keys()
+        .copied()
+        .filter(|holder| names.iter().any(|n| holder.is_prefix_of(n.place)))
+        .collect()
+}
+
 /// The frame condition: `action` changes only the capabilities and records
 /// of the places it names, and lists each capability it changes with the
 /// capability the place has after it. The borrow graph gains exactly the
 /// edge an `AddEdge` or `Lend` adds and loses exactly the edge a
 /// `RemoveEdge` removes; only labels change it otherwise.
 fn frame<'a, 'tcx: 'a>(
-    before: &Snapshot<'tcx>,
-    after: &Snapshot<'tcx>,
+    before: &Snapshot<'_, 'tcx>,
+    after: &Snapshot<'_, 'tcx>,
     action: &PcgAction<'tcx>,
+    holders: &[Place<'tcx>],
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<Violation> {
     let mut violations = vec![];
@@ -299,6 +393,7 @@ fn frame<'a, 'tcx: 'a>(
         names
             .iter()
             .any(|n| n.place == p || (n.parts && n.place.is_prefix_of(p)))
+            || holders.iter().any(|h| h.is_prefix_of(p))
     };
     let listed = super::listed_changes(action);
     for place in places(&before.capabilities, &after.capabilities) {
@@ -354,11 +449,7 @@ fn frame<'a, 'tcx: 'a>(
     let added = after.edges.difference(&before.edges).collect::<Vec<_>>();
     let removed = before.edges.difference(&after.edges).collect::<Vec<_>>();
     let show_edges = |edges: &[&BorrowPcgEdgeKind<'tcx>]| {
-        edges
-            .iter()
-            .map(|e| e.display_string(ctxt))
-            .collect::<Vec<_>>()
-            .join(", ")
+        edges.iter().map(|e| e.display_string(ctxt)).join(", ")
     };
     let (may_add, may_remove, relabels): (Option<&BorrowPcgEdgeKind<'tcx>>, Option<_>, bool) =
         match action {
@@ -431,9 +522,10 @@ impl<'tcx> State<'_, 'tcx> {
 
 /// The rules of each action kind.
 fn kind_rules<'a, 'tcx: 'a>(
-    before: &Snapshot<'tcx>,
-    after: &Snapshot<'tcx>,
+    before: &Snapshot<'_, 'tcx>,
+    after: &Snapshot<'_, 'tcx>,
     action: &PcgAction<'tcx>,
+    holders: &[Place<'tcx>],
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<Violation> {
     let b = State {
@@ -482,7 +574,6 @@ fn kind_rules<'a, 'tcx: 'a>(
                             b.holding_parts(place)
                                 .iter()
                                 .map(|(p, c)| format!("{}: {}", d(*p), show(Some(*c))))
-                                .collect::<Vec<_>>()
                                 .join(", ")
                         )
                     },
@@ -502,10 +593,7 @@ fn kind_rules<'a, 'tcx: 'a>(
                 );
                 let others = changed_places(before, after, |p| p != place, ctxt);
                 require("freeze", others.is_empty(), &|| {
-                    format!(
-                        "also changes {}",
-                        others.iter().map(|p| d(*p)).collect::<Vec<_>>().join(", ")
-                    )
+                    format!("also changes {}", others.iter().map(|p| d(*p)).join(", "))
                 });
             }
             BorrowPcgActionKind::Unfreeze { place } => {
@@ -590,13 +678,13 @@ fn kind_rules<'a, 'tcx: 'a>(
                     .filter(|&p| {
                         !p.contains_unsafe_deref(ctxt)
                             && a.get(p).is_some_and(|new| super::rises(b.get(p), new))
-                            && !blocked.iter().any(|q| q.is_prefix_of(p))
+                            && !blocked.iter().chain(holders).any(|q| q.is_prefix_of(p))
                     })
                     .collect::<Vec<_>>();
                 require("remove-edge", risen.is_empty(), &|| {
                     format!(
                         "gives capabilities to {}, which the edge does not block",
-                        risen.iter().map(|p| d(*p)).collect::<Vec<_>>().join(", ")
+                        risen.iter().map(|p| d(*p)).join(", ")
                     )
                 });
             }
@@ -637,7 +725,6 @@ fn kind_rules<'a, 'tcx: 'a>(
                                 show(b.get(*p)),
                                 show(a.get(*p))
                             ))
-                            .collect::<Vec<_>>()
                             .join(", ")
                     )
                 });
@@ -656,12 +743,8 @@ fn kind_rules<'a, 'tcx: 'a>(
                     require("unpack-suspended", expected == given, &|| {
                         format!(
                             "unpacks to [{}], not all of [{}]",
-                            parts.iter().map(|p| d(*p)).collect::<Vec<_>>().join(", "),
-                            expected
-                                .iter()
-                                .map(|p| d(*p))
-                                .collect::<Vec<_>>()
-                                .join(", ")
+                            parts.iter().map(|p| d(*p)).join(", "),
+                            expected.iter().map(|p| d(*p)).join(", ")
                         )
                     });
                 }
@@ -684,7 +767,6 @@ fn kind_rules<'a, 'tcx: 'a>(
                         above_read
                             .iter()
                             .map(|(p, c)| format!("{}: {}", d(*p), show(Some(*c))))
-                            .collect::<Vec<_>>()
                             .join(", ")
                     )
                 });
@@ -749,7 +831,6 @@ fn kind_rules<'a, 'tcx: 'a>(
                                     parts
                                         .iter()
                                         .map(|p| format!("{}: {}", d(*p), show(b.get(*p))))
-                                        .collect::<Vec<_>>()
                                         .join(", ")
                                 )
                             },
@@ -897,8 +978,8 @@ fn add_edge_rules<'a, 'tcx: 'a>(
 /// The places other than those `keep` excludes whose capability or record
 /// differs between `before` and `after`.
 fn changed_places<'a, 'tcx: 'a>(
-    before: &Snapshot<'tcx>,
-    after: &Snapshot<'tcx>,
+    before: &Snapshot<'_, 'tcx>,
+    after: &Snapshot<'_, 'tcx>,
     keep: impl Fn(Place<'tcx>) -> bool,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<Place<'tcx>> {
@@ -915,8 +996,8 @@ fn changed_places<'a, 'tcx: 'a>(
 
 /// The capability changes between `before` and `after`, shown.
 fn changed_capabilities<'a, 'tcx: 'a>(
-    before: &Snapshot<'tcx>,
-    after: &Snapshot<'tcx>,
+    before: &Snapshot<'_, 'tcx>,
+    after: &Snapshot<'_, 'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<String> {
     places(&before.capabilities, &after.capabilities)
@@ -942,7 +1023,7 @@ fn changed_capabilities<'a, 'tcx: 'a>(
 /// or a part of its value, where rustc tracks the loan (it is not behind a
 /// shared reference or raw pointer), shown.
 fn loans_overlapping<'a, 'tcx: 'a>(
-    snapshot: &Snapshot<'tcx>,
+    snapshot: &Snapshot<'_, 'tcx>,
     place: Place<'tcx>,
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<String> {
