@@ -8,6 +8,7 @@ use borrowck_body_storage::{set_mir_borrowck, take_stored_body};
 use pcg::{
     HasSettings, PcgCtxtCreator, PcgOutput,
     borrow_checker::r#impl::{NllBorrowCheckerImpl, PoloniusBorrowChecker},
+    oracle,
     pcg::BodyWithBorrowckFacts,
     run_pcg,
     rustc_interface::{
@@ -94,6 +95,11 @@ impl driver::Callbacks for PcgAsRustcCallbacks {
 /// 1. Should be called for the same `tcx` where the borrow-checking occurred.
 /// 2. The `config` for the compiler run should have had `override_queries` set to [`set_mir_borrowck`].
 pub unsafe fn run_pcg_on_all_fns(tcx: TyCtxt<'_>) {
+    // A run with borrow-check probes only reports the borrow checker's
+    // verdict on the bodies the probes change.
+    if borrowck_body_storage::probes_enabled() {
+        return;
+    }
     let global_settings = GlobalPcgSettings::new();
     let mut ctxt_creator = PcgCtxtCreator::new(tcx);
     let settings = ctxt_creator.settings().clone();
@@ -208,12 +214,67 @@ pub(crate) fn run_pcg_on_fn<'tcx>(
         emit_borrowcheck_graphs(&dir_path, ctxt);
     }
 
+    report_oracle(
+        &pcg_ctxt.ctxt().body_def_path_str(),
+        pcg_ctxt.settings(),
+        &mut output,
+        &bc,
+    );
+
     emit_and_check_annotations(
         pcg_ctxt.ctxt().body_def_path_str(),
         pcg_ctxt.settings(),
         &annotations,
         &mut output,
     );
+}
+
+/// With `PCG_ORACLE`, prints each disagreement of the PCG's states with
+/// rustc's facts as `PCG Oracle: [function] class: place at point: detail`.
+/// With `PCG_ORACLE_PROBES`, appends the function's borrow-check probes to
+/// that file, in the format `borrowck-body-storage` reads.
+fn report_oracle<'a, 'tcx: 'a>(
+    item_name: &str,
+    settings: &PcgSettings,
+    output: &mut PcgOutput<'a, 'tcx>,
+    bc: &'a RustBorrowCheckerImpl<'a, 'tcx>,
+) {
+    if !settings.oracle && settings.oracle_probes.is_none() {
+        return;
+    }
+    let (mut disagreements, probes) = oracle::over_restriction(output, bc);
+    if settings.oracle {
+        disagreements.extend(oracle::over_permission(output, bc));
+        for d in disagreements {
+            eprintln!(
+                "PCG Oracle: [{item_name}] {}: {} at {}: {}",
+                d.class, d.place, d.point, d.detail
+            );
+        }
+    }
+    if let Some(path) = &settings.oracle_probes {
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap_or_else(|e| panic!("Failed to open {}: {e}", path.display()));
+        for (id, probe) in probes.iter().enumerate() {
+            writeln!(
+                file,
+                "PROBE\t{id}\t{item_name}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                probe.block,
+                probe.index,
+                if probe.mutable { "mut" } else { "shared" },
+                probe.local,
+                probe.projection,
+                probe.class,
+                probe.place,
+                probe.point,
+                probe.capability
+            )
+            .unwrap();
+        }
+    }
 }
 
 fn emit_and_check_annotations(

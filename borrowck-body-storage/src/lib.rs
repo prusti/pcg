@@ -2,6 +2,11 @@
 
 extern crate rustc_hir;
 extern crate rustc_middle;
+extern crate rustc_mir_transform;
+
+mod probes;
+
+pub use probes::probes_enabled;
 
 use std::cell::{Cell, RefCell};
 
@@ -46,8 +51,11 @@ pub unsafe fn take_stored_body(tcx: TyCtxt<'_>, def_id: LocalDefId) -> BodyWithB
     })
 }
 
-pub fn set_mir_borrowck(_session: &Session, providers: &mut Providers) {
+pub fn set_mir_borrowck(session: &Session, providers: &mut Providers) {
     providers.queries.mir_borrowck = mir_borrowck;
+    if probes_enabled() {
+        probes::set_probe_provider(session, providers);
+    }
 }
 
 #[rustversion::before(2025-07-01)]

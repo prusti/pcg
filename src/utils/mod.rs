@@ -134,6 +134,12 @@ pub struct PcgSettings {
     /// without panicking (`PCG_CHECKS_WARN_ONLY`), to collect the known
     /// violations of a crate; the other validity assertions still panic.
     pub checks_warn_only: bool,
+    /// Whether `pcg_bin` reports the disagreements of each PCG state with
+    /// rustc's dataflow facts (see [`crate::oracle`]).
+    pub oracle: bool,
+    /// The file `pcg_bin` appends the borrow-check probes of each function
+    /// to (see [`crate::oracle::Probe`]).
+    pub oracle_probes: Option<PathBuf>,
 }
 
 impl Default for PcgSettings {
@@ -211,6 +217,9 @@ impl PcgSettings {
                 .collect();
         let checks_warn_only =
             Self::process_bool_var(&mut processed_vars, "PCG_CHECKS_WARN_ONLY", false);
+        let oracle = Self::process_bool_var(&mut processed_vars, "PCG_ORACLE", false);
+        let oracle_probes =
+            Self::process_string_var(&mut processed_vars, "PCG_ORACLE_PROBES").map(PathBuf::from);
 
         // Check for unknown PCG_ environment variables
         Self::check_for_unknown_vars(&processed_vars);
@@ -234,6 +243,8 @@ impl PcgSettings {
             pack_strategy,
             expected_check_failures,
             checks_warn_only,
+            oracle,
+            oracle_probes,
         }
     }
 

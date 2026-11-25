@@ -107,7 +107,9 @@ pub fn pcg_check_command(dir: &Path, options: &RunOnCrateOptions) -> Command {
     command
 }
 
-fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
+/// The `// option PCG_...: value` settings of a test file.
+#[allow(dead_code)]
+pub fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
     let content = std::fs::read_to_string(file)
         .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
 

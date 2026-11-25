@@ -3,7 +3,8 @@
 //! changes only what it names ([`action`]), every capability that rises has
 //! a source ([`conservation`]), each loan gives back what it took
 //! ([`ledger`]), replaying the recorded capability changes reproduces each
-//! state ([`replay`]), and each state keeps its invariants ([`state`]).
+//! state ([`replay`]), and each state keeps its invariants ([`state`]). The
+//! [`oracle`] compares the states with rustc's facts.
 //!
 //! A failed check reports `PCG Check Failed: [function] check: message`,
 //! where `check` names the rule, and panics unless
@@ -15,6 +16,7 @@
 pub(crate) mod action;
 pub(crate) mod conservation;
 pub(crate) mod ledger;
+pub mod oracle;
 pub(crate) mod replay;
 pub(crate) mod state;
 
