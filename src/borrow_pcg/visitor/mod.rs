@@ -69,6 +69,13 @@ impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifet
     }
 }
 
+/// Whether `region` is bound by a binder inside the visited type, e.g. the
+/// `'x` of `dyn for<'x> Fn(&'x u8)`. Such a region names no data that the
+/// type's value borrows: it is chosen anew at each use.
+fn is_bound_region(region: ty::Region<'_>) -> bool {
+    matches!(region.kind(), ty::RegionKind::ReBound(..))
+}
+
 struct LifetimeExtractor<'tcx> {
     lifetimes: Vec<ty::Region<'tcx>>,
 }
@@ -76,9 +83,13 @@ struct LifetimeExtractor<'tcx> {
 impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         match ty.kind() {
-            ty::TyKind::Dynamic(_, region, ..) => {
-                // TODO: predicates?
+            // The value behind a `dyn Sink<'b> + 'd` may hold borrows of both
+            // `'d` and `'b`: the object's methods can store a `&'b String`
+            // into it. The region bound comes first, then the free regions
+            // of the trait and its associated type bindings.
+            ty::TyKind::Dynamic(predicates, region, ..) => {
                 self.visit_region(*region);
+                predicates.visit_with(self);
             }
             //  TODO: Justify why function pointers are ignored
             ty::TyKind::FnPtr(_, _) => {}
@@ -95,7 +106,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
         }
     }
     fn visit_region(&mut self, rr: ty::Region<'tcx>) {
-        if !self.lifetimes.contains(&rr) {
+        if !is_bound_region(rr) && !self.lifetimes.contains(&rr) {
             self.lifetimes.push(rr);
         }
     }
@@ -254,8 +265,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
                 self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque));
                 self.push_trait_bound_regions_for(opaque);
             }
-            ty::TyKind::Dynamic(_, region, ..) => {
+            ty::TyKind::Dynamic(predicates, region, ..) => {
                 self.visit_region(*region);
+                predicates.visit_with(self);
             }
             ty::TyKind::FnPtr(_, _) => {}
             ty::TyKind::Closure(_, args) => {
@@ -270,7 +282,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
         }
     }
     fn visit_region(&mut self, rr: ty::Region<'tcx>) {
-        if !self.is_full() {
+        if !self.is_full() && !is_bound_region(rr) {
             self.push_if_absent(GeneralizedLifetime::Region(rr.into()));
         }
     }
