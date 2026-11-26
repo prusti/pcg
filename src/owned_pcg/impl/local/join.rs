@@ -18,7 +18,7 @@ use crate::{
     },
     pcg_validity_assert,
     utils::{
-        self, HasBorrowCheckerCtxt, Place, data_structures::HashSet,
+        self, HasBorrowCheckerCtxt, Place, SnapshotLocation, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
@@ -214,6 +214,41 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         self.capabilities.remove_all_postfixes(place, ctxt);
     }
 
+    /// Whether this path's expansion of `place` can be packed to
+    /// [`CapabilityKind::Write`] to match the other path, which holds `place`
+    /// as a leaf with capability `leaf_cap`. No part may be borrowed, so that
+    /// packing ends no loan.
+    ///
+    /// Against a [`CapabilityKind::Write`] leaf, every part must hold at least
+    /// [`CapabilityKind::Write`]: packing drops their values, which the other
+    /// path does not have. Against a [`CapabilityKind::Read`] leaf, every part
+    /// must already hold only [`CapabilityKind::Write`]; otherwise expanding
+    /// the leaf keeps the parts' values readable. Against any other leaf,
+    /// expanding the leaf loses nothing, so this returns false.
+    fn collapsible_against_leaf(
+        &self,
+        place: Place<'tcx>,
+        leaf_cap: CapabilityKind,
+        ctxt: JoinCtxt<'a, 'tcx>,
+    ) -> bool {
+        let part_cap_allowed = |cap: CapabilityKind| match leaf_cap {
+            CapabilityKind::Write => cap >= CapabilityKind::Write,
+            CapabilityKind::Read => cap == CapabilityKind::Write,
+            _ => false,
+        };
+        self.owned
+            .leaf_places(ctxt)
+            .into_iter()
+            .map(Place::from)
+            .filter(|part| place.is_strict_prefix_of(*part))
+            .all(|part| {
+                self.capabilities
+                    .get(part, ctxt)
+                    .is_some_and(part_cap_allowed)
+                    && !self.borrows.graph.contains(part, ctxt.bc_ctxt())
+            })
+    }
+
     fn join_all_places_in_expansion(
         &mut self,
         other: &JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
@@ -232,6 +267,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
         other_expansion: &ExpandedPlace<'tcx>,
+        other_is_fixed_target: bool,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<JoinExpandedPlaceResult<'tcx>, PcgError> {
         tracing::debug!("Joining expansion: {other_expansion:?}");
@@ -262,12 +298,15 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                         ctxt,
                     )?,
                 ))
-            } else if other_expansion.is_enum_expansion() {
+            } else if other_expansion.is_enum_expansion()
+                || (!other_is_fixed_target && other.collapsible_against_leaf(place, self_cap, ctxt))
+            {
                 // The other expansion is a downcast to a variant that is
-                // presumably borrowed or partially-moved (see 206_issue_77.rs).
+                // presumably borrowed or partially-moved (see 206_issue_77.rs),
+                // or its parts can be packed without ending a loan.
                 // It won't survive the join, so collapse it, emitting the
                 // operations: leaves with capability greater than write are weakened
-                // first, so that the emitted collape guarantees
+                // first, so that the emitted collapse guarantees
                 // that all packed-up places hold exactly its capability.
                 let mut ops: Vec<RepackOp<'tcx>> = other
                     .capabilities
@@ -286,6 +325,13 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
                     other.capabilities,
                     ctxt,
                 ));
+                if !other_expansion.is_enum_expansion() {
+                    // `place` is now a leaf on both paths, so its capabilities
+                    // are joined like those of any other leaves (against a
+                    // `Read` leaf, this ends that path's lending). The enum
+                    // case is left as it was.
+                    ops.extend(self.join_owned_places(other, place, ctxt)?);
+                }
                 Ok(JoinExpandedPlaceResult::CollapsedOtherExpansion(ops))
             } else {
                 // We might as well just expand our place
@@ -306,6 +352,7 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     fn visit_each_other_expansion_iteration(
         &mut self,
         other: &mut JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        other_is_fixed_target: bool,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let expansions_shortest_first = other
@@ -322,7 +369,12 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
             {
                 continue;
             }
-            let result = self.join_other_expanded_place(other, &other_expansion, ctxt)?;
+            let result = self.join_other_expanded_place(
+                other,
+                &other_expansion,
+                other_is_fixed_target,
+                ctxt,
+            )?;
             let performed_collapse = result.performed_collapse();
             if performed_collapse {
                 collapsed_places.insert(other_expansion.place);
@@ -332,9 +384,15 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         Ok(actions)
     }
 
+    /// Joins each expansion of `other` into `self`. `other_is_fixed_target`
+    /// holds when `other` is a copy of the already joined state that `self`,
+    /// a predecessor, is being repacked to match. Its expansions are then not
+    /// collapsed, since that would change only the copy and leave `self`
+    /// unmatched.
     fn visit_each_other_expansion(
         &mut self,
         mut other: JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansions<'tcx>>,
+        other_is_fixed_target: bool,
         ctxt: JoinCtxt<'a, 'tcx>,
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut actions = vec![];
@@ -342,7 +400,8 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
         loop {
             iteration += 1;
             tracing::debug!("Iteration {iteration}");
-            let iteration_actions = self.visit_each_other_expansion_iteration(&mut other, ctxt)?;
+            let iteration_actions =
+                self.visit_each_other_expansion_iteration(&mut other, other_is_fixed_target, ctxt)?;
             if iteration_actions.is_empty() {
                 break;
             }
@@ -487,17 +546,27 @@ impl<'pcg, 'a: 'pcg, 'tcx> JoinOwnedData<'a, 'pcg, 'tcx, &'pcg mut LocalExpansio
     ) -> Result<Vec<RepackOp<'tcx>>, PcgError> {
         let mut actions: Vec<RepackOp<'tcx>> = Vec::new();
         if self.owned.has_expansions() || other.owned.has_expansions() {
-            actions.extend(
-                other
-                    .reborrow()
-                    .visit_each_other_expansion(self.reborrow(), ctxt)?,
-            );
+            // `self` is never a copy, so its expansions may be collapsed.
+            actions.extend(other.reborrow().visit_each_other_expansion(
+                self.reborrow(),
+                false,
+                ctxt,
+            )?);
             self.render_debug_graph("Self After join_expansions (other)", ctxt);
             other.render_debug_graph("Other After join_expansions (other)", ctxt);
-            actions.extend(
-                self.reborrow()
-                    .visit_each_other_expansion(other.reborrow(), ctxt)?,
-            );
+            // `other` is a clone (see `Pcg::join_owned`): changes to its layout
+            // and borrows are discarded, and only its capabilities are joined
+            // into `self` afterwards. When it is the joined state (the only
+            // argument of `join_owned` with a `BeforeJoin` snapshot), `self` is
+            // a predecessor being repacked to match it, so this pass must not
+            // collapse `other`.
+            let other_is_fixed_target =
+                matches!(other.snapshot_location, SnapshotLocation::BeforeJoin(_));
+            actions.extend(self.reborrow().visit_each_other_expansion(
+                other.reborrow(),
+                other_is_fixed_target,
+                ctxt,
+            )?);
             self.render_debug_graph("Self After join_expansions (self)", ctxt);
             other.render_debug_graph("Other After join_expansions (self)", ctxt);
         } else {
