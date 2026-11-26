@@ -7,7 +7,9 @@ use crate::{
             ExtractRegionsCtxt, Generalized, HasTy, LifetimeProjectionIdx, PcgRegion, Region,
             TyVarianceVisitor, default_region_display_output,
         },
-        visitor::{GeneralizedLifetime, extract_generalized_lifetimes, extract_regions},
+        visitor::{
+            GeneralizedLifetime, LifetimeEnv, extract_generalized_lifetimes, extract_regions,
+        },
     },
     error::{PcgError, PcgUnsupportedError},
     owned_pcg::RepackGuide,
@@ -357,7 +359,7 @@ pub trait DebugCtxt: Copy + DisplayCtxtFor<ty::RegionVid> {
     fn num_basic_blocks(&self) -> usize;
 }
 
-pub trait LocalTys<'tcx> {
+pub trait LocalTys<'tcx>: HasLifetimeEnv<'tcx> {
     fn local_ty(&self, local: Local) -> ty::Ty<'tcx>;
 }
 
@@ -406,14 +408,38 @@ impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, PcgRegi
     }
 }
 
-impl<'tcx, Ctxt: Copy, T: HasTy<'tcx, Ctxt>> ExtractRegionsCtxt<'tcx, T, GeneralizedLifetime<'tcx>>
-    for Ctxt
+impl<'tcx, Ctxt: HasLifetimeEnv<'tcx>, T: HasTy<'tcx, Ctxt>>
+    ExtractRegionsCtxt<'tcx, T, GeneralizedLifetime<'tcx>> for Ctxt
 {
     fn extract_regions(
         self,
         data: T,
     ) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
-        extract_generalized_lifetimes(data.rust_ty(self), None)
+        extract_generalized_lifetimes(data.rust_ty(self), self.lifetime_env())
+    }
+}
+
+/// A context whose types are written in the generic parameters of one
+/// function, which determine their generalized lifetimes.
+pub trait HasLifetimeEnv<'tcx>: Copy {
+    fn lifetime_env(self) -> LifetimeEnv<'tcx>;
+}
+
+impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasLifetimeEnv<'tcx> for Ctxt {
+    fn lifetime_env(self) -> LifetimeEnv<'tcx> {
+        LifetimeEnv::new(self.tcx(), self.body().source.def_id())
+    }
+}
+
+impl<'tcx> HasLifetimeEnv<'tcx> for LifetimeEnv<'tcx> {
+    fn lifetime_env(self) -> LifetimeEnv<'tcx> {
+        self
+    }
+}
+
+impl<'tcx> HasTyCtxt<'tcx> for LifetimeEnv<'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> {
+        self.tcx
     }
 }
 

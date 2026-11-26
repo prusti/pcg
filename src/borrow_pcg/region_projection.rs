@@ -25,8 +25,8 @@ use crate::{
         },
     },
     utils::{
-        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasPlace, HasTyCtxt,
-        PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation,
+        CompilerCtxt, DebugCtxt, HasBorrowCheckerCtxt, HasCompilerCtxt, HasLifetimeEnv, HasPlace,
+        HasTyCtxt, PcgNodeComponent, Place, PlaceProjectable, SnapshotLocation,
         display::{DisplayCtxtFor, DisplayOutput, DisplayWithCtxt, OutputMode},
         place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
         remote::RemotePlace,
@@ -852,8 +852,12 @@ impl<'tcx, P: Eq + Hash + fmt::Debug + Copy> PcgLifetimeProjectionBaseLike<'tcx,
     }
 }
 
-impl<'lproj: 'tcx, 'tcx, Ctxt: Copy + HasTyCtxt<'tcx>, T: DisplayWithCtxt<Ctxt> + HasTy<'tcx, Ctxt>>
-    DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
+impl<
+    'lproj: 'tcx,
+    'tcx,
+    Ctxt: HasLifetimeEnv<'tcx> + HasTyCtxt<'tcx>,
+    T: DisplayWithCtxt<Ctxt> + HasTy<'tcx, Ctxt>,
+> DisplayWithCtxt<Ctxt> for LifetimeProjection<'lproj, T>
 where
     GeneralizedLifetime<'tcx>: DisplayWithCtxt<Ctxt>,
 {
@@ -1013,7 +1017,11 @@ impl<
 > HasValidityCheck<Ctxt> for LifetimeProjection<'tcx, T>
 {
     fn check_validity(&self, ctxt: Ctxt) -> Result<(), String> {
-        if has_generalized_lifetime_at(self.base.rust_ty(ctxt), self.region_idx.index()) {
+        if has_generalized_lifetime_at(
+            self.base.rust_ty(ctxt),
+            self.region_idx.index(),
+            ctxt.lifetime_env(),
+        ) {
             Ok(())
         } else {
             Err(format!(

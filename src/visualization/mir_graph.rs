@@ -3,7 +3,7 @@ use crate::{
         self,
         abstraction::{ArgIdx, ArgIdxOrResult, FunctionShapeInput, FunctionShapeOutput},
         region_projection::RegionIdxMarker,
-        visitor::{extract_generalized_lifetimes, extract_regions},
+        visitor::{GeneralizedLifetime, LifetimeEnv, extract_generalized_lifetimes},
     },
     rustc_interface::{
         self,
@@ -11,7 +11,9 @@ use crate::{
         middle::ty::{self, TyCtxt},
         span::{BytePos, Span},
     },
-    utils::{CompilerCtxt, HasCompilerCtxt, Place, display::DisplayWithCompilerCtxt},
+    utils::{
+        CompilerCtxt, HasCompilerCtxt, HasLifetimeEnv, Place, display::DisplayWithCompilerCtxt,
+    },
 };
 use itertools::Itertools;
 use serde_derive::{Deserialize, Serialize};
@@ -391,65 +393,29 @@ pub struct ShapeLabelFormatter {
 }
 
 impl ShapeLabelFormatter {
-    /// Build a formatter from the types at a call site (lifetime projections).
-    fn new<'tcx>(
-        input_tys: &[ty::Ty<'tcx>],
-        output_ty: ty::Ty<'tcx>,
-        arg_labels: Vec<String>,
-        tcx: TyCtxt<'tcx>,
-    ) -> Self {
-        let input_regions = input_tys
-            .iter()
-            .map(|ty| {
-                extract_regions(*ty)
-                    .iter()
-                    .map(|r| r.to_short_string(tcx))
-                    .collect()
-            })
-            .collect();
-        let output_regions = extract_regions(output_ty)
-            .iter()
-            .map(|r| r.to_short_string(tcx))
-            .collect();
-        Self {
-            input_regions,
-            output_regions,
-            arg_labels: Some(arg_labels),
-        }
-    }
-
-    /// Build a formatter from the types at a fn sig (generalized lifetime
-    /// projections), which includes `RegionsIn(T)` entries for type parameters.
+    /// Build a formatter for a shape over the generalized lifetime
+    /// projections of `input_tys` and `output_ty` in `env`.
     #[must_use]
     pub fn for_generalized<'tcx>(
         input_tys: &[ty::Ty<'tcx>],
         output_ty: ty::Ty<'tcx>,
         arg_labels: Vec<String>,
-        tcx: TyCtxt<'tcx>,
+        env: LifetimeEnv<'tcx>,
     ) -> Self {
-        use crate::borrow_pcg::visitor::{GeneralizedLifetime, extract_generalized_lifetimes};
-
         let format_gl = |gl: &GeneralizedLifetime<'tcx>| match gl {
-            GeneralizedLifetime::Region(r) => r.to_short_string(tcx),
+            GeneralizedLifetime::Region(r) => r.to_short_string(env.tcx),
             GeneralizedLifetime::RegionsIn(opaque) => format!("RegionsIn({opaque})"),
+            GeneralizedLifetime::BoundPart(opaque, lifetime) => format!("{opaque}[{lifetime}]"),
         };
-
-        let input_regions = input_tys
-            .iter()
-            .map(|ty| {
-                extract_generalized_lifetimes(*ty, None)
-                    .iter()
-                    .map(format_gl)
-                    .collect()
-            })
-            .collect();
-        let output_regions = extract_generalized_lifetimes(output_ty, None)
-            .iter()
-            .map(format_gl)
-            .collect();
+        let labels = |ty: ty::Ty<'tcx>| {
+            extract_generalized_lifetimes(ty, env)
+                .iter()
+                .map(format_gl)
+                .collect()
+        };
         Self {
-            input_regions,
-            output_regions,
+            input_regions: input_tys.iter().map(|ty| labels(*ty)).collect(),
+            output_regions: labels(output_ty),
             arg_labels: Some(arg_labels),
         }
     }
@@ -498,54 +464,14 @@ impl ShapeLabelFormatter {
     /// Build a formatter for a function's generalized sig shape, looking up
     /// argument names, types, and trait-bound regions from the `def_id`.
     #[must_use]
-    pub fn for_fn_sig<'tcx>(def_id: hir::def_id::DefId, tcx: TyCtxt<'tcx>) -> Self {
-        use crate::borrow_pcg::{
-            edge::abstraction::function::TraitBoundRegions, visitor::GeneralizedLifetime,
-        };
-
+    pub fn for_fn_sig(def_id: hir::def_id::DefId, tcx: TyCtxt<'_>) -> Self {
         let sig = borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);
-        let arg_labels = callee_arg_labels(def_id, tcx);
-        let param_env = tcx.param_env(def_id);
-        let tbr = TraitBoundRegions::new(param_env);
-        let tbr_map = tbr.as_map();
-
-        let format_gl = |gl: &GeneralizedLifetime<'tcx>| match gl {
-            GeneralizedLifetime::Region(r) => r.to_short_string(tcx),
-            GeneralizedLifetime::RegionsIn(opaque) => format!("RegionsIn({opaque})"),
-        };
-
-        let input_regions = sig
-            .inputs()
-            .iter()
-            .map(|ty| {
-                extract_generalized_lifetimes(*ty, Some(tbr_map))
-                    .iter()
-                    .map(&format_gl)
-                    .collect()
-            })
-            .collect();
-        let mut output_gls = extract_generalized_lifetimes(sig.output(), Some(tbr_map))
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        // Mirror the logic in result_projections: for type parameter return
-        // types, include all signature lifetimes.
-        if matches!(sig.output().kind(), ty::TyKind::Param(_)) {
-            for input_ty in sig.inputs() {
-                for gl in extract_generalized_lifetimes(*input_ty, Some(tbr_map)) {
-                    if matches!(gl, GeneralizedLifetime::Region(_)) && !output_gls.contains(&gl) {
-                        output_gls.push(gl);
-                    }
-                }
-            }
-        }
-
-        let output_regions = output_gls.iter().map(&format_gl).collect();
-        Self {
-            input_regions,
-            output_regions,
-            arg_labels: Some(arg_labels),
-        }
+        Self::for_generalized(
+            sig.inputs(),
+            sig.output(),
+            callee_arg_labels(def_id, tcx),
+            LifetimeEnv::new(tcx, def_id),
+        )
     }
 
     /// Returns `(raw_display, pretty_label)` pairs for every input and output
@@ -703,27 +629,27 @@ fn generate_function_shape_dot(
     Some(function_shape_to_dot(shape, &fn_name, Some(&formatter)))
 }
 
-/// Generate a DOT graph representing the call shape derived solely from the
-/// types of the operands at the call site (ignoring the callee's fn def
-/// signature).
+/// Generate a DOT graph representing the spec of the call to a function item
+/// at `location`: the callee's signature spec instantiated with the types of
+/// the call.
 fn generate_call_shape_dot<'tcx>(
-    input_tys: Vec<ty::Ty<'tcx>>,
-    output_ty: ty::Ty<'tcx>,
+    terminator: &mir::Terminator<'tcx>,
     location: mir::Location,
     ctxt: CompilerCtxt<'_, 'tcx>,
-    callee_def_id: Option<hir::def_id::DefId>,
-) -> String {
+) -> Option<String> {
     use crate::borrow_pcg::{
-        abstraction::FunctionShape, edge::abstraction::function::FnCallDataSource,
+        abstraction::FunctionShape, edge::abstraction::function::DefinedFnCallWithCallTys,
     };
 
-    let arg_labels = callee_def_id.map(|did| callee_arg_labels(did, ctxt.tcx()));
-    let formatter =
-        ShapeLabelFormatter::new(&input_tys, output_ty, arg_labels.unwrap(), ctxt.tcx());
-
-    let data_source = FnCallDataSource::new(location, input_tys, output_ty);
-    let shape = FunctionShape::new(&data_source, ctxt);
-    function_shape_to_dot(shape, "call_shape", Some(&formatter))
+    let call = DefinedFnCallWithCallTys::from_terminator(terminator, ctxt.def_id(), ctxt)?;
+    let formatter = ShapeLabelFormatter::for_generalized(
+        &call.call_arg_tys,
+        call.call_result_ty,
+        callee_arg_labels(call.fn_def_id(), ctxt.tcx()),
+        ctxt.lifetime_env(),
+    );
+    let shape = FunctionShape::for_fn_call(call, location, ctxt).ok()?;
+    Some(function_shape_to_dot(shape, "call_shape", Some(&formatter)))
 }
 
 fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
@@ -761,29 +687,14 @@ fn mk_mir_graph(ctxt: CompilerCtxt<'_, '_>) -> MirGraph {
 
         // TODO: In principle, we can also create graphs for call shapes for
         // undefined functions (e.g. function pointers, closures).
-        let (sig_shape_dot, call_shape_dot) = if let TerminatorKind::Call {
-            func,
-            args,
-            destination,
-            ..
-        } = &data.terminator().kind
+        let (sig_shape_dot, call_shape_dot) = if let TerminatorKind::Call { func, .. } =
+            &data.terminator().kind
         {
             let callee_def_id = resolve_callee(func, ctxt.body(), ctxt.tcx());
             let sig_shape =
                 callee_def_id.and_then(|def_id| generate_function_shape_dot(def_id, ctxt));
-            let input_tys = args
-                .iter()
-                .map(|arg| arg.node.ty(ctxt.body(), ctxt.tcx()))
-                .collect();
-            let output_ty = destination.ty(ctxt.body(), ctxt.tcx()).ty;
-            let call_shape = generate_call_shape_dot(
-                input_tys,
-                output_ty,
-                terminator_location,
-                ctxt,
-                callee_def_id,
-            );
-            (sig_shape, Some(call_shape))
+            let call_shape = generate_call_shape_dot(data.terminator(), terminator_location, ctxt);
+            (sig_shape, call_shape)
         } else {
             (None, None)
         };

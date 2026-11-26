@@ -279,6 +279,23 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                         self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
                     })
             }
+            // A bound part moves with the value of its opaque type. Loans flow
+            // into or out of it only through the methods of the bound, i.e.
+            // at calls, whose flows come from their spec.
+            (
+                GeneralizedLifetime::BoundPart(sup_opaque, sup_lifetime),
+                GeneralizedLifetime::BoundPart(sub_opaque, sub_lifetime),
+            ) => {
+                sup_lifetime == sub_lifetime
+                    && self.outlives_generalized(
+                        GeneralizedLifetime::RegionsIn(sup_opaque),
+                        GeneralizedLifetime::RegionsIn(sub_opaque),
+                        location,
+                    )
+            }
+            (GeneralizedLifetime::BoundPart(..), _) | (_, GeneralizedLifetime::BoundPart(..)) => {
+                false
+            }
         }
     }
 
@@ -342,30 +359,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
 
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
-
-    /// Returns an iterator over all `RegionVid`s for this body.
-    ///
-    /// The implementation is a hack: it extracts region vids from the
-    /// constraint SCC indices in the region inference context. This is
-    /// currently used in
-    /// [`DefinedFnCallWithCallTys::normalize_sig`](crate::borrow_pcg::edge::abstraction::function::DefinedFnCallWithCallTys)
-    /// to pre-populate an inference context with the correct number of region
-    /// variables before performing type normalization. This method should be
-    /// removed if we find a better way to perform that normalization.
-    fn iter_region_vids<'slf>(&'slf self) -> Box<dyn Iterator<Item = RegionVid> + 'slf>
-    where
-        'tcx: 'slf,
-    {
-        Box::new(
-            self.rust_borrow_checker()
-                .unwrap()
-                .region_infer_ctxt()
-                .constraint_sccs()
-                .scc_indices()
-                .iter_enumerated()
-                .map(move |(region_vid, _)| region_vid),
-        )
-    }
 }
 
 impl<'a, 'tcx> DisplayWithCtxt<&'a dyn BorrowCheckerInterface<'tcx>> for RegionVid {

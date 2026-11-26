@@ -361,7 +361,7 @@ fn test_deref_mut_alias_output() {
 
         let expected = make_shape(
             &[arg_in(0, 0), arg_in(0, 1)],
-            &[result(0)],
+            &[arg_out(0, 1), result(0)],
             &[
                 (arg_in(0, 0), result(0)),
                 (arg_in(0, 1), arg_out(0, 1)),
@@ -430,44 +430,46 @@ impl<'a> FromMutref<'a> for &'a mut i32 {
         let ctxt = analysis.ctxt();
         let (call, _) = find_call("get", ctxt); // Call to `get()` in `caller()`
         let sig_shape = SigShape::for_fn_sig(call.fn_def_id(), ctxt).unwrap();
-        // arg_in(0,0) = 'b, arg_in(0,1) = RegionsIn(Self), arg_in(0,2) = 'a (from Self: Foo<'a>)
-        // result(0) = RegionsIn(T), result(1) = 'b (from T: FromMutref<'b>),
-        // result(2) = 'a (all sig lifetimes included for type param result)
+        // arg_in(0,0) = 'b, arg_in(0,1) = RegionsIn(Self), arg_in(0,2) = Self['a] (the
+        // part of Self that the bound Self: Foo<'a> names), result(0) = RegionsIn(T),
+        // result(1) = T['b] (from T: FromMutref<'b>).
         //
         // Key edges and their derivations:
         //
-        //   self|'b → result|'b:
-        //     'b outlives 'b (reflexive).
+        //   self|'b → result|T['b]:
+        //     T: FromMutref<'b> lets a `'b` loan flow into T['b].
         //
-        //   self|RegionsIn(Self) → self|RegionsIn(Self):
-        //     Reflexive; RegionsIn(Self) is invariant in &'b mut Self.
+        //   self|RegionsIn(Self) → self|RegionsIn(Self), self|Self['a] → self|Self['a]:
+        //     Both are behind `&'b mut`, so `get` may write into them.
         //
-        //   self|RegionsIn(Self) → result|'b:
-        //     RegionsIn(Self) → Region('b) (implied bound from &'b mut Self).
-        //
-        //   self|'a → result|'a:
-        //     'a outlives 'a (reflexive). The result includes 'a because T is
-        //     a type parameter and could contain borrows under any signature
-        //     lifetime.
+        //   self|RegionsIn(Self) → result|T['b], self|Self['a] → result|T['b]:
+        //     Self: 'b (implied by &'b mut Self) lets them flow into 'b, and from
+        //     there into T['b].
 
         let self_b = arg_in(0, 0);
         let regions_in_self = arg_in(0, 1);
         let self_a = arg_in(0, 2);
         let regions_in_self_out = arg_out(0, 1);
+        let self_a_out = arg_out(0, 2);
         let regions_in_result = result(0);
         let result_b = result(1);
-        let result_a = result(2);
 
         let formatter = ShapeLabelFormatter::for_fn_sig(call.fn_def_id(), ctxt.tcx());
 
         let expected = make_sig_shape(
             &[self_b, regions_in_self, self_a],
-            &[regions_in_result, result_b, result_a],
+            &[
+                regions_in_self_out,
+                self_a_out,
+                regions_in_result,
+                result_b,
+            ],
             &[
                 (self_b, result_b),
                 (regions_in_self, regions_in_self_out),
                 (regions_in_self, result_b),
-                (self_a, result_a),
+                (self_a, self_a_out),
+                (self_a, result_b),
             ],
         );
         assert_shape_eq_with_formatter(&sig_shape, &expected, Some(&formatter));

@@ -1,9 +1,10 @@
 use derive_more::From;
-use std::{collections::HashMap, hash::Hash};
+use std::hash::Hash;
 
 use crate::{
     borrow_pcg::region_projection::region_is_invariant_in_type,
     rustc_interface::{
+        hir::def_id::DefId,
         index::IndexVec,
         middle::ty::{self, TypeSuperVisitable, TypeVisitable, TypeVisitor},
     },
@@ -64,7 +65,7 @@ impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifet
             // A type parameter `T` that appears in the type is always
             // considered invariant — any borrows hidden inside could be
             // affected by the function.
-            GeneralizedLifetime::RegionsIn(_param_ty) => true,
+            GeneralizedLifetime::RegionsIn(_) | GeneralizedLifetime::BoundPart(..) => true,
         }
     }
 }
@@ -193,14 +194,40 @@ impl std::fmt::Display for OpaqueTy<'_> {
     }
 }
 
-/// A generalized lifetime: either a region or `RegionsIn(τ)` for an opaque
-/// type (type parameter or non-normalizable alias).
+/// A lifetime that a bound on an opaque type mentions: a region, or the
+/// lifetimes of an opaque type, e.g. `'c` in `T: Sink<'c>`, `RegionsIn(A)` in
+/// `Self: Extend<A>`, and `'a` in `I: Iterator<Item = &'a u8>`.
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+pub enum BoundLifetime<'tcx> {
+    Region(PcgRegion<'tcx>),
+    RegionsIn(OpaqueTy<'tcx>),
+}
+
+impl std::fmt::Display for BoundLifetime<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Region(region) => write!(f, "{region:?}"),
+            Self::RegionsIn(opaque_ty) => write!(f, "RegionsIn({opaque_ty})"),
+        }
+    }
+}
+
+/// A generalized lifetime: a region, `RegionsIn(τ)` for an opaque type (type
+/// parameter or non-normalizable alias), or a part of an opaque type that its
+/// bounds name.
 ///
 /// See the [_generalized lifetime_ definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From)]
 pub enum GeneralizedLifetime<'tcx> {
     Region(PcgRegion<'tcx>),
     RegionsIn(OpaqueTy<'tcx>),
+    /// `T↓L`: the part of the value of `T` that the bounds on `T` mentioning
+    /// `L` let loans of `L` flow into or out of. For `T: Sink<'c>`, the impl
+    /// of `put(&mut self, x: &'c String)` may store `x` into it, and nowhere
+    /// else in the value of `T`. It is a part of `RegionsIn(T)`, which is for
+    /// moving a value of `T` as a whole.
+    #[from(ignore)]
+    BoundPart(OpaqueTy<'tcx>, BoundLifetime<'tcx>),
 }
 
 impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtxt<Ctxt>
@@ -210,22 +237,106 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtx
         match self {
             GeneralizedLifetime::Region(region) => region.display_output(ctxt, mode),
             GeneralizedLifetime::RegionsIn(opaque_ty) => format!("RegionsIn({opaque_ty})").into(),
+            GeneralizedLifetime::BoundPart(opaque_ty, lifetime) => {
+                format!("{opaque_ty}[{lifetime}]").into()
+            }
         }
     }
 }
 
-struct GeneralizedLifetimeExtractor<'a, 'tcx> {
+/// The function whose generic parameters and where clauses the types of a
+/// computation are written in. The bounds of its parameters determine the
+/// [`GeneralizedLifetime::BoundPart`]s of their types.
+#[derive(Clone, Copy)]
+pub struct LifetimeEnv<'tcx> {
+    pub(crate) tcx: ty::TyCtxt<'tcx>,
+    pub(crate) def_id: DefId,
+}
+
+impl std::fmt::Debug for LifetimeEnv<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "LifetimeEnv({:?})", self.def_id)
+    }
+}
+
+impl<'tcx> LifetimeEnv<'tcx> {
+    #[must_use]
+    pub fn new(tcx: ty::TyCtxt<'tcx>, def_id: DefId) -> Self {
+        Self { tcx, def_id }
+    }
+
+    /// The lifetimes that the bounds on `opaque_ty` mention, in the order of
+    /// the where clauses, without duplicates. Regions bound by the bound
+    /// itself (`for<'x>`) and `opaque_ty` itself are not included.
+    pub(crate) fn bound_lifetimes(self, opaque_ty: OpaqueTy<'tcx>) -> Vec<BoundLifetime<'tcx>> {
+        let self_ty = opaque_ty.ty(self.tcx);
+        let mut collector = BoundLifetimeCollector {
+            of: opaque_ty,
+            lifetimes: Vec::new(),
+        };
+        for clause in self.tcx.param_env(self.def_id).caller_bounds() {
+            if let Some(trait_clause) = clause.as_trait_clause() {
+                let trait_ref = trait_clause.skip_binder().trait_ref;
+                if trait_ref.self_ty() == self_ty {
+                    trait_ref
+                        .args
+                        .iter()
+                        .skip(1)
+                        .for_each(|arg| arg.visit_with(&mut collector));
+                }
+            } else if let Some(projection_clause) = clause.as_projection_clause() {
+                let projection = projection_clause.skip_binder();
+                if projection.projection_term.self_ty() == self_ty {
+                    let args = projection.projection_term.args.iter().skip(1);
+                    args.for_each(|arg| arg.visit_with(&mut collector));
+                    projection.term.visit_with(&mut collector);
+                }
+            }
+        }
+        collector.lifetimes
+    }
+}
+
+/// Collects the lifetimes that the arguments of a bound mention, for
+/// [`LifetimeEnv::bound_lifetimes`].
+struct BoundLifetimeCollector<'tcx> {
+    of: OpaqueTy<'tcx>,
+    lifetimes: Vec<BoundLifetime<'tcx>>,
+}
+
+impl<'tcx> BoundLifetimeCollector<'tcx> {
+    fn push(&mut self, lifetime: BoundLifetime<'tcx>) {
+        if lifetime != BoundLifetime::RegionsIn(self.of) && !self.lifetimes.contains(&lifetime) {
+            self.lifetimes.push(lifetime);
+        }
+    }
+}
+
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for BoundLifetimeCollector<'tcx> {
+    fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
+        match OpaqueTy::try_from(ty) {
+            Ok(opaque_ty) => self.push(BoundLifetime::RegionsIn(opaque_ty)),
+            Err(()) => ty.super_visit_with(self),
+        }
+    }
+
+    fn visit_region(&mut self, region: ty::Region<'tcx>) {
+        if !is_bound_region(region) {
+            self.push(BoundLifetime::Region(region.into()));
+        }
+    }
+}
+
+struct GeneralizedLifetimeExtractor<'tcx> {
     lifetimes: Vec<GeneralizedLifetime<'tcx>>,
-    /// When provided, trait-bound regions for type parameters are included
-    /// as separate `Region(r)` entries after the `RegionsIn(T)` entry.
-    trait_bound_regions: Option<&'a HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>>,
+    env: LifetimeEnv<'tcx>,
     /// The visitor stops visiting once it has found at least this many
     /// lifetimes. The lifetimes found are then the first ones of the full
     /// list.
     limit: usize,
 }
 
-impl<'tcx> GeneralizedLifetimeExtractor<'_, 'tcx> {
+impl<'tcx> GeneralizedLifetimeExtractor<'tcx> {
     fn is_full(&self) -> bool {
         self.lifetimes.len() >= self.limit
     }
@@ -236,35 +347,24 @@ impl<'tcx> GeneralizedLifetimeExtractor<'_, 'tcx> {
         }
     }
 
-    /// After pushing `RegionsIn(opaque_ty)` for a type parameter or alias,
-    /// also push any trait-bound regions as separate `Region(r)` entries.
-    fn push_trait_bound_regions_for(&mut self, opaque_ty: OpaqueTy<'tcx>) {
-        if let Some(tbr) = self.trait_bound_regions
-            && let Some(regions) = tbr.get(&opaque_ty)
-        {
-            for &r in regions {
-                self.push_if_absent(GeneralizedLifetime::Region(r.into()));
-            }
+    /// The lifetimes of a type parameter or alias: `RegionsIn` of it, then
+    /// the parts that its bounds name.
+    fn push_opaque(&mut self, opaque_ty: OpaqueTy<'tcx>) {
+        self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque_ty));
+        for lifetime in self.env.bound_lifetimes(opaque_ty) {
+            self.push_if_absent(GeneralizedLifetime::BoundPart(opaque_ty, lifetime));
         }
     }
 }
 
-impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 'tcx> {
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'tcx> {
     fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
         if self.is_full() {
             return;
         }
         match ty.kind() {
-            ty::TyKind::Param(param_ty) => {
-                let opaque = OpaqueTy::Param(*param_ty);
-                self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque));
-                self.push_trait_bound_regions_for(opaque);
-            }
-            ty::TyKind::Alias(..) => {
-                let opaque = OpaqueTy::Alias(ty);
-                self.push_if_absent(GeneralizedLifetime::RegionsIn(opaque));
-                self.push_trait_bound_regions_for(opaque);
-            }
+            ty::TyKind::Param(param_ty) => self.push_opaque(OpaqueTy::Param(*param_ty)),
+            ty::TyKind::Alias(..) => self.push_opaque(OpaqueTy::Alias(ty)),
             ty::TyKind::Dynamic(predicates, region, ..) => {
                 self.visit_region(*region);
                 predicates.visit_with(self);
@@ -288,18 +388,19 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'_, 't
     }
 }
 
-/// Returns the generalized lifetime list for `ty`: all regions and
+/// Returns the generalized lifetime list for `ty` in `env`: all regions,
 /// `RegionsIn(τ)` for opaque types (type parameters, non-normalizable
-/// aliases), in the order they appear, with duplicates removed.
+/// aliases), each followed by the parts of it that its bounds name, in the
+/// order they appear, with duplicates removed.
 ///
 /// See the [`glfts(τ)` definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
 pub(crate) fn extract_generalized_lifetimes<'tcx>(
     ty: ty::Ty<'tcx>,
-    trait_bound_regions: Option<&HashMap<OpaqueTy<'tcx>, Vec<ty::Region<'tcx>>>>,
+    env: LifetimeEnv<'tcx>,
 ) -> IndexVec<LifetimeProjectionIdx<Generalized>, GeneralizedLifetime<'tcx>> {
     let mut visitor = GeneralizedLifetimeExtractor {
         lifetimes: vec![],
-        trait_bound_regions,
+        env,
         limit: usize::MAX,
     };
     ty.visit_with(&mut visitor);
@@ -307,11 +408,15 @@ pub(crate) fn extract_generalized_lifetimes<'tcx>(
 }
 
 /// Whether `ty` has more than `idx` generalized lifetimes, i.e. whether `idx`
-/// indexes [`extract_generalized_lifetimes`]`(ty, None)`.
-pub(crate) fn has_generalized_lifetime_at(ty: ty::Ty<'_>, idx: usize) -> bool {
+/// indexes [`extract_generalized_lifetimes`]`(ty, env)`.
+pub(crate) fn has_generalized_lifetime_at<'tcx>(
+    ty: ty::Ty<'tcx>,
+    idx: usize,
+    env: LifetimeEnv<'tcx>,
+) -> bool {
     let mut visitor = GeneralizedLifetimeExtractor {
         lifetimes: vec![],
-        trait_bound_regions: None,
+        env,
         limit: idx.saturating_add(1),
     };
     ty.visit_with(&mut visitor);
