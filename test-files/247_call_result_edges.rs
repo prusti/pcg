@@ -232,4 +232,32 @@ fn first_item<'a, I: IntoIterator<Item = &'a u32>>(i: I) -> Option<&'a u32> {
     i.into_iter().next()
 }
 
+fn push_into<'b, 'c, C: Extend<&'c u32>>(c: &'b mut C, x: &'c u32) -> &'b mut C {
+    c.extend([x]);
+    c
+}
+
+// `x` may flow into the part `D['c]` of `*d`, and through `D: 'b` on into
+// the result's `'b`, if the type `D` stands for holds `'c` data (then `'c:
+// 'b`). rustc does not relate `'c` and `'b` here, which is fine for a flow
+// through a part of a type parameter.
+fn push_into_generic<'b, 'c, D: Extend<&'c u32>>(d: &'b mut D, x: &'c u32) -> &'b mut D {
+    push_into(d, x)
+}
+
+trait Make<'a> {
+    type Out;
+    fn make(&self) -> Self::Out;
+}
+
+// The closure's signature has an erased region in the alias type of its
+// parameter, which names no part of the alias's value.
+fn alias_in_closure_signature<'a, T: Make<'a>>(t: &T) -> usize {
+    let c = |x: <T as Make<'a>>::Out| {
+        let _y = x;
+        1usize
+    };
+    c(t.make())
+}
+
 fn main() {}

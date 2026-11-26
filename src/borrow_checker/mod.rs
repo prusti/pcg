@@ -9,7 +9,7 @@ use crate::{
     borrow_pcg::{
         GeneralizedLifetime,
         region_projection::PcgRegion,
-        visitor::{OpaqueTy, erase_regions},
+        visitor::{BoundLifetime, OpaqueTy, erase_regions},
     },
     pcg::PcgNode,
     rustc_interface::{
@@ -187,6 +187,14 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     }
 }
 
+/// The free regions of `ty`, in order and with duplicates, so that the
+/// regions of two types that are equal up to regions pair by position.
+fn free_regions_in_order<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<PcgRegion<'tcx>> {
+    let mut regions = vec![];
+    tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
+    regions
+}
+
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
@@ -243,14 +251,8 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                     if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
                         return false;
                     }
-                    // Keeps duplicates, so that the regions can be paired by position.
-                    let free_regions_in_order = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
-                        let mut regions = vec![];
-                        tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
-                        regions
-                    };
-                    let sup_regions = free_regions_in_order(sup_ty);
-                    let sub_regions = free_regions_in_order(sub_ty);
+                    let sup_regions = free_regions_in_order(sup_ty, tcx);
+                    let sub_regions = free_regions_in_order(sub_ty, tcx);
                     if sup_regions.len() != sub_regions.len() {
                         return false;
                     }
@@ -279,20 +281,40 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                         self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
                     })
             }
-            // A bound part moves with the value of its opaque type. Loans flow
-            // into or out of it only through the methods of the bound, i.e.
-            // at calls, whose flows come from their spec.
+            // A part moves with the value of its opaque type, into the same
+            // part of the value it is moved to. Loans flow into or out of it
+            // otherwise only through the methods of a bound, i.e. at calls,
+            // whose flows come from their spec. The parts of an alias type
+            // named by its region arguments correspond by position, as for
+            // `RegionsIn` above.
             (
                 GeneralizedLifetime::BoundPart(sup_opaque, sup_lifetime),
                 GeneralizedLifetime::BoundPart(sub_opaque, sub_lifetime),
-            ) => {
-                sup_lifetime == sub_lifetime
-                    && self.outlives_generalized(
-                        GeneralizedLifetime::RegionsIn(sup_opaque),
-                        GeneralizedLifetime::RegionsIn(sub_opaque),
-                        location,
-                    )
-            }
+            ) => match (sup_opaque, sub_opaque) {
+                (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
+                    let tcx = self.tcx();
+                    if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
+                        return false;
+                    }
+                    if let (BoundLifetime::Region(sup_region), BoundLifetime::Region(sub_region)) =
+                        (sup_lifetime, sub_lifetime)
+                    {
+                        let positions = |ty: ty::Ty<'tcx>, region: PcgRegion<'tcx>| {
+                            free_regions_in_order(ty, tcx)
+                                .into_iter()
+                                .enumerate()
+                                .filter(move |(_, r)| *r == region)
+                                .map(|(i, _)| i)
+                        };
+                        let sub_positions: Vec<usize> = positions(sub_ty, sub_region).collect();
+                        if positions(sup_ty, sup_region).any(|i| sub_positions.contains(&i)) {
+                            return self.outlives(sup_region, sub_region, location);
+                        }
+                    }
+                    sup_lifetime == sub_lifetime
+                }
+                _ => sup_opaque == sub_opaque && sup_lifetime == sub_lifetime,
+            },
             (GeneralizedLifetime::BoundPart(..), _) | (_, GeneralizedLifetime::BoundPart(..)) => {
                 false
             }

@@ -57,4 +57,19 @@ fn alias_region_shorter<T: for<'y> AssocWithLifetime<'y, Out: Copy>>(k: &u32) {
     let _ = *r;
 }
 
+trait Lend {
+    type Out<'y>;
+    fn lend<'y>(&self, y: &'y u32) -> Self::Out<'y>;
+}
+
+// The borrow of `y` is in the part of the alias's value that its argument
+// `'y` names. Moving the value moves that part into the same part of `b`,
+// whose region argument is another region variable.
+fn move_alias_part<'y, M: Lend>(m: &M, y: &'y u32) -> M::Out<'y> {
+    let a = m.lend(y);
+    // PCG: bb1[4] post_main: Add Edge a before bb1[4]:PostOperands↓<M as Lend>::Out<'_>[RegionVid('?9)] -> b↓<M as Lend>::Out<'_>[RegionVid('?12)]
+    let b = a;
+    b
+}
+
 fn main() {}

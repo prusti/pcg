@@ -275,7 +275,7 @@ fn paired_parts<'tcx>(
         if let (Some(actual_region), Some(formal_region)) =
             (actual_arg.as_region(), formal_arg.as_region())
         {
-            if !actual_region.is_static() && !is_bound_region(actual_region) {
+            if names_part(actual_region) && names_part(formal_region) {
                 pairs.push((
                     BoundLifetime::Region(actual_region.into()),
                     BoundLifetime::Region(formal_region.into()),
@@ -292,6 +292,13 @@ fn paired_parts<'tcx>(
     pairs
 }
 
+/// Whether the region argument `region` of an alias type names a part of its
+/// value (see [`LifetimeEnv::member_lifetimes`]): `'static`, bound and erased
+/// regions name no data.
+fn names_part(region: ty::Region<'_>) -> bool {
+    !region.is_static() && !is_bound_region(region) && !region.is_erased()
+}
+
 /// The lifetimes that the occurrences `actual` and `formal` at the same
 /// position of the arguments of two alias types give their parts, paired.
 fn member_pairs<'tcx>(
@@ -300,7 +307,7 @@ fn member_pairs<'tcx>(
     env: LifetimeEnv<'tcx>,
 ) -> Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> {
     let lifetime = |occurrence: OccurrenceKind<'tcx>| match occurrence {
-        OccurrenceKind::Region(region) if region.is_static() => None,
+        OccurrenceKind::Region(region) if !names_part(region) => None,
         OccurrenceKind::Region(region) => Some(BoundLifetime::Region(region.into())),
         OccurrenceKind::Opaque(ty) => {
             Some(BoundLifetime::RegionsIn(OpaqueTy::try_from(ty).unwrap()))
@@ -745,6 +752,25 @@ impl<'tcx> FlowGraph<'tcx> {
             }
         }
         seen
+    }
+
+    /// The outputs that loans in `from` may flow into through region nodes
+    /// only, i.e. by the outlives relations between regions alone.
+    fn outputs_through_regions(&self, from: Node<'tcx>) -> Vec<(ArgIdxOrResult, usize)> {
+        let mut seen: HashSet<Node<'tcx>> = HashSet::from_iter([from]);
+        let mut stack = vec![from];
+        let mut outputs = Vec::new();
+        while let Some(node) = stack.pop() {
+            for &successor in self.successors.get(&node).into_iter().flatten() {
+                let successor = self.nodes[successor];
+                match successor {
+                    Node::Output(base, idx) => outputs.push((base, idx)),
+                    Node::Region(_) if seen.insert(successor) => stack.push(successor),
+                    _ => {}
+                }
+            }
+        }
+        outputs
     }
 
     /// The outputs that loans in `from` may flow into.
@@ -1229,6 +1255,32 @@ pub(crate) fn call_spec<'tcx>(
     Err(MakeFunctionShapeError::UnsupportedRustVersion)
 }
 
+/// The flows of the spec of a call that its outlives relations between
+/// regions give alone, without going through a part of an opaque type: a flow
+/// through a part depends on the impl that the opaque type stands for.
+#[rustversion::since(2025-05-24)]
+fn flows_through_regions(
+    query: &CallSpecQuery<'_, '_>,
+) -> HashSet<((ArgIdx, usize), (ArgIdxOrResult, usize))> {
+    let spec = spec_graph(query);
+    spec.inputs
+        .iter()
+        .flat_map(|&(arg, idx)| {
+            spec.graph
+                .outputs_through_regions(Node::Input(arg, idx))
+                .into_iter()
+                .map(move |output| ((arg, idx), output))
+        })
+        .collect()
+}
+
+#[rustversion::before(2025-05-24)]
+fn flows_through_regions(
+    _query: &CallSpecQuery<'_, '_>,
+) -> HashSet<((ArgIdx, usize), (ArgIdxOrResult, usize))> {
+    HashSet::default()
+}
+
 /// The spec of the function whose body is analysed, for that body.
 struct BodySpec<'tcx> {
     def_id: DefId,
@@ -1669,17 +1721,19 @@ pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
 ) {
 }
 
-/// Checks the spec `shape` of the call at `location`, whose arguments and
-/// result have the types `arg_tys` and `result_ty`, against rustc's borrow
-/// checker. Panics (under validity checks) if
+/// Checks the spec `shape` of the call at `location`, computed from `query`,
+/// against rustc's borrow checker. Panics (under validity checks) if
 ///
 /// - the constraints that the borrow checker generated for this call relate
 ///   the region of an input to the region of an output, but the spec has no
 ///   edge between them: the spec misses a flow that rustc's typing of the
 ///   call allows (completeness); or
-/// - the spec has an edge between two regions that the borrow checker does
-///   not let outlive one another at the call: the edge has no reason in
-///   rustc (justification).
+/// - the spec has an edge between two regions, by the outlives relations
+///   between regions alone, that the borrow checker does not let outlive one
+///   another at the call: the edge has no reason in rustc (justification).
+///   A flow through a part of an opaque type of the caller is not checked:
+///   it depends on the impl that the type stands for, and rustc relates the
+///   two regions only where it knows that impl.
 ///
 /// The constraints of the call are those at its location that do not hold
 /// at every location: subtyping of the arguments and the result, the
@@ -1688,11 +1742,12 @@ pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
 /// are not among them; the completeness check is weaker for closures.
 pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
     shape: &FunctionShape,
-    arg_tys: &[ty::Ty<'tcx>],
-    result_ty: ty::Ty<'tcx>,
+    query: &CallSpecQuery<'_, 'tcx>,
     location: mir::Location,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
 ) {
+    let (arg_tys, result_ty) = (query.arg_tys, query.result_ty);
+    let region_flows = flows_through_regions(query);
     let env = ctxt.lifetime_env();
     let lifetime_of = |base: ArgIdxOrResult, idx: usize| -> GeneralizedLifetime<'tcx> {
         let ty = match base {
@@ -1774,8 +1829,10 @@ pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
                 input.base,
                 output.base
             );
-            if has_edge
-                && let GeneralizedLifetime::Region(in_region) = in_lifetime
+            if region_flows.contains(&(
+                (input.base, input.region_idx.index()),
+                (output.base, output.region_idx.index()),
+            )) && let GeneralizedLifetime::Region(in_region) = in_lifetime
                 && let GeneralizedLifetime::Region(out_region) = out_lifetime
             {
                 pcg_validity_assert!(

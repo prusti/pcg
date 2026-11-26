@@ -369,7 +369,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for MemberLifetimeCollector<'tcx> {
     }
 
     fn visit_region(&mut self, region: ty::Region<'tcx>) {
-        if !is_bound_region(region) && !region.is_static() {
+        // An erased region (in the signature of a closure type) names no
+        // data, like a bound one.
+        if !is_bound_region(region) && !region.is_static() && !region.is_erased() {
             self.push(BoundLifetime::Region(region.into()));
         }
     }

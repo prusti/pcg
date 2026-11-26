@@ -130,16 +130,20 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
             Callee::FnPtr(func_ty.fn_sig(ctxt.tcx()))
         };
         let result_ty = self.output.ty(ctxt).ty;
-        let shape = call_spec(&CallSpecQuery {
+        let closure_outlives = |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| {
+            ctxt.bc().outlives(sup.into(), sub.into(), self.location)
+        };
+        let query = CallSpecQuery {
             callee,
             arg_tys: &arg_tys,
             result_ty,
             env: ctxt.lifetime_env(),
-            closure_outlives: &|sup, sub| ctxt.bc().outlives(sup.into(), sub.into(), self.location),
-        })
-        .unwrap_or_else(|err| panic!("No spec for the call at {:?}: {err:?}", self.location));
+            closure_outlives: &closure_outlives,
+        };
+        let shape = call_spec(&query)
+            .unwrap_or_else(|err| panic!("No spec for the call at {:?}: {err:?}", self.location));
         if validity_checks_enabled() {
-            check_call_spec(&shape, &arg_tys, result_ty, self.location, ctxt);
+            check_call_spec(&shape, &query, self.location, ctxt);
         }
         shape
     }
