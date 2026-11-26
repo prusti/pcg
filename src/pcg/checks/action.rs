@@ -27,7 +27,10 @@
 //! Places behind a raw pointer dereference are exempt: their capabilities do
 //! not come from the pointer (principle 7).
 
-use std::{borrow::Cow, hash::BuildHasher};
+use std::{
+    borrow::Cow,
+    hash::{BuildHasher, BuildHasherDefault},
+};
 
 use itertools::Itertools;
 
@@ -43,7 +46,7 @@ use crate::{
         CapabilityKind,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
-    rustc_interface::{data_structures::fx::FxBuildHasher, middle::mir},
+    rustc_interface::{data_structures::fx::FxHasher, middle::mir},
     utils::{
         CompilerCtxt, PcgSettings, Place, PlaceLike, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
@@ -66,7 +69,7 @@ pub(crate) struct Snapshot<'s, 'tcx> {
 
 /// The hash of `edge` that a [`Snapshot`] keeps.
 fn edge_hash(edge: &BorrowPcgEdgeKind<'_>) -> u64 {
-    FxBuildHasher.hash_one(edge)
+    BuildHasherDefault::<FxHasher>::default().hash_one(edge)
 }
 
 /// The hashes of the edges of `graph`.
