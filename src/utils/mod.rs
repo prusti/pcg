@@ -126,9 +126,9 @@ pub struct PcgSettings {
     pub coupling: bool,
     pub pack_strategy: PackStrategy,
     /// The check failures that are reported without panicking, each as the
-    /// check's name and the function's path: the known violations of a test
-    /// file (`PCG_EXPECTED_CHECK_FAILURES`, one `<check> <function>` per
-    /// line).
+    /// check's name and the function's path, or `*` for any function: the
+    /// known violations of a test file or crate
+    /// (`PCG_EXPECTED_CHECK_FAILURES`, one `<check> <function>` per line).
     pub expected_check_failures: BTreeSet<(String, String)>,
     /// Whether every failure of the checks of `pcg::checks` is reported
     /// without panicking (`PCG_CHECKS_WARN_ONLY`), to collect the known

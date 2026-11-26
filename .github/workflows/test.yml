@@ -257,7 +257,6 @@ jobs:
         TOP_CRATES_GROUP: ${{ matrix.group }}
         TOP_CRATES_GROUPS: ${{ strategy.job-total }}
         TEST_CRATES_PARALLELISM: 1
-        TOP_CRATES_BLESS_CHECKS: 1
       run: cargo test --test top_crates -- --ignored --nocapture
     - name: Summarize results
       if: always()

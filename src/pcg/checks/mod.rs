@@ -88,10 +88,12 @@ pub(crate) fn fail(ctxt: impl DebugCtxt, check: &str, message: &str) {
         recorded.insert(failure);
         return;
     }
+    let expected = SETTINGS.expected_check_failures.contains(&failure)
+        || SETTINGS
+            .expected_check_failures
+            .contains(&(failure.0, "*".to_owned()));
     assert!(
-        validity_checks_warn_only()
-            || SETTINGS.checks_warn_only
-            || SETTINGS.expected_check_failures.contains(&failure),
+        validity_checks_warn_only() || SETTINGS.checks_warn_only || expected,
         "{message}"
     );
 }
