@@ -437,7 +437,11 @@ impl<'tcx> TypeFolder<ty::TyCtxt<'tcx>> for RegionsToVars<'_, 'tcx> {
 
     fn fold_region(&mut self, region: ty::Region<'tcx>) -> ty::Region<'tcx> {
         match region.kind() {
-            ty::RegionKind::ReBound(..) | ty::RegionKind::ReStatic => region,
+            // Erased regions are left for the closure signature, which gives
+            // them regions of their own (see `FunctionData::closure_fn_sig`).
+            ty::RegionKind::ReBound(..) | ty::RegionKind::ReStatic | ty::RegionKind::ReErased => {
+                region
+            }
             _ if self.introduced.contains(&region) => region,
             _ => self.var_for(region),
         }
@@ -503,6 +507,22 @@ impl<'tcx> FlowGraph<'tcx> {
     fn add_flows_both_ways(&mut self, a: Node<'tcx>, b: Node<'tcx>) {
         self.add_flow(a, b);
         self.add_flow(b, a);
+    }
+
+    /// The region nodes that `from` reaches through region nodes only: the
+    /// outlives relation between regions that the graph gives.
+    fn reachable_regions(&self, from: Node<'tcx>) -> HashSet<Node<'tcx>> {
+        let mut seen: HashSet<Node<'tcx>> = HashSet::from_iter([from]);
+        let mut stack = vec![from];
+        while let Some(node) = stack.pop() {
+            for &successor in self.successors.get(&node).into_iter().flatten() {
+                let successor = self.nodes[successor];
+                if matches!(successor, Node::Region(_)) && seen.insert(successor) {
+                    stack.push(successor);
+                }
+            }
+        }
+        seen
     }
 
     /// The outputs that loans in `from` may flow into.
@@ -695,15 +715,21 @@ fn instantiate_callee<'tcx>(
     }
 }
 
-/// The spec of a call: the flows from the lifetime projections of its
-/// arguments to those of its result and of its arguments after the call.
-/// The projections are those of `query.arg_tys` and `query.result_ty` in
-/// `query.env`.
+/// The flow graph of a call (see the module documentation).
+struct SpecGraph<'tcx> {
+    graph: FlowGraph<'tcx>,
+    /// All lifetime projections of the call's arguments.
+    inputs: Vec<(ArgIdx, usize)>,
+    /// The lifetime projections of the result, and those of the arguments
+    /// that the callee can write into.
+    outputs: BTreeSet<(ArgIdxOrResult, usize)>,
+    /// The node of each region of the callee's instantiated signature and
+    /// bounds, by the region it has in them.
+    region_nodes: HashMap<ty::Region<'tcx>, Node<'tcx>>,
+}
+
 #[rustversion::since(2025-05-24)]
-#[allow(clippy::unnecessary_wraps)]
-pub(crate) fn call_spec<'tcx>(
-    query: &CallSpecQuery<'_, 'tcx>,
-) -> Result<FunctionShape, MakeFunctionShapeError> {
+fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     let env = query.env;
     let tcx = env.tcx;
     let (infcx, param_env) = tcx
@@ -783,7 +809,22 @@ pub(crate) fn call_spec<'tcx>(
     for (ty, region) in &solved.type_outlives {
         add_type_outlives(&mut graph, &mut resolver, *ty, *region);
     }
-    for closure in &folder.closures {
+    // The relations a closure body needs: at a call of a closure, between the
+    // regions of its type; for the closure's own spec, between all regions
+    // of its signature, e.g. from a parameter to a capture.
+    let closure_regions = match query.callee {
+        Callee::FnDef(def_id, _) if def_id == env.def_id && tcx.is_closure_like(def_id) => {
+            vec![
+                folder
+                    .vars
+                    .iter()
+                    .map(|(region, var)| (*region, *var))
+                    .collect(),
+            ]
+        }
+        _ => folder.closures.clone(),
+    };
+    for closure in &closure_regions {
         for (sup, sup_var) in closure {
             for (sub, sub_var) in closure {
                 if sup != sub && (query.closure_outlives)(*sup, *sub) {
@@ -925,18 +966,48 @@ pub(crate) fn call_spec<'tcx>(
         }
     }
 
+    let region_nodes: HashMap<ty::Region<'tcx>, Node<'tcx>> = folder
+        .vars
+        .iter()
+        .map(|(region, var)| (*region, region_node(*var, &mut resolver)))
+        .collect();
+
     // `'static` outlives every region.
     let static_node = Node::Region(tcx.lifetimes.re_static);
-    let region_nodes: Vec<Node<'tcx>> = graph
+    let all_region_nodes: Vec<Node<'tcx>> = graph
         .nodes
         .iter()
         .copied()
+        .chain(region_nodes.values().copied())
         .filter(|node| matches!(node, Node::Region(_)))
         .collect();
-    for node in region_nodes {
+    for node in all_region_nodes {
         graph.add_flow(static_node, node);
     }
 
+    SpecGraph {
+        graph,
+        inputs,
+        outputs,
+        region_nodes,
+    }
+}
+
+/// The spec of a call: the flows from the lifetime projections of its
+/// arguments to those of its result and of its arguments after the call.
+/// The projections are those of `query.arg_tys` and `query.result_ty` in
+/// `query.env`.
+#[rustversion::since(2025-05-24)]
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn call_spec<'tcx>(
+    query: &CallSpecQuery<'_, 'tcx>,
+) -> Result<FunctionShape, MakeFunctionShapeError> {
+    let SpecGraph {
+        graph,
+        inputs,
+        outputs,
+        ..
+    } = spec_graph(query);
     let mut edges = std::collections::HashSet::new();
     for &(arg, idx) in &inputs {
         for output in graph.reachable_outputs(Node::Input(arg, idx)) {
@@ -955,6 +1026,120 @@ pub(crate) fn call_spec<'tcx>(
     _query: &CallSpecQuery<'_, 'tcx>,
 ) -> Result<FunctionShape, MakeFunctionShapeError> {
     Err(MakeFunctionShapeError::UnsupportedRustVersion)
+}
+
+/// Checks the spec of the function whose body `ctxt` analyses against
+/// rustc's borrow checker of that body. Panics (under validity checks) if the
+/// outlives relation between the regions of the function's signature that
+/// the spec relies on differs from the one that rustc's region inference
+/// gives the body's universal regions. If the spec lacked a relation, the
+/// body could move a loan its callers do not expect; if it had an extra one,
+/// its callers would expect flows that the body cannot perform.
+///
+/// A closure's spec takes the relations its body needs from the body's
+/// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
+/// closure the check covers the relations of its signature only.
+#[rustversion::since(2025-05-24)]
+pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) {
+    let tcx = ctxt.tcx();
+    let body = ctxt.body();
+    let def_id = body.source.def_id();
+    let is_closure = tcx.is_closure_like(def_id);
+    let callee_args = if is_closure {
+        match skip_normalization(tcx.type_of(def_id).instantiate_identity()).kind() {
+            ty::TyKind::Closure(_, args) => args,
+            // Coroutines have no signature spec.
+            _ => return,
+        }
+    } else if matches!(
+        tcx.def_kind(def_id),
+        crate::rustc_interface::hir::def::DefKind::Fn
+            | crate::rustc_interface::hir::def::DefKind::AssocFn
+    ) {
+        FunctionData::new(def_id).identity_substs(tcx)
+    } else {
+        return;
+    };
+    let Some(rust_borrow_checker) = ctxt.bc().rust_borrow_checker() else {
+        return;
+    };
+    let region_cx = rust_borrow_checker.region_infer_ctxt();
+    let sig = FunctionData::new(def_id).identity_fn_sig(tcx);
+
+    // The body's region for each region of the signature, by position in the
+    // types of its arguments and result.
+    let mut vids: HashMap<ty::Region<'tcx>, ty::RegionVid> = HashMap::default();
+    let locals = (1..=sig.inputs().len()).map(mir::Local::from_usize);
+    for (local, sig_ty) in locals
+        .zip(sig.inputs())
+        .chain(std::iter::once((mir::RETURN_PLACE, &sig.output())))
+    {
+        for pair in aligned_occurrences(body.local_decls[local].ty, *sig_ty, tcx) {
+            // The erased regions of a closure type's signature are not
+            // regions of the closure's signature.
+            if let (OccurrenceKind::Region(body_region), OccurrenceKind::Region(sig_region)) = pair
+                && let ty::RegionKind::ReVar(vid) = body_region.kind()
+                && !sig_region.is_erased()
+            {
+                vids.entry(sig_region).or_insert(vid);
+            }
+        }
+    }
+    let closure_outlives =
+        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (vids.get(&sup), vids.get(&sub)) {
+            (Some(sup), Some(sub)) => is_closure && region_cx.eval_outlives(*sup, *sub),
+            _ => false,
+        };
+    let spec = spec_graph(&CallSpecQuery {
+        callee: Callee::FnDef(def_id, callee_args),
+        arg_tys: sig.inputs(),
+        result_ty: sig.output(),
+        env: LifetimeEnv::new(tcx, def_id),
+        closure_outlives: &closure_outlives,
+    });
+    let node_of = |region: ty::Region<'tcx>| {
+        if region.is_static() {
+            Node::Region(region)
+        } else {
+            *spec.region_nodes.get(&region).unwrap_or_else(|| {
+                panic!(
+                    "The region {region:?} of the signature {sig:?} of {} is not in its spec",
+                    tcx.def_path_str(def_id)
+                )
+            })
+        }
+    };
+    for (&sup, &sup_vid) in &vids {
+        let reachable = spec.graph.reachable_regions(node_of(sup));
+        for (&sub, &sub_vid) in &vids {
+            if sup == sub {
+                continue;
+            }
+            let in_spec = reachable.contains(&node_of(sub));
+            let in_rustc = region_cx.eval_outlives(sup_vid, sub_vid);
+            pcg_validity_assert!(
+                in_spec == in_rustc,
+                [ctxt],
+                "The spec of {} {} that {sup:?} outlives {sub:?}, but rustc's region inference \
+                 of its body {}",
+                tcx.def_path_str(def_id),
+                if in_spec {
+                    "assumes"
+                } else {
+                    "does not assume"
+                },
+                if in_rustc { "does" } else { "does not" },
+            );
+        }
+    }
+}
+
+#[rustversion::before(2025-05-24)]
+pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
+    _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) {
 }
 
 /// Checks the spec `shape` of the call at `location`, whose arguments and

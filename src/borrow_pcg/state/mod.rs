@@ -471,6 +471,9 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         capabilities: &mut impl PlaceCapabilitiesInterface<'tcx, CapabilityKind, Place<'tcx>>,
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Self {
+        if crate::validity_checks_enabled() {
+            crate::borrow_pcg::abstraction::spec::check_body_spec(ctxt);
+        }
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {
             borrow.introduce_initial_borrows(arg, capabilities, ctxt);
