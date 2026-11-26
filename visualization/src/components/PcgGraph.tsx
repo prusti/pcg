@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import * as Viz from "@viz-js/viz";
+import { loadPcgGraph, PcgRenderer } from "../load_pcg_graph";
 import panzoom, { PanZoom } from "panzoom";
 import { CurrentPoint, FunctionSlug } from "../types";
 import { Api } from "../api";
@@ -10,6 +10,7 @@ import {
 import { assert } from "../util";
 
 interface PcgGraphProps {
+  renderer: PcgRenderer;
   showPCG: boolean;
   navigatorReservedWidth: string;
   currentPoint: CurrentPoint;
@@ -67,6 +68,7 @@ interface ElementWithPaths extends globalThis.Element {
 }
 
 const PcgGraph: React.FC<PcgGraphProps> = ({
+  renderer,
   showPCG,
   navigatorReservedWidth,
   currentPoint,
@@ -76,6 +78,8 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   pcgData,
 }) => {
   const [svgContent, setSvgContentInternal] = useState<string>("");
+  const [loadedRenderer, setLoadedRenderer] = useState<PcgRenderer | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const setSvgContent = useCallback(
     (newSvgContent: string) => {
       console.log("Updated SVG content");
@@ -96,7 +100,10 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const loadGraph = async () => {
+      setError(null);
+      setLoadedRenderer(null);
       const dotFilePath = getPcgDotGraphFilename(
         currentPoint,
         selectedFunction,
@@ -109,30 +116,37 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
         return;
       }
 
-      const dotData = await api.fetchDotFile(dotFilePath);
-      const viz = await Viz.instance();
-      const svg = viz.renderSVGElement(dotData);
+      const { svg, metadataPath, renderer: actualRenderer } = await loadPcgGraph(api, dotFilePath, renderer);
+      if (cancelled) return;
+      setLoadedRenderer(actualRenderer);
 
       svg.setAttribute("width", "100%");
       svg.setAttribute("height", "100%");
 
+      setEdgeMetadata(null);
       setSvgContent(svg.outerHTML);
 
       // Try to load corresponding JSON file
-      const jsonFilePath = dotFilePath.replace(/\.dot$/, ".json");
       try {
-        const jsonData = await api.fetchDotFile(jsonFilePath);
+        const jsonData = await api.fetchDotFile(metadataPath);
+        if (cancelled) return;
         setEdgeMetadata(
           JSON.parse(jsonData) as Record<string, ValidityConditionsDebugRepr>
         );
       } catch {
         // JSON file doesn't exist, that's fine
-        setEdgeMetadata(null);
+        if (!cancelled) setEdgeMetadata(null);
       }
     };
 
-    loadGraph();
-  }, [api, currentPoint, selectedFunction, setSvgContent, pcgData]);
+    loadGraph().catch((error: unknown) => {
+      if (cancelled) return;
+      setSvgContent("");
+      setEdgeMetadata(null);
+      setError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { cancelled = true; };
+  }, [api, currentPoint, selectedFunction, setSvgContent, pcgData, renderer]);
 
   useEffect(() => {
     if (!containerRef.current || !svgContent) return;
@@ -163,7 +177,7 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
       const gElements = svgElement.querySelectorAll("g[id]");
 
       gElements.forEach((gElement) => {
-        const id = gElement.getAttribute("id");
+        const id = gElement.getAttribute("data-edge-id") || gElement.getAttribute("id");
         if (id && edgeMetadata[id]) {
           // Make the element look hoverable
           (gElement as globalThis.HTMLElement).style.cursor = "pointer";
@@ -177,7 +191,8 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
             }
 
             // Graphviz creates multiple path elements - highlight all paths that are part of the edge
-            const allPaths = Array.from(gElement.querySelectorAll("path"));
+            const edgeGroup = svgElement.getElementById(id) || gElement;
+            const allPaths = Array.from(edgeGroup.querySelectorAll("path"));
             let pathsToHighlight = allPaths.filter((p) => {
               // Skip filled paths (arrowheads) - only highlight stroked paths
               const fill = p.getAttribute("fill");
@@ -311,15 +326,27 @@ const PcgGraph: React.FC<PcgGraphProps> = ({
   return (
     <div
       id="pcg-graph"
-      ref={containerRef}
       style={{
         flex: 1,
+        minWidth: 0,
+        display: showPCG ? "flex" : "none",
+        flexDirection: "column",
         overflow: "hidden",
         marginRight: navigatorReservedWidth,
-        display: showPCG ? "block" : "none",
       }}
-      dangerouslySetInnerHTML={{ __html: svgContent }}
-    />
+    >
+      {renderer === "svg" && loadedRenderer === "dot" && (
+        <div role="status" style={{ padding: "8px" }}>
+          Rust SVG is unavailable for this snapshot; showing Graphviz.
+        </div>
+      )}
+      {error && <div role="alert" style={{ padding: "8px" }}>{error}</div>}
+      <div
+        ref={containerRef}
+        style={{ flex: 1, minHeight: 0, overflow: "hidden" }}
+        dangerouslySetInnerHTML={{ __html: svgContent }}
+      />
+    </div>
   );
 };
 

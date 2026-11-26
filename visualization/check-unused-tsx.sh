@@ -19,6 +19,9 @@ unused_count=0
 unused_files=""
 
 for file in $tsx_files; do
+  case "$file" in
+    *.test.tsx|*.spec.tsx|*/__tests__/*) continue ;;
+  esac
   # Get the file path relative to src/
   relative_path=${file#src/}
 

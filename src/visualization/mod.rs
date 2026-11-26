@@ -16,6 +16,7 @@ pub mod legend;
 pub mod mir_graph;
 mod node;
 mod settings;
+mod svg_graph;
 pub(crate) use functions_metadata::*;
 use std::borrow::Cow;
 pub(crate) mod stmt_graphs;
@@ -171,6 +172,12 @@ enum NodeType {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(super) enum ExpansionKind {
+    Deref,
+    Unpack,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum GraphEdge<'a> {
     Abstract {
         blocked: NodeId,
@@ -196,8 +203,9 @@ pub(crate) enum GraphEdge<'a> {
         target: NodeId,
     },
     DerefExpansion {
-        source: NodeId,
-        target: NodeId,
+        sources: Vec<NodeId>,
+        targets: Vec<NodeId>,
+        kind: ExpansionKind,
         validity_conditions: &'a ValidityConditions,
     },
     BorrowFlow {
@@ -206,8 +214,8 @@ pub(crate) enum GraphEdge<'a> {
         kind: BorrowFlowEdgeKind<'a, String>,
     },
     Coupled {
-        source: NodeId,
-        target: NodeId,
+        sources: Vec<NodeId>,
+        targets: Vec<NodeId>,
     },
     Delegation {
         source: NodeId,
@@ -220,6 +228,69 @@ pub(crate) enum GraphEdge<'a> {
 }
 
 impl<'a> GraphEdge<'a> {
+    fn label_text(&self) -> String {
+        match self {
+            Self::Abstract { label, .. } => label.clone(),
+            Self::Borrow {
+                kind,
+                region,
+                borrow_index,
+                ..
+            } => format!(
+                "{}{} {}",
+                borrow_index
+                    .as_ref()
+                    .map_or_else(String::new, |index| format!("{index}: ")),
+                kind,
+                region
+            ),
+            Self::BorrowFlow { kind, .. } => kind.to_string(),
+            Self::Alias { .. }
+            | Self::Projection { .. }
+            | Self::DerefExpansion { .. }
+            | Self::Coupled { .. }
+            | Self::Delegation { .. }
+            | Self::RawPtrDeref { .. } => String::new(),
+        }
+    }
+
+    fn endpoints(&self) -> (Vec<NodeId>, Vec<NodeId>) {
+        match self {
+            Self::DerefExpansion {
+                sources, targets, ..
+            }
+            | Self::Coupled { sources, targets } => (sources.clone(), targets.clone()),
+            Self::Abstract {
+                blocked, blocking, ..
+            } => (vec![*blocked], vec![*blocking]),
+            Self::Alias {
+                blocked_place,
+                blocking_place,
+            } => (vec![*blocked_place], vec![*blocking_place]),
+            Self::Borrow {
+                borrowed_place,
+                assigned_region_projection,
+                ..
+            } => (vec![*borrowed_place], vec![*assigned_region_projection]),
+            Self::Projection { source, target }
+            | Self::BorrowFlow { source, target, .. }
+            | Self::Delegation { source, target }
+            | Self::RawPtrDeref { source, target } => (vec![*source], vec![*target]),
+        }
+    }
+
+    fn to_dot_edges<'tcx: 'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> Vec<DotEdge> {
+        let (sources, targets) = self.endpoints();
+        sources
+            .into_iter()
+            .flat_map(|source| {
+                targets
+                    .iter()
+                    .map(move |&target| self.to_dot_edge(None, source, target, ctxt))
+            })
+            .collect()
+    }
+
     pub(crate) fn validity_conditions(&self) -> Option<&'a ValidityConditions> {
         match self {
             GraphEdge::Borrow {
@@ -242,6 +313,8 @@ impl<'a> GraphEdge<'a> {
     pub(super) fn to_dot_edge<'tcx: 'a>(
         &self,
         edge_id: Option<DotEdgeId>,
+        source: NodeId,
+        target: NodeId,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
     ) -> DotEdge {
         match self {
@@ -265,27 +338,15 @@ impl<'a> GraphEdge<'a> {
             GraphEdge::Borrow {
                 borrowed_place,
                 assigned_region_projection: assigned_place,
-                location: _,
-                region,
-                kind,
                 validity_conditions,
-                borrow_index,
+                ..
             } => DotEdge {
                 id: edge_id,
                 to: assigned_place.to_string(),
                 from: borrowed_place.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
                     .with_color("orange".into())
-                    .with_label(format!(
-                        "{}{} {}",
-                        if let Some(borrow_index) = borrow_index {
-                            format!("{borrow_index}: ")
-                        } else {
-                            String::new()
-                        },
-                        kind,
-                        region
-                    ))
+                    .with_label(self.label_text())
                     .with_tooltip(
                         validity_conditions
                             .display_output(ctxt, OutputMode::Short)
@@ -293,9 +354,8 @@ impl<'a> GraphEdge<'a> {
                     ),
             },
             GraphEdge::DerefExpansion {
-                source,
-                target,
                 validity_conditions,
+                ..
             } => DotEdge {
                 id: edge_id,
                 from: source.to_string(),
@@ -309,15 +369,13 @@ impl<'a> GraphEdge<'a> {
                     ),
             },
             GraphEdge::Abstract {
-                blocked,
-                blocking,
-                label,
+                blocked, blocking, ..
             } => DotEdge {
                 id: edge_id,
                 from: blocked.to_string(),
                 to: blocking.to_string(),
                 options: EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_label(label.clone())
+                    .with_label(self.label_text())
                     .with_penwidth(3.0),
             },
             GraphEdge::BorrowFlow {
@@ -326,7 +384,7 @@ impl<'a> GraphEdge<'a> {
                 kind,
             } => {
                 let options = EdgeOptions::directed(EdgeDirection::Forward)
-                    .with_label(kind.to_string())
+                    .with_label(self.label_text())
                     .with_color("purple".into());
                 let options = match kind {
                     BorrowFlowEdgeKind::BorrowOutlives { regions_equal } => {
@@ -345,7 +403,7 @@ impl<'a> GraphEdge<'a> {
                     options,
                 }
             }
-            GraphEdge::Coupled { source, target } => DotEdge {
+            GraphEdge::Coupled { .. } => DotEdge {
                 id: edge_id,
                 from: source.to_string(),
                 to: target.to_string(),
@@ -406,8 +464,9 @@ impl<'a> Graph<'a> {
             return false;
         };
         self.edges.iter().any(|edge| {
-            let dot_edge = edge.to_dot_edge(None, ctxt);
-            dot_edge.from == label_1_id.to_string() && dot_edge.to == label_2_id.to_string()
+            edge.to_dot_edges(ctxt).iter().any(|dot_edge| {
+                dot_edge.from == label_1_id.to_string() && dot_edge.to == label_2_id.to_string()
+            })
         })
     }
 }
@@ -455,16 +514,29 @@ pub(crate) fn generate_pcg_dot_graph<'a, 'tcx: 'a>(
     Ok(String::from_utf8(buf).unwrap())
 }
 
-pub(crate) fn write_pcg_dot_graph_to_file<'a, 'tcx: 'a>(
+pub(crate) fn write_pcg_graph_to_file<'a, 'tcx: 'a>(
     pcg: PcgRef<'a, 'tcx>,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>,
     location: Location,
     file_path: &Path,
+    legacy_graph_renderer: bool,
 ) -> io::Result<()> {
     let constructor = PcgGraphConstructor::new(pcg, ctxt.bc_ctxt(), location);
     let graph = constructor.construct_graph();
     let dot_file = File::create(file_path).unwrap();
     let ctxt_file = File::create(file_path.with_extension("json")).unwrap();
     let drawer = GraphDrawer::new(dot_file, Some(ctxt_file));
-    drawer.draw(&graph, ctxt)
+    drawer.draw(&graph, ctxt)?;
+    if legacy_graph_renderer {
+        for extension in ["svg", "svg.json", "hypergraph.json"] {
+            match std::fs::remove_file(file_path.with_extension(extension)) {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    } else {
+        graph.write_svg(file_path, ctxt)
+    }
 }

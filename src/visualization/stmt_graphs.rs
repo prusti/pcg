@@ -4,7 +4,7 @@ use crate::{
     pcg_validity_assert,
     rustc_interface::{index::IndexVec, middle::mir},
     utils::{CompilerCtxt, StringOf, eval_stmt_data::EvalStmtData},
-    visualization::write_pcg_dot_graph_to_file,
+    visualization::write_pcg_graph_to_file,
 };
 use derive_more::{Deref, From};
 use serde_derive::Serialize;
@@ -153,7 +153,14 @@ impl<'a, 'tcx: 'a> AnalysisCtxt<'a, 'tcx> {
                 ),
             }
 
-            write_pcg_dot_graph_to_file(pcg, self.ctxt.as_dyn(), location, &filename).unwrap();
+            write_pcg_graph_to_file(
+                pcg,
+                self.ctxt.as_dyn(),
+                location,
+                &filename,
+                self.settings.legacy_graph_renderer,
+            )
+            .unwrap();
         }
     }
 }

@@ -52,7 +52,26 @@ async fn main() {
 async fn serve_upload_form() -> impl IntoResponse {
     let html_content =
         fs::read_to_string("templates/index.html").expect("Failed to read upload form template");
-    Html(html_content)
+    let legacy = legacy_renderer_default();
+    Html(
+        html_content
+            .replace(
+                "{{svg_renderer_selected}}",
+                if legacy { "" } else { "selected" },
+            )
+            .replace(
+                "{{dot_renderer_selected}}",
+                if legacy { "selected" } else { "" },
+            ),
+    )
+}
+
+fn legacy_renderer_default() -> bool {
+    match std::env::var("PCG_LEGACY_GRAPH_RENDERER").as_deref() {
+        Ok("true" | "1") => true,
+        Ok("false" | "0" | "") | Err(_) => false,
+        Ok(value) => panic!("Invalid PCG_LEGACY_GRAPH_RENDERER value: {value}"),
+    }
 }
 
 async fn handle_upload(multipart: Multipart) -> Response {
@@ -68,6 +87,7 @@ fn run_pcg_analysis(
     file_path: PathBuf,
     data_dir: PathBuf,
     use_polonius: bool,
+    legacy_graph_renderer: bool,
 ) -> Result<(), String> {
     use std::process::Command;
 
@@ -84,6 +104,15 @@ fn run_pcg_analysis(
         .arg("--edition=2018")
         .env("PCG_VISUALIZATION", "true")
         .env("PCG_VISUALIZATION_DATA_DIR", &data_dir)
+        .env(
+            "PCG_LEGACY_GRAPH_RENDERER",
+            if legacy_graph_renderer {
+                "true"
+            } else {
+                "false"
+            },
+        )
+        .env_remove("PCG_BIN_PATH")
         .env("PCG_COUPLING", "true");
 
     if use_polonius {
@@ -124,12 +153,25 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
     let mut code = String::new();
     let mut input_method = String::new();
     let mut borrow_checker = String::from("nll");
+    let mut legacy_graph_renderer = legacy_renderer_default();
 
     while let Some(field) = multipart.next_field().await.map_err(|e| e.to_string())? {
         let name = field.name().ok_or("Field missing name")?.to_string();
         debug!("Processing multipart field: {name}");
 
         match name.as_str() {
+            "graph-renderer" => {
+                legacy_graph_renderer =
+                    match field.text().await.map_err(|e| e.to_string())?.as_str() {
+                        "svg" => false,
+                        "dot" => true,
+                        _ => {
+                            return Ok(
+                                (StatusCode::BAD_REQUEST, "Unknown PCG renderer").into_response()
+                            )
+                        }
+                    };
+            }
             "input-method" => {
                 input_method = field.text().await.map_err(|e| e.to_string())?;
                 debug!("Got input method: {input_method}");
@@ -190,7 +232,12 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
     // Run PCG analysis using pcg-bin
     let use_polonius = borrow_checker == "polonius";
-    let result = run_pcg_analysis(abs_file_path, abs_data_dir, use_polonius);
+    let result = run_pcg_analysis(
+        abs_file_path,
+        abs_data_dir,
+        use_polonius,
+        legacy_graph_renderer,
+    );
 
     if let Err(e) = result {
         return Ok((StatusCode::INTERNAL_SERVER_ERROR, e).into_response());
@@ -198,6 +245,52 @@ async fn handle_upload_inner(mut multipart: Multipart) -> Result<Response, Strin
 
     // Redirect to local visualization with data source URL
     let unique_dir_name = unique_dir.file_name().unwrap().to_str().unwrap();
-    let redirect_url = format!("/visualization/?datasrc=/vis-data/{unique_dir_name}");
+    let renderer = if legacy_graph_renderer { "dot" } else { "svg" };
+    let redirect_url =
+        format!("/visualization/?datasrc=/vis-data/{unique_dir_name}&renderer={renderer}");
     Ok(Redirect::to(&redirect_url).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renderer_switch_controls_generated_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let input = temp.path().join("input.rs");
+        let data = temp.path().join("data");
+        fs::create_dir(&data).unwrap();
+        fs::write(
+            &input,
+            "fn main() { let mut x: i32 = 0; let r: &mut i32 = &mut x; *r = 1; }",
+        )
+        .unwrap();
+
+        run_pcg_analysis(input.clone(), data.clone(), false, false).unwrap();
+        let snapshots = || {
+            fs::read_dir(data.join("main"))
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "svg"))
+                .collect::<Vec<_>>()
+        };
+        let native = snapshots();
+        assert!(!native.is_empty());
+        for svg in &native {
+            assert!(svg.with_extension("dot").exists());
+            assert!(svg.with_extension("svg.json").exists());
+        }
+
+        run_pcg_analysis(input.clone(), data.clone(), false, true).unwrap();
+        assert!(snapshots().is_empty());
+        for svg in &native {
+            assert!(svg.with_extension("dot").exists());
+            assert!(!svg.with_extension("svg.json").exists());
+            assert!(!svg.with_extension("hypergraph.json").exists());
+        }
+
+        run_pcg_analysis(input, data.clone(), false, false).unwrap();
+        assert_eq!(snapshots().len(), native.len());
+    }
 }
