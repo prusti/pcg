@@ -212,6 +212,15 @@ impl std::fmt::Display for BoundLifetime<'_> {
     }
 }
 
+impl<'tcx> From<BoundLifetime<'tcx>> for GeneralizedLifetime<'tcx> {
+    fn from(lifetime: BoundLifetime<'tcx>) -> Self {
+        match lifetime {
+            BoundLifetime::Region(region) => GeneralizedLifetime::Region(region),
+            BoundLifetime::RegionsIn(opaque) => GeneralizedLifetime::RegionsIn(opaque),
+        }
+    }
+}
+
 /// A generalized lifetime: a region, `RegionsIn(τ)` for an opaque type (type
 /// parameter or non-normalizable alias), or a part of an opaque type that its
 /// bounds name.

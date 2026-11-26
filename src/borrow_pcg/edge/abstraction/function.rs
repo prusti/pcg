@@ -41,12 +41,7 @@ impl<'tcx> FunctionData<'tcx> {
     #[must_use]
     pub fn identity_fn_sig(self, tcx: ty::TyCtxt<'tcx>) -> ty::FnSig<'tcx> {
         let fn_sig = if tcx.is_closure_like(self.def_id) {
-            let ty::TyKind::Closure(_, args) =
-                skip_normalization(tcx.type_of(self.def_id).instantiate_identity()).kind()
-            else {
-                unreachable!();
-            };
-            self.closure_fn_sig(tcx, args)
+            self.closure_fn_sig(tcx, self.identity_substs(tcx))
         } else {
             skip_normalization(tcx.fn_sig(self.def_id).instantiate_identity())
         };

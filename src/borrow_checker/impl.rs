@@ -245,6 +245,10 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
         self.borrow_checker_data.region_cx
     }
 
+    fn body(&self) -> &mir::Body<'tcx> {
+        self.borrow_checker_data.body
+    }
+
     fn location_table(&self) -> &LocationTable {
         self.borrow_checker_data.location_table
     }
@@ -345,6 +349,10 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for NllBorrowCheckerImpl<'_, 'tcx> {
 
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx> {
         self.borrow_checker_data.region_cx
+    }
+
+    fn body(&self) -> &mir::Body<'tcx> {
+        self.borrow_checker_data.body
     }
 
     fn location_table(&self) -> &LocationTable {

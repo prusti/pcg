@@ -39,7 +39,10 @@
 //! the same position inside another occurrence. Each region of the
 //! instantiated `T` is therefore a single node, shared by all occurrences.
 
-use std::collections::{BTreeSet, VecDeque};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    iter::zip,
+};
 
 use crate::{
     HasSettings,
@@ -56,7 +59,7 @@ use crate::{
         graph::{BorrowsGraph, loop_abstraction::MaybeRemoteCurrentPlace},
         region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         visitor::{
-            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy,
+            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, erase_regions,
             extract_generalized_lifetimes, is_bound_region,
         },
     },
@@ -115,7 +118,8 @@ pub(crate) struct CallSpecQuery<'a, 'tcx> {
     pub(crate) env: LifetimeEnv<'tcx>,
     /// Whether the body of a closure whose type contains both regions needs
     /// the first to outlive the second. `sup` and `sub` are regions of a
-    /// closure type in `env`.
+    /// closure type in `env`, or for a closure's own spec, of its signature
+    /// and of the function that defines it.
     ///
     /// A closure's signature is inferred: rustc's borrow checker computes
     /// which relations between the regions of its captures and its
@@ -1190,6 +1194,43 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         }
     }
 
+    // Two alias types that are equal up to regions are the same type where
+    // their regions are equal, so a value moves from the one into the other,
+    // as within a body (see `BorrowCheckerInterface::outlives_generalized`).
+    // The signature of a closure has distinct regions where its body has
+    // equal ones.
+    let aliases: Vec<ty::Ty<'tcx>> = graph
+        .nodes
+        .iter()
+        .filter_map(|node| match node {
+            Node::Opaque(ty, OpaquePart::Whole) if matches!(ty.kind(), ty::TyKind::Alias(..)) => {
+                Some(*ty)
+            }
+            _ => None,
+        })
+        .collect();
+    for &from in &aliases {
+        for &to in &aliases {
+            if from == to || erase_regions(from, tcx) != erase_regions(to, tcx) {
+                continue;
+            }
+            let equal = zip(regions_in_order(from, tcx), regions_in_order(to, tcx)).all(
+                |(from_region, to_region)| {
+                    let (from_node, to_node) = (Node::Region(from_region), Node::Region(to_region));
+                    from_region == to_region
+                        || (graph.reachable_regions(from_node).contains(&to_node)
+                            && graph.reachable_regions(to_node).contains(&from_node))
+                },
+            );
+            if equal {
+                graph.add_flow(
+                    Node::Opaque(from, OpaquePart::Whole),
+                    Node::Opaque(to, OpaquePart::Whole),
+                );
+            }
+        }
+    }
+
     let region_nodes: HashMap<ty::Region<'tcx>, Node<'tcx>> = folder
         .vars
         .iter()
@@ -1304,37 +1345,75 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
     let body = ctxt.body();
     let def_id = body.source.def_id();
     let is_closure = tcx.is_closure_like(def_id);
-    let callee_args = if is_closure {
-        match skip_normalization(tcx.type_of(def_id).instantiate_identity()).kind() {
-            ty::TyKind::Closure(_, args) => args,
-            _ => return None,
-        }
-    } else if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
-        FunctionData::new(def_id).identity_substs(tcx)
+    let has_signature = if is_closure {
+        matches!(
+            skip_normalization(tcx.type_of(def_id).instantiate_identity()).kind(),
+            ty::TyKind::Closure(..)
+        )
     } else {
-        return None;
+        matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn)
     };
-    let region_cx = ctxt.bc().rust_borrow_checker()?.region_infer_ctxt();
+    if !has_signature {
+        return None;
+    }
+    let callee_args = FunctionData::new(def_id).identity_substs(tcx);
+    let rust_bc = ctxt.bc().rust_borrow_checker()?;
+    let region_cx = rust_bc.region_infer_ctxt();
     let sig = FunctionData::new(def_id).identity_fn_sig(tcx);
 
     // The body's region for each region of the signature, by position in the
-    // types of its arguments and result.
+    // types of its arguments and result, including the region arguments of
+    // alias types that the body has as in the signature (the body may have
+    // normalized them).
     let mut vids: HashMap<ty::Region<'tcx>, ty::RegionVid> = HashMap::default();
     for (local, sig_ty) in signature_locals(sig) {
         for pair in aligned_occurrences(body.local_decls[local].ty, sig_ty, tcx) {
-            // The erased regions of a closure type's signature are not
-            // regions of the closure's signature.
-            if let (OccurrenceKind::Region(body_region), OccurrenceKind::Region(sig_region)) = pair
-                && let ty::RegionKind::ReVar(vid) = body_region.kind()
-                && !sig_region.is_erased()
-            {
-                vids.entry(sig_region).or_insert(vid);
+            let regions = match pair {
+                (OccurrenceKind::Region(body_region), OccurrenceKind::Region(sig_region)) => {
+                    vec![(body_region, sig_region)]
+                }
+                (OccurrenceKind::Opaque(body_ty), OccurrenceKind::Opaque(sig_ty))
+                    if erase_regions(body_ty, tcx) == erase_regions(sig_ty, tcx) =>
+                {
+                    zip(
+                        regions_in_order(body_ty, tcx),
+                        regions_in_order(sig_ty, tcx),
+                    )
+                    .collect()
+                }
+                _ => Vec::new(),
+            };
+            for (body_region, sig_region) in regions {
+                // The erased regions of a closure type's signature are not
+                // regions of the closure's signature.
+                if let ty::RegionKind::ReVar(vid) = body_region.kind()
+                    && !sig_region.is_erased()
+                {
+                    vids.entry(sig_region).or_insert(vid);
+                }
             }
         }
     }
+    // A lifetime parameter that only where clauses name has no position in
+    // the signature, but its universal region (see
+    // `RustBorrowCheckerInterface::universal_region_of_param`), which must
+    // agree with the position of those that the signature names.
+    for (&sig_region, &vid) in &vids {
+        if let ty::RegionKind::ReEarlyParam(param) = sig_region.kind() {
+            assert!(
+                region_cx.eval_equal(vid, rust_bc.universal_region_of_param(param)),
+                "The region {vid:?} of {sig_region:?} in the body of {} is not its universal region",
+                tcx.def_path_str(def_id)
+            );
+        }
+    }
+    let vid_of = |region: ty::Region<'tcx>| match region.kind() {
+        ty::RegionKind::ReEarlyParam(param) => Some(rust_bc.universal_region_of_param(param)),
+        _ => vids.get(&region).copied(),
+    };
     let closure_outlives =
-        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (vids.get(&sup), vids.get(&sub)) {
-            (Some(sup), Some(sub)) => is_closure && region_cx.eval_outlives(*sup, *sub),
+        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (vid_of(sup), vid_of(sub)) {
+            (Some(sup), Some(sub)) => is_closure && region_cx.eval_outlives(sup, sub),
             _ => false,
         };
     let spec = spec_graph(&CallSpecQuery {
@@ -1350,6 +1429,18 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
         spec,
         vids,
     })
+}
+
+/// The regions of `ty` that are not bound inside it, in order and with
+/// duplicates, erased ones included: the regions of two types that are equal
+/// up to regions correspond by index.
+fn regions_in_order<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<ty::Region<'tcx>> {
+    let mut regions = Vec::new();
+    ty::fold_regions(tcx, ty, |region, _| {
+        regions.push(region);
+        region
+    });
+    regions
 }
 
 /// The locals of a body for the arguments and result of its signature `sig`,

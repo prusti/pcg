@@ -27,6 +27,7 @@ use crate::{
             mir,
             ty::{self, GenericArgsRef},
         },
+        skip_normalization,
         span::def_id::DefId,
     },
     utils::{
@@ -335,9 +336,32 @@ impl<'tcx> FunctionData<'tcx> {
         }
     }
 
+    /// The generic arguments of this function in its own body. For a closure,
+    /// the arguments of its type, with the parameters of the function that
+    /// defines it: typeck erases the regions among them, which the closure's
+    /// body has as its universal regions (see `UniversalRegions` in
+    /// `rustc_borrowck`).
     #[must_use]
     pub fn identity_substs(self, tcx: ty::TyCtxt<'tcx>) -> GenericArgsRef<'tcx> {
-        ty::GenericArgs::identity_for_item(tcx, self.def_id)
+        let ty::TyKind::Closure(_, args) =
+            skip_normalization(tcx.type_of(self.def_id).instantiate_identity()).kind()
+        else {
+            return ty::GenericArgs::identity_for_item(tcx, self.def_id);
+        };
+        let closure = args.as_closure();
+        let parent_args =
+            ty::GenericArgs::identity_for_item(tcx, tcx.typeck_root_def_id(self.def_id));
+        assert_eq!(
+            parent_args.len(),
+            closure.parent_args().len(),
+            "The closure {:?} does not take the parameters of its typeck root",
+            self.def_id
+        );
+        tcx.mk_args_from_iter(parent_args.iter().chain([
+            closure.kind_ty().into(),
+            closure.sig_as_fn_ptr_ty().into(),
+            closure.tupled_upvars_ty().into(),
+        ]))
     }
 
     #[must_use]

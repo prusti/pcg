@@ -72,4 +72,33 @@ fn move_alias_part<'y, M: Lend>(m: &M, y: &'y u32) -> M::Out<'y> {
     b
 }
 
+trait Iterable<'a> {
+    type Out: IntoIterator;
+}
+
+// The value of `a` has a part for `RegionsIn` of the alias argument `Q` of
+// its type, and one for the `'a` of the where clause on `T`, which `Q`'s own
+// region argument equals. Moving the value moves each part into the same part
+// of `b`, and the part for `'a` into the part for that region too.
+fn move_alias_argument_part<'a, T: Iterable<'a>>(
+    q: <T as Iterable<'a>>::Out,
+) -> <<T as Iterable<'a>>::Out as IntoIterator>::IntoIter {
+    let a = q.into_iter();
+    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionsIn(<T as Iterable<'_>>::Out)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionsIn(<T as Iterable<'_>>::Out)]
+    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)]
+    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?6)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)]
+    let b = a;
+    b
+}
+
+// A part of an alias's value named by a region relates to other regions as
+// that region does: as between the regions of two references, the flows of
+// an aggregate follow the outlives relation, not the positions.
+fn lend_with_ref<'y, M: Lend>(m: &M, y: &'y u32) -> (&'y u32, M::Out<'y>) {
+    // PCG: bb1[2] post_main: Add Edge _4 before bb1[2]:PostOperands↓'?12 -> p↓<M as Lend>::Out<'_>[RegionVid('?11)]
+    // PCG: bb1[2] post_main: Add Edge _5 before bb1[2]:PostOperands↓<M as Lend>::Out<'_>[RegionVid('?13)] -> p↓'?10
+    let p = (y, m.lend(y));
+    p
+}
+
 fn main() {}

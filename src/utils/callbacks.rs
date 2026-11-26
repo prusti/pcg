@@ -13,7 +13,7 @@ use crate::{
             RegionInferenceContext,
         },
         middle::{
-            mir::Location,
+            mir::{self, Location},
             ty::{self, RegionVid},
         },
     },
@@ -117,6 +117,13 @@ impl<'tcx> RustBorrowCheckerInterface<'tcx> for RustBorrowCheckerImpl<'_, 'tcx> 
         match self {
             RustBorrowCheckerImpl::Polonius(bc) => bc.region_infer_ctxt(),
             RustBorrowCheckerImpl::Nll(bc) => bc.region_infer_ctxt(),
+        }
+    }
+
+    fn body(&self) -> &mir::Body<'tcx> {
+        match self {
+            RustBorrowCheckerImpl::Polonius(bc) => bc.body(),
+            RustBorrowCheckerImpl::Nll(bc) => bc.body(),
         }
     }
 

@@ -9,7 +9,7 @@ use crate::{
     borrow_pcg::{
         GeneralizedLifetime,
         region_projection::PcgRegion,
-        visitor::{BoundLifetime, OpaqueTy, erase_regions},
+        visitor::{OpaqueTy, erase_regions},
     },
     pcg::PcgNode,
     rustc_interface::{
@@ -187,14 +187,6 @@ impl<'tcx, T: RustBorrowCheckerInterface<'tcx> + DisplayCtxtFor<RegionVid>>
     }
 }
 
-/// The free regions of `ty`, in order and with duplicates, so that the
-/// regions of two types that are equal up to regions pair by position.
-fn free_regions_in_order<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<PcgRegion<'tcx>> {
-    let mut regions = vec![];
-    tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
-    regions
-}
-
 pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
     /* Main Interface Start */
 
@@ -251,8 +243,14 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                     if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
                         return false;
                     }
-                    let sup_regions = free_regions_in_order(sup_ty, tcx);
-                    let sub_regions = free_regions_in_order(sub_ty, tcx);
+                    // Keeps duplicates, so that the regions can be paired by position.
+                    let free_regions_in_order = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
+                        let mut regions = vec![];
+                        tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
+                        regions
+                    };
+                    let sup_regions = free_regions_in_order(sup_ty);
+                    let sub_regions = free_regions_in_order(sub_ty);
                     if sup_regions.len() != sub_regions.len() {
                         return false;
                     }
@@ -281,42 +279,14 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                         self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
                     })
             }
-            // A part moves with the value of its opaque type, into the same
-            // part of the value it is moved to. Loans flow into or out of it
-            // otherwise only through the methods of a bound, i.e. at calls,
-            // whose flows come from their spec. The parts of an alias type
-            // named by its region arguments correspond by position, as for
-            // `RegionsIn` above.
-            (
-                GeneralizedLifetime::BoundPart(sup_opaque, sup_lifetime),
-                GeneralizedLifetime::BoundPart(sub_opaque, sub_lifetime),
-            ) => match (sup_opaque, sub_opaque) {
-                (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
-                    let tcx = self.tcx();
-                    if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
-                        return false;
-                    }
-                    if let (BoundLifetime::Region(sup_region), BoundLifetime::Region(sub_region)) =
-                        (sup_lifetime, sub_lifetime)
-                    {
-                        let positions = |ty: ty::Ty<'tcx>, region: PcgRegion<'tcx>| {
-                            free_regions_in_order(ty, tcx)
-                                .into_iter()
-                                .enumerate()
-                                .filter(move |(_, r)| *r == region)
-                                .map(|(i, _)| i)
-                        };
-                        let sub_positions: Vec<usize> = positions(sub_ty, sub_region).collect();
-                        if positions(sup_ty, sup_region).any(|i| sub_positions.contains(&i)) {
-                            return self.outlives(sup_region, sub_region, location);
-                        }
-                    }
-                    sup_lifetime == sub_lifetime
-                }
-                _ => sup_opaque == sub_opaque && sup_lifetime == sub_lifetime,
-            },
-            (GeneralizedLifetime::BoundPart(..), _) | (_, GeneralizedLifetime::BoundPart(..)) => {
-                false
+            // A part of the value of an opaque type holds the loans of the
+            // lifetime that names it, so loans may flow into and out of it as
+            // they do for that lifetime, as in the spec graph of a call.
+            (GeneralizedLifetime::BoundPart(_, sup_lifetime), sub) => {
+                self.outlives_generalized(sup_lifetime.into(), sub, location)
+            }
+            (sup, GeneralizedLifetime::BoundPart(_, sub_lifetime)) => {
+                self.outlives_generalized(sup, sub_lifetime.into(), location)
             }
         }
     }
@@ -507,13 +477,46 @@ pub trait RustBorrowCheckerInterface<'tcx> {
 
     fn region_infer_ctxt(&self) -> &RegionInferenceContext<'tcx>;
 
+    /// The body that was borrow checked.
+    fn body(&self) -> &mir::Body<'tcx>;
+
     fn location_table(&self) -> &LocationTable;
+
+    /// The universal region variable of the body for a lifetime parameter of
+    /// the function, or of the function that defines a closure. Where clauses
+    /// name the parameter itself, the types of the body only this variable.
+    /// rustc numbers the universal regions `'static` first, then the lifetime
+    /// parameters in the order of the identity arguments of the typeck root
+    /// (see `UniversalRegions` in `rustc_borrowck`).
+    fn universal_region_of_param(&self, param: ty::EarlyParamRegion) -> RegionVid {
+        let tcx = self.tcx();
+        let root = tcx.typeck_root_def_id(self.body().source.def_id());
+        let position = ty::GenericArgs::identity_for_item(tcx, root)
+            .regions()
+            .position(|region| region.kind() == ty::RegionKind::ReEarlyParam(param))
+            .unwrap_or_else(|| panic!("{param:?} is not a lifetime parameter of {root:?}"));
+        let vid = RegionVid::from_usize(1 + position);
+        assert!(
+            self.input_facts()
+                .universal_region
+                .iter()
+                .any(|&universal| RegionVid::from(universal) == vid),
+            "{vid:?} for {param:?} is not a universal region"
+        );
+        vid
+    }
 
     /// Returns true iff `sup` is required to outlive `sub` everywhere.
     /// This can be useful e.g. for determining outlives relations of
     /// arguments to a function based on its signature.
     fn outlives_everywhere(&self, sup: PcgRegion<'tcx>, sub: PcgRegion<'tcx>) -> bool {
-        match (sup, sub) {
+        let in_body = |region| match region {
+            PcgRegion::ReEarlyParam(param) => {
+                PcgRegion::RegionVid(self.universal_region_of_param(param))
+            }
+            _ => region,
+        };
+        match (in_body(sup), in_body(sub)) {
             (PcgRegion::RegionVid(sup), PcgRegion::RegionVid(sub)) => {
                 self.region_infer_ctxt().eval_outlives(sup, sub)
             }

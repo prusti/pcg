@@ -260,4 +260,21 @@ fn alias_in_closure_signature<'a, T: Make<'a>>(t: &T) -> usize {
     c(t.make())
 }
 
+// The closure returns its parameter, whose alias type its signature gives
+// two distinct regions where its body has one.
+fn identity_closure_on_alias<'a, T: Make<'a>>(t: &T) -> <T as Make<'a>>::Out {
+    let c = |x: <T as Make<'a>>::Out| x;
+    c(t.make())
+}
+
+trait HasRef<'a> {
+    fn get(&self) -> &'a u32;
+}
+
+// The closure returns a reference of `'a`, which only the bound on `T` names:
+// the closure's type has no region for it, but its body has.
+fn ref_from_bound<'a, T: HasRef<'a>>(ts: &[T]) -> Vec<&'a u32> {
+    ts.iter().map(|t| t.get()).collect()
+}
+
 fn main() {}
