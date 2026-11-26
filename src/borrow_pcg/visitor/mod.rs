@@ -224,8 +224,10 @@ pub enum GeneralizedLifetime<'tcx> {
     /// `T↓L`: the part of the value of `T` that the bounds on `T` mentioning
     /// `L` let loans of `L` flow into or out of. For `T: Sink<'c>`, the impl
     /// of `put(&mut self, x: &'c String)` may store `x` into it, and nowhere
-    /// else in the value of `T`. It is a part of `RegionsIn(T)`, which is for
-    /// moving a value of `T` as a whole.
+    /// else in the value of `T`. For an alias type, also the part made of the
+    /// lifetime `L` of one of its arguments (see
+    /// [`LifetimeEnv::member_lifetimes`]). It is a part of `RegionsIn(T)`,
+    /// which is for moving a value of `T` as a whole.
     #[from(ignore)]
     BoundPart(OpaqueTy<'tcx>, BoundLifetime<'tcx>),
 }
@@ -265,10 +267,47 @@ impl<'tcx> LifetimeEnv<'tcx> {
         Self { tcx, def_id }
     }
 
-    /// The lifetimes that the bounds on `opaque_ty` mention, in the order of
-    /// the where clauses, without duplicates. Regions bound by the bound
-    /// itself (`for<'x>`) and `opaque_ty` itself are not included.
+    /// The lifetimes that name the parts of the value of `opaque_ty`, without
+    /// duplicates: those that the bounds on `opaque_ty` mention, in the order
+    /// of the where clauses, then for an alias type those of its arguments
+    /// (see [`Self::member_lifetimes`]). Regions bound by a bound itself
+    /// (`for<'x>`) and `opaque_ty` itself are not included.
     pub(crate) fn bound_lifetimes(self, opaque_ty: OpaqueTy<'tcx>) -> Vec<BoundLifetime<'tcx>> {
+        let mut lifetimes = self.where_clause_lifetimes(opaque_ty);
+        for lifetime in self.member_lifetimes(opaque_ty) {
+            if !lifetimes.contains(&lifetime) {
+                lifetimes.push(lifetime);
+            }
+        }
+        lifetimes
+    }
+
+    /// The lifetimes of the arguments of an alias type, of which its value is
+    /// made: its region arguments other than `'static`, and for an opaque
+    /// type argument `Q`, `RegionsIn(Q)` and the lifetimes of the parts of
+    /// `Q`. `<I as IntoIterator>::IntoIter` with `I: IntoIterator<Item = &'a
+    /// u32>` has the parts `RegionsIn(I)` and `'a`: the items it yields are in
+    /// the latter only. A type parameter has none.
+    pub(crate) fn member_lifetimes(self, opaque_ty: OpaqueTy<'tcx>) -> Vec<BoundLifetime<'tcx>> {
+        let OpaqueTy::Alias(alias) = opaque_ty else {
+            return Vec::new();
+        };
+        let ty::TyKind::Alias(_, alias_ty) = alias.kind() else {
+            unreachable!("{alias:?} is not an alias type")
+        };
+        let mut collector = MemberLifetimeCollector {
+            env: self,
+            lifetimes: Vec::new(),
+        };
+        alias_ty.args.visit_with(&mut collector);
+        collector.lifetimes
+    }
+
+    /// The lifetimes that the where clauses on `opaque_ty` mention.
+    pub(crate) fn where_clause_lifetimes(
+        self,
+        opaque_ty: OpaqueTy<'tcx>,
+    ) -> Vec<BoundLifetime<'tcx>> {
         // The where clauses are written with the function's lifetime
         // parameters, the types of its body with region variables: an alias
         // such as `<T as Tr<'a>>::Out` is matched up to its regions.
@@ -298,6 +337,41 @@ impl<'tcx> LifetimeEnv<'tcx> {
             }
         }
         collector.lifetimes
+    }
+}
+
+/// Collects the lifetimes of the arguments of an alias type, for
+/// [`LifetimeEnv::member_lifetimes`].
+struct MemberLifetimeCollector<'tcx> {
+    env: LifetimeEnv<'tcx>,
+    lifetimes: Vec<BoundLifetime<'tcx>>,
+}
+
+impl<'tcx> MemberLifetimeCollector<'tcx> {
+    fn push(&mut self, lifetime: BoundLifetime<'tcx>) {
+        if !self.lifetimes.contains(&lifetime) {
+            self.lifetimes.push(lifetime);
+        }
+    }
+}
+
+impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for MemberLifetimeCollector<'tcx> {
+    fn visit_ty(&mut self, ty: ty::Ty<'tcx>) {
+        match OpaqueTy::try_from(ty) {
+            Ok(opaque_ty) => {
+                self.push(BoundLifetime::RegionsIn(opaque_ty));
+                for lifetime in self.env.bound_lifetimes(opaque_ty) {
+                    self.push(lifetime);
+                }
+            }
+            Err(()) => ty.super_visit_with(self),
+        }
+    }
+
+    fn visit_region(&mut self, region: ty::Region<'tcx>) {
+        if !is_bound_region(region) && !region.is_static() {
+            self.push(BoundLifetime::Region(region.into()));
+        }
     }
 }
 

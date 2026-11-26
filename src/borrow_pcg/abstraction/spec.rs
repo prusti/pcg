@@ -140,32 +140,199 @@ enum Node<'tcx> {
     Region(ty::Region<'tcx>),
     /// A lifetime of an opaque type (a type parameter or alias of `env`) in
     /// the callee's instantiated signature: `RegionsIn` of it, or one of its
-    /// bound parts.
+    /// parts.
     Opaque(ty::Ty<'tcx>, OpaquePart<'tcx>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum OpaquePart<'tcx> {
-    /// All of the value: `RegionsIn` of the opaque type.
+    /// All of the value: `RegionsIn` of the opaque type, for moving the value
+    /// as a whole.
     Whole,
-    /// A bound part of the value.
+    /// The part named by a lifetime (see [`GeneralizedLifetime::BoundPart`]).
     Bound(BoundLifetime<'tcx>),
-    /// What is written into the value of an alias type (see
-    /// [`Node::written`]).
-    Written,
 }
 
-impl Node<'_> {
-    /// The node that the loans flowing into `self` go to. For the value of an
-    /// alias type, which is made of the regions of its arguments, these are
-    /// kept apart from the loans read from it, so that a loan cannot enter
-    /// the value through one region and leave it through another.
-    fn written(self) -> Self {
+/// A lifetime at one position of the callee's instantiated signature.
+#[derive(Clone, Copy, Debug)]
+enum FormalLifetime<'tcx> {
+    Region(ty::Region<'tcx>),
+    Part(ty::Ty<'tcx>, OpaquePart<'tcx>),
+}
+
+impl<'tcx> FormalLifetime<'tcx> {
+    /// This lifetime as a lifetime of the type it is in.
+    fn to_generalized(self) -> GeneralizedLifetime<'tcx> {
         match self {
-            Node::Opaque(ty, OpaquePart::Whole) if matches!(ty.kind(), ty::TyKind::Alias(..)) => {
-                Node::Opaque(ty, OpaquePart::Written)
+            FormalLifetime::Region(region) => GeneralizedLifetime::Region(region.into()),
+            FormalLifetime::Part(opaque, part) => {
+                let opaque = OpaqueTy::try_from(opaque).unwrap();
+                match part {
+                    OpaquePart::Whole => GeneralizedLifetime::RegionsIn(opaque),
+                    OpaquePart::Bound(lifetime) => GeneralizedLifetime::BoundPart(opaque, lifetime),
+                }
             }
-            other => other,
+        }
+    }
+}
+
+/// The lifetimes at the occurrence `actual` of a type of the call, paired
+/// with those at the occurrence `formal` at the same position of the callee's
+/// instantiated signature.
+///
+/// Where one of the two is an opaque type and the other is not, e.g. the
+/// opaque return type of a function and the type of the value that its body
+/// returns, the value's regions are in the parts of the opaque type's value,
+/// so each pairs with each part.
+fn paired_lifetimes<'tcx>(
+    actual: OccurrenceKind<'tcx>,
+    formal: OccurrenceKind<'tcx>,
+    env: LifetimeEnv<'tcx>,
+) -> Vec<(GeneralizedLifetime<'tcx>, FormalLifetime<'tcx>)> {
+    let parts = |ty: ty::Ty<'tcx>| env.bound_lifetimes(OpaqueTy::try_from(ty).unwrap());
+    match (actual, formal) {
+        (OccurrenceKind::Region(actual), OccurrenceKind::Region(formal)) => vec![(
+            GeneralizedLifetime::Region(actual.into()),
+            FormalLifetime::Region(formal),
+        )],
+        (OccurrenceKind::Member(opaque, lifetime), formal) => {
+            let part =
+                GeneralizedLifetime::BoundPart(OpaqueTy::try_from(opaque).unwrap(), lifetime);
+            let formal = match formal {
+                OccurrenceKind::Region(region) => FormalLifetime::Region(region),
+                OccurrenceKind::Opaque(ty) => FormalLifetime::Part(ty, OpaquePart::Whole),
+                OccurrenceKind::Member(..) => unreachable!("The signature has no hidden types"),
+            };
+            vec![(part, formal)]
+        }
+        (_, OccurrenceKind::Member(..)) => unreachable!("The signature has no hidden types"),
+        (OccurrenceKind::Region(actual), OccurrenceKind::Opaque(formal)) => parts(formal)
+            .into_iter()
+            .map(|part| {
+                (
+                    GeneralizedLifetime::Region(actual.into()),
+                    FormalLifetime::Part(formal, OpaquePart::Bound(part)),
+                )
+            })
+            .collect(),
+        (OccurrenceKind::Opaque(actual), OccurrenceKind::Region(formal)) => {
+            let opaque = OpaqueTy::try_from(actual).unwrap();
+            parts(actual)
+                .into_iter()
+                .map(|part| {
+                    (
+                        GeneralizedLifetime::BoundPart(opaque, part),
+                        FormalLifetime::Region(formal),
+                    )
+                })
+                .collect()
+        }
+        (OccurrenceKind::Opaque(actual), OccurrenceKind::Opaque(formal)) => {
+            let opaque = OpaqueTy::try_from(actual).unwrap();
+            let mut pairs = vec![(
+                GeneralizedLifetime::RegionsIn(opaque),
+                FormalLifetime::Part(formal, OpaquePart::Whole),
+            )];
+            pairs.extend(paired_parts(actual, formal, env).into_iter().map(
+                |(actual_part, formal_part)| {
+                    (
+                        GeneralizedLifetime::BoundPart(opaque, actual_part),
+                        FormalLifetime::Part(formal, OpaquePart::Bound(formal_part)),
+                    )
+                },
+            ));
+            pairs
+        }
+    }
+}
+
+/// The lifetimes naming the parts of the opaque types `actual` and `formal`
+/// at the same position (see [`LifetimeEnv::bound_lifetimes`]), paired. The
+/// lifetimes of where clauses are the same in both; those of the arguments of
+/// an alias type correspond by position in the arguments.
+fn paired_parts<'tcx>(
+    actual: ty::Ty<'tcx>,
+    formal: ty::Ty<'tcx>,
+    env: LifetimeEnv<'tcx>,
+) -> Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> {
+    let (actual_opaque, formal_opaque) = (
+        OpaqueTy::try_from(actual).unwrap(),
+        OpaqueTy::try_from(formal).unwrap(),
+    );
+    let formal_clause_lifetimes = env.where_clause_lifetimes(formal_opaque);
+    let mut pairs: Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> = env
+        .where_clause_lifetimes(actual_opaque)
+        .into_iter()
+        .filter(|lifetime| formal_clause_lifetimes.contains(lifetime))
+        .map(|lifetime| (lifetime, lifetime))
+        .collect();
+    let (ty::TyKind::Alias(_, actual_alias), ty::TyKind::Alias(_, formal_alias)) =
+        (actual.kind(), formal.kind())
+    else {
+        return pairs;
+    };
+    for (actual_arg, formal_arg) in actual_alias.args.iter().zip(formal_alias.args.iter()) {
+        if let (Some(actual_region), Some(formal_region)) =
+            (actual_arg.as_region(), formal_arg.as_region())
+        {
+            if !actual_region.is_static() && !is_bound_region(actual_region) {
+                pairs.push((
+                    BoundLifetime::Region(actual_region.into()),
+                    BoundLifetime::Region(formal_region.into()),
+                ));
+            }
+        } else if let (Some(actual_ty), Some(formal_ty)) =
+            (actual_arg.as_type(), formal_arg.as_type())
+        {
+            for (actual, formal) in aligned_occurrences(actual_ty, formal_ty, env.tcx) {
+                pairs.extend(member_pairs(actual, formal, env));
+            }
+        }
+    }
+    pairs
+}
+
+/// The lifetimes that the occurrences `actual` and `formal` at the same
+/// position of the arguments of two alias types give their parts, paired.
+fn member_pairs<'tcx>(
+    actual: OccurrenceKind<'tcx>,
+    formal: OccurrenceKind<'tcx>,
+    env: LifetimeEnv<'tcx>,
+) -> Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> {
+    let lifetime = |occurrence: OccurrenceKind<'tcx>| match occurrence {
+        OccurrenceKind::Region(region) if region.is_static() => None,
+        OccurrenceKind::Region(region) => Some(BoundLifetime::Region(region.into())),
+        OccurrenceKind::Opaque(ty) => {
+            Some(BoundLifetime::RegionsIn(OpaqueTy::try_from(ty).unwrap()))
+        }
+        // An argument of an alias type that is itself in a hidden type
+        // names no part of the alias's value.
+        OccurrenceKind::Member(..) => None,
+    };
+    let mut pairs: Vec<_> = lifetime(actual).zip(lifetime(formal)).into_iter().collect();
+    if let (OccurrenceKind::Opaque(actual), OccurrenceKind::Opaque(formal)) = (actual, formal) {
+        pairs.extend(paired_parts(actual, formal, env));
+    }
+    pairs
+}
+
+impl<'tcx> OpaquePart<'tcx> {
+    /// This part with its region resolved by `resolver`.
+    fn resolve(
+        self,
+        resolver: &mut OpportunisticRegionResolver<'_, 'tcx>,
+        tcx: ty::TyCtxt<'tcx>,
+    ) -> Self {
+        match self {
+            OpaquePart::Bound(BoundLifetime::Region(region)) => OpaquePart::Bound(
+                BoundLifetime::Region(region.rust_region(tcx).fold_with(resolver).into()),
+            ),
+            OpaquePart::Bound(BoundLifetime::RegionsIn(opaque)) => {
+                OpaquePart::Bound(BoundLifetime::RegionsIn(
+                    OpaqueTy::try_from(opaque.ty(tcx).fold_with(resolver)).unwrap(),
+                ))
+            }
+            OpaquePart::Whole => OpaquePart::Whole,
         }
     }
 }
@@ -183,6 +350,10 @@ pub(crate) enum OccurrenceKind<'tcx> {
     Region(ty::Region<'tcx>),
     /// A type parameter or an alias type.
     Opaque(ty::Ty<'tcx>),
+    /// A region or opaque type of the hidden type of an opaque type (the
+    /// first field), which names a part of its value (see
+    /// [`aligned_occurrences`]).
+    Member(ty::Ty<'tcx>, BoundLifetime<'tcx>),
 }
 
 /// The regions and opaque types of `ty`, one entry per position, in an order
@@ -227,6 +398,7 @@ fn writable_lifetimes<'tcx>(
                     writable.insert(GeneralizedLifetime::BoundPart(opaque, lifetime));
                 }
             }
+            OccurrenceKind::Member(..) => unreachable!("`occurrences` reveals no hidden types"),
         }
     }
     writable
@@ -264,6 +436,26 @@ fn align<'tcx>(
                 OccurrenceKind::Opaque(actual),
                 OccurrenceKind::Opaque(formal),
             ));
+            return;
+        }
+        // In the scope that defines an opaque type, a value of its hidden type
+        // can be written into a place of the opaque type. The hidden type is
+        // written in the opaque type's arguments, so its regions name parts
+        // of the opaque type's value.
+        (true, false) if let Some((def_id, args)) = opaque_type(actual) => {
+            let hidden = instantiate(tcx.type_of(def_id).skip_binder(), tcx, args);
+            let mut hidden_pairs = Vec::new();
+            align(hidden, formal, tcx, &mut hidden_pairs);
+            pairs.extend(hidden_pairs.into_iter().filter_map(|(member, formal)| {
+                let lifetime = match member {
+                    OccurrenceKind::Region(region) => BoundLifetime::Region(region.into()),
+                    OccurrenceKind::Opaque(ty) => {
+                        BoundLifetime::RegionsIn(OpaqueTy::try_from(ty).unwrap())
+                    }
+                    OccurrenceKind::Member(..) => return None,
+                };
+                Some((OccurrenceKind::Member(actual, lifetime), formal))
+            }));
             return;
         }
         (true, false) => {
@@ -308,6 +500,27 @@ fn align<'tcx>(
             (GenericArgKind::Const(_), GenericArgKind::Const(_)) => {}
             _ => mismatch(),
         }
+    }
+}
+
+/// The definition and arguments of `ty`, if it is an opaque type.
+#[rustversion::since(2026-08-01)]
+fn opaque_type(ty: ty::Ty<'_>) -> Option<(DefId, GenericArgsRef<'_>)> {
+    match ty.kind() {
+        ty::TyKind::Alias(_, alias) => match alias.kind {
+            ty::AliasTyKind::Opaque { def_id } => Some((def_id, alias.args)),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The definition and arguments of `ty`, if it is an opaque type.
+#[rustversion::before(2026-08-01)]
+fn opaque_type(ty: ty::Ty<'_>) -> Option<(DefId, GenericArgsRef<'_>)> {
+    match ty.kind() {
+        ty::TyKind::Alias(ty::AliasTyKind::Opaque, alias) => Some((alias.def_id, alias.args)),
+        _ => None,
     }
 }
 
@@ -816,6 +1029,9 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             let sources = match component {
                 OccurrenceKind::Region(r) => vec![region_node(r, resolver)],
                 OccurrenceKind::Opaque(opaque) => opaque_nodes(opaque.fold_with(resolver), env),
+                OccurrenceKind::Member(..) => {
+                    unreachable!("`outlives_components` reveals no hidden types")
+                }
             };
             for source in sources {
                 graph.add_flow(source, target);
@@ -891,60 +1107,30 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             // A region or opaque type at a position that the lifetimes of
             // `actual_ty` do not cover (e.g. in the signature of a closure
             // type) binds nothing: it is a node of the graph only.
-            let bindings: Vec<(usize, Node<'tcx>)> = match (actual, formal) {
-                (OccurrenceKind::Region(actual), OccurrenceKind::Region(formal)) => {
-                    index_of(GeneralizedLifetime::Region(actual.into()))
-                        .map(|idx| (idx, region_node(formal, &mut resolver)))
-                        .into_iter()
-                        .collect()
-                }
-                (OccurrenceKind::Region(actual), OccurrenceKind::Opaque(formal)) => {
-                    index_of(GeneralizedLifetime::Region(actual.into()))
-                        .map(|idx| {
-                            let formal = formal.fold_with(&mut resolver);
-                            (idx, Node::Opaque(formal, OpaquePart::Whole))
-                        })
-                        .into_iter()
-                        .collect()
-                }
-                (OccurrenceKind::Opaque(actual), OccurrenceKind::Region(formal)) => {
-                    let actual = OpaqueTy::try_from(actual).unwrap();
-                    index_of(GeneralizedLifetime::RegionsIn(actual))
-                        .map(|idx| (idx, region_node(formal, &mut resolver)))
-                        .into_iter()
-                        .collect()
-                }
-                (OccurrenceKind::Opaque(actual), OccurrenceKind::Opaque(formal)) => {
-                    let actual = OpaqueTy::try_from(actual).unwrap();
-                    let formal = formal.fold_with(&mut resolver);
-                    std::iter::once(OpaquePart::Whole)
-                        .chain(
-                            env.bound_lifetimes(actual)
-                                .into_iter()
-                                .map(OpaquePart::Bound),
-                        )
-                        .filter_map(|part| {
-                            let lifetime = match part {
-                                OpaquePart::Whole => GeneralizedLifetime::RegionsIn(actual),
-                                OpaquePart::Bound(l) => GeneralizedLifetime::BoundPart(actual, l),
-                                OpaquePart::Written => unreachable!(),
-                            };
-                            Some((index_of(lifetime)?, Node::Opaque(formal, part)))
-                        })
-                        .collect()
-                }
-            };
+            let bindings = paired_lifetimes(actual, formal, env)
+                .into_iter()
+                .filter_map(|(actual, formal)| {
+                    let node = match formal {
+                        FormalLifetime::Region(region) => region_node(region, &mut resolver),
+                        FormalLifetime::Part(opaque, part) => Node::Opaque(
+                            opaque.fold_with(&mut resolver),
+                            part.resolve(&mut resolver, tcx),
+                        ),
+                    };
+                    Some((index_of(actual)?, node))
+                })
+                .collect::<Vec<_>>();
             for (idx, node) in bindings {
                 match base {
                     ArgIdxOrResult::Argument(arg) => {
                         graph.add_flow(Node::Input(arg, idx), node);
                         if writable.contains(&lifetimes.raw[idx]) {
-                            graph.add_flow(node.written(), Node::Output(base, idx));
+                            graph.add_flow(node, Node::Output(base, idx));
                             outputs.insert((base, idx));
                         }
                     }
                     ArgIdxOrResult::Result => {
-                        graph.add_flow(node.written(), Node::Output(base, idx));
+                        graph.add_flow(node, Node::Output(base, idx));
                         outputs.insert((base, idx));
                     }
                 }
@@ -957,37 +1143,24 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     // of an alias holds loans of the regions of its arguments; a loan that
     // enters it through one of them leaves it through that same one, so it
     // has a node for what is read from it and one for what is written to it.
-    // Wiring a node may add new opaque nodes (the arguments of a nested
-    // alias, the type a bound part names), which are wired in turn.
+    // A part of the value of an opaque type holds the loans of the lifetime
+    // that names it: those that a bound lets flow into or out of it, or for
+    // an alias type, those of one of its arguments. Wiring a part may add new
+    // opaque nodes (the type a part is named after), which are wired in turn.
     let mut wired = 0;
     while let Some(&node) = graph.nodes.get(wired) {
         wired += 1;
-        let Node::Opaque(opaque, part) = node else {
-            continue;
-        };
-        match part {
-            OpaquePart::Bound(BoundLifetime::Region(region)) => {
+        match node {
+            Node::Opaque(_, OpaquePart::Bound(BoundLifetime::Region(region))) => {
                 let region = region.rust_region(tcx);
                 if !region.is_static() {
                     graph.add_flows_both_ways(node, region_node(region, &mut resolver));
                 }
             }
-            OpaquePart::Bound(BoundLifetime::RegionsIn(other)) => {
+            Node::Opaque(_, OpaquePart::Bound(BoundLifetime::RegionsIn(other))) => {
                 graph.add_flows_both_ways(node, Node::Opaque(other.ty(tcx), OpaquePart::Whole));
             }
-            OpaquePart::Whole | OpaquePart::Written => {
-                if let ty::TyKind::Alias(_, alias) = opaque.kind() {
-                    let read = Node::Opaque(opaque, OpaquePart::Whole);
-                    let written = read.written();
-                    graph.add_flow(read, written);
-                    for arg in alias.args {
-                        for member in member_nodes(arg, tcx, env, &mut resolver) {
-                            graph.add_flow(read, member);
-                            graph.add_flow(member, written);
-                        }
-                    }
-                }
-            }
+            _ => {}
         }
     }
 
@@ -1009,7 +1182,7 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         .filter(|node| matches!(node, Node::Region(_) | Node::Opaque(..)))
         .collect();
     for node in all_region_nodes {
-        graph.add_flow(static_node, node.written());
+        graph.add_flow(static_node, node);
     }
 
     SpecGraph {
@@ -1147,40 +1320,15 @@ fn lifetime_index_map<'tcx>(
 ) -> HashMap<usize, HashSet<usize>> {
     let body_lifetimes = extract_generalized_lifetimes(body_ty, env);
     let sig_lifetimes = extract_generalized_lifetimes(sig_ty, env);
-    let lifetimes_at = |occurrence: OccurrenceKind<'tcx>| -> Vec<GeneralizedLifetime<'tcx>> {
-        match occurrence {
-            OccurrenceKind::Region(region) => vec![GeneralizedLifetime::Region(region.into())],
-            OccurrenceKind::Opaque(opaque) => {
-                let opaque = OpaqueTy::try_from(opaque).unwrap();
-                std::iter::once(GeneralizedLifetime::RegionsIn(opaque))
-                    .chain(
-                        env.bound_lifetimes(opaque)
-                            .into_iter()
-                            .map(|lifetime| GeneralizedLifetime::BoundPart(opaque, lifetime)),
-                    )
-                    .collect()
-            }
-        }
-    };
     let mut map: HashMap<usize, HashSet<usize>> = HashMap::default();
     for (body_occurrence, sig_occurrence) in aligned_occurrences(body_ty, sig_ty, env.tcx) {
-        let body_at = lifetimes_at(body_occurrence);
-        let sig_at = lifetimes_at(sig_occurrence);
-        for (i, body_lifetime) in body_at.iter().enumerate() {
-            let Some(body_idx) = body_lifetimes.iter().position(|l| l == body_lifetime) else {
-                continue;
-            };
-            // The parts of two occurrences of an opaque type correspond one
-            // to one; a region and an opaque type correspond as a whole.
-            let targets = if body_at.len() == sig_at.len() {
-                &sig_at[i..=i]
-            } else {
-                &sig_at[..1]
-            };
-            for sig_lifetime in targets {
-                if let Some(sig_idx) = sig_lifetimes.iter().position(|l| l == sig_lifetime) {
-                    map.entry(body_idx).or_default().insert(sig_idx);
-                }
+        for (body_lifetime, sig_lifetime) in paired_lifetimes(body_occurrence, sig_occurrence, env)
+        {
+            let sig_lifetime = sig_lifetime.to_generalized();
+            if let Some(body_idx) = body_lifetimes.iter().position(|l| *l == body_lifetime)
+                && let Some(sig_idx) = sig_lifetimes.iter().position(|l| *l == sig_lifetime)
+            {
+                map.entry(body_idx).or_default().insert(sig_idx);
             }
         }
     }
@@ -1553,23 +1701,18 @@ pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
         };
         extract_generalized_lifetimes(ty, env).raw[idx]
     };
-    // The region variables a lifetime of the call stands for, if they are
-    // known: its region, or the regions of an alias type's arguments, whose
-    // value holds loans of these.
+    // The region variable a lifetime of the call stands for, if it is known:
+    // its region, or the region of an alias type's argument that names a
+    // part of the alias's value.
     let regions_of = |lifetime: GeneralizedLifetime<'tcx>| -> Vec<ty::RegionVid> {
-        let mut vids = Vec::new();
         match lifetime {
-            GeneralizedLifetime::Region(PcgRegion::RegionVid(vid)) => vids.push(vid),
-            GeneralizedLifetime::RegionsIn(OpaqueTy::Alias(alias)) => {
-                ctxt.tcx().for_each_free_region(&alias, |region| {
-                    if let ty::RegionKind::ReVar(vid) = region.kind() {
-                        vids.push(vid);
-                    }
-                });
-            }
-            _ => {}
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(vid))
+            | GeneralizedLifetime::BoundPart(
+                OpaqueTy::Alias(_),
+                BoundLifetime::Region(PcgRegion::RegionVid(vid)),
+            ) => vec![vid],
+            _ => vec![],
         }
-        vids
     };
 
     let Some(rust_borrow_checker) = ctxt.bc().rust_borrow_checker() else {
@@ -1716,34 +1859,5 @@ fn opaque_nodes<'tcx>(opaque: ty::Ty<'tcx>, env: LifetimeEnv<'tcx>) -> Vec<Node<
     std::iter::once(OpaquePart::Whole)
         .chain(parts.into_iter().map(OpaquePart::Bound))
         .map(|part| Node::Opaque(opaque, part))
-        .collect()
-}
-
-/// The nodes for the lifetimes of a generic argument of an alias type.
-fn member_nodes<'tcx>(
-    arg: ty::GenericArg<'tcx>,
-    tcx: ty::TyCtxt<'tcx>,
-    env: LifetimeEnv<'tcx>,
-    resolver: &mut OpportunisticRegionResolver<'_, 'tcx>,
-) -> Vec<Node<'tcx>> {
-    if let Some(region) = arg.as_region() {
-        return if region.is_static() || is_bound_region(region) {
-            vec![]
-        } else {
-            vec![Node::Region(region.fold_with(resolver))]
-        };
-    }
-    let Some(ty) = arg.as_type() else {
-        return vec![];
-    };
-    occurrences(ty, tcx)
-        .into_iter()
-        .flat_map(|occurrence| match occurrence.kind {
-            OccurrenceKind::Region(region) if !region.is_static() => {
-                vec![Node::Region(region.fold_with(resolver))]
-            }
-            OccurrenceKind::Region(_) => vec![],
-            OccurrenceKind::Opaque(opaque) => opaque_nodes(opaque.fold_with(resolver), env),
-        })
         .collect()
 }

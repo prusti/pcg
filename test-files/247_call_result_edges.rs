@@ -165,9 +165,10 @@ fn wrap<'a>(x: &'a String) -> impl Iterator<Item = &'a String> + 'a {
     std::iter::once(x)
 }
 
-// The value of the opaque result may hold borrows of `'a`.
+// The value of the opaque result may hold borrows of `'a`, in the part of it
+// that its argument `'a` names.
 fn wrap_ref(s: String) -> usize {
-    // PCG: bb0[5] post_main: Add Edge call wrap at bb0[5]: _3 before bb0[5]:PostOperands↓'?6 before bb0[5]:PostMain -> it↓RegionsIn(impl std::iter::Iterator<Item = &std::string::String> + '_)
+    // PCG: bb0[5] post_main: Add Edge call wrap at bb0[5]: _3 before bb0[5]:PostOperands↓'?6 before bb0[5]:PostMain -> it↓impl std::iter::Iterator<Item = &std::string::String> + '_[RegionVid('?5)]
     let it = wrap(&s);
     it.count()
 }
@@ -216,8 +217,19 @@ fn put_into_alias<'a, T: Tr<'a>>(x: &mut <T as Tr<'a>>::Out, s: &'a String)
 where
     <T as Tr<'a>>::Out: Sink<'a>,
 {
-    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_3 before bb0[4]:PostOperands↓RegionsIn(<T as Tr<'_>>::Out) before bb0[4]:PostMain, _4 before bb0[4]:PostOperands↓'?13 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓RegionsIn(<T as Tr<'_>>::Out) after bb0, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] after bb0]
+    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_4 before bb0[4]:PostOperands↓'?13 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] after bb0, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] after bb0]
+    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionsIn(T)] before bb0[4]:PostMain -> _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionsIn(T)] after bb0
     x.put(s)
+}
+
+// The items of `I::IntoIter` are in its part for `'a`, which `I['a]` flows
+// into; the rest of `I` flows into its part for `RegionsIn(I)`. So only
+// `I['a]` flows into the result, as the signature says.
+fn first_item<'a, I: IntoIterator<Item = &'a u32>>(i: I) -> Option<&'a u32> {
+    // PCG: bb0[4] post_main: Add Edge call std::iter::IntoIterator::into_iter at bb0[4]: [_4 before bb0[4]:PostOperands↓I[ReEarlyParam('a/#0)] before bb0[4]:PostMain] -> [_3↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)], _4 before bb0[4]:PostOperands↓I[ReEarlyParam('a/#0)] after bb0]
+    // PCG: bb1[2] post_main: Add Edge call std::iter::Iterator::next at bb1[2]: _2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionsIn(I)] before bb1[2]:PostMain -> _2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionsIn(I)] after bb1
+    // PCG: bb1[2] post_main: Add Edge call std::iter::Iterator::next at bb1[2]: [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] before bb1[2]:PostMain] -> [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] after bb1, RETURN↓'?4]
+    i.into_iter().next()
 }
 
 fn main() {}
