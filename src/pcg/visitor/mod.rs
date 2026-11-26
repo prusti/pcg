@@ -2,6 +2,7 @@ use crate::{
     action::{AppliedActions, BorrowPcgAction, PcgAction},
     borrow_pcg::{
         GeneralizedLifetime,
+        abstraction::spec::check_return_flows,
         action::LabelPlaceReason,
         borrow_pcg_edge::BorrowPcgEdge,
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
@@ -300,11 +301,7 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
             && matches!(terminator.kind, mir::TerminatorKind::Return)
             && crate::validity_checks_enabled()
         {
-            crate::borrow_pcg::abstraction::spec::check_return_flows(
-                self.pcg.borrow.graph(),
-                location,
-                self.ctxt,
-            );
+            check_return_flows(self.pcg.borrow.graph(), location, self.ctxt);
         }
         Ok(())
     }

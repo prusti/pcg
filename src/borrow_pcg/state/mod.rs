@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use crate::{
     HasSettings,
     borrow_pcg::{
+        abstraction::spec::check_body_spec,
         action::ApplyActionResult,
         borrow_pcg_edge::{BlockingNode, LocalNode},
         edge_data::{LabelEdgeLifetimeProjections, LabelEdgePlaces, display_node_replacements},
@@ -472,7 +473,7 @@ impl<'a, 'tcx> BorrowsState<'a, 'tcx, BorrowPcgEdgeKind<'tcx>, ValidityCondition
         ctxt: AnalysisCtxt<'a, 'tcx>,
     ) -> Self {
         if crate::validity_checks_enabled() {
-            crate::borrow_pcg::abstraction::spec::check_body_spec(ctxt);
+            check_body_spec(ctxt);
         }
         let mut borrow = Self::default();
         for arg in ctxt.args_iter() {

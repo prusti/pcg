@@ -458,12 +458,7 @@ impl<'a> FromMutref<'a> for &'a mut i32 {
 
         let expected = make_sig_shape(
             &[self_b, regions_in_self, self_a],
-            &[
-                regions_in_self_out,
-                self_a_out,
-                regions_in_result,
-                result_b,
-            ],
+            &[regions_in_self_out, self_a_out, regions_in_result, result_b],
             &[
                 (self_b, result_b),
                 (regions_in_self, regions_in_self_out),
