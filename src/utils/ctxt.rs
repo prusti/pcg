@@ -427,7 +427,7 @@ pub trait HasLifetimeEnv<'tcx>: Copy {
 
 impl<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>> HasLifetimeEnv<'tcx> for Ctxt {
     fn lifetime_env(self) -> LifetimeEnv<'tcx> {
-        LifetimeEnv::new(self.tcx(), self.body().source.def_id())
+        LifetimeEnv::body(self.tcx(), self.body().source.def_id())
     }
 }
 

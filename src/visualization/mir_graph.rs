@@ -470,7 +470,7 @@ impl ShapeLabelFormatter {
             sig.inputs(),
             sig.output(),
             callee_arg_labels(def_id, tcx),
-            LifetimeEnv::new(tcx, def_id),
+            LifetimeEnv::signature(tcx, def_id),
         )
     }
 

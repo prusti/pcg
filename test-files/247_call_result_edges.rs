@@ -129,7 +129,7 @@ fn put_through_dyn(s: String) -> usize {
 
 // The bound `T: Sink<'c>` lets `put` store `x` into the part `T['c]` of `*t`.
 fn put_generic<'c, T: Sink<'c>>(t: &mut T, x: &'c String) {
-    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_4 before bb0[4]:PostOperands↓'?9 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓T[ReEarlyParam('c/#0)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓T[ReEarlyParam('c/#0)] after bb0]
+    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_4 before bb0[4]:PostOperands↓'?9 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓T[RegionVid('?1)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓T[RegionVid('?1)] after bb0]
     t.put(x)
 }
 
@@ -217,7 +217,7 @@ fn put_into_alias<'a, T: Tr<'a>>(x: &mut <T as Tr<'a>>::Out, s: &'a String)
 where
     <T as Tr<'a>>::Out: Sink<'a>,
 {
-    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_4 before bb0[4]:PostOperands↓'?13 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] after bb0, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] after bb0]
+    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_4 before bb0[4]:PostOperands↓'?13 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?1)] before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?1)] after bb0, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionVid('?12)] after bb0]
     // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionsIn(T)] before bb0[4]:PostMain -> _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[RegionsIn(T)] after bb0
     x.put(s)
 }
@@ -226,9 +226,9 @@ where
 // into; the rest of `I` flows into its part for `RegionsIn(I)`. So only
 // `I['a]` flows into the result, as the signature says.
 fn first_item<'a, I: IntoIterator<Item = &'a u32>>(i: I) -> Option<&'a u32> {
-    // PCG: bb0[4] post_main: Add Edge call std::iter::IntoIterator::into_iter at bb0[4]: [_4 before bb0[4]:PostOperands↓I[ReEarlyParam('a/#0)] before bb0[4]:PostMain] -> [_3↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)], _4 before bb0[4]:PostOperands↓I[ReEarlyParam('a/#0)] after bb0]
+    // PCG: bb0[4] post_main: Add Edge call std::iter::IntoIterator::into_iter at bb0[4]: [_4 before bb0[4]:PostOperands↓I[RegionVid('?1)] before bb0[4]:PostMain] -> [_3↓<I as std::iter::IntoIterator>::IntoIter[RegionVid('?1)], _4 before bb0[4]:PostOperands↓I[RegionVid('?1)] after bb0]
     // PCG: bb1[2] post_main: Add Edge call std::iter::Iterator::next at bb1[2]: _2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionsIn(I)] before bb1[2]:PostMain -> _2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionsIn(I)] after bb1
-    // PCG: bb1[2] post_main: Add Edge call std::iter::Iterator::next at bb1[2]: [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] before bb1[2]:PostMain] -> [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] after bb1, RETURN↓'?4]
+    // PCG: bb1[2] post_main: Add Edge call std::iter::Iterator::next at bb1[2]: [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionVid('?1)] before bb1[2]:PostMain] -> [_2 before bb1[2]:PostOperands↓<I as std::iter::IntoIterator>::IntoIter[RegionVid('?1)] after bb1, RETURN↓'?4]
     i.into_iter().next()
 }
 

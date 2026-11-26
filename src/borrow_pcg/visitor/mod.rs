@@ -2,7 +2,9 @@ use derive_more::From;
 use std::hash::Hash;
 
 use crate::{
-    borrow_pcg::region_projection::region_is_invariant_in_type,
+    borrow_pcg::{
+        abstraction::body_regions::BodyRegions, region_projection::region_is_invariant_in_type,
+    },
     rustc_interface::{
         hir::def_id::DefId,
         index::IndexVec,
@@ -147,6 +149,28 @@ pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty
     tcx.erase_regions(ty)
 }
 
+/// If the types `a` and `b` are equal up to regions, their regions paired by
+/// position: they are the same type where each pair is equal (see
+/// [`GeneralizedLifetime`]). Erased regions have positions too.
+pub(crate) fn alias_region_pairs<'tcx>(
+    a: ty::Ty<'tcx>,
+    b: ty::Ty<'tcx>,
+    tcx: ty::TyCtxt<'tcx>,
+) -> Option<Vec<(ty::Region<'tcx>, ty::Region<'tcx>)>> {
+    if erase_regions(a, tcx) != erase_regions(b, tcx) {
+        return None;
+    }
+    let regions = |ty: ty::Ty<'tcx>| {
+        let mut regions = Vec::new();
+        ty::fold_regions(tcx, ty, |region, _| {
+            regions.push(region);
+            region
+        });
+        regions
+    };
+    Some(regions(a).into_iter().zip(regions(b)).collect())
+}
+
 /// An opaque type whose internal structure is not visible for lifetime
 /// extraction: either a type parameter (`T`, `Self`) or a non-normalizable
 /// associated type (`<Self as Deref>::Target`).
@@ -225,6 +249,26 @@ impl<'tcx> From<BoundLifetime<'tcx>> for GeneralizedLifetime<'tcx> {
 /// parameter or non-normalizable alias), or a part of an opaque type that its
 /// bounds name.
 ///
+/// Loans flow between generalized lifetimes by these rules, which both the
+/// flows within a body
+/// ([`BorrowCheckerInterface::outlives_generalized`](crate::borrow_checker::BorrowCheckerInterface::outlives_generalized))
+/// and the spec of a call follow, each with its own relation between
+/// regions (rustc's region inference of the body, or what the callee's
+/// signature and bounds give):
+/// - between regions, along that relation;
+/// - a part `X↓L` holds the loans of the lifetime `L` that names it: loans
+///   flow into and out of it as for `L`;
+/// - two alias types that are equal up to regions are the same type where
+///   their regions are equal (see [`alias_region_pairs`]): the value of the
+///   one flows into the other;
+/// - `'static` flows into every lifetime.
+///
+/// What flows between `RegionsIn(T)` and a region depends on what is known
+/// about `T`: within a body, `RegionsIn(T)` flows into a region that every
+/// universal region (and, for an alias, every region of it) outlives, and a
+/// region into `RegionsIn(T)` only if it is `'static`; in a spec, `RegionsIn(T)` flows into the regions that the
+/// solver's `T: 'r` facts give.
+///
 /// See the [_generalized lifetime_ definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From)]
 pub enum GeneralizedLifetime<'tcx> {
@@ -258,22 +302,69 @@ impl<'tcx, Ctxt: HasTyCtxt<'tcx> + DisplayCtxtFor<ty::RegionVid>> DisplayWithCtx
 /// The function whose generic parameters and where clauses the types of a
 /// computation are written in. The bounds of its parameters determine the
 /// [`GeneralizedLifetime::BoundPart`]s of their types.
+///
+/// The types of a signature name the function's lifetime parameters, those
+/// of its borrow-checked body region variables. A lifetime that a where
+/// clause names is named the same way as the types: in a body, a lifetime
+/// parameter by its universal region variable (see [`BodyRegions`]).
 #[derive(Clone, Copy)]
 pub struct LifetimeEnv<'tcx> {
     pub(crate) tcx: ty::TyCtxt<'tcx>,
     pub(crate) def_id: DefId,
+    /// Whether the types are those of the borrow-checked body of `def_id`.
+    in_body: bool,
 }
 
 impl std::fmt::Debug for LifetimeEnv<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "LifetimeEnv({:?})", self.def_id)
+        let kind = if self.in_body { "body" } else { "signature" };
+        write!(f, "LifetimeEnv({kind} of {:?})", self.def_id)
     }
 }
 
 impl<'tcx> LifetimeEnv<'tcx> {
+    /// The environment of the signature of `def_id` and of the types of its
+    /// callees' signatures.
     #[must_use]
-    pub fn new(tcx: ty::TyCtxt<'tcx>, def_id: DefId) -> Self {
-        Self { tcx, def_id }
+    pub fn signature(tcx: ty::TyCtxt<'tcx>, def_id: DefId) -> Self {
+        Self {
+            tcx,
+            def_id,
+            in_body: false,
+        }
+    }
+
+    /// The environment of the borrow-checked body of `def_id`.
+    #[must_use]
+    pub fn body(tcx: ty::TyCtxt<'tcx>, def_id: DefId) -> Self {
+        Self {
+            tcx,
+            def_id,
+            in_body: true,
+        }
+    }
+
+    /// This environment for the types of signatures.
+    #[must_use]
+    pub(crate) fn for_signature(self) -> Self {
+        Self::signature(self.tcx, self.def_id)
+    }
+
+    /// `lifetime`, a lifetime of this environment, as a lifetime of
+    /// [`Self::for_signature`].
+    pub(crate) fn to_signature(self, lifetime: BoundLifetime<'tcx>) -> BoundLifetime<'tcx> {
+        if !self.in_body {
+            return lifetime;
+        }
+        let regions = BodyRegions::new(self.tcx, self.def_id);
+        match lifetime {
+            BoundLifetime::Region(region) => {
+                BoundLifetime::Region(regions.vids_to_params(region.rust_region(self.tcx)).into())
+            }
+            BoundLifetime::RegionsIn(opaque) => BoundLifetime::RegionsIn(
+                OpaqueTy::try_from(regions.vids_to_params(opaque.ty(self.tcx))).unwrap(),
+            ),
+        }
     }
 
     /// The lifetimes that name the parts of the value of `opaque_ty`, without
@@ -312,21 +403,27 @@ impl<'tcx> LifetimeEnv<'tcx> {
         collector.lifetimes
     }
 
-    /// The lifetimes that the where clauses on `opaque_ty` mention.
+    /// The lifetimes that the where clauses on `opaque_ty` mention, in the
+    /// order of the where clauses.
     pub(crate) fn where_clause_lifetimes(
         self,
         opaque_ty: OpaqueTy<'tcx>,
     ) -> Vec<BoundLifetime<'tcx>> {
-        // The where clauses are written with the function's lifetime
-        // parameters, the types of its body with region variables: an alias
-        // such as `<T as Tr<'a>>::Out` is matched up to its regions.
+        // An alias such as `<T as Tr<'a>>::Out` is matched up to its regions:
+        // the types of a body have their own region variables in it.
         let self_ty = erase_regions(opaque_ty.ty(self.tcx), self.tcx);
         let is_self = |ty: ty::Ty<'tcx>| erase_regions(ty, self.tcx) == self_ty;
         let mut collector = BoundLifetimeCollector {
             of: opaque_ty,
             lifetimes: Vec::new(),
         };
+        let regions = BodyRegions::new(self.tcx, self.def_id);
         for clause in self.tcx.param_env(self.def_id).caller_bounds() {
+            let clause = if self.in_body {
+                regions.params_to_vids(clause)
+            } else {
+                clause
+            };
             if let Some(trait_clause) = clause.as_trait_clause() {
                 let trait_ref = trait_clause.skip_binder().trait_ref;
                 if is_self(trait_ref.self_ty()) {

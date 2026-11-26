@@ -85,8 +85,8 @@ fn move_alias_argument_part<'a, T: Iterable<'a>>(
 ) -> <<T as Iterable<'a>>::Out as IntoIterator>::IntoIter {
     let a = q.into_iter();
     // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionsIn(<T as Iterable<'_>>::Out)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionsIn(<T as Iterable<'_>>::Out)]
-    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)]
-    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?6)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[ReEarlyParam('a/#0)]
+    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?1)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?1)]
+    // PCG: bb1[3] post_main: Add Edge a before bb1[3]:PostOperands↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?6)] -> b↓<<T as Iterable<'_>>::Out as std::iter::IntoIterator>::IntoIter[RegionVid('?1)]
     let b = a;
     b
 }

@@ -39,17 +39,14 @@
 //! the same position inside another occurrence. Each region of the
 //! instantiated `T` is therefore a single node, shared by all occurrences.
 
-use std::{
-    collections::{BTreeSet, VecDeque},
-    iter::zip,
-};
+use std::collections::{BTreeSet, VecDeque};
 
 use crate::{
     HasSettings,
     borrow_pcg::{
         abstraction::{
             ArgIdx, ArgIdxOrResult, FunctionCall, FunctionData, FunctionShape, FunctionShapeInput,
-            FunctionShapeOutput, MakeFunctionShapeError,
+            FunctionShapeOutput, MakeFunctionShapeError, body_regions::BodyRegions,
         },
         edge::{
             abstraction::{FunctionCallOrLoop, function::DefinedFnCall},
@@ -59,7 +56,7 @@ use crate::{
         graph::{BorrowsGraph, loop_abstraction::MaybeRemoteCurrentPlace},
         region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         visitor::{
-            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, erase_regions,
+            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, alias_region_pairs,
             extract_generalized_lifetimes, is_bound_region,
         },
     },
@@ -118,8 +115,8 @@ pub(crate) struct CallSpecQuery<'a, 'tcx> {
     pub(crate) env: LifetimeEnv<'tcx>,
     /// Whether the body of a closure whose type contains both regions needs
     /// the first to outlive the second. `sup` and `sub` are regions of a
-    /// closure type in `env`, or for a closure's own spec, of its signature
-    /// and of the function that defines it.
+    /// closure type in `env`, or for a closure's own spec, regions of its
+    /// body's types of the closure, its arguments and its result.
     ///
     /// A closure's signature is inferred: rustc's borrow checker computes
     /// which relations between the regions of its captures and its
@@ -164,22 +161,6 @@ enum FormalLifetime<'tcx> {
     Part(ty::Ty<'tcx>, OpaquePart<'tcx>),
 }
 
-impl<'tcx> FormalLifetime<'tcx> {
-    /// This lifetime as a lifetime of the type it is in.
-    fn to_generalized(self) -> GeneralizedLifetime<'tcx> {
-        match self {
-            FormalLifetime::Region(region) => GeneralizedLifetime::Region(region.into()),
-            FormalLifetime::Part(opaque, part) => {
-                let opaque = OpaqueTy::try_from(opaque).unwrap();
-                match part {
-                    OpaquePart::Whole => GeneralizedLifetime::RegionsIn(opaque),
-                    OpaquePart::Bound(lifetime) => GeneralizedLifetime::BoundPart(opaque, lifetime),
-                }
-            }
-        }
-    }
-}
-
 /// The lifetimes at the occurrence `actual` of a type of the call, paired
 /// with those at the occurrence `formal` at the same position of the callee's
 /// instantiated signature.
@@ -193,7 +174,9 @@ fn paired_lifetimes<'tcx>(
     formal: OccurrenceKind<'tcx>,
     env: LifetimeEnv<'tcx>,
 ) -> Vec<(GeneralizedLifetime<'tcx>, FormalLifetime<'tcx>)> {
-    let parts = |ty: ty::Ty<'tcx>| env.bound_lifetimes(OpaqueTy::try_from(ty).unwrap());
+    let parts = |ty: ty::Ty<'tcx>, env: LifetimeEnv<'tcx>| {
+        env.bound_lifetimes(OpaqueTy::try_from(ty).unwrap())
+    };
     match (actual, formal) {
         (OccurrenceKind::Region(actual), OccurrenceKind::Region(formal)) => vec![(
             GeneralizedLifetime::Region(actual.into()),
@@ -210,18 +193,20 @@ fn paired_lifetimes<'tcx>(
             vec![(part, formal)]
         }
         (_, OccurrenceKind::Member(..)) => unreachable!("The signature has no hidden types"),
-        (OccurrenceKind::Region(actual), OccurrenceKind::Opaque(formal)) => parts(formal)
-            .into_iter()
-            .map(|part| {
-                (
-                    GeneralizedLifetime::Region(actual.into()),
-                    FormalLifetime::Part(formal, OpaquePart::Bound(part)),
-                )
-            })
-            .collect(),
+        (OccurrenceKind::Region(actual), OccurrenceKind::Opaque(formal)) => {
+            parts(formal, env.for_signature())
+                .into_iter()
+                .map(|part| {
+                    (
+                        GeneralizedLifetime::Region(actual.into()),
+                        FormalLifetime::Part(formal, OpaquePart::Bound(part)),
+                    )
+                })
+                .collect()
+        }
         (OccurrenceKind::Opaque(actual), OccurrenceKind::Region(formal)) => {
             let opaque = OpaqueTy::try_from(actual).unwrap();
-            parts(actual)
+            parts(actual, env)
                 .into_iter()
                 .map(|part| {
                     (
@@ -252,8 +237,9 @@ fn paired_lifetimes<'tcx>(
 
 /// The lifetimes naming the parts of the opaque types `actual` and `formal`
 /// at the same position (see [`LifetimeEnv::bound_lifetimes`]), paired. The
-/// lifetimes of where clauses are the same in both; those of the arguments of
-/// an alias type correspond by position in the arguments.
+/// lifetimes of where clauses are the same in both, `formal`'s named as in a
+/// signature; those of the arguments of an alias type correspond by position
+/// in the arguments.
 fn paired_parts<'tcx>(
     actual: ty::Ty<'tcx>,
     formal: ty::Ty<'tcx>,
@@ -263,12 +249,16 @@ fn paired_parts<'tcx>(
         OpaqueTy::try_from(actual).unwrap(),
         OpaqueTy::try_from(formal).unwrap(),
     );
-    let formal_clause_lifetimes = env.where_clause_lifetimes(formal_opaque);
+    let formal_clause_lifetimes = env.for_signature().where_clause_lifetimes(formal_opaque);
     let mut pairs: Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> = env
         .where_clause_lifetimes(actual_opaque)
         .into_iter()
-        .filter(|lifetime| formal_clause_lifetimes.contains(lifetime))
-        .map(|lifetime| (lifetime, lifetime))
+        .filter_map(|lifetime| {
+            let formal = env.to_signature(lifetime);
+            formal_clause_lifetimes
+                .contains(&formal)
+                .then_some((lifetime, formal))
+        })
         .collect();
     let (ty::TyKind::Alias(_, actual_alias), ty::TyKind::Alias(_, formal_alias)) =
         (actual.kind(), formal.kind())
@@ -988,6 +978,13 @@ struct SpecGraph<'tcx> {
     /// The node of each region of the callee's instantiated signature and
     /// bounds, by the region it has in them.
     region_nodes: HashMap<ty::Region<'tcx>, Node<'tcx>>,
+    /// The nodes that the lifetime projections of the arguments and result
+    /// are bound to, with their lifetimes.
+    bindings: Vec<(
+        (ArgIdxOrResult, usize),
+        GeneralizedLifetime<'tcx>,
+        Node<'tcx>,
+    )>,
 }
 
 #[rustversion::since(2025-05-24)]
@@ -1058,7 +1055,9 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         for component in outlives_components(ty, tcx) {
             let sources = match component {
                 OccurrenceKind::Region(r) => vec![region_node(r, resolver)],
-                OccurrenceKind::Opaque(opaque) => opaque_nodes(opaque.fold_with(resolver), env),
+                OccurrenceKind::Opaque(opaque) => {
+                    opaque_nodes(opaque.fold_with(resolver), env.for_signature())
+                }
                 OccurrenceKind::Member(..) => {
                     unreachable!("`outlives_components` reveals no hidden types")
                 }
@@ -1078,38 +1077,11 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     for (ty, region) in &solved.type_outlives {
         add_type_outlives(&mut graph, &mut resolver, *ty, *region);
     }
-    // The relations a closure body needs: at a call of a closure, between the
-    // regions of its type; for the closure's own spec, between all regions
-    // of its signature, e.g. from a parameter to a capture.
-    let closure_regions = match query.callee {
-        Callee::FnDef(def_id, _) if def_id == env.def_id && tcx.is_closure_like(def_id) => {
-            vec![
-                folder
-                    .vars
-                    .iter()
-                    .map(|(region, var)| (*region, *var))
-                    .collect(),
-            ]
-        }
-        _ => folder.closures.clone(),
-    };
-    for closure in &closure_regions {
-        for (sup, sup_var) in closure {
-            for (sub, sub_var) in closure {
-                if sup != sub && (query.closure_outlives)(*sup, *sub) {
-                    graph.add_flow(
-                        region_node(*sup_var, &mut resolver),
-                        region_node(*sub_var, &mut resolver),
-                    );
-                }
-            }
-        }
-    }
-
     // Bind the projections of the call's arguments and result to the nodes
     // of the instantiated signature, position by position.
     let mut inputs = Vec::new();
     let mut outputs = BTreeSet::new();
+    let mut bindings = Vec::new();
     for (i, variadic_ty) in query.arg_tys.iter().enumerate().skip(formal_inputs.len()) {
         let count = extract_generalized_lifetimes(*variadic_ty, env).len();
         inputs.extend((0..count).map(|idx| (ArgIdx::from(i), idx)));
@@ -1137,7 +1109,7 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             // A region or opaque type at a position that the lifetimes of
             // `actual_ty` do not cover (e.g. in the signature of a closure
             // type) binds nothing: it is a node of the graph only.
-            let bindings = paired_lifetimes(actual, formal, env)
+            let pairs = paired_lifetimes(actual, formal, env)
                 .into_iter()
                 .filter_map(|(actual, formal)| {
                     let node = match formal {
@@ -1150,7 +1122,8 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
                     Some((index_of(actual)?, node))
                 })
                 .collect::<Vec<_>>();
-            for (idx, node) in bindings {
+            for (idx, node) in pairs {
+                bindings.push(((base, idx), lifetimes.raw[idx], node));
                 match base {
                     ArgIdxOrResult::Argument(arg) => {
                         graph.add_flow(Node::Input(arg, idx), node);
@@ -1163,6 +1136,46 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
                         graph.add_flow(node, Node::Output(base, idx));
                         outputs.insert((base, idx));
                     }
+                }
+            }
+        }
+    }
+
+    // The relations a closure body needs, from the borrow checker of the
+    // regions given (see `CallSpecQuery::closure_outlives`): at a call of a
+    // closure, between the regions of its type; for the closure's own spec,
+    // between all regions of its type and of the types of its arguments and
+    // result, e.g. from a parameter to a capture.
+    let closure_regions: Vec<Vec<(ty::Region<'tcx>, Node<'tcx>)>> = match query.callee {
+        Callee::FnDef(def_id, _) if def_id == env.def_id && tcx.is_closure_like(def_id) => {
+            let of_type = folder
+                .vars
+                .iter()
+                .map(|(region, var)| (*region, region_node(*var, &mut resolver)));
+            let of_arguments = bindings
+                .iter()
+                .filter_map(|(_, actual, node)| match actual {
+                    GeneralizedLifetime::Region(region) => Some((region.rust_region(tcx), *node)),
+                    _ => None,
+                });
+            vec![of_type.chain(of_arguments).collect()]
+        }
+        _ => folder
+            .closures
+            .iter()
+            .map(|closure| {
+                closure
+                    .iter()
+                    .map(|(region, var)| (*region, region_node(*var, &mut resolver)))
+                    .collect()
+            })
+            .collect(),
+    };
+    for closure in &closure_regions {
+        for &(sup, sup_node) in closure {
+            for &(sub, sub_node) in closure {
+                if sup != sub && (query.closure_outlives)(sup, sub) {
+                    graph.add_flow(sup_node, sub_node);
                 }
             }
         }
@@ -1195,9 +1208,8 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     }
 
     // Two alias types that are equal up to regions are the same type where
-    // their regions are equal, so a value moves from the one into the other,
-    // as within a body (see `BorrowCheckerInterface::outlives_generalized`).
-    // The signature of a closure has distinct regions where its body has
+    // their regions are equal (see `GeneralizedLifetime`), e.g. in the
+    // signature of a closure, whose regions are distinct where its body has
     // equal ones.
     let aliases: Vec<ty::Ty<'tcx>> = graph
         .nodes
@@ -1211,17 +1223,17 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         .collect();
     for &from in &aliases {
         for &to in &aliases {
-            if from == to || erase_regions(from, tcx) != erase_regions(to, tcx) {
+            if from == to {
                 continue;
             }
-            let equal = zip(regions_in_order(from, tcx), regions_in_order(to, tcx)).all(
-                |(from_region, to_region)| {
+            let equal = alias_region_pairs(from, to, tcx).is_some_and(|pairs| {
+                pairs.into_iter().all(|(from_region, to_region)| {
                     let (from_node, to_node) = (Node::Region(from_region), Node::Region(to_region));
                     from_region == to_region
                         || (graph.reachable_regions(from_node).contains(&to_node)
                             && graph.reachable_regions(to_node).contains(&from_node))
-                },
-            );
+                })
+            });
             if equal {
                 graph.add_flow(
                     Node::Opaque(from, OpaquePart::Whole),
@@ -1257,6 +1269,7 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         inputs,
         outputs,
         region_nodes,
+        bindings,
     }
 }
 
@@ -1325,157 +1338,56 @@ fn flows_through_regions(
 /// The spec of the function whose body is analysed, for that body.
 struct BodySpec<'tcx> {
     def_id: DefId,
-    /// The function's identity signature, on which the spec is computed.
-    sig: ty::FnSig<'tcx>,
+    /// The spec in the lifetime projections of the body's own arguments and
+    /// result.
     spec: SpecGraph<'tcx>,
-    /// The body's region for each region of `sig`.
-    vids: HashMap<ty::Region<'tcx>, ty::RegionVid>,
 }
 
 /// The spec of the function whose body `ctxt` analyses, or `None` if the body
 /// has no signature (a constant, a coroutine) or no rustc borrow checker.
 ///
-/// For a closure, the relations that its body needs between the regions of
-/// its signature come from the body's region inference (see
-/// [`CallSpecQuery::closure_outlives`]).
+/// It is the spec of a call of the function whose arguments and result have
+/// the types that the body has for them: the spec in the body's own lifetime
+/// projections. For a closure, the callee is the closure type of the body,
+/// which has region variables where typeck erased the regions of the
+/// closure's type, and the relations that its body needs between them come
+/// from the body's region inference (see [`CallSpecQuery::closure_outlives`]).
 #[rustversion::since(2025-05-24)]
 fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<BodySpec<'tcx>> {
     use crate::rustc_interface::hir::def::DefKind;
     let tcx = ctxt.tcx();
     let body = ctxt.body();
     let def_id = body.source.def_id();
-    let is_closure = tcx.is_closure_like(def_id);
-    let has_signature = if is_closure {
-        matches!(
-            skip_normalization(tcx.type_of(def_id).instantiate_identity()).kind(),
-            ty::TyKind::Closure(..)
-        )
+    let arg_tys: Vec<ty::Ty<'tcx>> = body
+        .args_iter()
+        .map(|local| body.local_decls[local].ty)
+        .collect();
+    let callee_args = if tcx.is_closure_like(def_id) {
+        let ty::TyKind::Closure(_, args) = arg_tys.first()?.peel_refs().kind() else {
+            return None;
+        };
+        args
+    } else if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
+        FunctionData::new(def_id).identity_substs(tcx)
     } else {
-        matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn)
-    };
-    if !has_signature {
         return None;
-    }
-    let callee_args = FunctionData::new(def_id).identity_substs(tcx);
-    let rust_bc = ctxt.bc().rust_borrow_checker()?;
-    let region_cx = rust_bc.region_infer_ctxt();
-    let sig = FunctionData::new(def_id).identity_fn_sig(tcx);
-
-    // The body's region for each region of the signature, by position in the
-    // types of its arguments and result, including the region arguments of
-    // alias types that the body has as in the signature (the body may have
-    // normalized them).
-    let mut vids: HashMap<ty::Region<'tcx>, ty::RegionVid> = HashMap::default();
-    for (local, sig_ty) in signature_locals(sig) {
-        for pair in aligned_occurrences(body.local_decls[local].ty, sig_ty, tcx) {
-            let regions = match pair {
-                (OccurrenceKind::Region(body_region), OccurrenceKind::Region(sig_region)) => {
-                    vec![(body_region, sig_region)]
-                }
-                (OccurrenceKind::Opaque(body_ty), OccurrenceKind::Opaque(sig_ty))
-                    if erase_regions(body_ty, tcx) == erase_regions(sig_ty, tcx) =>
-                {
-                    zip(
-                        regions_in_order(body_ty, tcx),
-                        regions_in_order(sig_ty, tcx),
-                    )
-                    .collect()
-                }
-                _ => Vec::new(),
-            };
-            for (body_region, sig_region) in regions {
-                // The erased regions of a closure type's signature are not
-                // regions of the closure's signature.
-                if let ty::RegionKind::ReVar(vid) = body_region.kind()
-                    && !sig_region.is_erased()
-                {
-                    vids.entry(sig_region).or_insert(vid);
-                }
-            }
-        }
-    }
-    // A lifetime parameter that only where clauses name has no position in
-    // the signature, but its universal region (see
-    // `RustBorrowCheckerInterface::universal_region_of_param`), which must
-    // agree with the position of those that the signature names.
-    for (&sig_region, &vid) in &vids {
-        if let ty::RegionKind::ReEarlyParam(param) = sig_region.kind() {
-            assert!(
-                region_cx.eval_equal(vid, rust_bc.universal_region_of_param(param)),
-                "The region {vid:?} of {sig_region:?} in the body of {} is not its universal region",
-                tcx.def_path_str(def_id)
-            );
-        }
-    }
-    let vid_of = |region: ty::Region<'tcx>| match region.kind() {
-        ty::RegionKind::ReEarlyParam(param) => Some(rust_bc.universal_region_of_param(param)),
-        _ => vids.get(&region).copied(),
     };
+    let region_cx = ctxt.bc().rust_borrow_checker()?.region_infer_ctxt();
     let closure_outlives =
-        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (vid_of(sup), vid_of(sub)) {
-            (Some(sup), Some(sub)) => is_closure && region_cx.eval_outlives(sup, sub),
+        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (sup.kind(), sub.kind()) {
+            (ty::RegionKind::ReVar(sup), ty::RegionKind::ReVar(sub)) => {
+                region_cx.eval_outlives(sup, sub)
+            }
             _ => false,
         };
     let spec = spec_graph(&CallSpecQuery {
         callee: Callee::FnDef(def_id, callee_args),
-        arg_tys: sig.inputs(),
-        result_ty: sig.output(),
-        env: LifetimeEnv::new(tcx, def_id),
+        arg_tys: &arg_tys,
+        result_ty: body.local_decls[mir::RETURN_PLACE].ty,
+        env: LifetimeEnv::body(tcx, def_id),
         closure_outlives: &closure_outlives,
     });
-    Some(BodySpec {
-        def_id,
-        sig,
-        spec,
-        vids,
-    })
-}
-
-/// The regions of `ty` that are not bound inside it, in order and with
-/// duplicates, erased ones included: the regions of two types that are equal
-/// up to regions correspond by index.
-fn regions_in_order<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<ty::Region<'tcx>> {
-    let mut regions = Vec::new();
-    ty::fold_regions(tcx, ty, |region, _| {
-        regions.push(region);
-        region
-    });
-    regions
-}
-
-/// The locals of a body for the arguments and result of its signature `sig`,
-/// with their types in `sig`.
-fn signature_locals(sig: ty::FnSig<'_>) -> impl Iterator<Item = (mir::Local, ty::Ty<'_>)> {
-    let arguments = sig
-        .inputs()
-        .iter()
-        .enumerate()
-        .map(|(i, ty)| (mir::Local::from_usize(i + 1), *ty));
-    arguments.chain(std::iter::once((mir::RETURN_PLACE, sig.output())))
-}
-
-/// For each lifetime of `body_ty` (by index), the lifetimes of `sig_ty` (by
-/// index) at the same positions, both in `env`.
-fn lifetime_index_map<'tcx>(
-    body_ty: ty::Ty<'tcx>,
-    sig_ty: ty::Ty<'tcx>,
-    env: LifetimeEnv<'tcx>,
-) -> HashMap<usize, HashSet<usize>> {
-    let body_lifetimes = extract_generalized_lifetimes(body_ty, env);
-    let sig_lifetimes = extract_generalized_lifetimes(sig_ty, env);
-    let mut map: HashMap<usize, HashSet<usize>> = HashMap::default();
-    for (body_occurrence, sig_occurrence) in aligned_occurrences(body_ty, sig_ty, env.tcx) {
-        for (body_lifetime, sig_lifetime) in paired_lifetimes(body_occurrence, sig_occurrence, env)
-        {
-            let sig_lifetime = sig_lifetime.to_generalized();
-            if let Some(body_idx) = body_lifetimes.iter().position(|l| *l == body_lifetime)
-                && let Some(sig_idx) = sig_lifetimes.iter().position(|l| *l == sig_lifetime)
-            {
-                map.entry(body_idx).or_default().insert(sig_idx);
-            }
-        }
-    }
-    map
+    Some(BodySpec { def_id, spec })
 }
 
 /// Checks the flows into the result that the body `ctxt` analyses has
@@ -1493,22 +1405,9 @@ pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
 ) {
     let tcx = ctxt.tcx();
-    let Some(BodySpec {
-        def_id, sig, spec, ..
-    }) = body_spec(ctxt)
-    else {
+    let Some(BodySpec { def_id, spec }) = body_spec(ctxt) else {
         return;
     };
-    let body = ctxt.body();
-    let env = LifetimeEnv::new(tcx, def_id);
-    let index_maps: HashMap<mir::Local, HashMap<usize, HashSet<usize>>> = signature_locals(sig)
-        .map(|(local, sig_ty)| {
-            (
-                local,
-                lifetime_index_map(body.local_decls[local].ty, sig_ty, env),
-            )
-        })
-        .collect();
     let mut call_specs: HashMap<mir::Location, CallSpecAt<'tcx>> = HashMap::default();
     let mut flows_into_result: HashSet<((ArgIdx, usize), usize)> = HashSet::default();
     for &(arg, idx) in &spec.inputs {
@@ -1572,21 +1471,8 @@ pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
         }
         for (local, input_idx) in blocked_inputs {
             let arg = ArgIdx::from(local.as_usize() - 1);
-            let allowed = index_maps[&local]
-                .get(&input_idx)
-                .is_some_and(|sig_inputs| {
-                    index_maps[&mir::RETURN_PLACE]
-                        .get(&result_idx)
-                        .is_some_and(|sig_outputs| {
-                            sig_inputs.iter().any(|sig_input| {
-                                sig_outputs.iter().any(|sig_output| {
-                                    flows_into_result.contains(&((arg, *sig_input), *sig_output))
-                                })
-                            })
-                        })
-                });
             pcg_validity_assert!(
-                allowed,
+                flows_into_result.contains(&((arg, input_idx), result_idx)),
                 [ctxt at location],
                 "Lifetime projection {result_idx} of the result is blocked by lifetime projection \
                  {input_idx} of argument {arg} ({local:?}), but the spec of {} lets no loan flow \
@@ -1754,46 +1640,68 @@ pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
 /// A closure's spec takes the relations its body needs from the body's
 /// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
 /// closure the check covers the relations of its signature only.
+///
+/// The body's region of a node of the spec is the one of the body's
+/// arguments and result that is bound to it, or for a lifetime parameter its
+/// universal region (see [`BodyRegions`]). Both may be the region of one
+/// node, so the check also checks the universal regions.
 #[rustversion::since(2025-05-24)]
 pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
 ) {
     let tcx = ctxt.tcx();
-    let Some(BodySpec {
-        def_id,
-        sig,
-        spec,
-        vids,
-    }) = body_spec(ctxt)
-    else {
+    let Some(BodySpec { def_id, spec }) = body_spec(ctxt) else {
         return;
     };
-    let region_cx = ctxt.bc().rust_borrow_checker().unwrap().region_infer_ctxt();
-    let node_of = |region: ty::Region<'tcx>| {
-        if region.is_static() {
-            Node::Region(region)
-        } else {
-            *spec.region_nodes.get(&region).unwrap_or_else(|| {
-                panic!(
-                    "The region {region:?} of the signature {sig:?} of {} is not in its spec",
-                    tcx.def_path_str(def_id)
-                )
-            })
-        }
+    let rust_bc = ctxt.bc().rust_borrow_checker().unwrap();
+    let region_cx = rust_bc.region_infer_ctxt();
+    let body_regions = BodyRegions::new(tcx, def_id);
+    let universal_vid = |param: ty::EarlyParamRegion| {
+        let vid = body_regions.universal_vid(param);
+        assert!(
+            rust_bc
+                .input_facts()
+                .universal_region
+                .iter()
+                .any(|&universal| ty::RegionVid::from(universal) == vid),
+            "The region {vid:?} of {param:?} in the body of {} is not universal",
+            tcx.def_path_str(def_id)
+        );
+        vid
     };
-    for (&sup, &sup_vid) in &vids {
-        let reachable = spec.graph.reachable_regions(node_of(sup));
-        for (&sub, &sub_vid) in &vids {
-            if sup == sub {
+    let mut regions: Vec<(ty::RegionVid, Node<'tcx>)> = spec
+        .bindings
+        .iter()
+        .filter_map(|(_, lifetime, node)| match lifetime {
+            GeneralizedLifetime::Region(PcgRegion::RegionVid(vid)) => Some((*vid, *node)),
+            _ => None,
+        })
+        .collect();
+    for (region, node) in &spec.region_nodes {
+        if let ty::RegionKind::ReEarlyParam(param) = region.kind() {
+            regions.push((universal_vid(param), *node));
+        }
+    }
+    for node in &spec.graph.nodes {
+        if let Node::Region(region) = node
+            && let ty::RegionKind::ReEarlyParam(param) = region.kind()
+        {
+            regions.push((universal_vid(param), *node));
+        }
+    }
+    for &(sup_vid, sup) in &regions {
+        let reachable = spec.graph.reachable_regions(sup);
+        for &(sub_vid, sub) in &regions {
+            if sup_vid == sub_vid {
                 continue;
             }
-            let in_spec = reachable.contains(&node_of(sub));
+            let in_spec = reachable.contains(&sub);
             let in_rustc = region_cx.eval_outlives(sup_vid, sub_vid);
             pcg_validity_assert!(
                 in_spec == in_rustc,
                 [ctxt],
-                "The spec of {} {} that {sup:?} outlives {sub:?}, but rustc's region inference \
-                 of its body {}",
+                "The spec of {} {} that {sup_vid:?} ({sup:?}) outlives {sub_vid:?} ({sub:?}), but \
+                 rustc's region inference of its body {}",
                 tcx.def_path_str(def_id),
                 if in_spec {
                     "assumes"
