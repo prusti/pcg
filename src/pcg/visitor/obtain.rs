@@ -926,6 +926,25 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             self.render_debug_graph(None, "after step 4");
         }
 
+        // Rust never accesses a part of a place without a value, except to
+        // give it a value after all of its parts were moved out, and such
+        // parts stay unpacked (see `collapse_iteration`). So no statement
+        // unpacks an owned place at write capability. Joins still do, where
+        // the other path has a part of the place borrowed; we would like to
+        // rule out unpacking at write capability everywhere. Dereferencing a
+        // reference is not an unpack: it adds a deref edge to the borrow graph.
+        let ctxt = self.ctxt;
+        pcg_validity_assert!(
+            !place.iter_projections().any(|(base, elem)| {
+                let base: Place<'tcx> = base.into();
+                (elem != mir::ProjectionElem::Deref || base.ty(ctxt).ty.is_box())
+                    && base.as_owned_place(ctxt).is_some()
+                    && self.pcg.capability_of(base, ctxt) == Some(CapabilityKind::Write)
+            }),
+            [ctxt],
+            "obtaining {} unpacks a place at write capability",
+            place.display_string(self.ctxt)
+        );
         self.expand_to(place, obtain_type, self.ctxt)?;
 
         if obtain_type == ObtainType::ForStorageDead
