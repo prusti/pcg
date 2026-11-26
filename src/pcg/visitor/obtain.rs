@@ -250,13 +250,34 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         edges: HashSet<Conditioned<DerefEdge<'tcx>>>,
         context: &str,
     ) -> Result<(), PcgError> {
+        // Only `deref_place` is labelled below, so every edge must be to it.
+        let ctxt = self.ctxt;
+        pcg_validity_assert!(
+            edges
+                .iter()
+                .all(|edge| edge.value.deref_place == deref_place),
+            [ctxt],
+            "All the deref edges removed together must be to {}",
+            deref_place.display_string(ctxt)
+        );
+        // Unlabelling a lifetime projection changes the edges that contain it,
+        // while removing an edge leaves the other edges unchanged. So all of
+        // `edges` are removed first. A projection that several edges block is
+        // unlabelled once, since a second unlabelling would change nothing.
+        let mut to_unlabel = Vec::new();
+        let mut blocked_projections = HashSet::default();
         for edge in edges {
+            if blocked_projections.insert(edge.value.blocked_lifetime_projection) {
+                to_unlabel.push(edge.value);
+            }
             let borrow_edge: BorrowPcgEdge<'tcx> =
                 BorrowPcgEdge::new(edge.value.into(), edge.conditions);
             self.apply_action(
                 BorrowPcgAction::remove_edge(borrow_edge, context.to_owned()).into(),
             )?;
-            self.unlabel_blocked_region_projections_if_applicable(&edge.value, context)?;
+        }
+        for deref in to_unlabel {
+            self.unlabel_blocked_region_projections_if_applicable(&deref, context)?;
         }
         if let Some(deref_place) = deref_place.as_current_place() {
             self.apply_action(

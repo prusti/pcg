@@ -101,23 +101,26 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
                 }
                 let mut removed_edges = Vec::new();
                 for rp in target.lifetime_projections(self.ctxt) {
-                    let blocked_edges = self
-                        .pcg
-                        .borrow
-                        .graph()
-                        .edges_blocked_by(rp.into(), self.ctxt.bc_ctxt())
-                        .map(BorrowPcgEdgeLike::to_owned_edge)
-                        .collect::<Vec<_>>();
-                    for edge in blocked_edges {
-                        let should_remove =
-                            !matches!(edge.kind(), BorrowPcgEdgeKind::BorrowPcgExpansion(_));
-                        if should_remove {
-                            self.place_obtainer()
-                                .remove_edge_and_perform_associated_state_updates(
-                                    &edge, "Assign",
-                                )?;
-                            removed_edges.push(edge);
-                        }
+                    // A removal can label places and lifetime projections,
+                    // which changes the edges that contain them. So each edge
+                    // to remove is identified in the graph the previous
+                    // removal left.
+                    loop {
+                        let Some(edge) = self
+                            .pcg
+                            .borrow
+                            .graph()
+                            .edges_blocked_by(rp.into(), self.ctxt.bc_ctxt())
+                            .find(|edge| {
+                                !matches!(edge.kind(), BorrowPcgEdgeKind::BorrowPcgExpansion(_))
+                            })
+                            .map(BorrowPcgEdgeLike::to_owned_edge)
+                        else {
+                            break;
+                        };
+                        self.place_obtainer()
+                            .remove_edge_and_perform_associated_state_updates(&edge, "Assign")?;
+                        removed_edges.push(edge);
                     }
                 }
                 self.place_obtainer()
