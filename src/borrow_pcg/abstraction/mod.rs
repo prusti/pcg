@@ -28,6 +28,7 @@ use crate::{
             mir,
             ty::{self, GenericArgsRef},
         },
+        skip_normalization,
         span::def_id::DefId,
     },
     utils::{
@@ -351,10 +352,8 @@ impl<'tcx> FunctionData<'tcx> {
         self.def_id
     }
 
-    /// The spec of this function for its own body: the flows between the
-    /// lifetime projections of its identity signature, in its own
-    /// environment. Its nodes are the lifetime projections of the body's
-    /// arguments and result.
+    /// The spec of this function's signature: the flows between the lifetime
+    /// projections of its identity signature, in its own environment.
     ///
     /// A closure's spec computed here lacks the relations that the closure
     /// body needs between its captures and its signature (see
@@ -366,8 +365,14 @@ impl<'tcx> FunctionData<'tcx> {
     ) -> Result<FunctionShape<Generalized>, MakeFunctionShapeError> {
         let tcx = ctxt.tcx();
         let sig = self.identity_fn_sig(tcx);
+        // A closure's signature is in the arguments of its type.
+        let args = match skip_normalization(tcx.type_of(self.def_id).instantiate_identity()).kind()
+        {
+            ty::TyKind::Closure(_, args) => args,
+            _ => self.identity_substs(tcx),
+        };
         call_spec(&CallSpecQuery {
-            callee: Callee::FnDef(self.def_id, self.identity_substs(tcx)),
+            callee: Callee::FnDef(self.def_id, args),
             arg_tys: sig.inputs(),
             result_ty: sig.output(),
             env: LifetimeEnv::signature(tcx, self.def_id),

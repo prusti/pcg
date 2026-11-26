@@ -475,3 +475,27 @@ impl<'a> FromMutref<'a> for &'a mut i32 {
         assert_shape_eq_with_formatter(&sig_shape, &expected, Some(&formatter));
     })
 }
+
+/// The signature shape of a closure, whose signature is in the arguments of
+/// its type. Without the closure's body, it relates none of its regions (see
+/// `FunctionData::shape`).
+#[test]
+fn test_closure_sig_shape() {
+    let input = r#"
+        fn outer(v: &u32) -> u32 {
+            let f = |x: &u32| *x;
+            f(v)
+        }
+    "#;
+    run_pcg_on_str(
+        input,
+        BodySelector::DefPath("outer::{closure#0}"),
+        true,
+        |analysis| {
+            let ctxt = analysis.ctxt();
+            let sig_shape = SigShape::for_fn_sig(ctxt.body().source.def_id(), ctxt).unwrap();
+            let expected = make_sig_shape(&[arg_in(0, 0), arg_in(1, 0)], &[], &[]);
+            assert_shape_eq(&sig_shape, &expected);
+        },
+    );
+}

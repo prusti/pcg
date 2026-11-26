@@ -277,4 +277,36 @@ fn ref_from_bound<'a, T: HasRef<'a>>(ts: &[T]) -> Vec<&'a u32> {
     ts.iter().map(|t| t.get()).collect()
 }
 
+struct Ctx<'a, 'b> {
+    _r: &'a &'b u32,
+}
+
+impl<'a, 'b> Ctx<'a, 'b> {
+    // The impl's header implies `'b: 'a`, which the body relies on.
+    fn widen_mut(x: &'b mut u32) -> &'a mut u32 {
+        x
+    }
+}
+
+// The result borrows `*v` through the bound that the impl's header implies.
+fn call_widen_mut(v: &mut u32) -> u32 {
+    // PCG: bb0[5] post_main: Add Edge call Ctx::<'a, 'b>::widen_mut at bb0[5]: _3 before bb0[5]:PostOperands↓'?9 before bb0[5]:PostMain -> r↓'?8
+    let r = Ctx::widen_mut(&mut *v);
+    *r = 5;
+    *v
+}
+
+trait Unit {
+    type Assoc;
+}
+
+impl<T> Unit for T {
+    type Assoc = ();
+}
+
+// The type of `_x` implies `'b: 'a` before it is normalized to `()`.
+fn widen_through_alias<'a, 'b>(_x: <&'a &'b () as Unit>::Assoc, y: &'b u32) -> &'a u32 {
+    y
+}
+
 fn main() {}

@@ -941,7 +941,7 @@ fn region_outlives<'tcx>(infcx: &InferCtxt<'tcx>) -> Vec<(ty::Region<'tcx>, ty::
 fn instantiate_callee<'tcx>(
     callee: Callee<'tcx>,
     folder: &mut RegionsToVars<'_, 'tcx>,
-) -> (ty::FnSig<'tcx>, Vec<ty::Clause<'tcx>>) {
+) -> (ty::FnSig<'tcx>, Vec<ty::Clause<'tcx>>, Vec<ty::Ty<'tcx>>) {
     let tcx = folder.infcx.tcx;
     match callee {
         Callee::FnDef(def_id, args) => {
@@ -955,15 +955,66 @@ fn instantiate_callee<'tcx>(
                 .iter()
                 .map(|clause| instantiate(clause, tcx, args))
                 .collect();
-            (sig, clauses)
+            let wf_types = sig
+                .inputs_and_output
+                .iter()
+                .chain(
+                    impl_header_types(def_id, tcx)
+                        .into_iter()
+                        .map(|ty| instantiate(ty, tcx, args)),
+                )
+                .collect();
+            (sig, clauses, wf_types)
         }
         Callee::FnPtr(poly_sig) => {
             let sig = tcx
                 .instantiate_bound_regions(poly_sig, |_| folder.fresh_var())
                 .0
                 .fold_with(folder);
-            (sig, Vec::new())
+            (sig, Vec::new(), Vec::new())
         }
+    }
+}
+
+/// For a method of an impl, the types of the impl's header that the method
+/// may assume to be well-formed, in the impl's generic parameters: the self
+/// type of an inherent impl, the arguments of the trait of a trait impl (as
+/// rustc's `assumed_wf_types`). `Ctx::<'a, 'b>::f` may assume `'b: 'a` for
+/// `struct Ctx<'a, 'b>(&'a &'b u32)`.
+fn impl_header_types(def_id: DefId, tcx: ty::TyCtxt<'_>) -> Vec<ty::Ty<'_>> {
+    use crate::rustc_interface::hir::def::DefKind;
+    let Some(parent) = tcx.opt_parent(def_id) else {
+        return Vec::new();
+    };
+    match tcx.def_kind(parent) {
+        DefKind::Impl { of_trait: true } => {
+            let trait_ref = TraitRefOfImpl::trait_ref(tcx.impl_trait_ref(parent));
+            trait_ref.skip_binder().args.types().collect()
+        }
+        DefKind::Impl { of_trait: false } => {
+            vec![skip_normalization(
+                tcx.type_of(parent).instantiate_identity(),
+            )]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The trait ref of a trait impl, which `TyCtxt::impl_trait_ref` returns
+/// wrapped in an `Option` on older toolchains.
+trait TraitRefOfImpl<'tcx> {
+    fn trait_ref(self) -> ty::EarlyBinder<'tcx, ty::TraitRef<'tcx>>;
+}
+
+impl<'tcx> TraitRefOfImpl<'tcx> for ty::EarlyBinder<'tcx, ty::TraitRef<'tcx>> {
+    fn trait_ref(self) -> ty::EarlyBinder<'tcx, ty::TraitRef<'tcx>> {
+        self
+    }
+}
+
+impl<'tcx> TraitRefOfImpl<'tcx> for Option<ty::EarlyBinder<'tcx, ty::TraitRef<'tcx>>> {
+    fn trait_ref(self) -> ty::EarlyBinder<'tcx, ty::TraitRef<'tcx>> {
+        self.expect("a trait impl has a trait ref")
     }
 }
 
@@ -1000,7 +1051,7 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         introduced: HashSet::default(),
         closures: Vec::new(),
     };
-    let (sig, clauses) = instantiate_callee(query.callee, &mut folder);
+    let (sig, clauses, wf_types) = instantiate_callee(query.callee, &mut folder);
     let formal_tys =
         deeply_normalize(&infcx, param_env, sig.inputs_and_output).unwrap_or_else(|errors| {
             panic!("Cannot normalize the signature {sig:?} of a call: {errors:?}")
@@ -1016,7 +1067,8 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     );
 
     // The relations the callee may rely on: those that its where clauses and
-    // the well-formedness of its signature give, and those that proving its
+    // the well-formedness of its signature (normalized or not) and of its
+    // impl's header give (its implied bounds), and those that proving its
     // trait bounds with the impls the trait solver selects gives. Clauses
     // that relate no regions (const arguments, const-ness of impls) are left
     // out.
@@ -1033,8 +1085,8 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         })
         .map(ty::Clause::as_predicate)
         .collect();
-    for formal_ty in formal_tys {
-        let well_formed = ty::ClauseKind::WellFormed(formal_ty.into());
+    for wf_ty in formal_tys.iter().chain(wf_types) {
+        let well_formed = ty::ClauseKind::WellFormed(wf_ty.into());
         obligations.push(ty::Binder::dummy(ty::PredicateKind::Clause(well_formed)).upcast(tcx));
     }
     let solved = solve(&infcx, param_env, obligations);
