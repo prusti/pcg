@@ -57,7 +57,7 @@ use crate::{
         region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         visitor::{
             BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, alias_region_pairs,
-            extract_generalized_lifetimes, is_bound_region,
+            extract_generalized_lifetimes, is_bound_region, names_part,
         },
     },
     coupling::PcgCoupledEdgeKind,
@@ -115,8 +115,8 @@ pub(crate) struct CallSpecQuery<'a, 'tcx> {
     pub(crate) env: LifetimeEnv<'tcx>,
     /// Whether the body of a closure whose type contains both regions needs
     /// the first to outlive the second. `sup` and `sub` are regions of a
-    /// closure type in `env`, or for a closure's own spec, regions of its
-    /// body's types of the closure, its arguments and its result.
+    /// closure type in `env`, or for a closure's own spec, regions of the
+    /// closure type, argument types and result type in its body.
     ///
     /// A closure's signature is inferred: rustc's borrow checker computes
     /// which relations between the regions of its captures and its
@@ -286,13 +286,6 @@ fn paired_parts<'tcx>(
     pairs
 }
 
-/// Whether the region argument `region` of an alias type names a part of its
-/// value (see [`LifetimeEnv::member_lifetimes`]): `'static`, bound and erased
-/// regions name no data.
-fn names_part(region: ty::Region<'_>) -> bool {
-    !region.is_static() && !is_bound_region(region) && !region.is_erased()
-}
-
 /// The lifetimes that the occurrences `actual` and `formal` at the same
 /// position of the arguments of two alias types give their parts, paired.
 fn member_pairs<'tcx>(
@@ -341,13 +334,13 @@ impl<'tcx> OpaquePart<'tcx> {
 /// A region or an opaque type at one position of a type, and whether the
 /// callee can write into it when the type is the type of an argument.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Occurrence<'tcx> {
-    pub(crate) kind: OccurrenceKind<'tcx>,
-    pub(crate) writable: bool,
+struct Occurrence<'tcx> {
+    kind: OccurrenceKind<'tcx>,
+    writable: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum OccurrenceKind<'tcx> {
+enum OccurrenceKind<'tcx> {
     Region(ty::Region<'tcx>),
     /// A type parameter or an alias type.
     Opaque(ty::Ty<'tcx>),
@@ -366,7 +359,7 @@ pub(crate) enum OccurrenceKind<'tcx> {
 /// A position is writable if it is invariant in `ty`: behind a `&mut`, in an
 /// invariant argument of an ADT such as `Cell<T>`, in the trait of a `dyn`
 /// type, or in an opaque type, whose value may contain any of these.
-pub(crate) fn occurrences<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<Occurrence<'tcx>> {
+fn occurrences<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<Occurrence<'tcx>> {
     let mut walker = OccurrenceWalker {
         tcx,
         variance: ty::Variance::Covariant,
@@ -821,7 +814,10 @@ fn solve<'tcx>(
         .into_iter()
         .map(|obligation| (obligation.sup_type, obligation.sub_region))
         .collect();
-    take_region_assumptions(infcx);
+    // Solving may also register region assumptions, which are no relations
+    // of the call; rustc takes the region constraints (`region_outlives`) only
+    // once they are taken.
+    infcx.take_registered_region_assumptions();
     SolvedRelations {
         region_outlives: region_outlives(infcx),
         type_outlives,
@@ -856,10 +852,6 @@ fn prove_all<'tcx>(
     ocx: &ObligationCtxt<'_, 'tcx, FulfillmentError<'tcx>>,
 ) -> Vec<FulfillmentError<'tcx>> {
     ocx.select_all_or_error()
-}
-
-fn take_region_assumptions(infcx: &InferCtxt<'_>) {
-    infcx.take_registered_region_assumptions();
 }
 
 /// `value`, whose generic parameters are those of the item it belongs to,
@@ -1075,10 +1067,9 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     // The relations the callee may rely on: those that its where clauses and
     // the well-formedness of its signature (normalized or not) and of the
     // header of its impl or trait give (its implied bounds), and those that
-    // proving its
-    // trait bounds with the impls the trait solver selects gives. Clauses
-    // that relate no regions (const arguments, const-ness of impls) are left
-    // out.
+    // proving its trait bounds with the impls the trait solver selects gives.
+    // Clauses that relate no regions (const arguments, const-ness of impls)
+    // are left out.
     let mut obligations: Vec<ty::Predicate<'tcx>> = clauses
         .into_iter()
         .filter(|clause| {
@@ -1240,15 +1231,11 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         }
     }
 
-    // The lifetimes of opaque types: a bound part relates to the lifetime
-    // its bound names, an alias to the lifetimes of its arguments. The value
-    // of an alias holds loans of the regions of its arguments; a loan that
-    // enters it through one of them leaves it through that same one, so it
-    // has a node for what is read from it and one for what is written to it.
-    // A part of the value of an opaque type holds the loans of the lifetime
-    // that names it: those that a bound lets flow into or out of it, or for
-    // an alias type, those of one of its arguments. Wiring a part may add new
-    // opaque nodes (the type a part is named after), which are wired in turn.
+    // Each part of the value of an opaque type is wired both ways to the
+    // lifetime that names it: a region part to the region's node, a
+    // `RegionsIn(Q)` part to the node of `Q`'s whole value (see
+    // `GeneralizedLifetime`). Wiring may add opaque nodes, which are wired in
+    // turn.
     let mut wired = 0;
     while let Some(&node) = graph.nodes.get(wired) {
         wired += 1;
@@ -1455,8 +1442,9 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
 /// projection of an argument that the spec does not let flow into it: the
 /// body would hand its caller a loan that its signature does not promise.
 ///
-/// Only the result is checked: the body does not yet keep what flows into
-/// the places its arguments point to once the arguments are dead.
+/// Only the result is checked, not the places that the arguments point to:
+/// once an argument is dead, the graph no longer records what flowed into
+/// them.
 #[rustversion::since(2025-05-24)]
 pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
     graph: &BorrowsGraph<'tcx>,
@@ -1700,10 +1688,11 @@ pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
 /// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
 /// closure the check covers the relations of its signature only.
 ///
-/// The body's region of a node of the spec is the one of the body's
-/// arguments and result that is bound to it, or for a lifetime parameter its
-/// universal region (see [`BodyRegions`]). Both may be the region of one
-/// node, so the check also checks the universal regions.
+/// Each node of the spec gets the body's region variables for it: those of
+/// the regions of the body's arguments and result that are bound to it, and
+/// for a lifetime parameter its universal region (see [`BodyRegions`]). The
+/// check compares every pair of these, so it also checks the universal
+/// regions against the bindings.
 #[rustversion::since(2025-05-24)]
 pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
@@ -1804,33 +1793,32 @@ pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
     location: mir::Location,
     ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
 ) {
-    let (arg_tys, result_ty) = (query.arg_tys, query.result_ty);
+    let Some(rust_borrow_checker) = ctxt.bc().rust_borrow_checker() else {
+        return;
+    };
     let region_flows = flows_through_regions(query);
     let env = ctxt.lifetime_env();
     let lifetime_of = |base: ArgIdxOrResult, idx: usize| -> GeneralizedLifetime<'tcx> {
         let ty = match base {
-            ArgIdxOrResult::Argument(arg) => arg_tys[*arg],
-            ArgIdxOrResult::Result => result_ty,
+            ArgIdxOrResult::Argument(arg) => query.arg_tys[*arg],
+            ArgIdxOrResult::Result => query.result_ty,
         };
         extract_generalized_lifetimes(ty, env).raw[idx]
     };
     // The region variable a lifetime of the call stands for, if it is known:
     // its region, or the region of an alias type's argument that names a
     // part of the alias's value.
-    let regions_of = |lifetime: GeneralizedLifetime<'tcx>| -> Vec<ty::RegionVid> {
+    let region_of = |lifetime: GeneralizedLifetime<'tcx>| -> Option<ty::RegionVid> {
         match lifetime {
             GeneralizedLifetime::Region(PcgRegion::RegionVid(vid))
             | GeneralizedLifetime::BoundPart(
                 OpaqueTy::Alias(_),
                 BoundLifetime::Region(PcgRegion::RegionVid(vid)),
-            ) => vec![vid],
-            _ => vec![],
+            ) => Some(vid),
+            _ => None,
         }
     };
 
-    let Some(rust_borrow_checker) = ctxt.bc().rust_borrow_checker() else {
-        return;
-    };
     let location_table = rust_borrow_checker.location_table();
     let facts = rust_borrow_checker.input_facts();
     let mid = location_table.mid_index(location);
@@ -1870,17 +1858,14 @@ pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
             ArgIdxOrResult::Argument(input.base),
             input.region_idx.index(),
         );
-        let in_regions = regions_of(in_lifetime);
-        let reachable: HashSet<ty::RegionVid> = in_regions
-            .iter()
-            .flat_map(|vid| reachable_from(*vid))
-            .collect();
+        let reachable: HashSet<ty::RegionVid> = region_of(in_lifetime)
+            .map(reachable_from)
+            .unwrap_or_default();
         for output in &shape.outputs {
             let out_lifetime = lifetime_of(output.base, output.region_idx.index());
-            let out_regions = regions_of(out_lifetime);
             let has_edge = edges.contains(&(*input, *output));
             pcg_validity_assert!(
-                has_edge || !out_regions.iter().any(|vid| reachable.contains(vid)),
+                has_edge || !region_of(out_lifetime).is_some_and(|vid| reachable.contains(&vid)),
                 [ctxt at location],
                 "The spec of the call misses a flow from {in_lifetime:?} of argument {} to \
                  {out_lifetime:?} of {} that rustc's constraints for the call allow",

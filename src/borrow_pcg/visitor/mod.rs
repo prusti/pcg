@@ -72,11 +72,19 @@ impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifet
     }
 }
 
-/// Whether `region` is bound by a binder inside the visited type, e.g. the
-/// `'x` of `dyn for<'x> Fn(&'x u8)`. Such a region names no data that the
-/// type's value borrows: it is chosen anew at each use.
+/// Whether `region` is bound by a binder (`ReBound`) that a visitor of the
+/// type it occurs in has entered, e.g. the `'x` of `dyn for<'x> Fn(&'x u8)`.
+/// Such a region names no data that the type's value borrows: it is chosen
+/// anew at each use.
 pub(crate) fn is_bound_region(region: ty::Region<'_>) -> bool {
     matches!(region.kind(), ty::RegionKind::ReBound(..))
+}
+
+/// Whether the region argument `region` of an alias type names a part of its
+/// value (see [`LifetimeEnv::member_lifetimes`]): `'static`, bound and erased
+/// regions (as in the signature of a closure type) name no data.
+pub(crate) fn names_part(region: ty::Region<'_>) -> bool {
+    !region.is_static() && !is_bound_region(region) && !region.is_erased()
 }
 
 struct LifetimeExtractor<'tcx> {
@@ -250,13 +258,11 @@ impl<'tcx> From<BoundLifetime<'tcx>> for GeneralizedLifetime<'tcx> {
 /// bounds name.
 ///
 /// Loans flow between generalized lifetimes by these rules, which both the
-/// flows within a body
-/// ([`BorrowCheckerInterface::outlives_generalized`](crate::borrow_checker::BorrowCheckerInterface::outlives_generalized))
-/// and the spec of a call follow, each with its own relation between
-/// regions (rustc's region inference of the body, or what the callee's
-/// signature and bounds give):
+/// flows within a body ([`outlives_generalized`]) and the spec of a call
+/// follow, each with its own relation between regions (rustc's region
+/// inference of the body, or what the callee's signature and bounds give):
 /// - between regions, along that relation;
-/// - a part `X↓L` holds the loans of the lifetime `L` that names it: loans
+/// - a part `X[L]` holds the loans of the lifetime `L` that names it: loans
 ///   flow into and out of it as for `L`;
 /// - two alias types that are equal up to regions are the same type where
 ///   their regions are equal (see [`alias_region_pairs`]): the value of the
@@ -264,17 +270,20 @@ impl<'tcx> From<BoundLifetime<'tcx>> for GeneralizedLifetime<'tcx> {
 /// - `'static` flows into every lifetime.
 ///
 /// What flows between `RegionsIn(T)` and a region depends on what is known
-/// about `T`: within a body, `RegionsIn(T)` flows into a region that every
+/// about `T`. Within a body, `RegionsIn(T)` flows into a region that every
 /// universal region (and, for an alias, every region of it) outlives, and a
-/// region into `RegionsIn(T)` only if it is `'static`; in a spec, `RegionsIn(T)` flows into the regions that the
-/// solver's `T: 'r` facts give.
+/// region into `RegionsIn(T)` only if it is `'static`. In a spec,
+/// `RegionsIn(T)` flows into the regions that the solver's `T: 'r` facts
+/// give.
 ///
 /// See the [_generalized lifetime_ definition](https://prusti.github.io/pcg-docs/function-shapes.html#lifetime-projections).
+///
+/// [`outlives_generalized`]: crate::borrow_checker::BorrowCheckerInterface::outlives_generalized
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Hash, From)]
 pub enum GeneralizedLifetime<'tcx> {
     Region(PcgRegion<'tcx>),
     RegionsIn(OpaqueTy<'tcx>),
-    /// `T↓L`: the part of the value of `T` that the bounds on `T` mentioning
+    /// `T[L]`: the part of the value of `T` that the bounds on `T` mentioning
     /// `L` let loans of `L` flow into or out of. For `T: Sink<'c>`, the impl
     /// of `put(&mut self, x: &'c String)` may store `x` into it, and nowhere
     /// else in the value of `T`. For an alias type, also the part made of the
@@ -383,7 +392,8 @@ impl<'tcx> LifetimeEnv<'tcx> {
     }
 
     /// The lifetimes of the arguments of an alias type, of which its value is
-    /// made: its region arguments other than `'static`, and for an opaque
+    /// made: its region arguments that name a part (see [`names_part`]), and
+    /// for an opaque
     /// type argument `Q`, `RegionsIn(Q)` and the lifetimes of the parts of
     /// `Q`. `<I as IntoIterator>::IntoIter` with `I: IntoIterator<Item = &'a
     /// u32>` has the parts `RegionsIn(I)` and `'a`: the items it yields are in
@@ -475,16 +485,14 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for MemberLifetimeCollector<'tcx> {
     }
 
     fn visit_region(&mut self, region: ty::Region<'tcx>) {
-        // An erased region (in the signature of a closure type) names no
-        // data, like a bound one.
-        if !is_bound_region(region) && !region.is_static() && !region.is_erased() {
+        if names_part(region) {
             self.push(BoundLifetime::Region(region.into()));
         }
     }
 }
 
 /// Collects the lifetimes that the arguments of a bound mention, for
-/// [`LifetimeEnv::bound_lifetimes`].
+/// [`LifetimeEnv::where_clause_lifetimes`].
 struct BoundLifetimeCollector<'tcx> {
     of: OpaqueTy<'tcx>,
     lifetimes: Vec<BoundLifetime<'tcx>>,

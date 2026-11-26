@@ -462,7 +462,8 @@ impl ShapeLabelFormatter {
     }
 
     /// Build a formatter for a function's generalized sig shape, looking up
-    /// argument names, types, and trait-bound regions from the `def_id`.
+    /// argument names, types, and the parts that bounds name from the
+    /// `def_id`.
     #[must_use]
     pub fn for_fn_sig(def_id: hir::def_id::DefId, tcx: TyCtxt<'_>) -> Self {
         let sig = borrow_pcg::abstraction::FunctionData::new(def_id).identity_fn_sig(tcx);

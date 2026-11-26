@@ -1,6 +1,8 @@
 // Edges from the arguments of a call into its result and into what its
 // arguments point to after the call. Only regions that may flow into these
-// according to the callee's signature get an edge.
+// according to the callee's signature get an edge. A case without
+// annotations checks that the spec checks against rustc's borrow checker
+// (under `PCG_VALIDITY_CHECKS`) pass on it.
 
 // The result of `take` cannot hold the local `&mut v` borrow, so it does not
 // block `v`, which must be available again for the implicit `drop(v)`.
@@ -239,8 +241,8 @@ fn push_into<'b, 'c, C: Extend<&'c u32>>(c: &'b mut C, x: &'c u32) -> &'b mut C 
 
 // `x` may flow into the part `D['c]` of `*d`, and through `D: 'b` on into
 // the result's `'b`, if the type `D` stands for holds `'c` data (then `'c:
-// 'b`). rustc does not relate `'c` and `'b` here, which is fine for a flow
-// through a part of a type parameter.
+// 'b`). rustc does not relate `'c` and `'b` here, so the check that each flow
+// of a call's spec holds in rustc does not cover flows through a part.
 fn push_into_generic<'b, 'c, D: Extend<&'c u32>>(d: &'b mut D, x: &'c u32) -> &'b mut D {
     push_into(d, x)
 }

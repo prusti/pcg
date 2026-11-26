@@ -298,9 +298,11 @@ impl FunctionShape {
             closure_outlives: &|sup, sub| ctxt.bc().outlives(sup.into(), sub.into(), location),
         })
     }
+}
 
-    /// The spec of the function `def_id` for its own body: its signature
-    /// spec with its own generic parameters.
+impl FunctionShape<Generalized> {
+    /// The spec of the signature of the function `def_id` (see
+    /// [`FunctionData::shape`]).
     pub fn for_fn_sig<'tcx, Ctxt: HasTyCtxt<'tcx> + Copy>(
         def_id: DefId,
         ctxt: Ctxt,
