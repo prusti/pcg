@@ -6,7 +6,6 @@ serde_derive             loop join: BorrowFlowEdge from a node to itself
 serde_json               loop join: BorrowFlowEdge from a node to itself
 aho-corasick             loop join: BorrowFlowEdge from a node to itself
 futures-util             loop join: BorrowFlowEdge from a node to itself
-rustls-webpki            loop join: BorrowFlowEdge from a node to itself
 clap_builder             loop join: BorrowFlowEdge from a node to itself
 object                   loop join: BorrowFlowEdge from a node to itself
 gimli                    loop join: BorrowFlowEdge from a node to itself

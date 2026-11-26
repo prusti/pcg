@@ -27,7 +27,7 @@
 //! Places behind a raw pointer dereference are exempt: their capabilities do
 //! not come from the pointer (principle 7).
 
-use std::borrow::Cow;
+use std::{borrow::Cow, hash::BuildHasher};
 
 use itertools::Itertools;
 
@@ -36,60 +36,54 @@ use crate::{
     action::{BorrowPcgAction, PcgAction},
     borrow_pcg::{
         action::BorrowPcgActionKind, borrow_pcg_edge::LocalNode, edge::kind::BorrowPcgEdgeKind,
-        edge_data::EdgeData, graph::BorrowsGraph, validity_conditions::ValidityConditions,
+        edge_data::EdgeData, graph::BorrowsGraph,
     },
     owned_pcg::RepackOp,
     pcg::{
         CapabilityKind,
         place_capabilities::{PlaceCapabilities, PlaceCapabilitiesReader},
     },
-    rustc_interface::middle::mir,
+    rustc_interface::{data_structures::fx::FxBuildHasher, middle::mir},
     utils::{
-        CompilerCtxt, PcgSettings, Place, PlaceLike,
-        data_structures::{HashMap as DataHashMap, HashSet},
+        CompilerCtxt, PcgSettings, Place, PlaceLike, data_structures::HashSet,
         display::DisplayWithCompilerCtxt,
     },
 };
 
 /// The part of a PCG state that actions change: capabilities, records and
 /// the edges of the borrow graph. A snapshot taken before an action owns a
-/// copy; the state after it is read in place.
+/// copy of the capabilities and records; the state after it is read in
+/// place.
 #[derive(Clone)]
 pub(crate) struct Snapshot<'s, 'tcx> {
     pub(crate) capabilities: Cow<'s, PlaceCapabilities<'tcx>>,
-    pub(crate) edges: Edges<'s, 'tcx>,
+    /// A hash of each edge of the borrow graph: enough to tell which edges
+    /// an action added or removed, without copying the edges.
+    edges: HashSet<u64>,
+    /// The borrow graph, in a snapshot of the state after an action.
+    graph: Option<&'s BorrowsGraph<'tcx>>,
 }
 
-/// The edges of a [`Snapshot`], with their conditions: a copy (cloned
-/// without hashing the edges again), or the graph itself.
-#[derive(Clone)]
-pub(crate) enum Edges<'s, 'tcx> {
-    Copy(DataHashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions>),
-    Graph(&'s BorrowsGraph<'tcx>),
+/// The hash of `edge` that a [`Snapshot`] keeps.
+fn edge_hash(edge: &BorrowPcgEdgeKind<'_>) -> u64 {
+    FxBuildHasher.hash_one(edge)
 }
 
-impl<'tcx> Edges<'_, 'tcx> {
-    fn map(&self) -> &DataHashMap<BorrowPcgEdgeKind<'tcx>, ValidityConditions> {
-        match self {
-            Edges::Copy(edges) => edges,
-            Edges::Graph(graph) => &graph.edges,
-        }
-    }
+/// The hashes of the edges of `graph`.
+fn edge_hashes(graph: &BorrowsGraph<'_>) -> HashSet<u64> {
+    graph.edges.keys().map(edge_hash).collect()
+}
 
+impl<'s, 'tcx> Snapshot<'s, 'tcx> {
+    /// Whether the borrow graph of `self` has `edge`.
     fn contains(&self, edge: &BorrowPcgEdgeKind<'tcx>) -> bool {
-        self.map().contains_key(edge)
+        self.edges.contains(&edge_hash(edge))
     }
 
-    fn iter(&self) -> impl Iterator<Item = &BorrowPcgEdgeKind<'tcx>> + '_ {
-        self.map().keys()
-    }
-
-    /// The edges of `self` that `other` lacks.
-    fn difference<'e>(
-        &'e self,
-        other: &'e Edges<'_, 'tcx>,
-    ) -> impl Iterator<Item = &'e BorrowPcgEdgeKind<'tcx>> + 'e {
-        self.iter().filter(move |edge| !other.contains(edge))
+    /// The borrow graph of a snapshot of the state after an action.
+    fn graph(&self) -> &'s BorrowsGraph<'tcx> {
+        self.graph
+            .expect("only the state after an action is read in place")
     }
 }
 
@@ -98,7 +92,8 @@ impl<'tcx> Snapshot<'tcx, 'tcx> {
     pub(crate) fn copy(capabilities: &PlaceCapabilities<'tcx>, graph: &BorrowsGraph<'tcx>) -> Self {
         Self {
             capabilities: Cow::Owned(capabilities.clone()),
-            edges: Edges::Copy(graph.edges.clone()),
+            edges: edge_hashes(graph),
+            graph: None,
         }
     }
 
@@ -116,17 +111,10 @@ impl<'tcx> Snapshot<'tcx, 'tcx> {
                 None => capabilities.suspended.remove(&change.place),
             };
         }
-        let Edges::Copy(edges) = &mut self.edges else {
-            unreachable!("a copied snapshot copies its edges")
-        };
         for edge in from.edges.difference(&to.edges) {
-            edges.remove(edge);
+            self.edges.remove(edge);
         }
-        for (edge, conditions) in to.edges.map() {
-            if !from.edges.contains(edge) {
-                edges.insert(edge.clone(), conditions.clone());
-            }
-        }
+        self.edges.extend(to.edges.difference(&from.edges));
     }
 }
 
@@ -180,7 +168,8 @@ impl<'s, 'tcx> Snapshot<'s, 'tcx> {
     ) -> Self {
         Self {
             capabilities: Cow::Borrowed(capabilities),
-            edges: Edges::Graph(graph),
+            edges: edge_hashes(graph),
+            graph: Some(graph),
         }
     }
 }
@@ -476,11 +465,6 @@ fn frame<'a, 'tcx: 'a>(
             ));
         }
     }
-    let added = after.edges.difference(&before.edges).collect::<Vec<_>>();
-    let removed = before.edges.difference(&after.edges).collect::<Vec<_>>();
-    let show_edges = |edges: &[&BorrowPcgEdgeKind<'tcx>]| {
-        edges.iter().map(|e| e.display_string(ctxt)).join(", ")
-    };
     let (may_add, may_remove, relabels): (Option<&BorrowPcgEdgeKind<'tcx>>, Option<_>, bool) =
         match action {
             PcgAction::Borrow(action) => match &action.kind {
@@ -495,28 +479,36 @@ fn frame<'a, 'tcx: 'a>(
             PcgAction::Owned(_) => (None, None, false),
         };
     if !relabels {
-        let unexpected_added = added
-            .iter()
-            .copied()
-            .filter(|e| Some(*e) != may_add)
-            .collect::<Vec<_>>();
-        let unexpected_removed = removed
-            .iter()
-            .copied()
-            .filter(|e| Some(*e) != may_remove)
-            .collect::<Vec<_>>();
-        if !unexpected_added.is_empty() || !unexpected_removed.is_empty() {
+        // A removed edge is gone from the graph, and the snapshot before the
+        // action keeps only its hash, so removed edges are only counted.
+        let may_remove_hash = may_remove.map(edge_hash);
+        let unexpected_removed = before
+            .edges
+            .difference(&after.edges)
+            .filter(|&&hash| Some(hash) != may_remove_hash)
+            .count();
+        let unexpected_added = if after.edges.is_subset(&before.edges) {
+            vec![]
+        } else {
+            after
+                .graph()
+                .edges
+                .keys()
+                .filter(|&edge| Some(edge) != may_add && !before.contains(edge))
+                .map(|edge| edge.display_string(ctxt))
+                .collect::<Vec<_>>()
+        };
+        if !unexpected_added.is_empty() || unexpected_removed > 0 {
             violations.push(Violation::new(
                 "frame",
                 format!(
-                    "changes the borrow graph beyond its edge: adds [{}], removes [{}]",
-                    show_edges(&unexpected_added),
-                    show_edges(&unexpected_removed)
+                    "changes the borrow graph beyond its edge: adds [{}], removes {unexpected_removed} other edges",
+                    unexpected_added.join(", "),
                 ),
             ));
         }
         if let Some(edge) = may_remove
-            && !before.edges.contains(edge)
+            && !before.contains(edge)
         {
             violations.push(Violation::new(
                 "frame",
@@ -1037,8 +1029,9 @@ fn loans_overlapping<'a, 'tcx: 'a>(
     ctxt: CompilerCtxt<'a, 'tcx>,
 ) -> Vec<String> {
     snapshot
+        .graph()
         .edges
-        .iter()
+        .keys()
         .filter(|edge| {
             edge.is_loan()
                 && edge.blocked_nodes(ctxt).any(|node| {
