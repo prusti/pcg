@@ -28,8 +28,10 @@
 //!   of the part of the parameter's value that it names
 //!   ([`GeneralizedLifetime::BoundPart`]): whichever impl the parameter
 //!   stands for moves them through its methods;
-//! - for closures, the outlives relations between the closure type's regions
-//!   that its body needs (see [`CallSpecQuery::closure_outlives`]);
+//! - for code values (closures, `dyn` objects, `impl Trait` values, function
+//!   pointers), the outlives relations between the regions of their types
+//!   that the code they carry may rely on (see
+//!   [`CallSpecQuery::code_value_outlives`]);
 //! - the regions of an alias type's value are among the regions of its
 //!   arguments.
 //!
@@ -113,20 +115,21 @@ pub(crate) struct CallSpecQuery<'a, 'tcx> {
     /// The function the call is in. Its where clauses prove the callee's
     /// bounds that mention its own parameters.
     pub(crate) env: LifetimeEnv<'tcx>,
-    /// Whether the body of a closure whose type contains both regions needs
-    /// the first to outlive the second. `sup` and `sub` are regions of a
-    /// closure type in `env`, or for a closure's own spec, regions of the
-    /// closure type, argument types and result type in its body.
+    /// Whether the first region outlives the second where the call is, for
+    /// two regions of the type of a code value of the call (see
+    /// [`is_code_value`]), or for a closure's own spec, of the closure type,
+    /// argument types and result type in its body.
     ///
-    /// A closure's signature is inferred: rustc's borrow checker computes
-    /// which relations between the regions of its captures and its
-    /// signature the closure body needs, and requires them where the
-    /// closure is created. These relations are the only source of the flows
-    /// a closure performs (`|x| v.push(x)` stores `x` into the captured
-    /// `v`), so this is the one place where the spec takes a fact from the
-    /// borrow checker rather than the type system: a call passes the borrow
-    /// checker's outlives relation between the regions of the closure type.
-    pub(crate) closure_outlives: &'a dyn Fn(ty::Region<'tcx>, ty::Region<'tcx>) -> bool,
+    /// The type of a code value does not determine the code that calling it
+    /// runs, and that code may rely on relations between the regions of the
+    /// type that hold where the value was made: those that a closure's body
+    /// needs between its captures and its signature (`|x| v.push(x)` stores
+    /// `x` into the captured `v`), or the implied bounds of the impl behind
+    /// a `dyn Tr<'a, 'b>` or `impl Tr<'a, 'b>` value. The borrow checker
+    /// requires them where the value is made, so they hold where it is
+    /// called. This is the one place where the spec takes a fact from the
+    /// borrow checker rather than the type system.
+    pub(crate) code_value_outlives: &'a dyn Fn(ty::Region<'tcx>, ty::Region<'tcx>) -> bool,
 }
 
 /// A node of the flow graph of a call.
@@ -618,16 +621,27 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for OccurrenceWalker<'tcx> {
 
 /// Replaces the free regions of the values it folds by inference variables,
 /// the same region by the same variable, and remembers for each variable the
-/// region it replaced. For each closure type it folds, it remembers which
-/// variables replaced the regions of that closure type.
+/// region it replaced. For each type of a code value it folds (see
+/// [`is_code_value`]), it remembers which variables replaced the regions of
+/// that type.
 struct RegionsToVars<'a, 'tcx> {
     infcx: &'a InferCtxt<'tcx>,
     vars: HashMap<ty::Region<'tcx>, ty::Region<'tcx>>,
     /// The variables this folder created.
     introduced: HashSet<ty::Region<'tcx>>,
-    /// The original regions of each folded closure type, with their
+    /// The original regions of each folded type of a code value, with their
     /// variables.
-    closures: Vec<Vec<(ty::Region<'tcx>, ty::Region<'tcx>)>>,
+    code_values: Vec<Vec<(ty::Region<'tcx>, ty::Region<'tcx>)>>,
+}
+
+/// Whether a value of type `ty` is a code value: a closure, a `dyn` object,
+/// an `impl Trait` value or a function pointer, whose type does not determine
+/// the code that calling it runs (see [`CallSpecQuery::code_value_outlives`]).
+fn is_code_value(ty: ty::Ty<'_>) -> bool {
+    ty.is_closure()
+        || ty.is_fn_ptr()
+        || matches!(ty.kind(), ty::TyKind::Dynamic(..))
+        || opaque_type(ty).is_some()
 }
 
 impl<'tcx> TypeFolder<ty::TyCtxt<'tcx>> for RegionsToVars<'_, 'tcx> {
@@ -637,16 +651,26 @@ impl<'tcx> TypeFolder<ty::TyCtxt<'tcx>> for RegionsToVars<'_, 'tcx> {
 
     fn fold_ty(&mut self, ty: ty::Ty<'tcx>) -> ty::Ty<'tcx> {
         let folded = ty.super_fold_with(self);
-        if let ty::TyKind::Closure(..) = ty.kind() {
+        if is_code_value(ty) {
+            // The type may be in the signature, whose regions are already
+            // variables of the instantiated arguments.
             let mut regions = Vec::new();
             self.infcx.tcx.for_each_free_region(&ty, |region| {
-                if let Some(var) = self.vars.get(&region)
-                    && !regions.iter().any(|(r, _)| *r == region)
+                let pair = match self.vars.get(&region) {
+                    Some(var) => Some((region, *var)),
+                    None => self
+                        .vars
+                        .iter()
+                        .find(|(_, var)| **var == region)
+                        .map(|(original, var)| (*original, *var)),
+                };
+                if let Some(pair) = pair
+                    && !regions.contains(&pair)
                 {
-                    regions.push((region, *var));
+                    regions.push(pair);
                 }
             });
-            self.closures.push(regions);
+            self.code_values.push(regions);
         }
         folded
     }
@@ -929,7 +953,8 @@ fn region_outlives<'tcx>(infcx: &InferCtxt<'tcx>) -> Vec<(ty::Region<'tcx>, ty::
 }
 
 /// The instantiated signature of `callee`, its regions replaced by inference
-/// variables of `folder`, and the where clauses it may rely on.
+/// variables of `folder`, the where clauses it may rely on, and the types
+/// whose well-formedness it may rely on.
 fn instantiate_callee<'tcx>(
     callee: Callee<'tcx>,
     folder: &mut RegionsToVars<'_, 'tcx>,
@@ -947,9 +972,12 @@ fn instantiate_callee<'tcx>(
                 .iter()
                 .map(|clause| instantiate(clause, tcx, args))
                 .collect();
+            // The caller proves the callee's type arguments well-formed, and
+            // an impl that the callee selects for them may rely on that.
             let wf_types = sig
                 .inputs_and_output
                 .iter()
+                .chain(args.types())
                 .chain(
                     header_types(def_id, tcx)
                         .into_iter()
@@ -963,6 +991,10 @@ fn instantiate_callee<'tcx>(
                 .instantiate_bound_regions(poly_sig, |_| folder.fresh_var())
                 .0
                 .fold_with(folder);
+            // The function pointer is itself a code value: its free regions
+            // are those that the folder has seen.
+            let regions = folder.vars.iter().map(|(r, var)| (*r, *var)).collect();
+            folder.code_values.push(regions);
             (sig, Vec::new(), Vec::new())
         }
     }
@@ -1047,7 +1079,7 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         infcx: &infcx,
         vars: HashMap::default(),
         introduced: HashSet::default(),
-        closures: Vec::new(),
+        code_values: Vec::new(),
     };
     let (sig, clauses, wf_types) = instantiate_callee(query.callee, &mut folder);
     let formal_tys =
@@ -1191,12 +1223,13 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         }
     }
 
-    // The relations a closure body needs, from the borrow checker of the
-    // regions given (see `CallSpecQuery::closure_outlives`): at a call of a
-    // closure, between the regions of its type; for the closure's own spec,
-    // between all regions of its type and of the types of its arguments and
-    // result, e.g. from a parameter to a capture.
-    let closure_regions: Vec<Vec<(ty::Region<'tcx>, Node<'tcx>)>> = match query.callee {
+    // The relations that the code of a code value may rely on, from the
+    // borrow checker where the call is (see
+    // `CallSpecQuery::code_value_outlives`): between the regions of each
+    // code value's type; for a closure's own spec, between all regions of its
+    // type and of the types of its arguments and result, e.g. from a
+    // parameter to a capture.
+    let code_value_regions: Vec<Vec<(ty::Region<'tcx>, Node<'tcx>)>> = match query.callee {
         Callee::FnDef(def_id, _) if def_id == env.def_id && tcx.is_closure_like(def_id) => {
             let of_type = folder
                 .vars
@@ -1211,20 +1244,20 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             vec![of_type.chain(of_arguments).collect()]
         }
         _ => folder
-            .closures
+            .code_values
             .iter()
-            .map(|closure| {
-                closure
+            .map(|code_value| {
+                code_value
                     .iter()
                     .map(|(region, var)| (*region, region_node(*var, &mut resolver)))
                     .collect()
             })
             .collect(),
     };
-    for closure in &closure_regions {
-        for &(sup, sup_node) in closure {
-            for &(sub, sub_node) in closure {
-                if sup != sub && (query.closure_outlives)(sup, sub) {
+    for code_value in &code_value_regions {
+        for &(sup, sup_node) in code_value {
+            for &(sub, sub_node) in code_value {
+                if sup != sub && (query.code_value_outlives)(sup, sub) {
                     graph.add_flow(sup_node, sub_node);
                 }
             }
@@ -1397,7 +1430,8 @@ struct BodySpec<'tcx> {
 /// projections. For a closure, the callee is the closure type of the body,
 /// which has region variables where typeck erased the regions of the
 /// closure's type, and the relations that its body needs between them come
-/// from the body's region inference (see [`CallSpecQuery::closure_outlives`]).
+/// from the body's region inference (see
+/// [`CallSpecQuery::code_value_outlives`]).
 #[rustversion::since(2025-05-24)]
 fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<BodySpec<'tcx>> {
     use crate::rustc_interface::hir::def::DefKind;
@@ -1419,7 +1453,7 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
         return None;
     };
     let region_cx = ctxt.bc().rust_borrow_checker()?.region_infer_ctxt();
-    let closure_outlives =
+    let code_value_outlives =
         |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (sup.kind(), sub.kind()) {
             (ty::RegionKind::ReVar(sup), ty::RegionKind::ReVar(sub)) => {
                 region_cx.eval_outlives(sup, sub)
@@ -1431,7 +1465,7 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
         arg_tys: &arg_tys,
         result_ty: body.local_decls[mir::RETURN_PLACE].ty,
         env: LifetimeEnv::body(tcx, def_id),
-        closure_outlives: &closure_outlives,
+        code_value_outlives: &code_value_outlives,
     });
     Some(BodySpec { def_id, spec })
 }
@@ -1685,7 +1719,7 @@ pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
 /// its callers would expect flows that the body cannot perform.
 ///
 /// A closure's spec takes the relations its body needs from the body's
-/// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
+/// region inference (see [`CallSpecQuery::code_value_outlives`]), so for a
 /// closure the check covers the relations of its signature only.
 ///
 /// Each node of the spec gets the body's region variables for it: those of

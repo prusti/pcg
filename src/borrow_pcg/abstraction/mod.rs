@@ -132,7 +132,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
             Callee::FnPtr(func_ty.fn_sig(ctxt.tcx()))
         };
         let result_ty = self.output.ty(ctxt).ty;
-        let closure_outlives = |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| {
+        let code_value_outlives = |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| {
             ctxt.bc().outlives(sup.into(), sub.into(), self.location)
         };
         let query = CallSpecQuery {
@@ -140,7 +140,7 @@ impl<'ops, 'tcx: 'ops> FunctionCall<'ops, 'tcx> {
             arg_tys: &arg_tys,
             result_ty,
             env: ctxt.lifetime_env(),
-            closure_outlives: &closure_outlives,
+            code_value_outlives: &code_value_outlives,
         };
         let shape = call_spec(&query)
             .unwrap_or_else(|err| panic!("No spec for the call at {:?}: {err:?}", self.location));
@@ -295,7 +295,7 @@ impl FunctionShape {
             arg_tys: &call_arg_tys,
             result_ty: call_result_ty,
             env: ctxt.lifetime_env(),
-            closure_outlives: &|sup, sub| ctxt.bc().outlives(sup.into(), sub.into(), location),
+            code_value_outlives: &|sup, sub| ctxt.bc().outlives(sup.into(), sub.into(), location),
         })
     }
 }
@@ -357,10 +357,11 @@ impl<'tcx> FunctionData<'tcx> {
     /// The spec of this function's signature: the flows between the lifetime
     /// projections of its identity signature, in its own environment.
     ///
-    /// A closure's spec computed here lacks the relations that the closure
-    /// body needs between its captures and its signature (see
-    /// [`CallSpecQuery::closure_outlives`]): they are known only to the
-    /// borrow checker of the closure's body.
+    /// The spec computed here lacks the relations that the code of a code
+    /// value (a closure, or a `dyn`, `impl Trait` or function-pointer value
+    /// among its arguments) relies on between the regions of its type (see
+    /// [`CallSpecQuery::code_value_outlives`]): they are known only to the
+    /// borrow checker where the value is made.
     pub fn shape<Ctxt: HasTyCtxt<'tcx> + Copy>(
         self,
         ctxt: Ctxt,
@@ -378,7 +379,7 @@ impl<'tcx> FunctionData<'tcx> {
             arg_tys: sig.inputs(),
             result_ty: sig.output(),
             env: LifetimeEnv::signature(tcx, self.def_id),
-            closure_outlives: &|_, _| false,
+            code_value_outlives: &|_, _| false,
         })
     }
 

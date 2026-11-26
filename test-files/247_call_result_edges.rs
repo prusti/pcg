@@ -118,12 +118,13 @@ fn put_through_box(s: String) -> usize {
     v.len()
 }
 
-// The object type `dyn Sink<'b>` may hold borrows of `'b`.
+// The object type `dyn Sink<'b> + 'd` may hold borrows of `'b`, and of `'d`,
+// which the borrow checker relates to `'b` where the call is.
 fn put_through_dyn(s: String) -> usize {
     let mut v: Vec<&String> = vec![];
     {
         let d: &mut dyn Sink = &mut v;
-        // PCG: bb1[20] post_main: Add Edge call Sink::put at bb1[20]: [_9 before bb1[20]:PostOperands↓'?27 before bb1[20]:PostMain, _8 before bb1[20]:PostOperands↓'?25 before bb1[20]:PostMain] -> [_8 before bb1[20]:PostOperands↓'?25 after bb1]
+        // PCG: bb1[20] post_main: Add Edge call Sink::put at bb1[20]: [_9 before bb1[20]:PostOperands↓'?27 before bb1[20]:PostMain, _8 before bb1[20]:PostOperands↓'?26 before bb1[20]:PostMain, _8 before bb1[20]:PostOperands↓'?25 before bb1[20]:PostMain] -> [_8 before bb1[20]:PostOperands↓'?26 after bb1, _8 before bb1[20]:PostOperands↓'?25 after bb1]
         d.put(&s);
     }
     v.len()
@@ -315,6 +316,78 @@ fn call_widen_through_trait() -> u32 {
     let mut k = 5u32;
     // PCG: bb0[8] post_main: Add Edge call Widen::widen at bb0[8]: _3 before bb0[8]:PostOperands↓'?9 before bb0[8]:PostMain -> r↓'?8
     let r = <&&() as Widen<'_, '_>>::widen(&mut k);
+    *r += 1;
+    k
+}
+
+// The impl that the body selects for `T` relies on the well-formedness of
+// `T`, which the caller proves.
+fn widen_generic<'a, 'b, T: Widen<'a, 'b>>(x: &'b mut u32) -> &'a mut u32 {
+    T::widen(x)
+}
+
+fn call_widen_generic() -> u32 {
+    let mut k = 5u32;
+    // PCG: bb0[8] post_main: Add Edge call widen_generic at bb0[8]: _3 before bb0[8]:PostOperands↓'?9 before bb0[8]:PostMain -> r↓'?8
+    let r = widen_generic::<&&()>(&mut k);
+    *r += 1;
+    k
+}
+
+trait WidenRef<'a, 'b> {
+    fn widen_ref(&self, x: &'b mut u32) -> &'a mut u32;
+}
+
+impl<'a, 'b> WidenRef<'a, 'b> for &'a &'b () {
+    fn widen_ref(&self, x: &'b mut u32) -> &'a mut u32 {
+        x
+    }
+}
+
+fn as_dyn<'x, 'y>(w: &'x &'x &'y ()) -> &'x dyn WidenRef<'x, 'y> {
+    w
+}
+
+// The impl behind the `dyn` relies on `'y: 'x`, which held where the object
+// was made and so holds where it is called.
+fn call_widen_dyn() -> u32 {
+    let mut k = 5u32;
+    let u = ();
+    let w = &&u;
+    let d = as_dyn(&w);
+    // PCG: bb1[10] post_main: Add Edge call WidenRef::widen_ref at bb1[10]: [_10 before bb1[10]:PostOperands↓'?32 before bb1[10]:PostMain, _9 before bb1[10]:PostOperands↓'?29 before bb1[10]:PostMain, _9 before bb1[10]:PostOperands↓'?30 before bb1[10]:PostMain] -> [r↓'?27, _9 before bb1[10]:PostOperands↓'?30 after bb1, _9 before bb1[10]:PostOperands↓'?29 after bb1]
+    let r = d.widen_ref(&mut k);
+    *r += 1;
+    k
+}
+
+fn as_opaque<'x, 'y>(w: &'x &'y ()) -> impl WidenRef<'x, 'y> {
+    w
+}
+
+// The same for the value of an `impl Trait` type.
+fn call_widen_opaque() -> u32 {
+    let mut k = 5u32;
+    let u = ();
+    let w = &&u;
+    let t = as_opaque(w);
+    // PCG: bb1[9] post_main: Add Edge call WidenRef::widen_ref at bb1[9]: [_8 before bb1[9]:PostOperands↓impl WidenRef<'_, '_>[RegionVid('?23)] before bb1[9]:PostMain, _8 before bb1[9]:PostOperands↓impl WidenRef<'_, '_>[RegionVid('?24)] before bb1[9]:PostMain, _9 before bb1[9]:PostOperands↓'?25 before bb1[9]:PostMain] -> [_8 before bb1[9]:PostOperands↓impl WidenRef<'_, '_>[RegionVid('?24)] after bb1, _8 before bb1[9]:PostOperands↓impl WidenRef<'_, '_>[RegionVid('?23)] after bb1, r↓'?21]
+    let r = t.widen_ref(&mut k);
+    *r += 1;
+    drop(t);
+    k
+}
+
+fn as_fn_ptr<'x, 'y: 'x>() -> fn(&'y mut u32) -> &'x mut u32 {
+    |x| x
+}
+
+// The same for the function behind a function pointer.
+fn call_widen_fn_ptr() -> u32 {
+    let mut k = 5u32;
+    let p = as_fn_ptr();
+    // PCG: bb1[8] post_main: Add Edge call at bb1[8]: _5 before bb1[8]:PostOperands↓'?11 before bb1[8]:PostMain -> r↓'?8
+    let r = p(&mut k);
     *r += 1;
     k
 }
