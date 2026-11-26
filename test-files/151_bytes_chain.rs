@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Chain<T, U> as Buf>::chunks_vectored
 use std::io::IoSlice;
 
 struct Chain<T, U> {

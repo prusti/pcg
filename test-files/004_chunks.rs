@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame f
+// PCG_EXPECTED_FAILURE: label f
 fn main() {
 }
 

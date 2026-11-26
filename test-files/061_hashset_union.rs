@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame union
 use std::collections::HashSet;
 fn union(set: &mut HashSet<i32>, other: &HashSet<i32>) -> bool {
   let orig_len = set.len();

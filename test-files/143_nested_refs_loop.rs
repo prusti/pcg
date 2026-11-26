@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame f
+// PCG_EXPECTED_FAILURE: frame main
 fn f<'a, 'b>(x: &'a mut Vec<&'b mut i32>, y: &'a mut Vec<&'b mut i32>) {
     while let Some(y_ref) = y.pop() {
         x.push(y_ref);

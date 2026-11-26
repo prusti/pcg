@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame InputBuffer::<'a>::advance
+// PCG_EXPECTED_FAILURE: label InputBuffer::<'a>::advance
 pub(crate) struct BitsBuffer {
     bit_buffer: u32,
     bits_in_buffer: i32,

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame Resolver::<'ra, 'tcx>::resolve_import::{closure#0}
 #![feature(arbitrary_self_types)]
 use std::cell::Cell;
 use std::ops::Deref;

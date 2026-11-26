@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label main
 fn main() {
     let mut x = 0;
     let mut ra: &i32;

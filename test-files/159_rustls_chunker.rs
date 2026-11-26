@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Chunker<'a> as std::iter::Iterator>::next
 pub enum OutboundChunks<'a> {
     /// A single byte slice. Contrary to `Multiple`, this uses a single pointer indirection
     Single(&'a [u8]),

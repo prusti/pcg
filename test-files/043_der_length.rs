@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame <Length as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame Length::encode
+// PCG_EXPECTED_FAILURE: frame Writer::write_byte
 type Result<T> = std::result::Result<T, ()>;
 pub trait Writer {
     /// Write the given DER-encoded bytes as output.

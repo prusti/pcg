@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame k_smallest_general
 use std::cmp::Ordering;
 
 fn sift_down<T>(heap: &mut [T], mut origin: usize) {

@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame <ArchiveMemberIterator<'data, R> as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <ArchiveMemberIterator<'data, R> as std::iter::Iterator>::next
+// PCG_EXPECTED_FAILURE: frame <Members<'data> as std::fmt::Debug>::fmt
 /// The list of members in the archive.
 #[derive(Debug, Clone, Copy)]
 enum Members<'data> {

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame ParserState::<'i, R>::stack_match_pop
 #[derive(Clone, Copy)]
 pub struct Position<'i> {
     input: &'i str,

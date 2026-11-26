@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame main
+// PCG_EXPECTED_FAILURE: label main
 fn foo<T: ?Sized>(x: &T) -> &T {
     x
 }

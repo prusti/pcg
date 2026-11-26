@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame wow
 struct S<'a, 'b> {x: &'a mut &'b mut i32 }
 
 fn wow<'a, 'b, 'c: 'b>(

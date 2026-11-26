@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <ExactlyOneError<I> as std::fmt::Debug>::fmt
 use std::fmt::{Debug, Formatter};
 
 pub type FmtResult = std::result::Result<(), std::fmt::Error>;

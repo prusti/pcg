@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <ConstChoice as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <Limb as std::hash::Hash>::hash
 pub type Word = u64;
 
 #[derive(Debug, Copy, Clone)]

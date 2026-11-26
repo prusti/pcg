@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <Ident as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: label <Ident as std::fmt::Debug>::fmt
 struct Ident {
     id: usize,
 }

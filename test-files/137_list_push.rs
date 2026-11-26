@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame main
 struct List<'a, T> {
     head: &'a mut T,
     tail: Option<Box<List<'a, T>>>,

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label <Crc<W, I> as std::clone::Clone>::clone
 pub trait Implementation {
     /// Associated data necessary for the implementation (e.g. lookup tables).
     type Data<W>;

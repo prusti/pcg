@@ -1,3 +1,30 @@
+// PCG_EXPECTED_FAILURE: cycle moved_while_referent_borrowed
+// PCG_EXPECTED_FAILURE: frame Lazy::<'a>::activation
+// PCG_EXPECTED_FAILURE: frame Lazy::<'a>::loop_entry
+// PCG_EXPECTED_FAILURE: frame Lazy::<'a>::nested
+// PCG_EXPECTED_FAILURE: frame Lazy::<'a>::reborrow
+// PCG_EXPECTED_FAILURE: frame client
+// PCG_EXPECTED_FAILURE: frame client_reborrow
+// PCG_EXPECTED_FAILURE: frame frozen_root
+// PCG_EXPECTED_FAILURE: frame frozen_root_in_loop
+// PCG_EXPECTED_FAILURE: frame owned_activation
+// PCG_EXPECTED_FAILURE: frame pack_under_frozen
+// PCG_EXPECTED_FAILURE: frame write_read_unpacked_referent
+// PCG_EXPECTED_FAILURE: frame write_unpacked_referent
+// PCG_EXPECTED_FAILURE: freeze client
+// PCG_EXPECTED_FAILURE: freeze client_reborrow
+// PCG_EXPECTED_FAILURE: freeze pack_under_frozen
+// PCG_EXPECTED_FAILURE: label Lazy::<'a>::activation
+// PCG_EXPECTED_FAILURE: label Lazy::<'a>::loop_entry
+// PCG_EXPECTED_FAILURE: label Lazy::<'a>::nested
+// PCG_EXPECTED_FAILURE: label Lazy::<'a>::reborrow
+// PCG_EXPECTED_FAILURE: label frozen_root
+// PCG_EXPECTED_FAILURE: label frozen_root_in_loop
+// PCG_EXPECTED_FAILURE: label loop_borrowed_field
+// PCG_EXPECTED_FAILURE: label moved_while_referent_borrowed
+// PCG_EXPECTED_FAILURE: label owned_activation
+// PCG_EXPECTED_FAILURE: label write_read_unpacked_referent
+// PCG_EXPECTED_FAILURE: label write_unpacked_referent
 //! Regression test: to obtain read capability for `f`, the PCG must not
 //! collapse `f`, because `f.x` is blocked by a shared borrow. Instead, the
 //! unpacked `f` is frozen, which makes its fields read copies. The read

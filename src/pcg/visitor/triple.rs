@@ -3,7 +3,7 @@ use crate::{
     borrow_pcg::edge::kind::BorrowPcgEdgeKind,
     error::PcgError,
     pcg::{
-        CapabilityKind, PcgRefLike,
+        CapabilityKind, PcgRefLike, checks,
         obtain::ObtainType,
         place_capabilities::PlaceCapabilitiesReader,
         triple::{PlaceCondition, Triple},
@@ -108,7 +108,18 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'_, 'a, 'tcx, Ctxt> 
 
     #[tracing::instrument(skip(self, triple))]
     pub(crate) fn ensure_triple(&mut self, triple: Triple<'tcx>) -> Result<(), PcgError> {
+        let before =
+            checks::enabled(self.ctxt.settings()).then(|| self.pcg.place_capabilities.clone());
         self.pcg.ensure_triple(triple, self.ctxt);
+        if let Some(before) = before {
+            let effect = checks::statement_effect(
+                triple.post(),
+                &before,
+                &self.pcg.place_capabilities,
+                self.ctxt.bc_ctxt(),
+            );
+            self.statement_effects.push((self.actions.len(), effect));
+        }
         if let Some(PlaceCondition::Freeze(place)) = triple.post() {
             let cap = self.pcg.capability_of(place, self.ctxt);
             let unpacked = cap.is_none() && self.pcg.place_capabilities.unpacks(place);

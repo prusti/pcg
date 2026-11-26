@@ -1,3 +1,16 @@
+// PCG_EXPECTED_FAILURE: cycle Request::<'h, 'b>::parse
+// PCG_EXPECTED_FAILURE: frame Request::<'h, 'b>::parse
+// PCG_EXPECTED_FAILURE: frame Tree::<'_>::reset
+// PCG_EXPECTED_FAILURE: frame Tree::<'_>::set
+// PCG_EXPECTED_FAILURE: frame ancestor_read
+// PCG_EXPECTED_FAILURE: frame behind_raw_ptr
+// PCG_EXPECTED_FAILURE: frame under_borrowed_part
+// PCG_EXPECTED_FAILURE: freeze Tree::<'_>::reset
+// PCG_EXPECTED_FAILURE: freeze ancestor_read
+// PCG_EXPECTED_FAILURE: freeze reservation_reads_reference
+// PCG_EXPECTED_FAILURE: freeze under_borrowed_part
+// PCG_EXPECTED_FAILURE: label <Bytes as std::convert::AsRef<usize>>::as_ref
+// PCG_EXPECTED_FAILURE: label reservation_across_loop
 struct Tmp {}
 
 impl Tmp {

@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Entry<'_, K, V> as std::fmt::Debug>::fmt
 
 use std::fmt;
 

@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame main
+// PCG_EXPECTED_FAILURE: lend main
 fn main() {
     let mut x = 0;
     let mut y = 1;

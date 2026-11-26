@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: label first_with_cell
+// PCG_EXPECTED_FAILURE: label static_ref
 // Edges from the arguments of a call into its result. Only regions that may
 // flow into the result according to both the callee's signature and the
 // borrow checker get an edge.

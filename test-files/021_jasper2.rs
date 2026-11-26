@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame main
 struct T {
     f: i64,
     g: i64

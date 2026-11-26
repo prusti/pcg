@@ -1,3 +1,10 @@
+// PCG_EXPECTED_FAILURE: frame <Expected as std::fmt::Display>::fmt
+// PCG_EXPECTED_FAILURE: frame <Unexpected<'a> as std::cmp::PartialEq>::eq
+// PCG_EXPECTED_FAILURE: frame <Unexpected<'a> as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <Unexpected<'a> as std::fmt::Display>::fmt
+// PCG_EXPECTED_FAILURE: frame Error::invalid_value
+// PCG_EXPECTED_FAILURE: label <Unexpected<'a> as std::fmt::Display>::fmt
+// PCG_EXPECTED_FAILURE: label Error::invalid_value
 use std::{fmt::{self, Display}, marker::PhantomData};
 
 struct Expected;

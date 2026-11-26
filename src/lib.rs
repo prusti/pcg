@@ -47,6 +47,7 @@ use std::{
 
 #[deprecated(note = "Use `owned_pcg` instead")]
 pub use owned_pcg as free_pcs;
+pub use pcg::checks::{CheckFailureRecorder, oracle};
 pub mod pcg;
 pub mod results;
 pub mod rustc_interface;

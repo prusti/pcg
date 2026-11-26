@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame f
+// PCG_EXPECTED_FAILURE: frame main
 fn f<'a, 'b, 'c>(
     // 'c : 'b : 'a
     x: &'a mut &'b mut &'c mut i32,

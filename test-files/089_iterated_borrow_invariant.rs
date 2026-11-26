@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame test
 struct T {}
 fn main () {}
 fn test() {

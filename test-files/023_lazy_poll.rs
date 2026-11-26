@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label Lazy::<T, F>::poll
 use std::sync::atomic::{AtomicPtr, Ordering};
 
 pub struct Lazy<T, F> {

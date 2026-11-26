@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame CfiEntriesIter::<'bases, Section, R>::next
 trait Reader {
     /// The type used for offsets and lengths.
     type Offset;

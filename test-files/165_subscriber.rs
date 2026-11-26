@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <Layered<A, B, S> as std::fmt::Debug>::fmt
 use std::fmt;
 use std::marker::PhantomData;
 

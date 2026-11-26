@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label borrow_last
 struct List { head: String, tail: Option<Box<List>> }
 fn borrow_last<'b, 'a: 'b>(list: &'a mut List) -> &'b mut String {
   let mut current: &'a mut List = &mut *list;

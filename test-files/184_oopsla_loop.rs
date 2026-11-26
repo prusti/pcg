@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label f
 struct List {
     head: u32,
     tail: Option<Box<List>>,

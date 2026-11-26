@@ -16,7 +16,7 @@ use crate::{
     error::PcgError,
     owned_pcg::RepackGuide,
     pcg::{
-        CapabilityKind,
+        CapabilityKind, checks,
         ctxt::{AnalysisCtxt, HasSettings},
         obtain::PlaceObtainer,
         owned_state::OwnedPcg,
@@ -590,6 +590,15 @@ impl<'a, 'tcx: 'a> Pcg<'a, 'tcx> {
                     .unwrap_or(&edge.conditions);
                 edge.conditions = conditions.without_branch_choice(self_block);
             }
+        }
+        if checks::enabled(ctxt.settings()) {
+            checks::replay::check(
+                &format!("edge {self_block:?} -> {other_block:?}"),
+                &self.place_capabilities,
+                actions.iter().map(checks::listed_changes),
+                &other.place_capabilities,
+                ctxt.bc_ctxt(),
+            );
         }
         Ok(PcgActions::new(actions))
     }

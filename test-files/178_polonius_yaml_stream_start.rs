@@ -1,4 +1,5 @@
 // option PCG_POLONIUS: true
+// PCG_EXPECTED_FAILURE: frame Parser::<T>::stream_start
 
 use std::marker::PhantomData;
 

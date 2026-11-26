@@ -1,0 +1,109 @@
+# Known failures of the checks of `pcg::checks` in the selected crates' test cases
+# (see `KNOWN_CHECK_FAILURES` in selected_crates.rs): case, check, function.
+aho-corasick;1.1.3;2025-03-13;nfa::contiguous::Builder::build_from_noncontiguous	frame	nfa::contiguous::Builder::build_from_noncontiguous
+aho-corasick;1.1.3;2025-03-13;nfa::contiguous::Builder::build_from_noncontiguous	label	nfa::contiguous::Builder::build_from_noncontiguous
+bindgen;0.71.1;2025-03-13;ir::context::BindgenContext::find_used_template_parameters	frame	ir::context::BindgenContext::find_used_template_parameters
+bitvec;1.0.1;2025-03-13;<domain::Domain<'a, wyz::Const, T, O> as std::fmt::Binary>::fmt	frame	<domain::Domain<'a, wyz::Const, T, O> as std::fmt::Binary>::fmt
+brotli-decompressor;4.0.2;2025-03-13;copy_from_to	frame	copy_from_to
+bstr;1.11.3;2025-03-13;<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next	cycle	<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next
+bstr;1.11.3;2025-03-13;<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next	frame	<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next
+bstr;1.11.3;2025-03-13;<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next	label	<ext_slice::FieldsWith<'a, F> as core::iter::Iterator>::next
+chrono;0.4.40;2025-03-13;format::scan::timezone_offset_2822	label	format::scan::timezone_offset_2822
+combine;4.6.7;2025-03-13;<&'a str as stream::RangeStreamOnce>::uncons_while	label	<&'a str as stream::RangeStreamOnce>::uncons_while
+cookie;0.18.1;2025-03-13;prefix::Prefix::clip	label	prefix::Prefix::clip
+dashmap;6.1.0;2025-03-13;DashMap::<K, V, S>::try_reserve	frame	DashMap::<K, V, S>::try_reserve
+encoding_rs;0.8.35;2025-03-13;handles::ByteSource::<'a>::check_available	frame	handles::ByteSource::<'a>::check_available
+encoding_rs;0.8.35;2025-03-13;iso_2022_jp::Iso2022JpDecoder::decode_to_utf16_raw	frame	iso_2022_jp::Iso2022JpDecoder::decode_to_utf16_raw
+encoding_rs;0.8.35;2025-03-13;iso_2022_jp::Iso2022JpDecoder::decode_to_utf16_raw	label	iso_2022_jp::Iso2022JpDecoder::decode_to_utf16_raw
+encoding_rs;0.8.35;2025-03-13;shift_jis::ShiftJisEncoder::encode_from_utf16_raw	frame	shift_jis::ShiftJisEncoder::encode_from_utf16_raw
+encoding_rs;0.8.35;2025-03-13;shift_jis::ShiftJisEncoder::encode_from_utf16_raw	label	shift_jis::ShiftJisEncoder::encode_from_utf16_raw
+flate2;1.1.0;2025-03-13;<gz::write::MultiGzDecoder<W> as std::io::Write>::write	cycle	<gz::write::MultiGzDecoder<W> as std::io::Write>::write
+flate2;1.1.0;2025-03-13;<gz::write::MultiGzDecoder<W> as std::io::Write>::write	frame	<gz::write::MultiGzDecoder<W> as std::io::Write>::write
+form_urlencoded;1.2.1;2025-03-13;decode	frame	decode
+form_urlencoded;1.2.1;2025-03-13;decode	label	decode
+gimli;0.31.1;2025-03-13;read::cfi::UnwindTable::<'a, 'ctx, R, S>::into_current_row	label	read::cfi::UnwindTable::<'a, 'ctx, R, S>::into_current_row
+gimli;0.31.1;2025-03-13;read::unit::EntriesTree::<'abbrev, 'unit, R>::root	cycle	read::unit::EntriesTree::<'abbrev, 'unit, R>::root
+gimli;0.31.1;2025-03-13;read::unit::EntriesTree::<'abbrev, 'unit, R>::root	frame	read::unit::EntriesTree::<'abbrev, 'unit, R>::root
+gimli;0.31.1;2025-03-13;read::unit::EntriesTree::<'abbrev, 'unit, R>::root	freeze	read::unit::EntriesTree::<'abbrev, 'unit, R>::root
+gimli;0.31.1;2025-03-13;read::unit::EntriesTree::<'abbrev, 'unit, R>::root	label	read::unit::EntriesTree::<'abbrev, 'unit, R>::root
+glob;0.3.2;2025-03-13;glob_with	frame	glob_with
+glob;0.3.2;2025-03-13;glob_with	label	glob_with
+hashbrown;0.15.2;2025-03-13;<set::Intersection<'a, T, S, A> as core::iter::Iterator>::next	frame	<set::Intersection<'a, T, S, A> as core::iter::Iterator>::next
+hashbrown;0.15.2;2025-03-13;<set::Intersection<'a, T, S, A> as core::iter::Iterator>::next	label	<set::Intersection<'a, T, S, A> as core::iter::Iterator>::next
+hashbrown;0.15.2;2025-03-13;map::OccupiedEntry::<'a, K, V, S, A>::remove_entry	frame	map::OccupiedEntry::<'a, K, V, S, A>::remove_entry
+hashbrown;0.15.2;2025-03-13;map::OccupiedEntry::<'a, K, V, S, A>::replace_entry_with	frame	map::OccupiedEntry::<'a, K, V, S, A>::replace_entry_with
+hashbrown;0.15.2;2025-03-13;map::VacantEntry::<'a, K, V, S, A>::insert	frame	map::VacantEntry::<'a, K, V, S, A>::insert
+hashbrown;0.15.2;2025-03-13;map::VacantEntry::<'a, K, V, S, A>::insert	label	map::VacantEntry::<'a, K, V, S, A>::insert
+hashbrown;0.15.2;2025-03-13;raw::RawTable::<T, A>::get_many_mut	frame	raw::RawTable::<T, A>::get_many_mut
+hashbrown;0.15.2;2025-03-13;raw_entry::RawOccupiedEntryMut::<'a, K, V, S, A>::replace_entry_with	frame	raw_entry::RawOccupiedEntryMut::<'a, K, V, S, A>::replace_entry_with
+hashbrown;0.15.2;2025-03-13;raw_entry::RawOccupiedEntryMut::<'a, K, V, S, A>::replace_entry_with	label	raw_entry::RawOccupiedEntryMut::<'a, K, V, S, A>::replace_entry_with
+httparse;1.10.1;2025-03-13;simd::swar::match_header_name_vectored	frame	simd::swar::match_header_name_vectored
+httparse;1.10.1;2025-03-13;simd::swar::match_header_name_vectored	freeze	simd::swar::match_header_name_vectored
+indexmap;2.8.0;2025-03-13;map::core::RefMut::<'a, K, V>::shift_remove_finish	frame	map::core::RefMut::<'a, K, V>::shift_remove_finish
+indexmap;2.8.0;2025-03-13;map::core::RefMut::<'a, K, V>::swap_indices	frame	map::core::RefMut::<'a, K, V>::swap_indices
+indexmap;2.8.0;2025-03-13;map::core::raw_entry_v1::RawEntryBuilder::<'a, K, V, S>::from_key_hashed_nocheck	frame	map::core::raw_entry_v1::RawEntryBuilder::<'a, K, V, S>::from_key_hashed_nocheck
+indexmap;2.8.0;2025-03-13;map::core::raw_entry_v1::RawEntryBuilder::<'a, K, V, S>::from_key_hashed_nocheck	label	map::core::raw_entry_v1::RawEntryBuilder::<'a, K, V, S>::from_key_hashed_nocheck
+log;0.4.26;2025-03-13;set_logger_inner	frame	set_logger_inner
+matchit;0.8.6;2025-03-13;tree::Node::<T>::at	frame	tree::Node::<T>::at
+matchit;0.8.6;2025-03-13;tree::Node::<T>::at	label	tree::Node::<T>::at
+matchit;0.8.6;2025-03-13;tree::Node::<T>::at	replay	tree::Node::<T>::at
+miniz_oxide;0.8.5;2025-03-13;inflate::output_buffer::InputWrapper::<'a>::read_byte	frame	inflate::output_buffer::InputWrapper::<'a>::read_byte
+miniz_oxide;0.8.5;2025-03-13;inflate::output_buffer::InputWrapper::<'a>::read_byte	label	inflate::output_buffer::InputWrapper::<'a>::read_byte
+miniz_oxide;0.8.5;2025-03-13;inflate::output_buffer::OutputBuffer::<'a>::write_byte	frame	inflate::output_buffer::OutputBuffer::<'a>::write_byte
+object;0.36.7;2025-03-13;<read::coff::comdat::CoffComdatIterator<'data, 'file, R, Coff> as core::iter::Iterator>::next	frame	<read::coff::comdat::CoffComdatIterator<'data, 'file, R, Coff> as core::iter::Iterator>::next
+object;0.36.7;2025-03-13;<read::coff::comdat::CoffComdatIterator<'data, 'file, R, Coff> as core::iter::Iterator>::next	label	<read::coff::comdat::CoffComdatIterator<'data, 'file, R, Coff> as core::iter::Iterator>::next
+pest;2.7.15;2025-03-13;parser_state::ParserState::<'i, R>::match_char_by	frame	parser_state::ParserState::<'i, R>::match_char_by
+pest;2.7.15;2025-03-13;parser_state::ParserState::<'i, R>::stack_match_pop	frame	parser_state::ParserState::<'i, R>::stack_match_pop
+prost-build;0.13.5;2025-03-13;code_generator::CodeGenerator::<'_, 'b>::append_type_attributes	frame	code_generator::CodeGenerator::<'_, 'b>::append_type_attributes
+pyo3-macros-backend;0.24.0;2025-03-13;method::FnArg::<'a>::to_varargs_mut	frame	method::FnArg::<'a>::to_varargs_mut
+pyo3-macros-backend;0.24.0;2025-03-13;method::FnArg::<'a>::to_varargs_mut	label	method::FnArg::<'a>::to_varargs_mut
+rayon;1.10.0;2025-03-13;<str::CharIndicesProducer<'ch> as iter::plumbing::UnindexedProducer>::split	label	<str::CharIndicesProducer<'ch> as iter::plumbing::UnindexedProducer>::split
+regex-automata;0.4.9;2025-03-13;<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next	cycle	<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next
+regex-automata;0.4.9;2025-03-13;<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next	frame	<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next
+regex-automata;0.4.9;2025-03-13;<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next	label	<util::captures::GroupInfoAllNames<'a> as core::iter::Iterator>::next
+regex-automata;0.4.9;2025-03-13;<util::search::PatternSetIter<'a> as core::iter::Iterator>::next	frame	<util::search::PatternSetIter<'a> as core::iter::Iterator>::next
+regex-automata;0.4.9;2025-03-13;dfa::dense::DFA::<&'a [u32]>::from_bytes	frame	dfa::dense::DFA::<&'a [u32]>::from_bytes
+regex-automata;0.4.9;2025-03-13;dfa::dense::DFA::<&'a [u32]>::from_bytes	label	dfa::dense::DFA::<&'a [u32]>::from_bytes
+regex-automata;0.4.9;2025-03-13;hybrid::dfa::Lazy::<'i, 'c>::reset_cache	frame	hybrid::dfa::Lazy::<'i, 'c>::reset_cache
+regex-automata;0.4.9;2025-03-13;hybrid::dfa::Lazy::<'i, 'c>::set_all_transitions	frame	hybrid::dfa::Lazy::<'i, 'c>::set_all_transitions
+regex-automata;0.4.9;2025-03-13;hybrid::dfa::Lazy::<'i, 'c>::set_all_transitions	label	hybrid::dfa::Lazy::<'i, 'c>::set_all_transitions
+regex-automata;0.4.9;2025-03-13;util::iter::Searcher::<'h>::handle_overlapping_empty_half_match	frame	util::iter::Searcher::<'h>::handle_overlapping_empty_half_match
+regex-automata;0.4.9;2025-03-13;util::search::Input::<'h>::set_start	frame	util::search::Input::<'h>::set_start
+ring;0.17.14;2025-03-13;ec::suite_b::ops::p384::p384_scalar_inv_to_mont	frame	ec::suite_b::ops::p384::p384_scalar_inv_to_mont
+rustix;1.0.2;2025-03-13;buffer::<impl buffer::private::Sealed<T> for &mut [T]>::parts_mut	frame	buffer::<impl buffer::private::Sealed<T> for &mut [T]>::parts_mut
+rustix;1.0.2;2025-03-13;io::errno::retry_on_intr	frame	io::errno::retry_on_intr
+rustls-pki-types;1.11.0;2025-03-13;server_name::parser::Parser::<'a>::read_char	frame	server_name::parser::Parser::<'a>::read_char
+rustls-pki-types;1.11.0;2025-03-13;server_name::parser::Parser::<'a>::read_char	label	server_name::parser::Parser::<'a>::read_char
+rustls;0.23.23;2025-03-13;msgs::handshake::ServerNamePayload::read_hostname	frame	msgs::handshake::ServerNamePayload::read_hostname
+rustls;0.23.23;2025-03-13;msgs::handshake::ServerNamePayload::read_hostname	label	msgs::handshake::ServerNamePayload::read_hostname
+serde_derive;1.0.219;2025-03-13;internals::ast::Container::<'a>::from_ast	cycle	internals::ast::Container::<'a>::from_ast
+serde_derive;1.0.219;2025-03-13;internals::ast::Container::<'a>::from_ast	frame	internals::ast::Container::<'a>::from_ast
+serde_derive;1.0.219;2025-03-13;internals::ast::Container::<'a>::from_ast	label	internals::ast::Container::<'a>::from_ast
+serde_derive;1.0.219;2025-03-13;internals::attr::is_cow	frame	internals::attr::is_cow
+serde_derive;1.0.219;2025-03-13;internals::attr::is_cow	label	internals::attr::is_cow
+serde_derive;1.0.219;2025-03-13;internals::attr::parse_lit_into_path	frame	internals::attr::parse_lit_into_path
+serde_derive;1.0.219;2025-03-13;internals::attr::parse_lit_into_path	label	internals::attr::parse_lit_into_path
+serde_json;1.0.140;2025-03-13;<read::SliceRead<'a> as read::Read<'a>>::next	frame	<read::SliceRead<'a> as read::Read<'a>>::next
+serde_json;1.0.140;2025-03-13;<read::SliceRead<'a> as read::Read<'a>>::peek	frame	<read::SliceRead<'a> as read::Read<'a>>::peek
+serde_json;1.0.140;2025-03-13;<ser::PrettyFormatter<'a> as ser::Formatter>::begin_array	frame	<ser::PrettyFormatter<'a> as ser::Formatter>::begin_array
+serde_json;1.0.140;2025-03-13;read::SliceRead::<'a>::skip_to_escape_slow	frame	read::SliceRead::<'a>::skip_to_escape_slow
+sharded-slab;0.1.7;2025-03-13;pool::RefMut::<'a, T, C>::downgrade	frame	pool::RefMut::<'a, T, C>::downgrade
+sharded-slab;0.1.7;2025-03-13;pool::RefMut::<'a, T, C>::downgrade	label	pool::RefMut::<'a, T, C>::downgrade
+slab;0.4.9;2025-03-13;Slab::<T>::compact	frame	Slab::<T>::compact
+slab;0.4.9;2025-03-13;Slab::<T>::compact	label	Slab::<T>::compact
+strum_macros;0.27.1;2025-03-13;helpers::case_style::snakify	frame	helpers::case_style::snakify
+strum_macros;0.27.1;2025-03-13;helpers::case_style::snakify	label	helpers::case_style::snakify
+tempfile;3.18.0;2025-03-13;<spooled::SpooledTempFile as std::io::Write>::write	frame	<spooled::SpooledTempFile as std::io::Write>::write
+tempfile;3.18.0;2025-03-13;<spooled::SpooledTempFile as std::io::Write>::write	replay	<spooled::SpooledTempFile as std::io::Write>::write
+tinytemplate;1.2.1;2025-03-13;compiler::TemplateCompiler::<'template>::consume_text	frame	compiler::TemplateCompiler::<'template>::consume_text
+tinytemplate;1.2.1;2025-03-13;compiler::TemplateCompiler::<'template>::consume_text	label	compiler::TemplateCompiler::<'template>::consume_text
+tokio-io-timeout;1.2.0;2025-03-13;TimeoutState::poll_check	frame	TimeoutState::poll_check
+tracing-subscriber;0.3.19;2025-03-13;<fmt::format::pretty::Pretty as fmt::format::FormatFields<'writer>>::format_fields	frame	<fmt::format::pretty::Pretty as fmt::format::FormatFields<'writer>>::format_fields
+unicode-segmentation;1.12.0;2025-03-13;<sentence::USentenceBounds<'a> as core::iter::Iterator>::next	frame	<sentence::USentenceBounds<'a> as core::iter::Iterator>::next
+unicode-segmentation;1.12.0;2025-03-13;<sentence::USentenceBounds<'a> as core::iter::Iterator>::next	label	<sentence::USentenceBounds<'a> as core::iter::Iterator>::next
+walkdir;2.5.0;2025-03-13;IntoIter::check_loop	frame	IntoIter::check_loop
+walkdir;2.5.0;2025-03-13;IntoIter::check_loop	label	IntoIter::check_loop
+wasm-bindgen-backend;0.2.100;2025-03-13;<ast::Export as codegen::TryToTokens>::try_to_tokens::unwrap_nested_types	label	<ast::Export as codegen::TryToTokens>::try_to_tokens::unwrap_nested_types
+winnow;0.7.4;2025-03-13;<stream::token::TokenSlice<'_, T> as stream::UpdateSlice>::update_slice	cycle	<stream::token::TokenSlice<'_, T> as stream::UpdateSlice>::update_slice
+winnow;0.7.4;2025-03-13;<stream::token::TokenSlice<'_, T> as stream::UpdateSlice>::update_slice	label	<stream::token::TokenSlice<'_, T> as stream::UpdateSlice>::update_slice
+yaml-rust;0.4.5;2025-03-13;parser::Parser::<T>::stream_start	frame	parser::Parser::<T>::stream_start

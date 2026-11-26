@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame borrow_ends_in_loop_while_type_regions_flow
+// PCG_EXPECTED_FAILURE: frame borrow_ends_while_type_regions_flow
+// PCG_EXPECTED_FAILURE: frame borrow_of_element_ends_while_type_regions_flow
 //! Regression tests for prusti issue-133 (gitlab): capability to a borrowed
 //! local must be fully restored when the borrow expires.
 //!

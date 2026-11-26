@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label test
 struct T {}
 fn main () {}
 fn test(b: bool) {

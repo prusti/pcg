@@ -2,6 +2,7 @@ pub use pcg_bin_utils::Target;
 use pcg_bin_utils::{build_pcg_bin_in_dir, find_pcg_bin};
 use serde_derive::Deserialize;
 use std::{
+    collections::BTreeSet,
     io::Write,
     path::{Path, PathBuf},
     process::Command,
@@ -106,7 +107,9 @@ pub fn pcg_check_command(dir: &Path, options: &RunOnCrateOptions) -> Command {
     command
 }
 
-fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
+/// The `// option PCG_...: value` settings of a test file.
+#[allow(dead_code)]
+pub fn parse_env_vars_from_file(file: &Path) -> Vec<(String, String)> {
     let content = std::fs::read_to_string(file)
         .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
 
@@ -129,26 +132,86 @@ pub fn run_pcg_on_file(file: &Path) {
 
     let env_vars = parse_env_vars_from_file(file);
 
+    // A check failure that the file expects is reported without panicking,
+    // so that it can be compared with the failures the file expects; any
+    // other failure panics as usual.
+    let expected = expected_check_failures(file);
     let mut command = Command::new(&pcg_exe);
     command
         .arg(file)
         .env("PCG_CHECK_ANNOTATIONS", "true")
-        .env("PCG_ALLOW_BORROWCK_ERRORS", "true");
+        .env("PCG_ALLOW_BORROWCK_ERRORS", "true")
+        .env("PCG_VALIDITY_CHECKS", "true")
+        .env(
+            "PCG_EXPECTED_CHECK_FAILURES",
+            expected
+                .iter()
+                .map(|(check, function)| format!("{check} {function}\n"))
+                .collect::<String>(),
+        );
 
     for (key, value) in env_vars {
         command.env(key, value);
     }
 
-    let status = command
-        .status()
+    let output = command
+        .output()
         .unwrap_or_else(|e| panic!("Failed to execute test {}: {e}", file.display()));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let show_output = || {
+        print!("{}", String::from_utf8_lossy(&output.stdout));
+        eprint!("{stderr}");
+    };
+    if !output.status.success() {
+        show_output();
+        panic!(
+            "Test {} failed with status: {}",
+            file.display(),
+            output.status
+        );
+    }
+    let failed = reported_check_failures(&stderr);
+    let passing = expected.difference(&failed).collect::<Vec<_>>();
+    if !passing.is_empty() {
+        show_output();
+        panic!(
+            "Test {} passes checks it expects to fail; remove these markers:\n{}",
+            file.display(),
+            passing
+                .iter()
+                .map(|(check, function)| format!("  // PCG_EXPECTED_FAILURE: {check} {function}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+}
 
-    assert!(
-        status.success(),
-        "Test {} failed with status: {}",
-        file.display(),
-        status
-    );
+/// A check that fails in a function: the check's name and the function's
+/// path.
+type CheckFailure = (String, String);
+
+/// The checks of `pcg::checks` that failed in each function, as `pcg_bin`
+/// reports them.
+fn reported_check_failures(stderr: &str) -> BTreeSet<CheckFailure> {
+    let check = regex::Regex::new(r"PCG Check Failed: \[(.*?)\] ([a-z-]+): ").unwrap();
+    stderr
+        .lines()
+        .filter_map(|line| check.captures(line))
+        .map(|cap| (cap[2].to_owned(), cap[1].to_owned()))
+        .collect()
+}
+
+/// The check failures a test file expects, one per line
+/// `// PCG_EXPECTED_FAILURE: <check> <function>`. A test file lists every
+/// check failure of its functions: a known violation of a Rust rule, kept
+/// until the PCG is fixed. See `pcg::checks` for the checks.
+fn expected_check_failures(file: &Path) -> BTreeSet<CheckFailure> {
+    let content = std::fs::read_to_string(file)
+        .unwrap_or_else(|e| panic!("Failed to read file {}: {e}", file.display()));
+    let re = regex::Regex::new(r"(?m)^// PCG_EXPECTED_FAILURE: ([a-z-]+) (.+)$").unwrap();
+    re.captures_iter(&content)
+        .map(|cap| (cap[1].to_owned(), cap[2].trim().to_owned()))
+        .collect()
 }
 
 pub fn crate_download_dirname(name: &str, version: &str) -> String {
@@ -318,6 +381,35 @@ pub fn run_on_crate(
     } else {
         RunOnCrateResult::Failed
     }
+}
+
+/// As [`run_on_crate`], and returns the standard error of the check too
+/// (which it also prints).
+#[allow(dead_code)]
+#[must_use]
+pub fn run_on_crate_with_stderr(
+    name: &str,
+    version: &str,
+    date: Option<&str>,
+    options: RunOnCrateOptions,
+) -> (RunOnCrateResult, String) {
+    if let Err(e) = is_supported_crate(name, version) {
+        eprintln!("{e}");
+        return (RunOnCrateResult::Skipped, String::new());
+    }
+    let output = with_downloaded_crate(name, version, date, |dir| {
+        pcg_check_command(dir, &options)
+            .output()
+            .unwrap_or_else(|_| panic!("Failed to execute cargo check on {}", dir.display()))
+    });
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    eprint!("{stderr}");
+    let result = if output.status.success() {
+        RunOnCrateResult::Success
+    } else {
+        RunOnCrateResult::Failed
+    };
+    (result, stderr)
 }
 
 /// Runs `f` on a fresh extraction of the crate and removes the extraction

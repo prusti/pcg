@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame <std::borrow::Cow<'a, [u8]> as Replacer>::replace_append
 use std::borrow::Cow;
 
 pub struct Captures<'h> {

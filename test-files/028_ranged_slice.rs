@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label RangedSlice::<'a, T>::range
 use std::ops::Range;
 
 pub struct RangedSlice<'a, T>(&'a [T]);

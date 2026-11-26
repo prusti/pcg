@@ -1,3 +1,10 @@
+// PCG_EXPECTED_FAILURE: frame List::<T>::len
+// PCG_EXPECTED_FAILURE: frame f
+// PCG_EXPECTED_FAILURE: frame f2
+// PCG_EXPECTED_FAILURE: frame replace_x
+// PCG_EXPECTED_FAILURE: frame swap
+// PCG_EXPECTED_FAILURE: label List::<T>::len
+// PCG_EXPECTED_FAILURE: label loop_rb
 // ---
 // Sec. 2
 // ---

@@ -1,3 +1,8 @@
+// PCG_EXPECTED_FAILURE: frame <EndianSlice<'input, Endian> as std::cmp::PartialEq>::eq
+// PCG_EXPECTED_FAILURE: frame <EndianSlice<'input, Endian> as std::hash::Hash>::hash
+// PCG_EXPECTED_FAILURE: frame EndianSlice::<'input, Endian>::read_slice
+// PCG_EXPECTED_FAILURE: label <EndianSlice<'input, Endian> as std::clone::Clone>::clone
+// PCG_EXPECTED_FAILURE: label EndianSlice::<'input, Endian>::read_slice
 /// A `&[u8]` slice with endianity metadata.
 ///
 /// This implements the `Reader` trait, which is used for all reading of DWARF sections.

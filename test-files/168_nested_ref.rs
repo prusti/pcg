@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame f
 fn f<'a, 'b>(x: &'a mut Vec<&'b mut i32>, y: &'a mut Vec<&'b mut i32>) {
     let y_ref = y.pop().unwrap();
     // The future of `*y|13` shouldn't be blocked by an RP with a labelled place

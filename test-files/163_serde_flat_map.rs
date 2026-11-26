@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: cycle <FlatMapAccess<'a, 'de, E> as MapAccess<'de>>::next_key_seed
+// PCG_EXPECTED_FAILURE: frame <FlatMapAccess<'a, 'de, E> as MapAccess<'de>>::next_key_seed
+// PCG_EXPECTED_FAILURE: label <FlatMapAccess<'a, 'de, E> as MapAccess<'de>>::next_key_seed
 use std::slice;
 pub use std::error::Error as StdError;
 use std::marker::PhantomData;

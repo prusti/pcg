@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame <Cursor<'a> as std::cmp::PartialEq>::eq
+// PCG_EXPECTED_FAILURE: frame trailing_backslash
 use std::slice;
 use std::iter::Copied;
 

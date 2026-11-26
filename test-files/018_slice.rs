@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label Slice::<K, V>::split_at
 struct Bucket<K, V> {
     // hash: HashValue,
     key: K,

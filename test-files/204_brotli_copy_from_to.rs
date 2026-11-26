@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame copy_from_to
 use std::io;
 
 pub fn copy_from_to<R: io::Read, W: io::Write>(mut r: R, mut w: W) -> io::Result<usize> {

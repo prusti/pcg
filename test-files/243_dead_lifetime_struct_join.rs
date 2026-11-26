@@ -1,3 +1,10 @@
+// PCG_EXPECTED_FAILURE: label Ctx::row
+// PCG_EXPECTED_FAILURE: label arg
+// PCG_EXPECTED_FAILURE: label boxed_frozen_part
+// PCG_EXPECTED_FAILURE: label boxed_part_lent_or_moved
+// PCG_EXPECTED_FAILURE: label boxed_part_lent_or_uninit
+// PCG_EXPECTED_FAILURE: label boxed_referent_lent_part_frozen
+// PCG_EXPECTED_FAILURE: label local
 // A struct whose lifetime is dead on one branch must still join with a branch
 // that reads through it.
 struct Ctx {

@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame client
+// PCG_EXPECTED_FAILURE: frame f
 struct T;
 struct S<'a>{f: &'a mut Option<T>, g: &'a mut Option<T>}
 

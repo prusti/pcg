@@ -31,6 +31,7 @@ fn loan_removed_before_the_layout_it_frees() {
             let _ = x.is_some();
         }
     "#;
+    let recorder = pcg::CheckFailureRecorder::start();
     run_pcg_on_str(input, BodySelector::FirstFunction, true, |mut analysis| {
         let ctxt = analysis.results_ctxt();
         let lines = analysis
@@ -50,4 +51,12 @@ fn loan_removed_before_the_layout_it_frees() {
             "the layout is forgotten before the loan ends: {lines:#?}"
         );
     });
+    // The known violations in `f` (see `pcg::checks`).
+    assert_eq!(
+        recorder.finish(),
+        ["frame", "label", "lend"]
+            .map(|check| (check.to_owned(), "f".to_owned()))
+            .into(),
+        "the checks that fail in `f` changed"
+    );
 }

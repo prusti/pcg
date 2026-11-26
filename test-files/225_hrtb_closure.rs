@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame Table::<T>::find::{closure#0}
 /// Test for functions with higher-ranked trait bound closures.
 ///
 /// Calling a function that takes `impl FnMut(&T) -> bool` introduces a bound

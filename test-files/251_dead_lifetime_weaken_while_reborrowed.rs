@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame f
 // `_5 = &mut i` is dead after `_4 = &mut (*_5)`, but is weakened only once the
 // reborrow held by `o` ends and `(*_5)` is packed back into it.
 struct O<'a, 'b> {

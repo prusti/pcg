@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame read_and_write_fields_in_loop
+// PCG_EXPECTED_FAILURE: freeze read_and_write_fields_in_loop
 struct Pair {
     fst: String,
     snd: String,

@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: frame caller
+// PCG_EXPECTED_FAILURE: frame use_accessor
+// PCG_EXPECTED_FAILURE: label caller
+// PCG_EXPECTED_FAILURE: label use_accessor
 /// Regression test for a panic in `normalized_to_identity` when calling a trait
 /// method whose identity generic args have type parameters before lifetime
 /// parameters (e.g. `[Self/#0, 'a/#1]`).

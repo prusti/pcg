@@ -991,7 +991,20 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
         Ctxt: HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
     {
         let mut action = action;
+        let check = self.open_actions.begin(
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.ctxt.settings(),
+        );
         let (result, forgotten) = self.apply_action_without_recording(&mut action)?;
+        self.open_actions.end(
+            check,
+            &action,
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.location(),
+            self.ctxt.bc_ctxt(),
+        );
         self.record_applied_action(action, result);
         for part in forgotten {
             self.forget_unpacked(part)?;
@@ -1047,6 +1060,11 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             }
         }
         let mut action = BorrowPcgAction::remove_edge(edge, context.to_owned());
+        let check = self.open_actions.begin(
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.ctxt.settings(),
+        );
         let result =
             self.pcg
                 .borrow
@@ -1089,7 +1107,16 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
             .borrow
             .regain(&regained, self.pcg.place_capabilities, self.ctxt);
         action.capabilities.extend(&regained);
-        self.record_applied_action(action.into(), result);
+        let action = action.into();
+        self.open_actions.end(
+            check,
+            &action,
+            self.pcg.place_capabilities,
+            self.pcg.borrow.graph,
+            self.location(),
+            self.ctxt.bc_ctxt(),
+        );
+        self.record_applied_action(action, result);
         for part in forgotten {
             self.forget_unpacked(part)?;
         }

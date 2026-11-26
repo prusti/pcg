@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label HashSet::<T, S, A>::insert_unique_unchecked
 pub struct HashMap<K, V, S, A> {
     _marker: std::marker::PhantomData<(K, V, S, A)>,
 }

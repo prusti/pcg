@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame ByteDestination::<'a>::written
+// PCG_EXPECTED_FAILURE: frame ByteThreeHandle::<'a, 'b>::write_three_return_written
 pub struct ByteDestination<'a> {
     slice: &'a mut [u8],
     pos: usize,

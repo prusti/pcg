@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame WeightedIndex::<X>::update_weights
+// PCG_EXPECTED_FAILURE: label WeightedIndex::<X>::update_weights
 pub enum Error {
     InvalidInput,
     InvalidWeight,

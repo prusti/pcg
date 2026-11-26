@@ -1,3 +1,6 @@
+// PCG_EXPECTED_FAILURE: frame List::<T>::len
+// PCG_EXPECTED_FAILURE: label List::<T>::len
+// PCG_EXPECTED_FAILURE: label loop_rb
 struct List<T> {
     head: T,
     tail: Node<T>,

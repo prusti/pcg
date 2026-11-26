@@ -1,4 +1,5 @@
 // option PCG_POLONIUS: true
+// PCG_EXPECTED_FAILURE: frame swap
 
 struct S<'a, T> {
     a: &'a mut T

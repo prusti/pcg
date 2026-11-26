@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label PathAndQuery::path
 type ByteStr = String;
 
 /// Represents the path component of a URI

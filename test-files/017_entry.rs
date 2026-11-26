@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: label OccupiedEntry::<'a, K, V>::key
 type Entries<K, V> = Vec<Bucket<K, V>>;
 
 struct Bucket<K, V> {

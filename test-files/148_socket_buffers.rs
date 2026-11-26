@@ -1,3 +1,4 @@
+// PCG_EXPECTED_FAILURE: frame MsgHdrMut::<'addr, 'bufs, 'control>::with_buffers
 use std::marker::PhantomData;
 use std::ffi::c_void;
 use std::mem::MaybeUninit;

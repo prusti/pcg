@@ -1,3 +1,5 @@
+// PCG_EXPECTED_FAILURE: frame main
+// PCG_EXPECTED_FAILURE: frame test
 struct T {}
 fn test<'b, 'a : 'b>(x : &'a mut (&'b mut T), y : &'a mut (&'b mut T), c : &'a mut &'b mut T) -> (&'a mut &'b mut T, &'a mut &'b mut T) {
 	*c = *x;

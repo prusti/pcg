@@ -1,3 +1,7 @@
+// PCG_EXPECTED_FAILURE: frame <BufferSettings as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <State as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame <Status as std::fmt::Debug>::fmt
+// PCG_EXPECTED_FAILURE: frame Streaming::<T>::decode_chunk
 #[derive(Debug, Clone)]
 struct Status;
 
