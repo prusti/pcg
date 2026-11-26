@@ -73,7 +73,7 @@ impl<'tcx, Ctxt: Copy + HasTyCtxt<'tcx>> LifetimeDataCtxt<'tcx, GeneralizedLifet
 /// Whether `region` is bound by a binder inside the visited type, e.g. the
 /// `'x` of `dyn for<'x> Fn(&'x u8)`. Such a region names no data that the
 /// type's value borrows: it is chosen anew at each use.
-fn is_bound_region(region: ty::Region<'_>) -> bool {
+pub(crate) fn is_bound_region(region: ty::Region<'_>) -> bool {
     matches!(region.kind(), ty::RegionKind::ReBound(..))
 }
 
@@ -269,7 +269,11 @@ impl<'tcx> LifetimeEnv<'tcx> {
     /// the where clauses, without duplicates. Regions bound by the bound
     /// itself (`for<'x>`) and `opaque_ty` itself are not included.
     pub(crate) fn bound_lifetimes(self, opaque_ty: OpaqueTy<'tcx>) -> Vec<BoundLifetime<'tcx>> {
-        let self_ty = opaque_ty.ty(self.tcx);
+        // The where clauses are written with the function's lifetime
+        // parameters, the types of its body with region variables: an alias
+        // such as `<T as Tr<'a>>::Out` is matched up to its regions.
+        let self_ty = erase_regions(opaque_ty.ty(self.tcx), self.tcx);
+        let is_self = |ty: ty::Ty<'tcx>| erase_regions(ty, self.tcx) == self_ty;
         let mut collector = BoundLifetimeCollector {
             of: opaque_ty,
             lifetimes: Vec::new(),
@@ -277,7 +281,7 @@ impl<'tcx> LifetimeEnv<'tcx> {
         for clause in self.tcx.param_env(self.def_id).caller_bounds() {
             if let Some(trait_clause) = clause.as_trait_clause() {
                 let trait_ref = trait_clause.skip_binder().trait_ref;
-                if trait_ref.self_ty() == self_ty {
+                if is_self(trait_ref.self_ty()) {
                     trait_ref
                         .args
                         .iter()
@@ -286,7 +290,7 @@ impl<'tcx> LifetimeEnv<'tcx> {
                 }
             } else if let Some(projection_clause) = clause.as_projection_clause() {
                 let projection = projection_clause.skip_binder();
-                if projection.projection_term.self_ty() == self_ty {
+                if is_self(projection.projection_term.self_ty()) {
                     let args = projection.projection_term.args.iter().skip(1);
                     args.for_each(|arg| arg.visit_with(&mut collector));
                     projection.term.visit_with(&mut collector);

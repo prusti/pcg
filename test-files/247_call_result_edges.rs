@@ -184,4 +184,40 @@ fn second_of_pair(a: u32, b: u32) -> u32 {
     *r
 }
 
+fn print_byte(_x: &u8) {}
+
+fn take_fn_ptr<'a>(_f: fn(&'a u8)) {}
+
+// A higher-ranked function pointer is passed for a parameter of a type with a
+// free region. The region bound in the argument's type flows nowhere.
+fn pass_higher_ranked() {
+    let f: for<'x> fn(&'x u8) = print_byte;
+    take_fn_ptr(f);
+}
+
+unsafe extern "C" {
+    fn printf(format: *const u8, ...) -> i32;
+}
+
+// The arguments beyond the parameters of a C-variadic function flow nowhere.
+fn call_variadic(format: *const u8) {
+    unsafe {
+        printf(format, 1i32);
+    }
+}
+
+trait Tr<'a> {
+    type Out;
+}
+
+// The where clause on the alias type gives it a part for `'a`, into which
+// `put` may store `s`, in the body as in the signature.
+fn put_into_alias<'a, T: Tr<'a>>(x: &mut <T as Tr<'a>>::Out, s: &'a String)
+where
+    <T as Tr<'a>>::Out: Sink<'a>,
+{
+    // PCG: bb0[4] post_main: Add Edge call Sink::put at bb0[4]: [_3 before bb0[4]:PostOperands↓RegionsIn(<T as Tr<'_>>::Out) before bb0[4]:PostMain, _4 before bb0[4]:PostOperands↓'?13 before bb0[4]:PostMain, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] before bb0[4]:PostMain] -> [_3 before bb0[4]:PostOperands↓RegionsIn(<T as Tr<'_>>::Out) after bb0, _3 before bb0[4]:PostOperands↓<T as Tr<'_>>::Out[ReEarlyParam('a/#0)] after bb0]
+    x.put(s)
+}
+
 fn main() {}

@@ -51,7 +51,7 @@ use crate::{
         region_projection::PcgRegion,
         visitor::{
             BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy,
-            extract_generalized_lifetimes,
+            extract_generalized_lifetimes, is_bound_region,
         },
     },
     pcg_validity_assert,
@@ -284,16 +284,15 @@ fn align<'tcx>(
             (GenericArgKind::Type(actual_ty), GenericArgKind::Type(formal_ty)) => {
                 align(actual_ty, formal_ty, tcx, pairs);
             }
+            // A region bound inside one of the types names no data, and no
+            // lifetime of the type covers it: a `for<'x> fn(&'x u8)` argument
+            // passed for a `fn(&'a u8)` parameter pairs with nothing.
             (GenericArgKind::Lifetime(actual_region), GenericArgKind::Lifetime(formal_region)) => {
-                let bound =
-                    |region: ty::Region<'tcx>| matches!(region.kind(), ty::RegionKind::ReBound(..));
-                match (bound(actual_region), bound(formal_region)) {
-                    (false, false) => pairs.push((
+                if !is_bound_region(actual_region) && !is_bound_region(formal_region) {
+                    pairs.push((
                         OccurrenceKind::Region(actual_region),
                         OccurrenceKind::Region(formal_region),
-                    )),
-                    (true, true) => {}
-                    _ => mismatch(),
+                    ));
                 }
             }
             (GenericArgKind::Const(_), GenericArgKind::Const(_)) => {}
@@ -391,7 +390,7 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for OccurrenceWalker<'tcx> {
     }
 
     fn visit_region(&mut self, region: ty::Region<'tcx>) {
-        if !matches!(region.kind(), ty::RegionKind::ReBound(..)) {
+        if !is_bound_region(region) {
             self.occurrences.push(Occurrence {
                 kind: OccurrenceKind::Region(region),
                 writable: self.variance == ty::Variance::Invariant,
@@ -586,6 +585,16 @@ fn solve<'tcx>(
     }
 }
 
+#[rustversion::since(2026-04-19)]
+fn is_c_variadic(sig: ty::FnSig<'_>) -> bool {
+    sig.c_variadic()
+}
+
+#[rustversion::before(2026-04-19)]
+fn is_c_variadic(sig: ty::FnSig<'_>) -> bool {
+    sig.c_variadic
+}
+
 /// The errors of the obligations registered in `ocx` that cannot be proven.
 #[rustversion::since(2026-08-01)]
 fn prove_all<'tcx>(
@@ -747,9 +756,11 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             panic!("Cannot normalize the signature {sig:?} of a call: {errors:?}")
         });
     let (formal_inputs, formal_output) = formal_tys.split_at(formal_tys.len() - 1);
-    assert_eq!(
-        formal_inputs.len(),
-        query.arg_tys.len(),
+    // The arguments that a C-variadic function takes beyond its parameters
+    // are inputs that flow nowhere: the callee cannot name their types.
+    assert!(
+        formal_inputs.len() == query.arg_tys.len()
+            || (is_c_variadic(sig) && formal_inputs.len() < query.arg_tys.len()),
         "The call passes {} arguments to a function with signature {sig:?}",
         query.arg_tys.len()
     );
@@ -788,9 +799,11 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
                              resolver: &mut OpportunisticRegionResolver<'_, 'tcx>,
                              ty: ty::Ty<'tcx>,
                              region: ty::Region<'tcx>| {
+        // `ty: 'r` holds if each of the components that rustc splits `ty`
+        // into outlives `'r`, e.g. only the captures of a closure type.
         let target = region_node(region, resolver);
-        for occurrence in occurrences(ty, tcx) {
-            let sources = match occurrence.kind {
+        for component in outlives_components(ty, tcx) {
+            let sources = match component {
                 OccurrenceKind::Region(r) => vec![region_node(r, resolver)],
                 OccurrenceKind::Opaque(opaque) => opaque_nodes(opaque.fold_with(resolver), env),
             };
@@ -841,6 +854,10 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     // of the instantiated signature, position by position.
     let mut inputs = Vec::new();
     let mut outputs = BTreeSet::new();
+    for (i, variadic_ty) in query.arg_tys.iter().enumerate().skip(formal_inputs.len()) {
+        let count = extract_generalized_lifetimes(*variadic_ty, env).len();
+        inputs.extend((0..count).map(|idx| (ArgIdx::from(i), idx)));
+    }
     let bases = query
         .arg_tys
         .iter()
@@ -930,15 +947,13 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     // of an alias holds loans of the regions of its arguments; a loan that
     // enters it through one of them leaves it through that same one, so it
     // has a node for what is read from it and one for what is written to it.
-    let opaque_nodes_in_graph: Vec<Node<'tcx>> = graph
-        .nodes
-        .iter()
-        .copied()
-        .filter(|node| matches!(node, Node::Opaque(..)))
-        .collect();
-    for node in opaque_nodes_in_graph {
+    // Wiring a node may add new opaque nodes (the arguments of a nested
+    // alias, the type a bound part names), which are wired in turn.
+    let mut wired = 0;
+    while let Some(&node) = graph.nodes.get(wired) {
+        wired += 1;
         let Node::Opaque(opaque, part) = node else {
-            unreachable!()
+            continue;
         };
         match part {
             OpaquePart::Bound(BoundLifetime::Region(region)) => {
@@ -999,15 +1014,16 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
 /// `query.env`.
 #[rustversion::since(2025-05-24)]
 #[allow(clippy::unnecessary_wraps)]
-pub(crate) fn call_spec<'tcx>(
-    query: &CallSpecQuery<'_, 'tcx>,
+pub(crate) fn call_spec(
+    query: &CallSpecQuery<'_, '_>,
 ) -> Result<FunctionShape, MakeFunctionShapeError> {
     let SpecGraph {
         graph,
-        inputs,
+        mut inputs,
         outputs,
         ..
     } = spec_graph(query);
+    inputs.sort_unstable();
     let mut edges = std::collections::HashSet::new();
     for &(arg, idx) in &inputs {
         for output in graph.reachable_outputs(Node::Input(arg, idx)) {
@@ -1269,6 +1285,66 @@ pub(crate) fn check_call_spec<'a, 'tcx: 'a>(
     }
 }
 
+/// The regions and opaque types that rustc requires to outlive a region for
+/// `ty` to outlive it (see `push_outlives_components`).
+fn outlives_components<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> Vec<OccurrenceKind<'tcx>> {
+    use crate::rustc_interface::middle::ty::outlives::{Component, push_outlives_components};
+    fn flatten<'tcx>(
+        components: impl IntoIterator<Item = Component<ty::TyCtxt<'tcx>>>,
+        tcx: ty::TyCtxt<'tcx>,
+        out: &mut Vec<OccurrenceKind<'tcx>>,
+    ) {
+        for component in components {
+            match component {
+                Component::Region(region) => out.push(OccurrenceKind::Region(region)),
+                Component::Param(param) => {
+                    out.push(OccurrenceKind::Opaque(ty::Ty::new_param(
+                        tcx,
+                        param.index,
+                        param.name,
+                    )));
+                }
+                Component::EscapingAlias(components) => flatten(components, tcx, out),
+                Component::Placeholder(_) | Component::UnresolvedInferenceVariable(_) => {}
+                alias => out.push(OccurrenceKind::Opaque(alias_ty(&alias, tcx))),
+            }
+        }
+    }
+    // The vector type is the one of rustc's `smallvec`, which is inferred.
+    #[allow(clippy::default_trait_access)]
+    let mut components = Default::default();
+    push_outlives_components(tcx, ty, &mut components);
+    let mut out = Vec::new();
+    flatten(components, tcx, &mut out);
+    out
+}
+
+/// The type of an alias component of an outlives obligation.
+#[rustversion::since(2026-08-01)]
+fn alias_ty<'tcx>(
+    component: &ty::outlives::Component<ty::TyCtxt<'tcx>>,
+    tcx: ty::TyCtxt<'tcx>,
+) -> ty::Ty<'tcx> {
+    use crate::rustc_interface::middle::ty::outlives::Component;
+    let Component::Alias(is_rigid, alias) = component else {
+        unreachable!("{component:?} is not an alias component")
+    };
+    alias.to_ty(tcx, *is_rigid)
+}
+
+/// The type of an alias component of an outlives obligation.
+#[rustversion::before(2026-08-01)]
+fn alias_ty<'tcx>(
+    component: &ty::outlives::Component<ty::TyCtxt<'tcx>>,
+    tcx: ty::TyCtxt<'tcx>,
+) -> ty::Ty<'tcx> {
+    use crate::rustc_interface::middle::ty::outlives::Component;
+    let Component::Alias(alias) = component else {
+        unreachable!("{component:?} is not an alias component")
+    };
+    alias.to_ty(tcx)
+}
+
 /// The nodes for the lifetimes of the opaque type `opaque` in `env`.
 fn opaque_nodes<'tcx>(opaque: ty::Ty<'tcx>, env: LifetimeEnv<'tcx>) -> Vec<Node<'tcx>> {
     let parts = OpaqueTy::try_from(opaque)
@@ -1288,7 +1364,7 @@ fn member_nodes<'tcx>(
     resolver: &mut OpportunisticRegionResolver<'_, 'tcx>,
 ) -> Vec<Node<'tcx>> {
     if let Some(region) = arg.as_region() {
-        return if region.is_static() || matches!(region.kind(), ty::RegionKind::ReBound(..)) {
+        return if region.is_static() || is_bound_region(region) {
             vec![]
         } else {
             vec![Node::Region(region.fold_with(resolver))]
