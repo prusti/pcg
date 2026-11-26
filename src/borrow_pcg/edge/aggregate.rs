@@ -1,4 +1,6 @@
 //! Aggregate edges
+use itertools::Itertools;
+
 use crate::{
     HasSettings,
     borrow_pcg::{
@@ -179,7 +181,6 @@ impl<'a, 'tcx: 'a, Ctxt: HasBorrowCheckerCtxt<'a, 'tcx>> DisplayWithCtxt<Ctxt>
             .sources
             .iter()
             .map(|source| DisplayWithCtxt::<_>::display_string(source, ctxt))
-            .collect::<Vec<_>>()
             .join(", ");
         DisplayOutput::Text(
             format!(
