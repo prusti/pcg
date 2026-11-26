@@ -27,7 +27,7 @@ fn write_after_sibling_borrow<'a>(mut t: T<'a>, y: &'a i32) -> T<'a> {
     let n = &mut t.n;
     set(&mut t.r, y);
     *n += 1;
-    // PCG: bb2[3] post_main: t.r before bb2[1]:PreOperands↓'?9 -> t before bb2[1]:PostOperands↓'?9
+    // PCG: bb2[3] post_main: aggregate {t.r before bb2[1]:PreOperands↓'?9} -> t before bb2[1]:PostOperands↓'?9
     t
 }
 
@@ -94,7 +94,7 @@ fn write_while_sibling_borrowed<'a>(mut v: V<'a>, y: &'a i32) -> V<'a> {
     let d = &v.d;
     set(&mut v.r, y);
     *n += *d;
-    // PCG: bb2[5] post_main: v.r before bb2[1]:PreOperands↓'?10 -> v before bb2[2]:PostOperands↓'?10
+    // PCG: bb2[5] post_main: aggregate {v.r before bb2[1]:PreOperands↓'?10} -> v before bb2[2]:PostOperands↓'?10
     v
 }
 
@@ -115,7 +115,7 @@ fn write_on_one_path<'a>(mut t: T<'a>, y: &'a i32, c: bool) -> T<'a> {
         t.r = y;
     }
     *n += 1;
-    // PCG: bb4[3] post_main: t.r before bb4[1]:PreOperands↓'?6 -> t before bb4[1]:PostOperands↓'?6
+    // PCG: bb4[3] post_main: aggregate {t.r before bb4[1]:PreOperands↓'?6} -> t before bb4[1]:PostOperands↓'?6
     t
 }
 

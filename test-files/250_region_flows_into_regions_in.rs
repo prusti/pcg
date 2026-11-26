@@ -50,8 +50,8 @@ fn make<'x, T: for<'y> AssocWithLifetime<'y, Out: Copy>>(
 // of the scope, which would keep its region alive.
 fn alias_region_shorter<T: for<'y> AssocWithLifetime<'y, Out: Copy>>(k: &u32) {
     let n = 5;
-    // PCG: bb1[3] post_main: Add Edge _7 before bb1[3]:PostOperands↓'?12 -> y↓'?8
-    // ~PCG: bb1[3] post_main: Add Edge _4 before bb1[3]:PostOperands↓RegionsIn(<T as AssocWithLifetime<'_>>::Out) -> y↓'?8
+    // PCG: bb1[3] post_main: Add Edge aggregate {_7 before bb1[3]:PostOperands↓'?12} -> y↓'?8
+    // ~PCG: bb1[3] post_main: Add Edge aggregate {_4 before bb1[3]:PostOperands↓RegionsIn(<T as AssocWithLifetime<'_>>::Out), _7 before bb1[3]:PostOperands↓'?12} -> y↓'?8
     let y = (make::<T>(&n), k);
     let r = y.1;
     let _ = *r;

@@ -5,7 +5,7 @@
 fn capture_mut() {
     let mut y = 0;
     let mut c = || y = 1;
-    // PCG: bb0[6] post_main: Add Edge _3 before bb0[6]:PostOperands↓'?7 -> c↓'?6
+    // PCG: bb0[6] post_main: Add Edge aggregate {_3 before bb0[6]:PostOperands↓'?7} -> c↓'?6
     // ~PCG: bb0[7] post_main: y: E
     // ~PCG: bb0[11] post_main: y: E
     c();

@@ -318,20 +318,6 @@ pub(crate) mod private {
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize)]
 pub enum BorrowFlowEdgeKind<'tcx, Ty = ty::Ty<'tcx>> {
-    /// Indicates that the borrow flows to the `target_rp_index`th region
-    /// projection of the `field_idx`th field of the aggregate.
-    ///
-    /// Introduced in the following two cases:
-    /// 1. Collapsing an owned place: edges flow from the (labelled) expansions
-    ///    of the place to the current base
-    /// 2. Assigning an aggregate (e.g. `x = Aggregate(a, b)`): edges flow from
-    ///    the (labelled) arguments to the rvalue to lifetime projections of `x`
-    ///
-    /// TODO: Perhaps a different kind for the 1st case? We don't need this metadata I think
-    Aggregate {
-        field_idx: usize,
-        target_rp_index: usize,
-    },
     /// For a borrow `let x: &'x T<'b> = &y`, where y is of typ T<'a>, an edge generated
     /// for `{y|'a} -> {x|'b}` of this kind is created if 'a outlives 'b.
     ///
@@ -357,13 +343,6 @@ impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
     type Repr = BorrowFlowEdgeKind<'tcx, String>;
     fn debug_repr(&self, _ctxt: Ctxt) -> Self::Repr {
         match self {
-            BorrowFlowEdgeKind::Aggregate {
-                field_idx,
-                target_rp_index,
-            } => BorrowFlowEdgeKind::Aggregate {
-                field_idx: *field_idx,
-                target_rp_index: *target_rp_index,
-            },
             BorrowFlowEdgeKind::BorrowOutlives {
                 regions_equal: lifetimes_equal,
             } => BorrowFlowEdgeKind::BorrowOutlives {
@@ -388,10 +367,6 @@ impl<'tcx, Ctxt> DebugRepr<Ctxt> for BorrowFlowEdgeKind<'tcx> {
 impl<Ty: std::fmt::Debug> std::fmt::Display for BorrowFlowEdgeKind<'_, Ty> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BorrowFlowEdgeKind::Aggregate {
-                field_idx,
-                target_rp_index,
-            } => write!(f, "Aggregate({field_idx}, {target_rp_index})"),
             BorrowFlowEdgeKind::BorrowOutlives {
                 regions_equal: lifetimes_equal,
             } => {

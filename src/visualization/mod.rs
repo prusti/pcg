@@ -205,6 +205,10 @@ pub(crate) enum GraphEdge<'a> {
         target: NodeId,
         kind: BorrowFlowEdgeKind<'a, String>,
     },
+    Aggregate {
+        source: NodeId,
+        target: NodeId,
+    },
     Coupled {
         source: NodeId,
         target: NodeId,
@@ -234,6 +238,7 @@ impl<'a> GraphEdge<'a> {
             | GraphEdge::Alias { .. }
             | GraphEdge::Abstract { .. }
             | GraphEdge::BorrowFlow { .. }
+            | GraphEdge::Aggregate { .. }
             | GraphEdge::Coupled { .. }
             | GraphEdge::Delegation { .. }
             | GraphEdge::RawPtrDeref { .. } => None,
@@ -345,6 +350,14 @@ impl<'a> GraphEdge<'a> {
                     options,
                 }
             }
+            GraphEdge::Aggregate { source, target } => DotEdge {
+                id: edge_id,
+                from: source.to_string(),
+                to: target.to_string(),
+                options: EdgeOptions::directed(EdgeDirection::Forward)
+                    .with_label("Aggregate".to_owned())
+                    .with_color("purple".into()),
+            },
             GraphEdge::Coupled { source, target } => DotEdge {
                 id: edge_id,
                 from: source.to_string(),

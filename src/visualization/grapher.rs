@@ -119,6 +119,15 @@ pub(super) trait Grapher<'a, 'tcx: 'a> {
                     kind: member.kind.debug_repr(()),
                 });
             }
+            BorrowPcgEdgeKind::Aggregate(aggregate) => {
+                let target = self.insert_pcg_node(aggregate.target().to_pcg_node(self.ctxt()));
+                for source in aggregate.sources() {
+                    let source = self.insert_pcg_node(source.to_pcg_node(self.ctxt()));
+                    self.constructor()
+                        .edges
+                        .insert(GraphEdge::Aggregate { source, target });
+                }
+            }
             BorrowPcgEdgeKind::Coupled(hyper_edge) => {
                 for input in hyper_edge.inputs(self.ctxt()) {
                     let input_node = self.insert_pcg_node(input.0);

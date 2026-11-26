@@ -174,6 +174,11 @@ impl<'tcx> BorrowsGraph<'tcx> {
                         extend(outlives.long().to_pcg_node(ctxt), seen, &mut result, false);
                     }
                 },
+                BorrowPcgEdgeKind::Aggregate(aggregate) => {
+                    for source in aggregate.sources() {
+                        extend(source.to_pcg_node(ctxt), seen, &mut result, false);
+                    }
+                }
                 BorrowPcgEdgeKind::Coupled(edges) => {
                     for input in edges.inputs(ctxt) {
                         extend(input.0, seen, &mut result, false);
