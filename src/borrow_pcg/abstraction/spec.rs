@@ -45,17 +45,26 @@ use crate::{
     HasSettings,
     borrow_pcg::{
         abstraction::{
-            ArgIdx, ArgIdxOrResult, FunctionData, FunctionShape, FunctionShapeInput,
+            ArgIdx, ArgIdxOrResult, FunctionCall, FunctionData, FunctionShape, FunctionShapeInput,
             FunctionShapeOutput, MakeFunctionShapeError,
         },
-        region_projection::PcgRegion,
+        edge::{
+            abstraction::{FunctionCallOrLoop, function::DefinedFnCall},
+            kind::BorrowPcgEdgeKind,
+        },
+        edge_data::EdgeData,
+        graph::{BorrowsGraph, loop_abstraction::MaybeRemoteCurrentPlace},
+        region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         visitor::{
             BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy,
             extract_generalized_lifetimes, is_bound_region,
         },
     },
+    coupling::PcgCoupledEdgeKind,
+    pcg::{PcgNode, PcgNodeWithPlace},
     pcg_validity_assert,
     rustc_interface::{
+        fn_def_args,
         hir::def_id::DefId,
         index::Idx,
         infer::{
@@ -77,9 +86,10 @@ use crate::{
         },
     },
     utils::{
-        HasBorrowCheckerCtxt, HasLifetimeEnv,
+        HasBorrowCheckerCtxt, HasCompilerCtxt, HasLifetimeEnv, Place,
         data_structures::{HashMap, HashSet},
         normalize::deeply_normalize,
+        place::{maybe_old::MaybeLabelledPlace, maybe_remote::MaybeRemotePlace},
     },
 };
 
@@ -987,17 +997,19 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
         .map(|(region, var)| (*region, region_node(*var, &mut resolver)))
         .collect();
 
-    // `'static` outlives every region.
+    // `'static` outlives every region, and every region that the value of an
+    // opaque type may hold, as for the flows within a body (see
+    // `BorrowCheckerInterface::outlives_generalized`).
     let static_node = Node::Region(tcx.lifetimes.re_static);
     let all_region_nodes: Vec<Node<'tcx>> = graph
         .nodes
         .iter()
         .copied()
         .chain(region_nodes.values().copied())
-        .filter(|node| matches!(node, Node::Region(_)))
+        .filter(|node| matches!(node, Node::Region(_) | Node::Opaque(..)))
         .collect();
     for node in all_region_nodes {
-        graph.add_flow(static_node, node);
+        graph.add_flow(static_node, node.written());
     }
 
     SpecGraph {
@@ -1044,21 +1056,25 @@ pub(crate) fn call_spec<'tcx>(
     Err(MakeFunctionShapeError::UnsupportedRustVersion)
 }
 
-/// Checks the spec of the function whose body `ctxt` analyses against
-/// rustc's borrow checker of that body. Panics (under validity checks) if the
-/// outlives relation between the regions of the function's signature that
-/// the spec relies on differs from the one that rustc's region inference
-/// gives the body's universal regions. If the spec lacked a relation, the
-/// body could move a loan its callers do not expect; if it had an extra one,
-/// its callers would expect flows that the body cannot perform.
+/// The spec of the function whose body is analysed, for that body.
+struct BodySpec<'tcx> {
+    def_id: DefId,
+    /// The function's identity signature, on which the spec is computed.
+    sig: ty::FnSig<'tcx>,
+    spec: SpecGraph<'tcx>,
+    /// The body's region for each region of `sig`.
+    vids: HashMap<ty::Region<'tcx>, ty::RegionVid>,
+}
+
+/// The spec of the function whose body `ctxt` analyses, or `None` if the body
+/// has no signature (a constant, a coroutine) or no rustc borrow checker.
 ///
-/// A closure's spec takes the relations its body needs from the body's
-/// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
-/// closure the check covers the relations of its signature only.
+/// For a closure, the relations that its body needs between the regions of
+/// its signature come from the body's region inference (see
+/// [`CallSpecQuery::closure_outlives`]).
 #[rustversion::since(2025-05-24)]
-pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
-    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
-) {
+fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<BodySpec<'tcx>> {
+    use crate::rustc_interface::hir::def::DefKind;
     let tcx = ctxt.tcx();
     let body = ctxt.body();
     let def_id = body.source.def_id();
@@ -1066,33 +1082,21 @@ pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
     let callee_args = if is_closure {
         match skip_normalization(tcx.type_of(def_id).instantiate_identity()).kind() {
             ty::TyKind::Closure(_, args) => args,
-            // Coroutines have no signature spec.
-            _ => return,
+            _ => return None,
         }
-    } else if matches!(
-        tcx.def_kind(def_id),
-        crate::rustc_interface::hir::def::DefKind::Fn
-            | crate::rustc_interface::hir::def::DefKind::AssocFn
-    ) {
+    } else if matches!(tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
         FunctionData::new(def_id).identity_substs(tcx)
     } else {
-        return;
+        return None;
     };
-    let Some(rust_borrow_checker) = ctxt.bc().rust_borrow_checker() else {
-        return;
-    };
-    let region_cx = rust_borrow_checker.region_infer_ctxt();
+    let region_cx = ctxt.bc().rust_borrow_checker()?.region_infer_ctxt();
     let sig = FunctionData::new(def_id).identity_fn_sig(tcx);
 
     // The body's region for each region of the signature, by position in the
     // types of its arguments and result.
     let mut vids: HashMap<ty::Region<'tcx>, ty::RegionVid> = HashMap::default();
-    let locals = (1..=sig.inputs().len()).map(mir::Local::from_usize);
-    for (local, sig_ty) in locals
-        .zip(sig.inputs())
-        .chain(std::iter::once((mir::RETURN_PLACE, &sig.output())))
-    {
-        for pair in aligned_occurrences(body.local_decls[local].ty, *sig_ty, tcx) {
+    for (local, sig_ty) in signature_locals(sig) {
+        for pair in aligned_occurrences(body.local_decls[local].ty, sig_ty, tcx) {
             // The erased regions of a closure type's signature are not
             // regions of the closure's signature.
             if let (OccurrenceKind::Region(body_region), OccurrenceKind::Region(sig_region)) = pair
@@ -1115,6 +1119,365 @@ pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
         env: LifetimeEnv::new(tcx, def_id),
         closure_outlives: &closure_outlives,
     });
+    Some(BodySpec {
+        def_id,
+        sig,
+        spec,
+        vids,
+    })
+}
+
+/// The locals of a body for the arguments and result of its signature `sig`,
+/// with their types in `sig`.
+fn signature_locals(sig: ty::FnSig<'_>) -> impl Iterator<Item = (mir::Local, ty::Ty<'_>)> {
+    let arguments = sig
+        .inputs()
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| (mir::Local::from_usize(i + 1), *ty));
+    arguments.chain(std::iter::once((mir::RETURN_PLACE, sig.output())))
+}
+
+/// For each lifetime of `body_ty` (by index), the lifetimes of `sig_ty` (by
+/// index) at the same positions, both in `env`.
+fn lifetime_index_map<'tcx>(
+    body_ty: ty::Ty<'tcx>,
+    sig_ty: ty::Ty<'tcx>,
+    env: LifetimeEnv<'tcx>,
+) -> HashMap<usize, HashSet<usize>> {
+    let body_lifetimes = extract_generalized_lifetimes(body_ty, env);
+    let sig_lifetimes = extract_generalized_lifetimes(sig_ty, env);
+    let lifetimes_at = |occurrence: OccurrenceKind<'tcx>| -> Vec<GeneralizedLifetime<'tcx>> {
+        match occurrence {
+            OccurrenceKind::Region(region) => vec![GeneralizedLifetime::Region(region.into())],
+            OccurrenceKind::Opaque(opaque) => {
+                let opaque = OpaqueTy::try_from(opaque).unwrap();
+                std::iter::once(GeneralizedLifetime::RegionsIn(opaque))
+                    .chain(
+                        env.bound_lifetimes(opaque)
+                            .into_iter()
+                            .map(|lifetime| GeneralizedLifetime::BoundPart(opaque, lifetime)),
+                    )
+                    .collect()
+            }
+        }
+    };
+    let mut map: HashMap<usize, HashSet<usize>> = HashMap::default();
+    for (body_occurrence, sig_occurrence) in aligned_occurrences(body_ty, sig_ty, env.tcx) {
+        let body_at = lifetimes_at(body_occurrence);
+        let sig_at = lifetimes_at(sig_occurrence);
+        for (i, body_lifetime) in body_at.iter().enumerate() {
+            let Some(body_idx) = body_lifetimes.iter().position(|l| l == body_lifetime) else {
+                continue;
+            };
+            // The parts of two occurrences of an opaque type correspond one
+            // to one; a region and an opaque type correspond as a whole.
+            let targets = if body_at.len() == sig_at.len() {
+                &sig_at[i..=i]
+            } else {
+                &sig_at[..1]
+            };
+            for sig_lifetime in targets {
+                if let Some(sig_idx) = sig_lifetimes.iter().position(|l| l == sig_lifetime) {
+                    map.entry(body_idx).or_default().insert(sig_idx);
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Checks the flows into the result that the body `ctxt` analyses has
+/// established when it returns, in `graph`, against its spec. Panics (under
+/// validity checks) if a lifetime projection of the result is blocked by the
+/// projection of an argument that the spec does not let flow into it: the
+/// body would hand its caller a loan that its signature does not promise.
+///
+/// Only the result is checked: the body does not yet keep what flows into
+/// the places its arguments point to once the arguments are dead.
+#[rustversion::since(2025-05-24)]
+pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
+    graph: &BorrowsGraph<'tcx>,
+    location: mir::Location,
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) {
+    let tcx = ctxt.tcx();
+    let Some(BodySpec {
+        def_id, sig, spec, ..
+    }) = body_spec(ctxt)
+    else {
+        return;
+    };
+    let body = ctxt.body();
+    let env = LifetimeEnv::new(tcx, def_id);
+    let index_maps: HashMap<mir::Local, HashMap<usize, HashSet<usize>>> = signature_locals(sig)
+        .map(|(local, sig_ty)| {
+            (
+                local,
+                lifetime_index_map(body.local_decls[local].ty, sig_ty, env),
+            )
+        })
+        .collect();
+    let mut call_specs: HashMap<mir::Location, CallSpecAt<'tcx>> = HashMap::default();
+    let mut flows_into_result: HashSet<((ArgIdx, usize), usize)> = HashSet::default();
+    for &(arg, idx) in &spec.inputs {
+        for (base, out_idx) in spec.graph.reachable_outputs(Node::Input(arg, idx)) {
+            if base == ArgIdxOrResult::Result {
+                flows_into_result.insert(((arg, idx), out_idx));
+            }
+        }
+    }
+
+    for node in graph.nodes(ctxt) {
+        let PcgNode::LifetimeProjection(projection) = node else {
+            continue;
+        };
+        let Some(MaybeRemoteCurrentPlace::Local(place)) =
+            projection.base.maybe_remote_current_place()
+        else {
+            continue;
+        };
+        if place.local != mir::RETURN_PLACE || !place.projection.is_empty() {
+            continue;
+        }
+        let result_idx = projection.region_idx.index();
+        // The projections of the arguments that the result's projection is
+        // blocked by, directly or through other nodes.
+        let mut seen: HashSet<PcgNodeWithPlace<'tcx>> = HashSet::from_iter([node]);
+        let mut stack = vec![node];
+        let mut blocked_inputs = Vec::new();
+        while let Some(current) = stack.pop() {
+            let Some(local_node) = current.as_local_node() else {
+                continue;
+            };
+            let mut blocked_nodes = Vec::new();
+            for edge in graph.edges_blocked_by(local_node, ctxt) {
+                let blocked = edge.kind.blocked_nodes(ctxt);
+                match call_flows_into(edge.kind, current, &mut call_specs, ctxt) {
+                    Some(inputs) => blocked_nodes.extend(blocked.filter(|node| {
+                        projection_key(*node).is_some_and(|key| inputs.contains(&key))
+                    })),
+                    None => blocked_nodes.extend(blocked),
+                }
+                if let BorrowPcgEdgeKind::Borrow(borrow) = edge.kind {
+                    blocked_nodes.extend(reborrowed_references(borrow.blocked_place, ctxt));
+                }
+            }
+            for blocked in blocked_nodes {
+                if let PcgNode::LifetimeProjection(blocked_projection) = blocked
+                    && let Some(MaybeRemoteCurrentPlace::Remote(remote)) =
+                        blocked_projection.base.maybe_remote_current_place()
+                {
+                    blocked_inputs.push((remote.local, blocked_projection.region_idx.index()));
+                } else if matches!(blocked, PcgNode::LifetimeProjection(_)) && seen.insert(blocked)
+                {
+                    // Loans flow between lifetime projections. The places that
+                    // a borrow blocks contribute the references it goes through
+                    // (see `reborrowed_references`); their other edges are about
+                    // the places' capabilities, not about loans.
+                    stack.push(blocked);
+                }
+            }
+        }
+        for (local, input_idx) in blocked_inputs {
+            let arg = ArgIdx::from(local.as_usize() - 1);
+            let allowed = index_maps[&local]
+                .get(&input_idx)
+                .is_some_and(|sig_inputs| {
+                    index_maps[&mir::RETURN_PLACE]
+                        .get(&result_idx)
+                        .is_some_and(|sig_outputs| {
+                            sig_inputs.iter().any(|sig_input| {
+                                sig_outputs.iter().any(|sig_output| {
+                                    flows_into_result.contains(&((arg, *sig_input), *sig_output))
+                                })
+                            })
+                        })
+                });
+            pcg_validity_assert!(
+                allowed,
+                [ctxt at location],
+                "Lifetime projection {result_idx} of the result is blocked by lifetime projection \
+                 {input_idx} of argument {arg} ({local:?}), but the spec of {} lets no loan flow \
+                 from the one into the other",
+                tcx.def_path_str(def_id)
+            );
+        }
+    }
+}
+
+/// The lifetime projections of the references that a borrow of `place` goes
+/// through and whose regions therefore bound the borrow, as rustc's borrow
+/// checker relates them: walking from `place` towards its local, each
+/// dereferenced reference counts, up to and including the first shared one.
+/// For `&**x` with `x: &'s mut &'a u32`, the borrow is bounded by `'a` only:
+/// the data behind a shared reference lives as long as that reference.
+fn reborrowed_references<'a, 'tcx: 'a>(
+    place: MaybeLabelledPlace<'tcx>,
+    ctxt: impl HasCompilerCtxt<'a, 'tcx>,
+) -> Vec<PcgNodeWithPlace<'tcx>> {
+    let mut references = Vec::new();
+    let mut prefix = place;
+    while let Some((base, elem)) = prefix.last_projection() {
+        if elem == mir::ProjectionElem::Deref
+            && let ty::TyKind::Ref(_, _, mutability) = base.ty(ctxt).ty.kind()
+        {
+            // The region of a reference type is its first lifetime.
+            let base_node = PlaceOrConst::Place(MaybeRemotePlace::Local(base));
+            references.push(PcgNode::LifetimeProjection(LifetimeProjection::from_index(
+                base_node,
+                0.into(),
+            )));
+            if mutability.is_not() {
+                break;
+            }
+        }
+        prefix = base;
+    }
+    references
+}
+
+/// A lifetime projection of a place, by the place without its label and the
+/// index of the lifetime.
+fn projection_key(node: PcgNodeWithPlace<'_>) -> Option<(Place<'_>, usize)> {
+    let PcgNode::LifetimeProjection(projection) = node else {
+        return None;
+    };
+    let PlaceOrConst::Place(MaybeRemotePlace::Local(place)) = projection.base else {
+        return None;
+    };
+    Some((place.place(), projection.region_idx.index()))
+}
+
+/// The spec of a call, with the places of its arguments and result.
+struct CallSpecAt<'tcx> {
+    edges: HashSet<(FunctionShapeInput, FunctionShapeOutput)>,
+    args: Vec<Option<Place<'tcx>>>,
+    destination: Place<'tcx>,
+}
+
+impl<'tcx> CallSpecAt<'tcx> {
+    fn new<'a>(
+        location: mir::Location,
+        ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+    ) -> Self
+    where
+        'tcx: 'a,
+    {
+        let terminator = ctxt.body()[location.block].terminator();
+        let mir::TerminatorKind::Call {
+            func,
+            args,
+            destination,
+            fn_span,
+            ..
+        } = &terminator.kind
+        else {
+            panic!("The call edge at {location:?} is not at a call");
+        };
+        let defined = match func.ty(ctxt.body(), ctxt.tcx()).kind() {
+            ty::TyKind::FnDef(def_id, substs) => Some(DefinedFnCall::new(
+                FunctionData::new(*def_id),
+                fn_def_args(substs),
+                ctxt.ctxt().def_id(),
+                *fn_span,
+            )),
+            _ => None,
+        };
+        let operands: Vec<&mir::Operand<'tcx>> = args.iter().map(|arg| &arg.node).collect();
+        let destination: Place<'tcx> = (*destination).into();
+        let shape = FunctionCall::new(location, &operands, destination, defined).shape(ctxt);
+        Self {
+            edges: shape
+                .edges()
+                .map(|edge| (edge.input, edge.output))
+                .collect(),
+            args: operands
+                .iter()
+                .map(|operand| operand.place().map(Into::into))
+                .collect(),
+            destination,
+        }
+    }
+}
+
+/// If `edge` is the edge of a call, the projections (see [`projection_key`])
+/// of its inputs that the call's spec lets flow into its output `output`. A
+/// call's edge may couple inputs and outputs that do not flow into each
+/// other, so the call's spec says which of them `output` blocks.
+fn call_flows_into<'a, 'tcx: 'a>(
+    edge: &BorrowPcgEdgeKind<'tcx>,
+    output: PcgNodeWithPlace<'tcx>,
+    specs: &mut HashMap<mir::Location, CallSpecAt<'tcx>>,
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) -> Option<HashSet<(Place<'tcx>, usize)>> {
+    let location = match edge {
+        BorrowPcgEdgeKind::Coupled(PcgCoupledEdgeKind(FunctionCallOrLoop::FunctionCall(call))) => {
+            call.metadata().location()
+        }
+        BorrowPcgEdgeKind::Abstraction(FunctionCallOrLoop::FunctionCall(call)) => call.location(),
+        _ => return None,
+    };
+    let spec = specs
+        .entry(location)
+        .or_insert_with(|| CallSpecAt::new(location, ctxt));
+    let Some((output_place, output_idx)) = projection_key(output) else {
+        return Some(HashSet::default());
+    };
+    let output_base = if output_place == spec.destination {
+        ArgIdxOrResult::Result
+    } else {
+        let arg = spec
+            .args
+            .iter()
+            .position(|arg| *arg == Some(output_place))?;
+        ArgIdxOrResult::Argument(arg.into())
+    };
+    Some(
+        spec.edges
+            .iter()
+            .filter(|(_, out)| out.base == output_base && out.region_idx.index() == output_idx)
+            .filter_map(|(input, _)| {
+                spec.args[*input.base].map(|place| (place, input.region_idx.index()))
+            })
+            .collect(),
+    )
+}
+
+#[rustversion::before(2025-05-24)]
+pub(crate) fn check_return_flows<'a, 'tcx: 'a>(
+    _graph: &BorrowsGraph<'tcx>,
+    _location: mir::Location,
+    _ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) {
+}
+
+/// Checks the spec of the function whose body `ctxt` analyses against
+/// rustc's borrow checker of that body. Panics (under validity checks) if the
+/// outlives relation between the regions of the function's signature that
+/// the spec relies on differs from the one that rustc's region inference
+/// gives the body's universal regions. If the spec lacked a relation, the
+/// body could move a loan its callers do not expect; if it had an extra one,
+/// its callers would expect flows that the body cannot perform.
+///
+/// A closure's spec takes the relations its body needs from the body's
+/// region inference (see [`CallSpecQuery::closure_outlives`]), so for a
+/// closure the check covers the relations of its signature only.
+#[rustversion::since(2025-05-24)]
+pub(crate) fn check_body_spec<'a, 'tcx: 'a>(
+    ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx> + HasSettings<'a>,
+) {
+    let tcx = ctxt.tcx();
+    let Some(BodySpec {
+        def_id,
+        sig,
+        spec,
+        vids,
+    }) = body_spec(ctxt)
+    else {
+        return;
+    };
+    let region_cx = ctxt.bc().rust_borrow_checker().unwrap().region_infer_ctxt();
     let node_of = |region: ty::Region<'tcx>| {
         if region.is_static() {
             Node::Region(region)

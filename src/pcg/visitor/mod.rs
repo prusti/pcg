@@ -296,6 +296,16 @@ impl<'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> FallableVisitor<'tcx>
                 location,
             )?;
         }
+        if self.phase() == EvalStmtPhase::PostMain
+            && matches!(terminator.kind, mir::TerminatorKind::Return)
+            && crate::validity_checks_enabled()
+        {
+            crate::borrow_pcg::abstraction::spec::check_return_flows(
+                self.pcg.borrow.graph(),
+                location,
+                self.ctxt,
+            );
+        }
         Ok(())
     }
 
