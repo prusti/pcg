@@ -157,22 +157,35 @@ impl<'tcx> BorrowsGraph<'tcx> {
         for blocker in candidate_blockers.iter_places() {
             for root in root_places {
                 let relevant_root = root.relevant_place_for_blocking();
-                if blocker == relevant_root
-                    || ctxt.ctxt.borrow_checker.blocks(
+                let lends_root = blocker == relevant_root
+                    || ctxt.bc().blocks_entirely(
                         blocker,
                         relevant_root,
                         loop_head_location,
                         ctxt.bc_ctxt(),
-                    )
+                    );
+                if lends_root
+                    || ctxt
+                        .bc()
+                        .blocks(blocker, relevant_root, loop_head_location, ctxt.bc_ctxt())
                 {
                     tracing::debug!(
                         "{} blocks root {}",
                         blocker.display_string(ctxt),
                         relevant_root.display_string(ctxt)
                     );
-                    add_block_edges(&mut expander, *root, blocker, ctxt);
+                    if lends_root {
+                        add_block_edges(&mut expander, *root, blocker, ctxt);
+                    } else {
+                        // The blocker's loans borrow only parts of the root:
+                        // the root is not lent, only its lifetime projections
+                        // flow into the blocker.
+                        add_rp_block_edges(&mut expander, *root, blocker, ctxt);
+                    }
                     if let MaybeRemoteCurrentPlace::Local(root) = root {
-                        blocked_root_places.insert(*root);
+                        if lends_root {
+                            blocked_root_places.insert(*root);
+                        }
                         for rp in root.lifetime_projections(ctxt) {
                             to_label.insert(LabelNodePredicate::all_non_future(
                                 (*root).into(),
