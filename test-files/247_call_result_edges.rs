@@ -296,6 +296,27 @@ fn call_widen_mut(v: &mut u32) -> u32 {
     *v
 }
 
+trait Widen<'a, 'b> {
+    fn widen(x: &'b mut u32) -> &'a mut u32;
+}
+
+impl<'a, 'b> Widen<'a, 'b> for &'a &'b () {
+    // The impl's header implies `'b: 'a`.
+    fn widen(x: &'b mut u32) -> &'a mut u32 {
+        x
+    }
+}
+
+// The trait's arguments, which the caller proves well-formed, imply `'b: 'a`
+// for the impl that the call selects.
+fn call_widen_through_trait() -> u32 {
+    let mut k = 5u32;
+    // PCG: bb0[8] post_main: Add Edge call Widen::widen at bb0[8]: _3 before bb0[8]:PostOperands↓'?9 before bb0[8]:PostMain -> r↓'?8
+    let r = <&&() as Widen<'_, '_>>::widen(&mut k);
+    *r += 1;
+    k
+}
+
 trait Unit {
     type Assoc;
 }

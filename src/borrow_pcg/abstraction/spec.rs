@@ -959,7 +959,7 @@ fn instantiate_callee<'tcx>(
                 .inputs_and_output
                 .iter()
                 .chain(
-                    impl_header_types(def_id, tcx)
+                    header_types(def_id, tcx)
                         .into_iter()
                         .map(|ty| instantiate(ty, tcx, args)),
                 )
@@ -976,12 +976,15 @@ fn instantiate_callee<'tcx>(
     }
 }
 
-/// For a method of an impl, the types of the impl's header that the method
-/// may assume to be well-formed, in the impl's generic parameters: the self
-/// type of an inherent impl, the arguments of the trait of a trait impl (as
-/// rustc's `assumed_wf_types`). `Ctx::<'a, 'b>::f` may assume `'b: 'a` for
-/// `struct Ctx<'a, 'b>(&'a &'b u32)`.
-fn impl_header_types(def_id: DefId, tcx: ty::TyCtxt<'_>) -> Vec<ty::Ty<'_>> {
+/// For a method of an impl or a trait, the types of the header of the impl or
+/// trait that the method may assume to be well-formed, in the generic
+/// parameters of the impl or trait: the self type of an inherent impl, the
+/// arguments of the trait of a trait impl (as rustc's `assumed_wf_types`),
+/// and for a trait method those of the trait, which the impl that a call
+/// selects assumes and the caller proves. `Ctx::<'a, 'b>::f` may assume
+/// `'b: 'a` for `struct Ctx<'a, 'b>(&'a &'b u32)`, and so may
+/// `<&'a &'b () as Tr<'a, 'b>>::f`.
+fn header_types(def_id: DefId, tcx: ty::TyCtxt<'_>) -> Vec<ty::Ty<'_>> {
     use crate::rustc_interface::hir::def::DefKind;
     let Some(parent) = tcx.opt_parent(def_id) else {
         return Vec::new();
@@ -996,6 +999,9 @@ fn impl_header_types(def_id: DefId, tcx: ty::TyCtxt<'_>) -> Vec<ty::Ty<'_>> {
                 tcx.type_of(parent).instantiate_identity(),
             )]
         }
+        DefKind::Trait => ty::GenericArgs::identity_for_item(tcx, parent)
+            .types()
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -1067,8 +1073,9 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
     );
 
     // The relations the callee may rely on: those that its where clauses and
-    // the well-formedness of its signature (normalized or not) and of its
-    // impl's header give (its implied bounds), and those that proving its
+    // the well-formedness of its signature (normalized or not) and of the
+    // header of its impl or trait give (its implied bounds), and those that
+    // proving its
     // trait bounds with the impls the trait solver selects gives. Clauses
     // that relate no regions (const arguments, const-ness of impls) are left
     // out.
