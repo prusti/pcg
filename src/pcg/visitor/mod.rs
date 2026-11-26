@@ -7,7 +7,7 @@ use crate::{
         edge::borrow_flow::{BorrowFlowEdge, BorrowFlowEdgeKind},
         region_projection::{LifetimeProjection, PcgLifetimeProjectionLike, PlaceOrConst},
     },
-    owned_pcg::RepackExpand,
+    owned_pcg::{ExpandedPlace, RepackExpand},
     pcg::{
         CapabilityKind,
         ctxt::AnalysisCtxt,
@@ -165,8 +165,9 @@ impl<'pcg, 'a, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>> PcgVisitor<'pcg, 'a, 'tcx
             AnalysisObject::Terminator(terminator) => {
                 self.visit_terminator_fallable(terminator, location)?;
                 if self.phase() == EvalStmtPhase::PostMain {
-                    // when the analysis object is a terminator, this step ensures
-                    // the owned PCG is in the most-packed state for the join.
+                    // when the analysis object is a terminator, this step packs
+                    // the owned PCG before the join; `collapse_iteration` says
+                    // which expansions stay unpacked.
                     self.place_obtainer().collapse_owned_places()?;
                 }
             }
@@ -349,6 +350,13 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                     .iter()
                     .any(|required| place.is_strict_prefix_of(*required))
             })
+            // Parts that hold only write capability stay unpacked: the program
+            // may give one of them a value, and packing them would require
+            // unpacking the place at write capability again. The expansion of
+            // an enum, or of a place inside an enum variant, is still packed,
+            // since an enum without a value has no variant. A join packs such
+            // parts where another path holds the whole place as a leaf with
+            // write or read capability (see `collapsible_against_leaf`).
             .filter_map(|place| {
                 let expansion_places = local_expansions.all_children_of(place, self.ctxt);
                 if expansion_places
@@ -358,6 +366,14 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         .pcg
                         .place_capabilities
                         .uniform_capability(expansion_places.into_iter(), self.ctxt)
+                    && (candidate_cap != CapabilityKind::Write
+                        || place
+                            .projection
+                            .iter()
+                            .any(|elem| matches!(elem, mir::ProjectionElem::Downcast(..)))
+                        || local_expansions
+                            .expansions_from(place)
+                            .any(ExpandedPlace::is_enum_expansion))
                 {
                     Some((place, candidate_cap))
                 } else {
