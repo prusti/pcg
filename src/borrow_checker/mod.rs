@@ -2,14 +2,14 @@
 //!
 //! Also includes implementations for the Polonius and NLL borrow-checkers.
 
-use std::{collections::BTreeSet, iter::zip, ops::ControlFlow};
+use std::{collections::BTreeSet, ops::ControlFlow};
 
 use crate::{
     borrow_checker::r#impl::get_reserve_location,
     borrow_pcg::{
         GeneralizedLifetime,
         region_projection::PcgRegion,
-        visitor::{OpaqueTy, erase_regions},
+        visitor::{OpaqueTy, alias_region_pairs},
     },
     pcg::PcgNode,
     rustc_interface::{
@@ -239,24 +239,13 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                 // and all regions are equal. For example, we consider <T as Tr<'?7>>::Assoc to outlive
                 // <T as Tr<'?8>>::Assoc if '?7: '?8 and '?8: '?7.
                 (OpaqueTy::Alias(sup_ty), OpaqueTy::Alias(sub_ty)) => {
-                    let tcx = self.tcx();
-                    if erase_regions(sup_ty, tcx) != erase_regions(sub_ty, tcx) {
-                        return false;
-                    }
-                    // Keeps duplicates, so that the regions can be paired by position.
-                    let free_regions_in_order = |ty: ty::Ty<'tcx>| -> Vec<PcgRegion<'tcx>> {
-                        let mut regions = vec![];
-                        tcx.for_each_free_region(&ty, |r| regions.push(r.into()));
-                        regions
-                    };
-                    let sup_regions = free_regions_in_order(sup_ty);
-                    let sub_regions = free_regions_in_order(sub_ty);
-                    if sup_regions.len() != sub_regions.len() {
-                        return false;
-                    }
-                    zip(sup_regions, sub_regions).all(|(sup_region, sub_region)| {
-                        self.outlives(sup_region, sub_region, location)
-                            && self.outlives(sub_region, sup_region, location)
+                    alias_region_pairs(sup_ty, sub_ty, self.tcx()).is_some_and(|pairs| {
+                        pairs.into_iter().all(|(sup_region, sub_region)| {
+                            let (sup_region, sub_region) = (sup_region.into(), sub_region.into());
+                            sup_region == sub_region
+                                || (self.outlives(sup_region, sub_region, location)
+                                    && self.outlives(sub_region, sup_region, location))
+                        })
                     })
                 }
                 (_, _) => sup_opaque == sub_opaque,
@@ -278,6 +267,14 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
                     .all(|&universal| {
                         self.outlives(PcgRegion::RegionVid(universal.into()), sub, location)
                     })
+            }
+            // A part of the value of an opaque type holds the loans of the
+            // lifetime that names it (see `GeneralizedLifetime`).
+            (GeneralizedLifetime::BoundPart(_, sup_lifetime), sub) => {
+                self.outlives_generalized(sup_lifetime.into(), sub, location)
+            }
+            (sup, GeneralizedLifetime::BoundPart(_, sub_lifetime)) => {
+                self.outlives_generalized(sup, sub_lifetime.into(), location)
             }
         }
     }
@@ -342,30 +339,6 @@ pub trait BorrowCheckerInterface<'tcx>: DisplayCtxtFor<RegionVid> {
 
     // TODO: Remove, only for visualization
     fn input_facts(&self) -> &PoloniusInput;
-
-    /// Returns an iterator over all `RegionVid`s for this body.
-    ///
-    /// The implementation is a hack: it extracts region vids from the
-    /// constraint SCC indices in the region inference context. This is
-    /// currently used in
-    /// [`DefinedFnCallWithCallTys::normalize_sig`](crate::borrow_pcg::edge::abstraction::function::DefinedFnCallWithCallTys)
-    /// to pre-populate an inference context with the correct number of region
-    /// variables before performing type normalization. This method should be
-    /// removed if we find a better way to perform that normalization.
-    fn iter_region_vids<'slf>(&'slf self) -> Box<dyn Iterator<Item = RegionVid> + 'slf>
-    where
-        'tcx: 'slf,
-    {
-        Box::new(
-            self.rust_borrow_checker()
-                .unwrap()
-                .region_infer_ctxt()
-                .constraint_sccs()
-                .scc_indices()
-                .iter_enumerated()
-                .map(move |(region_vid, _)| region_vid),
-        )
-    }
 }
 
 impl<'a, 'tcx> DisplayWithCtxt<&'a dyn BorrowCheckerInterface<'tcx>> for RegionVid {

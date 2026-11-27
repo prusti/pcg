@@ -232,8 +232,9 @@ impl<'mir, 'tcx: 'mir> RustBorrowCheckerInterface<'tcx> for PoloniusBorrowChecke
                             .eval_outlives(*region_vid, self.borrow_index_to_region(*loan))
                     })
             }
-            // `RegionsIn` has no region of its own, so it is live while its place is.
-            GeneralizedLifetime::RegionsIn(_) => node
+            // `RegionsIn` and bound parts have no region of their own, so they
+            // are live while their place is.
+            GeneralizedLifetime::RegionsIn(_) | GeneralizedLifetime::BoundPart(..) => node
                 .related_maybe_labelled_place()
                 .is_none_or(|p| self.place_liveness.is_live(p.place(), location)),
             _ => todo!(),

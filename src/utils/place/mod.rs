@@ -35,7 +35,7 @@ use crate::{
         },
     },
     utils::{
-        HasCompilerCtxt,
+        HasCompilerCtxt, HasLifetimeEnv,
         display::{DisplayOutput, DisplayWithCtxt, OutputMode},
         json::ToJsonWithCtxt,
         maybe_old::MaybeLabelledPlace,
@@ -686,7 +686,7 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
-        extract_generalized_lifetimes(self.rust_ty(ctxt), None)
+        extract_generalized_lifetimes(self.rust_ty(ctxt), ctxt.lifetime_env())
     }
 
     pub(crate) fn lifetime_projections<'a>(
