@@ -456,35 +456,19 @@ fn set_cap_at<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
 fn uniform_leaf_cap<'tcx>(
     exp: &PlaceExpansion<'tcx, Box<InitialisationTree<'tcx>>>,
 ) -> Option<OwnedCapability> {
-    let children = expansion_children(exp);
+    let children = exp.children();
     let mut iter = children.into_iter();
-    let first = match iter.next()? {
+    let first = match iter.next()?.as_ref() {
         InitialisationTree::Leaf(cap) => *cap,
         InitialisationTree::Internal(_) => return None,
     };
     for t in iter {
-        match t {
+        match t.as_ref() {
             InitialisationTree::Leaf(cap) if *cap == first => {}
             _ => return None,
         }
     }
     Some(first)
-}
-
-fn expansion_children<'a, 'tcx>(
-    exp: &'a PlaceExpansion<'tcx, Box<InitialisationTree<'tcx>>>,
-) -> Vec<&'a InitialisationTree<'tcx>> {
-    match exp {
-        PlaceExpansion::Fields(fields) => fields.values().map(|(_, t)| t.as_ref()).collect(),
-        PlaceExpansion::Deref(t)
-        | PlaceExpansion::Guided(
-            RepackGuide::Downcast(_, _, t)
-            | RepackGuide::ConstantIndex(_, t)
-            | RepackGuide::Index(_, t)
-            | RepackGuide::Subslice { data: t, .. },
-        ) => vec![t.as_ref()],
-        PlaceExpansion::Guided(RepackGuide::Default(never)) => match *never {},
-    }
 }
 
 fn collapse_subtree_at<'tcx>(tree: &mut InitialisationTree<'tcx>, projection: &[PlaceElem<'tcx>]) {
@@ -512,10 +496,13 @@ fn child<'a, 'tcx>(
     elem: &PlaceElem<'tcx>,
 ) -> Option<&'a InitialisationTree<'tcx>> {
     match (exp, elem) {
-        (PlaceExpansion::Fields(fields), PlaceElem::Field(idx, _)) => {
-            fields.get(idx).map(|(_, t)| t.as_ref())
+        (
+            PlaceExpansion::Fields(fields) | PlaceExpansion::Box { fields, .. },
+            PlaceElem::Field(idx, _),
+        ) => fields.get(idx).map(|(_, t)| t.as_ref()),
+        (PlaceExpansion::Deref(d) | PlaceExpansion::Box { value: d, .. }, PlaceElem::Deref) => {
+            Some(d.as_ref())
         }
-        (PlaceExpansion::Deref(d), PlaceElem::Deref) => Some(d.as_ref()),
         _ => None,
     }
 }
@@ -525,10 +512,13 @@ fn child_mut<'a, 'tcx>(
     elem: &PlaceElem<'tcx>,
 ) -> Option<&'a mut InitialisationTree<'tcx>> {
     match (exp, elem) {
-        (PlaceExpansion::Fields(fields), PlaceElem::Field(idx, _)) => {
-            fields.get_mut(idx).map(|(_, t)| t.as_mut())
+        (
+            PlaceExpansion::Fields(fields) | PlaceExpansion::Box { fields, .. },
+            PlaceElem::Field(idx, _),
+        ) => fields.get_mut(idx).map(|(_, t)| t.as_mut()),
+        (PlaceExpansion::Deref(d) | PlaceExpansion::Box { value: d, .. }, PlaceElem::Deref) => {
+            Some(d.as_mut())
         }
-        (PlaceExpansion::Deref(d), PlaceElem::Deref) => Some(d.as_mut()),
         _ => None,
     }
 }
@@ -539,22 +529,36 @@ fn expand_leaf<'a, 'tcx: 'a, Ctxt: HasCompilerCtxt<'a, 'tcx>>(
     existing_cap: OwnedCapability,
     ctxt: Ctxt,
 ) -> Option<PlaceExpansion<'tcx, Box<InitialisationTree<'tcx>>>> {
-    let leaf = || Box::new(InitialisationTree::Leaf(existing_cap));
-    match first {
-        ProjectionElem::Field(_idx, _ty) => {
-            let siblings = node_place.expand_field(None, ctxt).ok()?;
-            let mut fields = std::collections::BTreeMap::new();
-            for sib in siblings {
-                let Some((_, last)) = sib.last_projection() else {
-                    continue;
-                };
-                if let ProjectionElem::Field(f, ty) = last {
-                    fields.insert(f, (ty, leaf()));
-                }
+    let leaf = |cap| Box::new(InitialisationTree::Leaf(cap));
+    let field_leaves = |cap| {
+        let siblings = node_place.expand_field(None, ctxt).ok()?;
+        let mut fields = std::collections::BTreeMap::new();
+        for sib in siblings {
+            let Some((_, last)) = sib.last_projection() else {
+                continue;
+            };
+            if let ProjectionElem::Field(f, ty) = last {
+                fields.insert(f, (ty, leaf(cap)));
             }
-            (!fields.is_empty()).then_some(PlaceExpansion::Fields(fields))
         }
-        ProjectionElem::Deref => Some(PlaceExpansion::Deref(leaf())),
+        (!fields.is_empty()).then_some(fields)
+    };
+    match first {
+        // A box expands to its value and its fields together. Owned places
+        // dereference nothing but boxes.
+        ProjectionElem::Field(..) | ProjectionElem::Deref if node_place.ty(ctxt).ty.is_box() => {
+            // A shallowly initialised box has its own fields but not its value.
+            let (value_cap, fields_cap) = if existing_cap == OwnedCapability::Shallow {
+                (OwnedCapability::Uninit, OwnedCapability::Deep)
+            } else {
+                (existing_cap, existing_cap)
+            };
+            Some(PlaceExpansion::Box {
+                value: leaf(value_cap),
+                fields: field_leaves(fields_cap)?,
+            })
+        }
+        ProjectionElem::Field(_idx, _ty) => field_leaves(existing_cap).map(PlaceExpansion::Fields),
         _ => None,
     }
 }

@@ -527,9 +527,16 @@ impl<'tcx> Place<'tcx> {
                 .chain([guide_place.projection[index]]),
         );
         let new_current_place = Place::new(self.local, new_projection);
+        // A box unpacks to its value and its own fields together, whichever
+        // of them is the guide.
+        let ty = self.ty(ctxt).ty;
+        let is_box = ty.is_box();
         let (other_places, kind) = match guide_place.projection[index] {
             ProjectionElem::Field(projected_field, _field_ty) => {
-                let other_places = self.expand_field(Some(projected_field.index()), ctxt)?;
+                let mut other_places = self.expand_field(Some(projected_field.index()), ctxt)?;
+                if is_box {
+                    other_places.push(self.project_deref(ctxt));
+                }
                 (other_places, ProjectionKind::Field(projected_field))
             }
             ProjectionElem::ConstantIndex {
@@ -558,12 +565,13 @@ impl<'tcx> Place<'tcx> {
                     }),
                 )
             }
+            ProjectionElem::Deref if is_box => {
+                (self.expand_field(None, ctxt)?, ProjectionKind::DerefBox)
+            }
             ProjectionElem::Deref => {
-                let typ = self.ty(ctxt);
-                let kind = match typ.ty.kind() {
+                let kind = match ty.kind() {
                     TyKind::Ref(_, _, mutbl) => ProjectionKind::DerefRef(*mutbl),
                     TyKind::RawPtr(_, mutbl) => ProjectionKind::DerefRawPtr(*mutbl),
-                    _ if typ.ty.is_box() => ProjectionKind::DerefBox,
                     _ => unreachable!(),
                 };
                 (Vec::new(), kind)

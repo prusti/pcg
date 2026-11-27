@@ -19,7 +19,10 @@ use std::{
 use crate::{
     borrow_pcg::borrow_pcg_expansion::PlaceExpansion,
     owned_pcg::{RepackGuide, RequiredGuide},
-    rustc_interface::middle,
+    rustc_interface::{
+        FieldIdx,
+        middle::{self, ty},
+    },
 };
 
 use super::OwnedCapability;
@@ -71,7 +74,7 @@ impl<'tcx> InitialisationTree<'tcx> {
     /// checked via `debug_assert!`.
     pub(crate) fn internal(expansion: PlaceExpansion<'tcx, Box<InitialisationTree<'tcx>>>) -> Self {
         debug_assert!(
-            !children_of(&expansion).iter().all(|t| t.is_fully_deep()),
+            !expansion.children().iter().all(|t| t.is_fully_deep()),
             "InitialisationTree::internal called with an all-Deep subtree; \
              collapse to InitialisationTree::deep() instead",
         );
@@ -82,7 +85,7 @@ impl<'tcx> InitialisationTree<'tcx> {
     pub(crate) fn is_fully_deep(&self) -> bool {
         match self {
             Self::Leaf(cap) => cap.is_deep(),
-            Self::Internal(expansion) => children_of(expansion).iter().all(|t| t.is_fully_deep()),
+            Self::Internal(expansion) => expansion.children().iter().all(|t| t.is_fully_deep()),
         }
     }
 
@@ -91,26 +94,8 @@ impl<'tcx> InitialisationTree<'tcx> {
     pub(crate) fn is_fully_uninit(&self) -> bool {
         match self {
             Self::Leaf(cap) => cap.is_uninit(),
-            Self::Internal(expansion) => children_of(expansion).iter().all(|t| t.is_fully_uninit()),
+            Self::Internal(expansion) => expansion.children().iter().all(|t| t.is_fully_uninit()),
         }
-    }
-}
-
-/// Collect the children sub-trees stored as per-child data in a
-/// [`PlaceExpansion`].
-fn children_of<'tcx, 'a>(
-    expansion: &'a PlaceExpansion<'tcx, Box<InitialisationTree<'tcx>>>,
-) -> Vec<&'a InitialisationTree<'tcx>> {
-    match expansion {
-        PlaceExpansion::Fields(fields) => fields.values().map(|(_, t)| t.as_ref()).collect(),
-        PlaceExpansion::Deref(t)
-        | PlaceExpansion::Guided(
-            RepackGuide::Downcast(_, _, t)
-            | RepackGuide::ConstantIndex(_, t)
-            | RepackGuide::Index(_, t)
-            | RepackGuide::Subslice { data: t, .. },
-        ) => vec![t.as_ref()],
-        PlaceExpansion::Guided(RepackGuide::Default(never)) => match *never {},
     }
 }
 
@@ -155,7 +140,7 @@ fn join_inner<'tcx>(
         | (other @ Internal(_), Leaf(OwnedCapability::Deep)) => other.clone(),
         (Internal(lhs_exp), Internal(rhs_exp)) => match join_expansions(lhs_exp, rhs_exp) {
             Some(joined_exp) => {
-                if children_of(&joined_exp).iter().all(|t| t.is_fully_deep()) {
+                if joined_exp.children().iter().all(|t| t.is_fully_deep()) {
                     Leaf(OwnedCapability::Deep)
                 } else {
                     Internal(joined_exp)
@@ -177,23 +162,43 @@ fn join_expansions<'tcx>(
 ) -> Option<PlaceExpansion<'tcx, BoxedSubtree<'tcx>>> {
     use PlaceExpansion::{Deref, Fields, Guided};
     match (lhs, rhs) {
-        (Fields(a), Fields(b)) => {
-            if a.len() != b.len() {
-                return None;
-            }
-            let mut out = BTreeMap::new();
-            for ((lk, (lty, lt)), (rk, (rty, rt))) in a.iter().zip(b.iter()) {
-                if lk != rk || lty != rty {
-                    return None;
-                }
-                out.insert(*lk, (*lty, Box::new(join_inner(lt, rt))));
-            }
-            Some(Fields(out))
-        }
+        (Fields(a), Fields(b)) => join_fields(a, b).map(Fields),
         (Deref(lt), Deref(rt)) => Some(Deref(Box::new(join_inner(lt, rt)))),
+        (
+            PlaceExpansion::Box {
+                value: lv,
+                fields: lf,
+            },
+            PlaceExpansion::Box {
+                value: rv,
+                fields: rf,
+            },
+        ) => Some(PlaceExpansion::Box {
+            value: Box::new(join_inner(lv, rv)),
+            fields: join_fields(lf, rf)?,
+        }),
         (Guided(a), Guided(b)) => join_guides(a, b).map(Guided),
         _ => None,
     }
+}
+
+type FieldSubtrees<'tcx> = BTreeMap<FieldIdx, (ty::Ty<'tcx>, BoxedSubtree<'tcx>)>;
+
+fn join_fields<'tcx>(
+    a: &FieldSubtrees<'tcx>,
+    b: &FieldSubtrees<'tcx>,
+) -> Option<FieldSubtrees<'tcx>> {
+    if a.len() != b.len() {
+        return None;
+    }
+    let mut out = BTreeMap::new();
+    for ((lk, (lty, lt)), (rk, (rty, rt))) in a.iter().zip(b.iter()) {
+        if lk != rk || lty != rty {
+            return None;
+        }
+        out.insert(*lk, (*lty, Box::new(join_inner(lt, rt))));
+    }
+    Some(out)
 }
 
 fn join_guides<'tcx>(

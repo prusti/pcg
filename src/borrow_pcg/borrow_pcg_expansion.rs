@@ -72,6 +72,16 @@ pub enum PlaceExpansion<'tcx, D = ()> {
     Fields(BTreeMap<FieldIdx, (ty::Ty<'tcx>, D)>),
     /// See [`PlaceElem::Deref`]
     Deref(D),
+    /// The parts of a box `b`: the boxed value `*b` and the fields of the box
+    /// itself, `b.0` (the pointer to the value) and `b.1` (the allocator),
+    /// e.g. `{b} -> {*b, b.0, b.1}`. As for `Fields`, an expansion of a
+    /// lifetime projection includes only the parts that have the lifetime,
+    /// which `b.0` never has (see `Place::lifetime_projections`).
+    #[from(skip)]
+    Box {
+        value: D,
+        fields: BTreeMap<FieldIdx, (ty::Ty<'tcx>, D)>,
+    },
     Guided(RequiredGuide<D>),
 }
 
@@ -94,7 +104,27 @@ impl<D> PlaceExpansion<'_, D> {
     pub(crate) fn label_index(&mut self, index: mir::Local, label: SnapshotLocation) -> bool {
         match self {
             PlaceExpansion::Guided(guide) => guide.label_index(index, label),
-            PlaceExpansion::Fields(_) | PlaceExpansion::Deref(_) => false,
+            PlaceExpansion::Fields(_) | PlaceExpansion::Deref(_) | PlaceExpansion::Box { .. } => {
+                false
+            }
+        }
+    }
+
+    /// The data of each child of the expansion.
+    pub(crate) fn children(&self) -> Vec<&D> {
+        match self {
+            PlaceExpansion::Fields(fields) => fields.values().map(|(_, d)| d).collect(),
+            PlaceExpansion::Box { value, fields } => {
+                fields.values().map(|(_, d)| d).chain([value]).collect()
+            }
+            PlaceExpansion::Deref(d)
+            | PlaceExpansion::Guided(
+                RepackGuide::Downcast(_, _, d)
+                | RepackGuide::ConstantIndex(_, d)
+                | RepackGuide::Index(_, d)
+                | RepackGuide::Subslice { data: d, .. },
+            ) => vec![d],
+            PlaceExpansion::Guided(RepackGuide::Default(never)) => match *never {},
         }
     }
 }
@@ -173,6 +203,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
         'tcx: 'a,
     {
         let mut fields = BTreeMap::new();
+        let mut deref = false;
 
         for place in places {
             let corrected_place = CorrectedPlace::new(place, ctxt);
@@ -182,7 +213,7 @@ impl<'tcx> PlaceExpansion<'tcx> {
                     PlaceElem::Field(field_idx, ty) => {
                         fields.insert(field_idx, (ty, ()));
                     }
-                    PlaceElem::Deref => return PlaceExpansion::Deref(()),
+                    PlaceElem::Deref => deref = true,
                     other => {
                         let repack_guide: RepackGuide = other
                             .try_into()
@@ -197,10 +228,12 @@ impl<'tcx> PlaceExpansion<'tcx> {
             }
         }
 
-        if fields.is_empty() {
-            unreachable!()
+        match (deref, fields.is_empty()) {
+            (false, true) => unreachable!(),
+            (false, false) => PlaceExpansion::Fields(fields),
+            (true, true) => PlaceExpansion::Deref(()),
+            (true, false) => PlaceExpansion::Box { value: (), fields },
         }
-        PlaceExpansion::Fields(fields)
     }
 
     pub(crate) fn elems(&self) -> Vec<PlaceElem<'tcx>> {
@@ -211,6 +244,11 @@ impl<'tcx> PlaceExpansion<'tcx> {
                 .map(|(idx, (ty, ()))| PlaceElem::Field(*idx, *ty))
                 .collect(),
             PlaceExpansion::Deref(()) => vec![PlaceElem::Deref],
+            PlaceExpansion::Box { value: (), fields } => fields
+                .iter()
+                .map(|(idx, (ty, ()))| PlaceElem::Field(*idx, *ty))
+                .chain([PlaceElem::Deref])
+                .collect(),
             PlaceExpansion::Guided(RepackGuide::ConstantIndex(c, ())) => {
                 let mut elems = vec![(*c).into()];
                 elems.extend(c.other_elems());

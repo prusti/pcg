@@ -626,12 +626,18 @@ impl<'state, 'a: 'state, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx>>
                         from,
                         PlaceExpansion::from_places(target_places.clone(), self.ctxt),
                     );
+                    // Of a box under construction, the value `*b` gets read
+                    // capability; the box owns its allocation, so its own
+                    // fields are initialised.
                     for target_place in target_places {
-                        self.pcg.place_capabilities.insert(
-                            target_place,
-                            CapabilityKind::Read,
-                            self.ctxt,
-                        );
+                        let capability = if target_place.is_deref() {
+                            CapabilityKind::Read
+                        } else {
+                            CapabilityKind::Exclusive
+                        };
+                        self.pcg
+                            .place_capabilities
+                            .insert(target_place, capability, self.ctxt);
                     }
                     ApplyActionResult::changed_no_display()
                 }
