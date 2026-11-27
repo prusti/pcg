@@ -30,17 +30,6 @@ use crate::{
 
 type Reason = Cow<'static, str>;
 
-struct WithReason<T> {
-    pub(crate) value: T,
-    pub(crate) reason: Reason,
-}
-
-struct EdgesToRemove<'tcx> {
-    deref_edges:
-        HashMap<MaybeLabelledPlace<'tcx>, WithReason<HashSet<Conditioned<DerefEdge<'tcx>>>>>,
-    other_edges: Vec<WithReason<BorrowPcgEdge<'tcx>>>,
-}
-
 #[allow(clippy::large_enum_variant)]
 enum RemovalAction<'tcx> {
     RemoveDerefEdgesTo(
@@ -49,60 +38,6 @@ enum RemovalAction<'tcx> {
         Reason,
     ),
     RemoveOtherEdge(BorrowPcgEdge<'tcx>, Reason),
-}
-
-impl<'tcx> EdgesToRemove<'tcx> {
-    fn new() -> Self {
-        Self {
-            deref_edges: HashMap::default(),
-            other_edges: Vec::new(),
-        }
-    }
-
-    fn push(&mut self, edge: &BorrowPcgEdge<'tcx>, reason: Reason) {
-        match edge.kind() {
-            BorrowPcgEdgeKind::Deref(deref) => {
-                if let Some(deref_edges) = self.deref_edges.get_mut(&deref.deref_place) {
-                    deref_edges
-                        .value
-                        .insert(Conditioned::new(*deref, edge.conditions().clone()));
-                } else {
-                    self.deref_edges.insert(
-                        deref.deref_place,
-                        WithReason {
-                            value: vec![Conditioned::new(*deref, edge.conditions().clone())]
-                                .into_iter()
-                                .collect(),
-                            reason,
-                        },
-                    );
-                }
-            }
-            _ => self.other_edges.push(WithReason {
-                value: edge.clone(),
-                reason,
-            }),
-        }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.deref_edges.is_empty() && self.other_edges.is_empty()
-    }
-
-    fn removal_actions(self) -> Vec<RemovalAction<'tcx>> {
-        let mut actions = Vec::new();
-        for (place, deref_edges) in self.deref_edges {
-            actions.push(RemovalAction::RemoveDerefEdgesTo(
-                place,
-                deref_edges.value,
-                deref_edges.reason,
-            ));
-        }
-        for edge in self.other_edges {
-            actions.push(RemovalAction::RemoveOtherEdge(edge.value, edge.reason));
-        }
-        actions
-    }
 }
 
 impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
@@ -145,23 +80,23 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         let mut removed_edges = Vec::new();
         loop {
             iteration += 1;
-            let edges_to_remove = self.identify_leaf_edges_to_remove(for_place);
-            if edges_to_remove.is_empty() {
+            // A removal can label places and lifetime projections, which
+            // changes the edges that contain them, and can change capabilities.
+            // So each removal is identified in the graph the previous one left.
+            let Some(action) = self.identify_leaf_edges_to_remove(for_place) else {
                 self.merge_settled_snapshots()?;
                 break self.finish_weakening_places_with_dead_lifetime_projections(&removed_edges);
-            }
-            for action in edges_to_remove.removal_actions() {
-                match action {
-                    RemovalAction::RemoveDerefEdgesTo(place, edges, reason) => {
-                        self.remove_deref_edges_to(place, edges, &reason)?;
-                    }
-                    RemovalAction::RemoveOtherEdge(borrow_pcg_edge, reason) => {
-                        self.remove_edge_and_perform_associated_state_updates(
-                            &borrow_pcg_edge,
-                            &reason,
-                        )?;
-                        removed_edges.push(borrow_pcg_edge);
-                    }
+            };
+            match action {
+                RemovalAction::RemoveDerefEdgesTo(place, edges, reason) => {
+                    self.remove_deref_edges_to(place, edges, &reason)?;
+                }
+                RemovalAction::RemoveOtherEdge(borrow_pcg_edge, reason) => {
+                    self.remove_edge_and_perform_associated_state_updates(
+                        &borrow_pcg_edge,
+                        &reason,
+                    )?;
+                    removed_edges.push(borrow_pcg_edge);
                 }
             }
             if iteration % 10 == 0 {
@@ -297,29 +232,27 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         &mut self,
         place: Place<'tcx>,
     ) -> Result<(), PcgError> {
-        loop {
-            let to_pack = self.packable_expansions_at_or_below(place);
-            if to_pack.is_empty() {
-                return Ok(());
-            }
-            for edge in to_pack {
-                self.remove_edge_and_perform_associated_state_updates(
-                    &edge,
-                    &format!(
-                        "Pack expansions to obtain {}",
-                        place.display_string(self.ctxt)
-                    ),
-                )?;
-            }
+        // Packing an expansion can label lifetime projections, which changes
+        // the edges that contain them, and can change capabilities. So each
+        // expansion to pack is identified in the graph the previous packing
+        // left.
+        while let Some(edge) = self.packable_expansion_at_or_below(place) {
+            self.remove_edge_and_perform_associated_state_updates(
+                &edge,
+                &format!(
+                    "Pack expansions to obtain {}",
+                    place.display_string(self.ctxt)
+                ),
+            )?;
         }
+        Ok(())
     }
 
-    fn packable_expansions_at_or_below(&self, place: Place<'tcx>) -> Vec<BorrowPcgEdge<'tcx>> {
+    fn packable_expansion_at_or_below(&self, place: Place<'tcx>) -> Option<BorrowPcgEdge<'tcx>> {
         let fg = self.pcg.borrow.graph.frozen_graph();
         fg.leaf_edges(self.ctxt)
             .into_iter()
-            .map(BorrowPcgEdgeLike::to_owned_edge)
-            .filter(|edge| {
+            .find(|edge| {
                 let BorrowPcgEdgeKind::BorrowPcgExpansion(expansion) = edge.kind() else {
                     return false;
                 };
@@ -329,7 +262,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                     .is_some_and(|base| place.is_prefix_of(base))
                     && expansion.is_packable(self.pcg.place_capabilities, self.ctxt)
             })
-            .collect()
+            .map(BorrowPcgEdgeLike::to_owned_edge)
     }
 
     /// Mutable borrows, expansions of lifetime projections, assignments and
@@ -405,7 +338,8 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
         candidates.into_values().collect()
     }
 
-    /// Identifies the set of edges that should be removed from the graph
+    /// Identifies the leaf edges to remove next: the deref edges to some place,
+    /// or else one other edge.
     ///
     /// If `ancestor_place` is defined, we only consider a subset of the edges.
     ///
@@ -421,7 +355,7 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
     fn identify_leaf_edges_to_remove<'slf>(
         &'slf self,
         ancestor_place: Option<Place<'tcx>>,
-    ) -> EdgesToRemove<'tcx> {
+    ) -> Option<RemovalAction<'tcx>> {
         enum ShouldKillNode {
             Yes { reason: Cow<'static, str> },
             No,
@@ -504,7 +438,6 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
             No,
         }
 
-        let mut edges_to_remove = EdgesToRemove::new();
         let fg = self.pcg.borrow.graph.frozen_graph();
         let location = self.location();
         let should_pack_edge = |edge: &BorrowPcgEdgeKind<'tcx>| {
@@ -574,30 +507,45 @@ impl<'pcg, 'a: 'pcg, 'tcx: 'a, Ctxt: DataflowCtxt<'a, 'tcx> + DebugCtxt>
                 }
             }
         };
-        let leaf_edges = fg.leaf_edges(self.ctxt);
-        for edge in leaf_edges.into_iter().map(BorrowPcgEdgeLike::to_owned_edge) {
-            tracing::debug!(
-                "Checking leaf edge: {}",
-                edge.value.display_string(self.ctxt)
-            );
-            if let BorrowPcgEdgeKind::Delegation(delegation) = edge.value {
-                if let ShouldKillNode::Yes { reason } =
-                    should_kill_node(delegation.rawptr_place.into(), &fg)
-                {
-                    edges_to_remove.push(&edge, reason);
-                    let edges =
-                        fg.get_edges_blocking(delegation.rawptr_place.into(), self.ctxt.bc_ctxt());
-                    for edge_to_remove in edges {
-                        edges_to_remove.push(
-                            &edge_to_remove.to_owned_edge(),
-                            "Delegation edge is removed".into(),
-                        );
-                    }
+        let removal_reason = |edge: &BorrowPcgEdgeKind<'tcx>| {
+            tracing::debug!("Checking leaf edge: {}", edge.display_string(self.ctxt));
+            if let BorrowPcgEdgeKind::Delegation(delegation) = edge {
+                match should_kill_node(delegation.rawptr_place.into(), &fg) {
+                    ShouldKillNode::Yes { reason } => Some(reason),
+                    ShouldKillNode::No => None,
                 }
-            } else if let ShouldPackEdge::Yes { reason } = should_pack_edge(edge.kind()) {
-                edges_to_remove.push(&edge, reason);
+            } else {
+                match should_pack_edge(edge) {
+                    ShouldPackEdge::Yes { reason } => Some(reason),
+                    ShouldPackEdge::No => None,
+                }
             }
+        };
+        let leaf_edges = fg.leaf_edges(self.ctxt);
+        let deref_edges = || {
+            leaf_edges.iter().filter_map(|edge| match edge.kind {
+                BorrowPcgEdgeKind::Deref(deref) => Some((edge, deref)),
+                _ => None,
+            })
+        };
+        // The removable deref edges to one place are removed together.
+        if let Some((place, reason)) = deref_edges()
+            .find_map(|(edge, deref)| Some((deref.deref_place, removal_reason(edge.kind)?)))
+        {
+            let edges = deref_edges()
+                .filter(|(edge, deref)| {
+                    deref.deref_place == place && removal_reason(edge.kind).is_some()
+                })
+                .map(|(edge, deref)| Conditioned::new(*deref, edge.conditions.clone()))
+                .collect();
+            return Some(RemovalAction::RemoveDerefEdgesTo(place, edges, reason));
         }
-        edges_to_remove
+        leaf_edges.iter().find_map(|edge| {
+            if matches!(edge.kind, BorrowPcgEdgeKind::Deref(_)) {
+                return None;
+            }
+            let reason = removal_reason(edge.kind)?;
+            Some(RemovalAction::RemoveOtherEdge(edge.to_owned_edge(), reason))
+        })
     }
 }

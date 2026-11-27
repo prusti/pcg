@@ -277,6 +277,7 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
         EdgeKind: EdgeData<'tcx, Ctxt, P>
             + LabelEdgePlaces<'tcx, Ctxt, P>
             + LabelEdgeLifetimeProjections<'tcx, Ctxt, P>
+            + DisplayWithCtxt<Ctxt>
             + Eq
             + std::hash::Hash,
         MaybeRemotePlace<'tcx, P>: DisplayWithCtxt<Ctxt>,
@@ -327,7 +328,16 @@ pub(crate) trait BorrowsStateLike<'tcx, EdgeKind = BorrowPcgEdgeKind<'tcx>, VC =
                     ctxt,
                 ),
             BorrowPcgActionKind::RemoveEdge(edge) => {
-                ApplyActionResult::from_changed(self.remove(&edge.value, capabilities, ctxt))
+                let removed = self.remove(&edge.value, capabilities, ctxt);
+                // A client replays this action against its own copy of the
+                // graph, so the edge must be in the graph exactly as named.
+                pcg_validity_assert!(
+                    removed,
+                    [ctxt],
+                    "RemoveEdge of an edge that is not in the graph: {}",
+                    edge.value.display_string(ctxt)
+                );
+                ApplyActionResult::from_changed(removed)
             }
             BorrowPcgActionKind::AddEdge { edge } => {
                 ApplyActionResult::from_changed(self.graph_mut().insert(edge, ctxt))
