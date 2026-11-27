@@ -101,4 +101,45 @@ fn lend_with_ref<'y, M: Lend>(m: &M, y: &'y u32) -> (&'y u32, M::Out<'y>) {
     p
 }
 
+trait Named<'a> {}
+
+// A part named by `'static` holds no loans that the PCG tracks, so `I` has
+// no part for the `'static` of its bound.
+fn static_bound<I: Named<'static>>(x: I) -> I {
+    x
+}
+
+trait StaticOut {
+    type Out: 'static;
+    fn write(self, buf: &mut Self::Out) -> &str;
+}
+
+// `Out: 'static` means that the value of `I::Out` holds no loans of `I`, so
+// the value of `i` does not flow into the result through `buf`.
+fn format_into_static_alias<'a, I: StaticOut>(i: I) -> &'a str {
+    let p: *mut I::Out = std::ptr::null_mut();
+    i.write(unsafe { &mut *p })
+}
+
+fn keep_static<V: 'static>(v: V) -> V {
+    v
+}
+
+// The value of `U::Out` outlives `'static` by the bound of its definition, as
+// in the spec of `keep_static`.
+fn pass_static_alias<U: StaticOut>(a: U::Out) -> U::Out {
+    keep_static(a)
+}
+
+trait IterOf<V> {
+    type It;
+    fn it(self) -> Self::It;
+}
+
+// The opaque result's hidden type is an alias with the same arguments in
+// another order: their parts pair by the type they are named after.
+fn iter_opaque<V, S: IterOf<V>>(s: S) -> impl Sized {
+    s.it()
+}
+
 fn main() {}

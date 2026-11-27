@@ -392,6 +392,33 @@ fn call_widen_fn_ptr() -> u32 {
     k
 }
 
+// `'x` is early-bound, so the type of the function item names it.
+fn take_byte<'x>(_: &'x u8)
+where
+    'x: 'x,
+{
+}
+
+fn pass<T, F: Fn(T)>(t: T, _f: F) -> T {
+    t
+}
+
+// A function item holds no borrows: the region that its type names, of its
+// parameter, flows nowhere.
+fn pass_fn_item(r: &u8) -> &u8 {
+    pass(r, take_byte)
+}
+
+fn add_static<T>(_c: &'static str, t: T) -> T {
+    t
+}
+
+// The closure needs the region of the captured reference's target to outlive
+// `'static`.
+fn map_with_static<T>(s: &&'static str, x: Option<T>) -> Option<T> {
+    x.map(|e| add_static(*s, e))
+}
+
 trait Unit {
     type Assoc;
 }

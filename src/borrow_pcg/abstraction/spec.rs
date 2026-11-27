@@ -58,8 +58,9 @@ use crate::{
         graph::{BorrowsGraph, loop_abstraction::MaybeRemoteCurrentPlace},
         region_projection::{LifetimeProjection, PcgRegion, PlaceOrConst},
         visitor::{
-            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, alias_region_pairs,
-            extract_generalized_lifetimes, is_bound_region, names_part,
+            BoundLifetime, GeneralizedLifetime, LifetimeEnv, OpaqueTy, alias_def,
+            alias_region_pairs, erase_regions, extract_generalized_lifetimes, is_bound_region,
+            names_part,
         },
     },
     coupling::PcgCoupledEdgeKind,
@@ -241,8 +242,11 @@ fn paired_lifetimes<'tcx>(
 /// The lifetimes naming the parts of the opaque types `actual` and `formal`
 /// at the same position (see [`LifetimeEnv::bound_lifetimes`]), paired. The
 /// lifetimes of where clauses are the same in both, `formal`'s named as in a
-/// signature; those of the arguments of an alias type correspond by position
-/// in the arguments.
+/// signature. Those of the arguments of an alias type correspond by position
+/// in the arguments of the same alias. For two different aliases (an opaque
+/// type and its hidden type), a part `RegionsIn(Q)` pairs with the part for
+/// the same `Q`, which holds the same loans, and the parts named by regions,
+/// which do not correspond, each with each.
 fn paired_parts<'tcx>(
     actual: ty::Ty<'tcx>,
     formal: ty::Ty<'tcx>,
@@ -252,6 +256,29 @@ fn paired_parts<'tcx>(
         OpaqueTy::try_from(actual).unwrap(),
         OpaqueTy::try_from(formal).unwrap(),
     );
+    let actual_parts = env.bound_lifetimes(actual_opaque);
+    let formal_parts = env.for_signature().bound_lifetimes(formal_opaque);
+    if actual_parts.is_empty() || formal_parts.is_empty() {
+        return Vec::new();
+    }
+    if let (Some((actual_def, _)), Some((formal_def, _))) = (alias_def(actual), alias_def(formal))
+        && actual_def != formal_def
+    {
+        let tcx = env.tcx;
+        let corresponds =
+            |actual: BoundLifetime<'tcx>, formal: BoundLifetime<'tcx>| match (actual, formal) {
+                (BoundLifetime::Region(_), BoundLifetime::Region(_)) => true,
+                (BoundLifetime::RegionsIn(actual), BoundLifetime::RegionsIn(formal)) => {
+                    erase_regions(actual.ty(tcx), tcx) == erase_regions(formal.ty(tcx), tcx)
+                }
+                _ => false,
+            };
+        return actual_parts
+            .iter()
+            .flat_map(|actual| formal_parts.iter().map(|formal| (*actual, *formal)))
+            .filter(|(actual, formal)| corresponds(*actual, *formal))
+            .collect();
+    }
     let formal_clause_lifetimes = env.for_signature().where_clause_lifetimes(formal_opaque);
     let mut pairs: Vec<(BoundLifetime<'tcx>, BoundLifetime<'tcx>)> = env
         .where_clause_lifetimes(actual_opaque)
@@ -1254,9 +1281,17 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
             })
             .collect(),
     };
+    // The code may also need a region of the type to outlive `'static`.
+    let re_static = tcx.lifetimes.re_static;
     for code_value in &code_value_regions {
-        for &(sup, sup_node) in code_value {
-            for &(sub, sub_node) in code_value {
+        let with_static = || {
+            code_value
+                .iter()
+                .copied()
+                .chain(std::iter::once((re_static, Node::Region(re_static))))
+        };
+        for (sup, sup_node) in with_static() {
+            for (sub, sub_node) in with_static() {
                 if sup != sub && (query.code_value_outlives)(sup, sub) {
                     graph.add_flow(sup_node, sub_node);
                 }
@@ -1330,8 +1365,24 @@ fn spec_graph<'tcx>(query: &CallSpecQuery<'_, 'tcx>) -> SpecGraph<'tcx> {
 
     // `'static` outlives every region, and every region that the value of an
     // opaque type may hold, as for the flows within a body (see
-    // `BorrowCheckerInterface::outlives_generalized`).
+    // `BorrowCheckerInterface::outlives_generalized`). An opaque type that the
+    // bounds of its definition let outlive `'static` (`type B: 'static`) does
+    // so too, which no clause of the call states.
     let static_node = Node::Region(tcx.lifetimes.re_static);
+    let static_opaques: Vec<Node<'tcx>> = graph
+        .nodes
+        .iter()
+        .copied()
+        .filter(|node| {
+            matches!(node, Node::Opaque(ty, OpaquePart::Whole)
+            if OpaqueTy::try_from(*ty).is_ok_and(|opaque| {
+                env.for_signature().outlives_static(opaque)
+            }))
+        })
+        .collect();
+    for node in static_opaques {
+        graph.add_flow(node, static_node);
+    }
     let all_region_nodes: Vec<Node<'tcx>> = graph
         .nodes
         .iter()
@@ -1453,11 +1504,15 @@ fn body_spec<'a, 'tcx: 'a>(ctxt: impl HasBorrowCheckerCtxt<'a, 'tcx>) -> Option<
         return None;
     };
     let region_cx = ctxt.bc().rust_borrow_checker()?.region_infer_ctxt();
+    // `'static` is the body's first universal region (see `BodyRegions`).
+    let vid_of = |region: ty::Region<'tcx>| match region.kind() {
+        ty::RegionKind::ReVar(vid) => Some(vid),
+        ty::RegionKind::ReStatic => Some(BodyRegions::STATIC),
+        _ => None,
+    };
     let code_value_outlives =
-        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (sup.kind(), sub.kind()) {
-            (ty::RegionKind::ReVar(sup), ty::RegionKind::ReVar(sub)) => {
-                region_cx.eval_outlives(sup, sub)
-            }
+        |sup: ty::Region<'tcx>, sub: ty::Region<'tcx>| match (vid_of(sup), vid_of(sub)) {
+            (Some(sup), Some(sub)) => region_cx.eval_outlives(sup, sub),
             _ => false,
         };
     let spec = spec_graph(&CallSpecQuery {

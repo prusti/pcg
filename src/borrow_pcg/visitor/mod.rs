@@ -102,8 +102,10 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for LifetimeExtractor<'tcx> {
                 self.visit_region(*region);
                 predicates.visit_with(self);
             }
-            //  TODO: Justify why function pointers are ignored
-            ty::TyKind::FnPtr(_, _) => {}
+            // A function pointer or a function item is code, not data: its
+            // value holds no borrows. Its regions are those of the function's
+            // signature, which may be contravariant.
+            ty::TyKind::FnPtr(_, _) | ty::TyKind::FnDef(..) => {}
             ty::TyKind::Closure(_, args) => {
                 let closure_args = args.as_closure();
                 let upvar_tys = closure_args.upvar_tys();
@@ -155,6 +157,30 @@ pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty
 #[rustversion::before(2025-12-01)]
 pub(crate) fn erase_regions<'tcx>(ty: ty::Ty<'tcx>, tcx: ty::TyCtxt<'tcx>) -> ty::Ty<'tcx> {
     tcx.erase_regions(ty)
+}
+
+/// The definition and arguments of `ty`, if it is an alias type.
+#[rustversion::since(2026-08-01)]
+pub(crate) fn alias_def(ty: ty::Ty<'_>) -> Option<(DefId, ty::GenericArgsRef<'_>)> {
+    let ty::TyKind::Alias(_, alias) = ty.kind() else {
+        return None;
+    };
+    let def_id = match alias.kind {
+        ty::AliasTyKind::Projection { def_id }
+        | ty::AliasTyKind::Inherent { def_id }
+        | ty::AliasTyKind::Opaque { def_id }
+        | ty::AliasTyKind::Free { def_id } => def_id,
+    };
+    Some((def_id, alias.args))
+}
+
+/// The definition and arguments of `ty`, if it is an alias type.
+#[rustversion::before(2026-08-01)]
+pub(crate) fn alias_def(ty: ty::Ty<'_>) -> Option<(DefId, ty::GenericArgsRef<'_>)> {
+    let ty::TyKind::Alias(_, alias) = ty.kind() else {
+        return None;
+    };
+    Some((alias.def_id, alias.args))
 }
 
 /// If the types `a` and `b` are equal up to regions, their regions paired by
@@ -381,7 +407,13 @@ impl<'tcx> LifetimeEnv<'tcx> {
     /// of the where clauses, then for an alias type those of its arguments
     /// (see [`Self::member_lifetimes`]). Regions bound by a bound itself
     /// (`for<'x>`) and `opaque_ty` itself are not included.
+    ///
+    /// A type that outlives `'static` has no parts: its value holds no
+    /// loans that the PCG tracks.
     pub(crate) fn bound_lifetimes(self, opaque_ty: OpaqueTy<'tcx>) -> Vec<BoundLifetime<'tcx>> {
+        if self.outlives_static(opaque_ty) {
+            return Vec::new();
+        }
         let mut lifetimes = self.where_clause_lifetimes(opaque_ty);
         for lifetime in self.member_lifetimes(opaque_ty) {
             if !lifetimes.contains(&lifetime) {
@@ -389,6 +421,37 @@ impl<'tcx> LifetimeEnv<'tcx> {
             }
         }
         lifetimes
+    }
+
+    /// Whether the value of `opaque_ty` outlives `'static` by a where clause
+    /// or, for an alias type, by the bounds that its definition declares,
+    /// e.g. `type B: 'static` or a supertrait `ArrayLength: 'static` of its
+    /// bound (as rustc's `declared_bounds_from_definition`).
+    pub(crate) fn outlives_static(self, opaque_ty: OpaqueTy<'tcx>) -> bool {
+        let tcx = self.tcx;
+        let ty = opaque_ty.ty(tcx);
+        let erased = erase_regions(ty, tcx);
+        let static_bound = |clause: ty::Clause<'tcx>, is_self: &dyn Fn(ty::Ty<'tcx>) -> bool| {
+            clause.as_type_outlives_clause().is_some_and(|outlives| {
+                let outlives = outlives.skip_binder();
+                outlives.1.is_static() && is_self(outlives.0)
+            })
+        };
+        let in_where_clauses = tcx
+            .param_env(self.def_id)
+            .caller_bounds()
+            .iter()
+            .any(|clause| static_bound(clause, &|bounded| erase_regions(bounded, tcx) == erased));
+        let in_definition = alias_def(ty).is_some_and(|(def_id, _)| {
+            // The definition's bounds are about the alias with its own
+            // generic parameters.
+            tcx.item_bounds(def_id).skip_binder().iter().any(|clause| {
+                static_bound(clause, &|bounded| {
+                    alias_def(bounded).is_some_and(|(bounded_id, _)| bounded_id == def_id)
+                })
+            })
+        });
+        in_where_clauses || in_definition
     }
 
     /// The lifetimes of the arguments of an alias type, of which its value is
@@ -515,7 +578,9 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for BoundLifetimeCollector<'tcx> {
     }
 
     fn visit_region(&mut self, region: ty::Region<'tcx>) {
-        if !is_bound_region(region) {
+        // `'static` names no data that the PCG tracks, as for the arguments
+        // of an alias type (see `names_part`).
+        if !is_bound_region(region) && !region.is_static() {
             self.push(BoundLifetime::Region(region.into()));
         }
     }
@@ -563,7 +628,8 @@ impl<'tcx> TypeVisitor<ty::TyCtxt<'tcx>> for GeneralizedLifetimeExtractor<'tcx> 
                 self.visit_region(*region);
                 predicates.visit_with(self);
             }
-            ty::TyKind::FnPtr(_, _) => {}
+            // As in `LifetimeExtractor`: code, not data.
+            ty::TyKind::FnPtr(_, _) | ty::TyKind::FnDef(..) => {}
             ty::TyKind::Closure(_, args) => {
                 let closure_args = args.as_closure();
                 for ty in closure_args.upvar_tys() {

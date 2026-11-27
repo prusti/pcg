@@ -26,6 +26,9 @@ pub(crate) struct BodyRegions<'tcx> {
 }
 
 impl<'tcx> BodyRegions<'tcx> {
+    /// The region variable of `'static`.
+    pub(crate) const STATIC: RegionVid = RegionVid::ZERO;
+
     /// The universal regions of the body of `def_id`.
     pub(crate) fn new(tcx: ty::TyCtxt<'tcx>, def_id: DefId) -> Self {
         Self {
@@ -51,7 +54,7 @@ impl<'tcx> BodyRegions<'tcx> {
             .params()
             .position(|p| p == param)
             .unwrap_or_else(|| panic!("{param:?} is not a lifetime parameter of {:?}", self.root));
-        RegionVid::from_usize(1 + position)
+        RegionVid::from_usize(Self::STATIC.as_usize() + 1 + position)
     }
 
     /// The lifetime parameter whose region variable is `vid`, if any.
