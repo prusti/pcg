@@ -162,8 +162,17 @@ impl<'tcx> LocalExpansions<'tcx> {
                 CapabilityKind::Exclusive
             })
         };
+        // A box at `e` (one under construction) owns its allocation: its own
+        // fields are initialised, only its value `*b` is not.
+        let shallow_box =
+            source_cap == CapabilityKind::ShallowExclusive && expand.from.ty(ctxt).ty.is_box();
         for target_place in target_places {
-            capabilities.insert(target_place, source_cap, ctxt);
+            let target_cap = if shallow_box && !target_place.is_deref() {
+                CapabilityKind::Exclusive
+            } else {
+                source_cap
+            };
+            capabilities.insert(target_place, target_cap, ctxt);
         }
         if expand.capability.is_read() {
             capabilities.insert(expand.from, CapabilityKind::Read, ctxt);

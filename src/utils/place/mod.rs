@@ -523,7 +523,7 @@ impl<'tcx> Place<'tcx> {
                 .into_non_default()
                 .expect("RepackGuide::Default is not a valid expansion guide here");
             PlaceExpansion::Guided(required)
-        } else if self.ty(ctxt).ty.is_box() || self.ty(ctxt).ty.is_raw_ptr() {
+        } else if self.ty(ctxt).ty.is_raw_ptr() {
             PlaceExpansion::deref()
         } else {
             match self.ty(ctxt).ty.kind() {
@@ -532,14 +532,19 @@ impl<'tcx> Place<'tcx> {
                         Some(v) => adt_def.variant(v),
                         None => adt_def.non_enum_variant(),
                     };
-                    PlaceExpansion::fields(
-                        variant
-                            .fields
-                            .iter()
-                            .enumerate()
-                            .map(|(i, field)| (i.into(), normalized_field_ty(field, substs, ctxt)))
-                            .collect(),
-                    )
+                    let fields = variant
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, field)| {
+                            (i.into(), (normalized_field_ty(field, substs, ctxt), ()))
+                        })
+                        .collect();
+                    if adt_def.is_box() {
+                        PlaceExpansion::Box { value: (), fields }
+                    } else {
+                        PlaceExpansion::Fields(fields)
+                    }
                 }
                 TyKind::Tuple(tys) => PlaceExpansion::fields(
                     tys.iter()
@@ -689,6 +694,9 @@ impl<'tcx> Place<'tcx> {
         extract_generalized_lifetimes(self.rust_ty(ctxt), None)
     }
 
+    /// The lifetime projections of this place. The pointer field `b.0` of a
+    /// box has none: the borrows its type mentions are stored in the boxed
+    /// value `*b`, whose lifetime projections stand for them.
     pub(crate) fn lifetime_projections<'a>(
         &self,
         ctxt: impl HasCompilerCtxt<'a, 'tcx>,
@@ -696,12 +704,28 @@ impl<'tcx> Place<'tcx> {
     where
         'tcx: 'a,
     {
+        if self.is_box_pointer_field(ctxt) {
+            return IndexVec::new();
+        }
         let place = self.with_inherent_region(ctxt);
         place
             .generalized_lifetimes(ctxt)
             .iter()
             .map(|region| LifetimeProjection::new(place, *region, None, ctxt.ctxt()).unwrap())
             .collect()
+    }
+
+    /// Whether this place is the pointer field `b.0` (a `Unique<T>`) of a box
+    /// `b`.
+    fn is_box_pointer_field<'a>(&self, ctxt: impl HasCompilerCtxt<'a, 'tcx>) -> bool
+    where
+        'tcx: 'a,
+    {
+        matches!(
+            self.last_projection(),
+            Some((base, ProjectionElem::Field(field, _)))
+                if field.index() == 0 && base.ty(ctxt).ty.is_box()
+        )
     }
 
     #[must_use]
@@ -794,12 +818,16 @@ impl<'tcx> Place<'tcx> {
         }
         let diff = self.compare_projections(right).find(|(eq, _, _)| !eq);
         if let Some((_, left, right)) = diff {
-            use ProjectionElem::{ConstantIndex, Downcast, Field, Index, OpaqueCast, Subslice};
+            use ProjectionElem::{
+                ConstantIndex, Deref, Downcast, Field, Index, OpaqueCast, Subslice,
+            };
             fn is_index(elem: PlaceElem<'_>) -> bool {
                 matches!(elem, Index(_) | ConstantIndex { .. } | Subslice { .. })
             }
             match (left, right) {
-                (Field(..), Field(..)) => None,
+                // Distinct fields are disjoint, and so are the value of a box
+                // and its fields.
+                (Field(..), Field(..) | Deref) | (Deref, Field(..)) => None,
                 (
                     ConstantIndex {
                         min_length: l,

@@ -299,6 +299,10 @@ impl<'tcx> MaybeLabelledPlace<'tcx> {
     where
         'tcx: 'a,
     {
+        // See `Place::lifetime_projections`.
+        if self.place().is_box_pointer_field(ctxt) {
+            return vec![];
+        }
         let place = self.with_inherent_region(ctxt);
         place
             .place()
